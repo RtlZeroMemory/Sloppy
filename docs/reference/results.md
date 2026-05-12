@@ -81,11 +81,11 @@ evidence. Dynamic response writer APIs are not inferred as Plan response
 metadata yet.
 
 Literal/static `Results.json(...)` and `Results.ok(...)` values can also feed
-`jsonResponse` native static metadata in compiled web Plans. Those routes use a
-preencoded native JSON response writer when dispatch proves the route can run
-without JavaScript. Dynamic handler return values and unsupported response
-shapes remain generic or explicit fallback modes and keep a fallback reason in
-Plan inspection output.
+experimental alpha `jsonResponse` native static metadata in compiled web Plans.
+Those routes use a preencoded native JSON response writer when dispatch proves
+the route can run without JavaScript. Dynamic handler return values and
+unsupported response shapes remain generic or explicit fallback modes and keep a
+fallback reason in Plan inspection output.
 
 ## Limits
 

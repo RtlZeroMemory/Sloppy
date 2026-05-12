@@ -4188,6 +4188,90 @@ static int test_request_context_body_object_is_one_shot(void)
     return 0;
 }
 
+static int test_native_validated_json_body_is_materialized_once(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[4096];
+    static const unsigned char body[] = "{\"name\":\"Ada\",\"ok\":true}";
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_POST);
+    SlHttpRequestContext context = {0};
+
+    request.body = sl_bytes_from_parts(body, sizeof(body) - 1U);
+    context = test_request_context(&request);
+    context.body_kind = SL_HTTP_REQUEST_BODY_JSON;
+    context.native_json_validated = true;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 426;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 427;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-native-json-materialized.js"),
+                sl_str_from_cstr("globalThis.sloppy_native_json_body = function (ctx) {"
+                                 "  const first = ctx.request.json();"
+                                 "  first.name = 'Grace';"
+                                 "  const second = ctx.request.json();"
+                                 "  const fromBody = ctx.request.body.json();"
+                                 "  let after = 'not-thrown';"
+                                 "  try { ctx.request.body.json(); }"
+                                 "  catch (error) { after = error instanceof TypeError"
+                                 "      && /already consumed/.test(String(error.message))"
+                                 "      ? 'consumed' : 'wrong'; }"
+                                 "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                                 "    contentType: 'application/json', body: {"
+                                 "      same: first === second, bodySame: first === fromBody,"
+                                 "      name: fromBody.name, after,"
+                                 "      consumed: ctx.request.body.consumed"
+                                 "    } };"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 428;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(
+                          engine, &result_arena, sl_str_from_cstr("sloppy_native_json_body"),
+                          &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 429;
+    }
+
+    {
+        SlStr body_text =
+            sl_str_from_parts((const char*)result.response.body.ptr, result.response.body.length);
+        if (result.kind != SL_ENGINE_RESULT_JSON ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"same\":true")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"bodySame\":true")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"name\":\"Grace\"")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"after\":\"consumed\"")) != 0 ||
+            expect_str_contains(body_text, sl_str_from_cstr("\"consumed\":true")) != 0)
+        {
+            sl_engine_destroy(engine);
+            return 430;
+        }
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_request_context_helper_functions_are_frozen(void)
 {
     unsigned char engine_storage[8192];
@@ -7512,6 +7596,11 @@ int main(int argc, char** argv)
     }
 
     result = test_request_context_body_object_is_one_shot();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_native_validated_json_body_is_materialized_once();
     if (result != 0) {
         return result;
     }

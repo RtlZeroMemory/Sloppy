@@ -40,9 +40,24 @@ $ sloppy routes .sloppy --format json
 {
   "kind": "web",
   "routes": [
-    { "method": "GET", "pattern": "/health", "kind": "http", "handlerId": 1, "name": "Health.Get" },
-    { "method": "GET", "pattern": "/hello/{name}", "kind": "http", "handlerId": 2, "name": "Hello.Get" },
-    { "method": "GET", "pattern": "/events", "kind": "sse", "handlerId": 3 }
+    {
+      "method": "POST",
+      "pattern": "/users",
+      "kind": "http",
+      "handlerId": 2,
+      "name": "Users.Create",
+      "jsonRequest": {
+        "mode": "native-schema",
+        "materialization": "materialize-once",
+        "schema": "CreateUser"
+      },
+      "jsonResponse": {
+        "mode": "fallback",
+        "writer": "none",
+        "schema": "User",
+        "fallbackReason": "handler-return-shape-dynamic"
+      }
+    }
   ]
 }
 ```

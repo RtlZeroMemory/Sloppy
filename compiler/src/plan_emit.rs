@@ -244,7 +244,7 @@ fn route_dispatch_json(
         .iter()
         .filter(|route| {
             let plan = route_json_response_plan(route.handler.response.as_ref());
-            matches!(route_json_mode(&plan), "native-static" | "native-schema")
+            route_json_mode(&plan) == "native-static"
         })
         .count();
     let response_generic_json_routes = app

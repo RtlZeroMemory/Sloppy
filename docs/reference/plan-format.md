@@ -150,8 +150,10 @@ manually constructed dispatch tables.
   fallback.
 - `request.materialized` counts routes that still materialize a JavaScript body
   object after native validation.
-- `response.native` counts routes with native static or schema-backed JSON
-  response writer metadata.
+- `response.native` counts routes with native static JSON response writer
+  metadata. Schema-backed dynamic response writers are not emitted as native in
+  this slice; imported `native-schema` response metadata is normalized to
+  fallback with a reason.
 - `response.generic` and `response.fallback` count routes that require the
   generic result serializer or an explicit fallback reason.
 
@@ -183,7 +185,7 @@ Compiler-emitted web Plan routes include JSON request and response plans:
   "jsonResponse": {
     "mode": "native-static",
     "writer": "preencoded",
-    "contentType": "application/json; charset=utf-8"
+    "contentType": "application/json"
   }
 }
 ```
@@ -221,7 +223,10 @@ request values.
 - `none` means the route has no JSON response metadata.
 - `native-static` means a literal/static `Results.json` or `Results.ok` body is
   already represented as JSON bytes and can be written natively.
-- `native-schema` is reserved for schema-backed native response writing.
+- `native-schema` is reserved for schema-backed native response writing. Current
+  compiler output does not emit it for dynamic handler returns, and Plan loading
+  normalizes it to `fallback` with `native-schema-response-writer-unsupported`
+  when encountered.
 - `generic` means the runtime must use the ordinary JSON result serializer.
 - `fallback` means response metadata is known but unsupported for native
   writing; `fallbackReason` explains why.

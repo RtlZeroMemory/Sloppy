@@ -666,12 +666,44 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
             }
         }
         if (!sl_cli_span_empty(route->json_request_fallback)) {
+            char message_buffer[640];
+            SlStringBuilder message_builder = {0};
+            SlCliSpan identity =
+                !sl_cli_span_empty(route->name) ? route->name : route->pattern;
+            SlCliSpan message = route->json_request_fallback;
+
+            if (sl_status_is_ok(sl_string_builder_init_fixed(&message_builder, message_buffer,
+                                                             sizeof(message_buffer))) &&
+                sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, "route ")) &&
+                sl_cli_string_builder_append_span(&message_builder, identity) &&
+                sl_status_is_ok(
+                    sl_string_builder_append_cstr(&message_builder, " JSON request fallback: ")) &&
+                sl_cli_string_builder_append_span(&message_builder, route->json_request_fallback))
+            {
+                message = sl_cli_span_from_str(sl_string_builder_view(&message_builder));
+            }
             sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.json.request"),
-                               sl_cli_span_cstr("warn"), route->json_request_fallback, emitted);
+                               sl_cli_span_cstr("warn"), message, emitted);
         }
         if (!sl_cli_span_empty(route->json_response_fallback)) {
+            char message_buffer[640];
+            SlStringBuilder message_builder = {0};
+            SlCliSpan identity =
+                !sl_cli_span_empty(route->name) ? route->name : route->pattern;
+            SlCliSpan message = route->json_response_fallback;
+
+            if (sl_status_is_ok(sl_string_builder_init_fixed(&message_builder, message_buffer,
+                                                             sizeof(message_buffer))) &&
+                sl_status_is_ok(sl_string_builder_append_cstr(&message_builder, "route ")) &&
+                sl_cli_string_builder_append_span(&message_builder, identity) &&
+                sl_status_is_ok(
+                    sl_string_builder_append_cstr(&message_builder, " JSON response fallback: ")) &&
+                sl_cli_string_builder_append_span(&message_builder, route->json_response_fallback))
+            {
+                message = sl_cli_span_from_str(sl_string_builder_view(&message_builder));
+            }
             sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.json.response"),
-                               sl_cli_span_cstr("warn"), route->json_response_fallback, emitted);
+                               sl_cli_span_cstr("warn"), message, emitted);
         }
     }
     {

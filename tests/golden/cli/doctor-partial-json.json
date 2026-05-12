@@ -11,8 +11,8 @@
     { "id": "app.plan.completeness", "status": "warn", "message": "Plan completeness is partial, runtime-only, or invalid" },
     { "id": "route.completeness", "status": "warn", "message": "route has partial/runtime-only/invalid Plan metadata" },
     { "id": "route.validation", "status": "warn", "message": "JSON body binding has no schema metadata" },
-    { "id": "route.json.request", "status": "warn", "message": "schema-missing" },
-    { "id": "route.json.response", "status": "warn", "message": "dynamic-handler-result" },
+    { "id": "route.json.request", "status": "warn", "message": "route /echo JSON request fallback: schema-missing" },
+    { "id": "route.json.response", "status": "warn", "message": "route /echo JSON response fallback: dynamic-handler-result" },
     { "id": "optimization.native-json-candidate", "status": "ok", "message": "route has response metadata for future native JSON analysis" }
   ]
 }

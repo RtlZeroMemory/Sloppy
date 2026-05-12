@@ -56,6 +56,7 @@ typedef struct SlHttpRequestContext
     const SlHttpQueryParam* query_params;
     size_t query_param_count;
     SlHttpRequestBodyKind body_kind;
+    bool native_json_validated;
     /*
      * Optional borrowed request cancellation token. A cancelled token means the handler
      * boundary must reject before entering JavaScript or before converting an async result.

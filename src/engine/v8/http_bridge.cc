@@ -186,8 +186,12 @@ const char* http_v8_private_key_name(SlV8HttpPrivateKey key)
         return "__sloppyBodyBytes";
     case SL_V8_HTTP_PRIVATE_BODY_CONSUMED:
         return "__sloppyBodyConsumed";
+    case SL_V8_HTTP_PRIVATE_BODY_JSON:
+        return "__sloppyBodyJson";
     case SL_V8_HTTP_PRIVATE_BODY_KIND:
         return "__sloppyBodyKind";
+    case SL_V8_HTTP_PRIVATE_BODY_NATIVE_VALIDATED:
+        return "__sloppyBodyNativeValidated";
     case SL_V8_HTTP_PRIVATE_HEADER_SNAPSHOT:
         return "__sloppyHeaderSnapshot";
     case SL_V8_HTTP_PRIVATE_COOKIE_SNAPSHOT:
@@ -2255,6 +2259,49 @@ bool http_v8_body_text_value(v8::Isolate* isolate, v8::Local<v8::Context> contex
     return true;
 }
 
+bool http_v8_body_json_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                             v8::Local<v8::Object> object, v8::Local<v8::Value>* out,
+                             bool* out_available)
+{
+    v8::Local<v8::Value> cached_json;
+    v8::Local<v8::Value> kind;
+    v8::Local<v8::Value> body;
+    v8::Local<v8::Value> parsed;
+
+    if (out == nullptr || out_available == nullptr) {
+        return false;
+    }
+
+    *out_available = false;
+    if (http_v8_get_private_value(isolate, context, object, SL_V8_HTTP_PRIVATE_BODY_JSON,
+                                  &cached_json) &&
+        !cached_json->IsUndefined())
+    {
+        *out = cached_json;
+        *out_available = true;
+        return true;
+    }
+
+    if (!http_v8_get_private_value(isolate, context, object, SL_V8_HTTP_PRIVATE_BODY_KIND, &kind) ||
+        !kind->IsString() || http_v8_value_to_string(isolate, kind) != "json" ||
+        !http_v8_body_text_value(isolate, context, object, &body) || !body->IsString())
+    {
+        return true;
+    }
+
+    if (!v8::JSON::Parse(context, body.As<v8::String>()).ToLocal(&parsed)) {
+        return false;
+    }
+    if (!http_v8_set_private_value(isolate, context, object, SL_V8_HTTP_PRIVATE_BODY_JSON, parsed))
+    {
+        return false;
+    }
+
+    *out = parsed;
+    *out_available = true;
+    return true;
+}
+
 void http_v8_request_text_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
@@ -2297,14 +2344,13 @@ void http_v8_request_json_callback(const v8::FunctionCallbackInfo<v8::Value>& ar
     v8::Isolate* isolate = args.GetIsolate();
     v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
-    v8::Local<v8::Value> kind;
-    v8::Local<v8::Value> body;
+    v8::Local<v8::Value> parsed;
+    bool available = false;
 
-    if (!http_v8_get_private_value(isolate, context, args.This(), SL_V8_HTTP_PRIVATE_BODY_KIND,
-                                   &kind) ||
-        !kind->IsString() || http_v8_value_to_string(isolate, kind) != "json" ||
-        !http_v8_body_text_value(isolate, context, args.This(), &body) || !body->IsString())
-    {
+    if (!http_v8_body_json_value(isolate, context, args.This(), &parsed, &available)) {
+        return;
+    }
+    if (!available) {
         SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
         if (!sl_v8_throw_type_error_from_native_view(
                 backend, http_v8_literal("Request body is not available as JSON.",
@@ -2313,11 +2359,6 @@ void http_v8_request_json_callback(const v8::FunctionCallbackInfo<v8::Value>& ar
             isolate->ThrowException(v8::Exception::TypeError(
                 v8::String::NewFromUtf8Literal(isolate, "Request body is not available as JSON.")));
         }
-        return;
-    }
-
-    v8::Local<v8::Value> parsed;
-    if (!v8::JSON::Parse(context, body.As<v8::String>()).ToLocal(&parsed)) {
         return;
     }
 
@@ -2371,18 +2412,17 @@ void http_v8_body_json_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::HandleScope handle_scope(isolate);
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
     v8::Local<v8::Object> body_object = args.This();
-    v8::Local<v8::Value> kind;
-    v8::Local<v8::Value> body;
+    v8::Local<v8::Value> parsed;
+    bool available = false;
 
     if (!http_v8_body_mark_consumed(isolate, context, body_object)) {
         return;
     }
 
-    if (!http_v8_get_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_KIND,
-                                   &kind) ||
-        !kind->IsString() || http_v8_value_to_string(isolate, kind) != "json" ||
-        !http_v8_body_text_value(isolate, context, body_object, &body) || !body->IsString())
-    {
+    if (!http_v8_body_json_value(isolate, context, body_object, &parsed, &available)) {
+        return;
+    }
+    if (!available) {
         SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
         if (!sl_v8_throw_type_error_from_native_view(
                 backend, http_v8_literal("Request body is not available as JSON.",
@@ -2391,11 +2431,6 @@ void http_v8_body_json_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
             isolate->ThrowException(v8::Exception::TypeError(
                 v8::String::NewFromUtf8Literal(isolate, "Request body is not available as JSON.")));
         }
-        return;
-    }
-
-    v8::Local<v8::Value> parsed;
-    if (!v8::JSON::Parse(context, body.As<v8::String>()).ToLocal(&parsed)) {
         return;
     }
 
@@ -3307,6 +3342,8 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     v8::Local<v8::Object> body_prototype;
     v8::Local<v8::Object> request_prototype;
     v8::Local<v8::Value> body_bytes_value = v8::Undefined(isolate);
+    v8::Local<v8::Value> body_json_value = v8::Undefined(isolate);
+    v8::Local<v8::Value> native_json_validated_value = v8::Undefined(isolate);
     v8::Local<v8::String> body_kind_value;
     v8::Local<v8::Object> headers;
     v8::Local<v8::Object> cookies;
@@ -3409,6 +3446,24 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         {
             return false;
         }
+        native_json_validated_value =
+            v8::Boolean::New(isolate, request_context->native_json_validated);
+        if (request_context->native_json_validated &&
+            request_context->body_kind == SL_HTTP_REQUEST_BODY_JSON &&
+            request_context->request->body.length != 0U)
+        {
+            v8::Local<v8::String> body_text;
+            if (!sl_status_is_ok(http_v8_to_local_string(
+                    isolate,
+                    sl_str_from_parts(
+                        reinterpret_cast<const char*>(request_context->request->body.ptr),
+                        request_context->request->body.length),
+                    &body_text)) ||
+                !v8::JSON::Parse(context, body_text).ToLocal(&body_json_value))
+            {
+                return false;
+            }
+        }
     }
 
     if (request_context->needs_body) {
@@ -3428,6 +3483,11 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
                                        v8::Undefined(isolate)) ||
             !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_KIND,
                                        body_kind_value) ||
+            !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_JSON,
+                                       body_json_value) ||
+            !http_v8_set_private_value(isolate, context, body_object,
+                                       SL_V8_HTTP_PRIVATE_BODY_NATIVE_VALIDATED,
+                                       native_json_validated_value) ||
             !http_v8_set_private_value(isolate, context, body_object, SL_V8_HTTP_PRIVATE_BODY_BYTES,
                                        body_bytes_value))
         {
@@ -3474,7 +3534,12 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
                 !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY,
                                            v8::Undefined(isolate)) ||
                 !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY_KIND,
-                                           body_kind_value))
+                                           body_kind_value) ||
+                !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY_JSON,
+                                           body_json_value) ||
+                !http_v8_set_private_value(isolate, context, request,
+                                           SL_V8_HTTP_PRIVATE_BODY_NATIVE_VALIDATED,
+                                           native_json_validated_value))
             {
                 return false;
             }

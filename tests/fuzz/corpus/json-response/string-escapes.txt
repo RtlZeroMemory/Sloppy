@@ -1,0 +1,1 @@
+C000{"message":"quoted \"text\" and slash \\ path","lines":["one","two"]}

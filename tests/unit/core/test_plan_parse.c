@@ -948,9 +948,11 @@ static int test_route_json_request_response_metadata_and_max_constraints_parse(v
     {
         return 21;
     }
-    if (route->json_response.mode != SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA ||
-        route->json_response.writer != SL_PLAN_JSON_WRITER_BOUNDED ||
+    if (route->json_response.mode != SL_PLAN_JSON_RESPONSE_FALLBACK ||
+        route->json_response.writer != SL_PLAN_JSON_WRITER_NONE ||
         !sl_str_equal(route->json_response.schema, sl_str_from_cstr("UserCreate")) ||
+        !sl_str_equal(route->json_response.fallback_reason,
+                      sl_str_from_cstr("native-schema-response-writer-unsupported")) ||
         !sl_str_equal(route->json_response.content_type, sl_str_from_cstr("application/json")))
     {
         return 22;

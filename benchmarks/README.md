@@ -17,6 +17,12 @@ There are two benchmark layers:
 - `tools/windows/bench-compiler.ps1` is the compiler scalability harness for
   deterministic source-input projects. It measures `sloppyc` compile time,
   phase timings, process working set, and emitted artifact sizes.
+- `tools/windows/bench-json-dispatch.ps1` runs the local Sloppy JSON dispatch
+  microbenchmark rows across selected build configurations and writes a combined
+  JSON report.
+- `tools/windows/bench-json-competitors.ps1` runs the opt-in local JSON
+  competitor harness under `benchmarks/competitors/`, marking unavailable
+  runtimes or dependencies as `SKIPPED`.
 
 Run native smoke/list checks locally:
 
@@ -30,6 +36,8 @@ Run a measured local benchmark from a Release build:
 ```powershell
 .\tools\windows\bench.ps1 -Configuration Release
 .\tools\windows\bench.ps1 -Configuration Release -Json > .\benchmarks-local.json
+.\tools\windows\bench-json-dispatch.ps1 -Smoke
+.\tools\windows\bench-json-competitors.ps1 -Iterations 100
 ```
 
 Run the local runtime engine:
@@ -90,9 +98,10 @@ Handler dispatch benchmarks are split by current runtime capability:
   method/path hash lookup plus parameter-route segment-trie dispatch. They are
   local engineering measurements, not public performance claims.
 - JSON dispatch benchmarks isolate schema-backed native request validation,
-  validation rejection, preencoded native JSON response writing, HEAD metadata
-  writing, and a bounded native request-plus-response path. They do not include
-  sockets or public throughput claims.
+  validation rejection, materialize-once handoff counters, preencoded native
+  JSON response writing, HEAD metadata writing, fallback counters, and a
+  bounded native request-plus-response path. They do not include sockets or
+  public throughput claims.
 - V8 bridge benchmarks run only when the build is configured with a validated V8 SDK and
   the benchmark is explicitly gated with `--include-v8`.
 

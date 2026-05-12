@@ -1867,6 +1867,9 @@ static SlPlan validation_plan(SlPlanHandler* handler, SlPlanRoute* route,
     route->handler_id = 1U;
     route->bindings = bindings;
     route->binding_count = 1U;
+    route->json_request.mode = SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA;
+    route->json_request.materialization = SL_PLAN_JSON_MATERIALIZATION_MATERIALIZE_ONCE;
+    route->json_request.schema = sl_str_from_cstr("UserCreate");
 
     bindings[0].kind = SL_PLAN_REQUEST_BINDING_BODY_JSON;
     bindings[0].parameter = sl_str_from_cstr("input");
@@ -2003,6 +2006,485 @@ static int test_plan_backed_json_body_rejects_wrong_content_type_before_handler_
     }
 
     sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_plan_backed_json_route_accepts_structured_json_content_type(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /users HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/vnd.sloppy+json\r\nContent-Length: 62\r\n\r\n"
+                      "{\"name\":\"Ada\",\"email\":\"ada@example.com\",\"password\":\"longpass\"}",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 145;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        sl_engine_destroy(engine);
+        return 146;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_native_json_body_exceeding_route_max_rejects_before_validation(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    route.json_request.max_body_bytes = 1U;
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /users HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: 2\r\n\r\n{}",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 147;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_BODY_LIMIT)
+    {
+        sl_engine_destroy(engine);
+        return 148;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_route_json_max_overrides_higher_backend_body_limit(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpBackendOptions options = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    options.parse.max_body_length = 1024U;
+    route.json_request.max_body_bytes = 4U;
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        expect_status(sl_http_backend_init(&backend, &options, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_start(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
+            0 ||
+        parse_request(&arena,
+                      "POST /users HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: 5\r\n\r\n12345",
+                      &request.head) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 149;
+    }
+
+    if (expect_status(sl_http_dispatch_request_lifecycle(&arena, engine, &plan, &table.dispatch,
+                                                         &request, &result, &diag),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_BODY_LIMIT)
+    {
+        sl_engine_destroy(engine);
+        return 150;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_json_route_without_route_max_uses_backend_body_limit(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpBackendOptions options = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    options.parse.max_body_length = 4U;
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        expect_status(sl_http_backend_init(&backend, &options, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_start(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
+            0 ||
+        parse_request(&arena,
+                      "POST /users HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: 5\r\n\r\n12345",
+                      &request.head) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 151;
+    }
+
+    if (expect_status(sl_http_dispatch_request_lifecycle(&arena, engine, &plan, &table.dispatch,
+                                                         &request, &result, &diag),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_BODY_LIMIT)
+    {
+        sl_engine_destroy(engine);
+        return 152;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_generic_json_route_still_uses_json_media_and_size_policy(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    route.method = sl_str_from_cstr("POST");
+    route.pattern = sl_str_from_cstr("/echo");
+    route.handler_id = 1U;
+    route.json_request.mode = SL_PLAN_JSON_REQUEST_GENERIC;
+    route.json_request.materialization = SL_PLAN_JSON_MATERIALIZATION_GENERIC;
+    route.json_request.max_body_bytes = 4U;
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /echo HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: 5\r\n\r\n12345",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 153;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_BODY_LIMIT)
+    {
+        sl_engine_destroy(engine);
+        return 154;
+    }
+
+    sl_arena_reset(&arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (parse_request(&arena,
+                      "POST /echo HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: text/plain\r\nContent-Length: 2\r\n\r\n{}",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 155;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE)
+    {
+        sl_engine_destroy(engine);
+        return 156;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int expect_required_json_body_rejected(const char* request_text)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, request_text, &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        result.response.kind != SL_HTTP_RESPONSE_PROBLEM ||
+        diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED ||
+        expect_body_contains(result.response.body, "\"body.required\"") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 2;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_schema_json_route_rejects_empty_or_missing_body_before_handler_call(void)
+{
+    static const char* const requests[] = {
+        "POST /users HTTP/1.1\r\nHost: example\r\n\r\n",
+        "POST /users HTTP/1.1\r\nHost: example\r\nContent-Length: 0\r\n\r\n",
+        "POST /users HTTP/1.1\r\nHost: example\r\nContent-Type: application/json\r\n\r\n",
+        ("POST /users HTTP/1.1\r\nHost: example\r\nContent-Type: application/json\r\n"
+         "Content-Length: 0\r\n\r\n"),
+    };
+    size_t index = 0U;
+
+    for (index = 0U; index < sizeof(requests) / sizeof(requests[0]); index += 1U) {
+        if (expect_required_json_body_rejected(requests[index]) != 0) {
+            return 157 + (int)index;
+        }
+    }
+    return 0;
+}
+
+typedef struct JsonModeDispatchSnapshot
+{
+    SlStatusCode status_code;
+    SlDiagCode diag_code;
+    SlEngineResultKind result_kind;
+    uint16_t response_status;
+} JsonModeDispatchSnapshot;
+
+static int run_validation_plan_with_json_mode(const char* mode, const char* request_text,
+                                              bool native_response, JsonModeDispatchSnapshot* out)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    char* original = NULL;
+    SlStatus status;
+
+    if (out == NULL || copy_test_env_value("SLOPPY_JSON_DISPATCH", &original) != 0 ||
+        set_test_env_value("SLOPPY_JSON_DISPATCH", mode) != 0)
+    {
+        free(original);
+        return 1;
+    }
+
+    if (native_response) {
+        route.native_response_kind = sl_str_from_cstr("json");
+        route.native_response_status = 200U;
+        route.native_response_body = sl_str_from_cstr("{\"ok\":true}");
+        route.native_response_content_type = sl_str_from_cstr("application/json");
+    }
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, request_text, &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        restore_test_env_value("SLOPPY_JSON_DISPATCH", original);
+        free(original);
+        sl_engine_destroy(engine);
+        return 2;
+    }
+
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    out->status_code = sl_status_code(status);
+    out->diag_code = diag.code;
+    out->result_kind = result.kind;
+    out->response_status =
+        result.payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE ? result.response.status : 0U;
+
+    if (restore_test_env_value("SLOPPY_JSON_DISPATCH", original) != 0) {
+        free(original);
+        sl_engine_destroy(engine);
+        return 3;
+    }
+    free(original);
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_json_dispatch_mode_generic_matches_native_for_supported_schema(void)
+{
+    static const char* valid_request =
+        "POST /users HTTP/1.1\r\nHost: example\r\nContent-Type: application/json\r\n"
+        "Content-Length: 62\r\n\r\n"
+        "{\"name\":\"Ada\",\"email\":\"ada@example.com\",\"password\":\"longpass\"}";
+    static const char* invalid_request =
+        "POST /users HTTP/1.1\r\nHost: example\r\nContent-Type: application/json\r\n"
+        "Content-Length: 59\r\n\r\n"
+        "{\"name\":\"Ada\",\"email\":\"not-an-email\",\"password\":\"longpass\"}";
+    JsonModeDispatchSnapshot native_valid = {0};
+    JsonModeDispatchSnapshot generic_valid = {0};
+    JsonModeDispatchSnapshot native_invalid = {0};
+    JsonModeDispatchSnapshot generic_invalid = {0};
+
+    if (run_validation_plan_with_json_mode("native", valid_request, true, &native_valid) != 0 ||
+        run_validation_plan_with_json_mode("generic", valid_request, true, &generic_valid) != 0 ||
+        run_validation_plan_with_json_mode("native", invalid_request, false, &native_invalid) !=
+            0 ||
+        run_validation_plan_with_json_mode("generic", invalid_request, false, &generic_invalid) !=
+            0)
+    {
+        return 161;
+    }
+
+    if (native_valid.status_code != generic_valid.status_code ||
+        native_valid.diag_code != generic_valid.diag_code ||
+        native_valid.result_kind != generic_valid.result_kind ||
+        native_valid.response_status != generic_valid.response_status ||
+        native_invalid.status_code != generic_invalid.status_code ||
+        native_invalid.diag_code != generic_invalid.diag_code ||
+        native_invalid.result_kind != generic_invalid.result_kind ||
+        native_invalid.response_status != generic_invalid.response_status)
+    {
+        return 162;
+    }
+
+    return 0;
+}
+
+static int test_json_dispatch_validate_mode_matches_native_for_supported_route(void)
+{
+    static const char* request =
+        "POST /users HTTP/1.1\r\nHost: example\r\nContent-Type: application/json\r\n"
+        "Content-Length: 62\r\n\r\n"
+        "{\"name\":\"Ada\",\"email\":\"ada@example.com\",\"password\":\"longpass\"}";
+    JsonModeDispatchSnapshot native_result = {0};
+    JsonModeDispatchSnapshot validate_result = {0};
+
+    if (run_validation_plan_with_json_mode("native", request, true, &native_result) != 0 ||
+        run_validation_plan_with_json_mode("validate", request, true, &validate_result) != 0)
+    {
+        return 163;
+    }
+
+    if (native_result.status_code != validate_result.status_code ||
+        native_result.diag_code != validate_result.diag_code ||
+        native_result.result_kind != validate_result.result_kind ||
+        native_result.response_status != validate_result.response_status)
+    {
+        return 164;
+    }
+
     return 0;
 }
 
@@ -3010,6 +3492,15 @@ int main(void)
         HTTP_DISPATCH_TEST(test_plan_backed_body_validation_returns_problem_before_handler_call),
         HTTP_DISPATCH_TEST(
             test_plan_backed_json_body_rejects_wrong_content_type_before_handler_call),
+        HTTP_DISPATCH_TEST(test_plan_backed_json_route_accepts_structured_json_content_type),
+        HTTP_DISPATCH_TEST(test_native_json_body_exceeding_route_max_rejects_before_validation),
+        HTTP_DISPATCH_TEST(test_route_json_max_overrides_higher_backend_body_limit),
+        HTTP_DISPATCH_TEST(test_json_route_without_route_max_uses_backend_body_limit),
+        HTTP_DISPATCH_TEST(test_generic_json_route_still_uses_json_media_and_size_policy),
+        HTTP_DISPATCH_TEST(
+            test_schema_json_route_rejects_empty_or_missing_body_before_handler_call),
+        HTTP_DISPATCH_TEST(test_json_dispatch_mode_generic_matches_native_for_supported_schema),
+        HTTP_DISPATCH_TEST(test_json_dispatch_validate_mode_matches_native_for_supported_route),
         HTTP_DISPATCH_TEST(test_plan_backed_route_query_header_validation_returns_problem),
         HTTP_DISPATCH_TEST(test_plan_backed_nullable_required_body_field_must_be_present),
         HTTP_DISPATCH_TEST(test_plan_backed_array_validation_reports_indexed_paths),

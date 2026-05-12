@@ -1853,6 +1853,14 @@ static SlStatus sl_plan_parse_route_json_response(SlPlanParseContext* ctx, yyjso
                                   sizeof("native-schema JSON response plans must include schema") -
                                       1U));
     }
+    if (out->json_response.mode == SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA) {
+        out->json_response.mode = SL_PLAN_JSON_RESPONSE_FALLBACK;
+        out->json_response.writer = SL_PLAN_JSON_WRITER_NONE;
+        if (sl_str_is_empty(out->json_response.fallback_reason)) {
+            out->json_response.fallback_reason =
+                sl_str_from_cstr("native-schema-response-writer-unsupported");
+        }
+    }
     return sl_status_ok();
 }
 

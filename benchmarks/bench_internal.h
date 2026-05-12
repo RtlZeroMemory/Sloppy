@@ -23,10 +23,16 @@ typedef struct SlBenchResult
     double ns_per_op;
     uint64_t bytes_processed;
     uint64_t chunks_processed;
+    uint64_t rows_processed;
     double bytes_per_second;
     double chunks_per_second;
+    double rows_per_second;
     uint64_t checksum;
     uint64_t backpressure_count;
+    uint64_t native_hits;
+    uint64_t generic_fallback_count;
+    uint64_t materialization_count;
+    uint64_t reject_count;
     const char* note;
 } SlBenchResult;
 

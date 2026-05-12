@@ -29,14 +29,22 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 
     response = sl_http_response_json(fuzz_status(data[0]), sl_bytes_empty());
     body_offset = 1U;
-    if (size > 1U) {
+    if (size > 2U) {
+        uint16_t capacity_seed = (uint16_t)(((uint16_t)data[1] << 8U) | (uint16_t)data[2]);
+        capacity = (size_t)((capacity_seed % sizeof(output)) + 1U);
+        body_offset = 3U;
+    }
+    else if (size > 1U) {
         capacity = (size_t)((data[1] % sizeof(output)) + 1U);
         body_offset = 2U;
+    }
+    if (size > 3U) {
+        body_offset = 4U;
     }
     if (body_offset < size) {
         response.body = sl_bytes_from_parts(data + body_offset, size - body_offset);
     }
-    if (size > 2U && (data[2] & 1U) != 0U) {
+    if (size > 3U && (data[3] & 1U) != 0U) {
         options.suppress_body = true;
         sl_http_response_write_with_options(&response, &options, output, capacity, &written);
     }

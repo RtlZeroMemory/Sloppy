@@ -86,7 +86,8 @@ app.get("/users", { name: "Users.List", tags: ["users"] }, handler);
 ```
 
 The options accepted today are `name` and `tags`. They show up in
-`sloppy routes` output and in OpenAPI metadata.
+`sloppy routes` output, OpenAPI metadata, and compiled/native execution
+metadata when the compiler can prove the route shape.
 
 The fluent form is equivalent:
 

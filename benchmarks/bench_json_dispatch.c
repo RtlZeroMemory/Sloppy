@@ -4,6 +4,8 @@
 #include "sloppy/http_response.h"
 #include "sloppy/request_validation.h"
 
+#include <yyjson.h>
+
 #include <string.h>
 
 static uint64_t sl_bench_json_checksum(SlBytes bytes)
@@ -207,6 +209,123 @@ static SlStatus bench_json_request_native_schema_reject(const SlBenchContext* co
     return sl_status_ok();
 }
 
+static SlStatus bench_json_request_generic_parse_valid(const SlBenchContext* context,
+                                                       uint64_t iterations, uint64_t* out_checksum)
+{
+    static const unsigned char body[] = "{\"username\":\"ada\",\"password\":\"longpass\"}";
+    uint64_t checksum = 0U;
+    uint64_t index = 0U;
+
+    (void)context;
+
+    if (out_checksum == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (index = 0U; index < iterations; index += 1U) {
+        yyjson_doc* doc = yyjson_read((char*)body, sizeof(body) - 1U, 0U);
+
+        if (doc == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
+        checksum += sl_bench_json_checksum(sl_bytes_from_parts(body, sizeof(body) - 1U));
+        yyjson_doc_free(doc);
+    }
+
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
+static SlStatus bench_json_request_generic_parse_reject(const SlBenchContext* context,
+                                                        uint64_t iterations, uint64_t* out_checksum)
+{
+    static const unsigned char body[] = "{\"username\":\"ada\",\"password\":";
+    uint64_t checksum = 0U;
+    uint64_t index = 0U;
+
+    (void)context;
+
+    if (out_checksum == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (index = 0U; index < iterations; index += 1U) {
+        yyjson_doc* doc = yyjson_read((char*)body, sizeof(body) - 1U, 0U);
+
+        if (doc != NULL) {
+            yyjson_doc_free(doc);
+            return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
+        checksum += sizeof(body) - 1U;
+    }
+
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
+static SlStatus bench_json_request_native_materialize_once(const SlBenchContext* context,
+                                                           uint64_t iterations,
+                                                           uint64_t* out_checksum)
+{
+    unsigned char arena_storage[8192];
+    static const unsigned char body[] = "{\"name\":\"Ada\",\"age\":42,\"active\":true}";
+    SlPlanSchemaProperty properties[3];
+    SlPlanSchemaNode name_schema = {0};
+    SlPlanSchemaNode age_schema = {0};
+    SlPlanSchemaNode active_schema = {0};
+    SlPlanSchema schema = {0};
+    SlPlanRequestBinding binding = {.kind = SL_PLAN_REQUEST_BINDING_BODY_JSON,
+                                    .schema = sl_str_from_cstr("CreateUser")};
+    SlPlanRoute route = sl_bench_json_route(&binding);
+    SlPlan plan;
+    SlArena arena;
+    SlHttpRequestHead request = {0};
+    SlHttpRequestContext request_context = {0};
+    uint64_t checksum = 0U;
+    uint64_t index = 0U;
+    SlStatus status;
+
+    (void)context;
+
+    if (out_checksum == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    sl_bench_json_schema_fixture(properties, &name_schema, &age_schema, &active_schema, &schema);
+    plan = sl_bench_json_plan(&schema, 1U);
+    request.body = sl_bytes_from_parts(body, sizeof(body) - 1U);
+    request_context = sl_bench_json_context(&request);
+    request_context.native_json_validated = true;
+    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    for (index = 0U; index < iterations; index += 1U) {
+        SlEngineResult result = {0};
+        SlDiag diag = {0};
+        yyjson_doc* doc = NULL;
+
+        sl_arena_reset(&arena);
+        status =
+            sl_request_validation_validate(&arena, &plan, &route, &request_context, &result, &diag);
+        if (!sl_status_is_ok(status) || result.kind != SL_ENGINE_RESULT_NONE ||
+            diag.code != SL_DIAG_NONE)
+        {
+            return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
+        doc = yyjson_read((char*)body, sizeof(body) - 1U, 0U);
+        if (doc == NULL) {
+            return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
+        checksum += sl_bench_json_checksum(sl_bytes_from_parts(body, sizeof(body) - 1U));
+        yyjson_doc_free(doc);
+    }
+
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
 static SlStatus bench_json_response_native_static_write(const SlBenchContext* context,
                                                         uint64_t iterations, uint64_t* out_checksum)
 {
@@ -340,11 +459,25 @@ static SlStatus bench_json_dispatch_validate_then_static_response(const SlBenchC
 }
 
 static const SlBenchDefinition json_dispatch_definitions[] = {
+    {"json.request.generic_parse.small_login", "json",
+     "generic baseline parse for a small JSON login body", 1000U, 100000U,
+     bench_json_request_generic_parse_valid,
+     "baseline JSON parse only; no schema validation, handler, socket, or response writer", false,
+     sizeof("{\"username\":\"ada\",\"password\":\"longpass\"}") - 1U, 1U, 0U},
     {"json.request.native_schema.valid", "json",
      "validate a schema-backed JSON request body without entering JavaScript", 1000U, 100000U,
      bench_json_request_native_schema_valid,
      "parses and validates the request body; no sockets, response writer, or JavaScript handler",
      false, sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U, 1U, 0U},
+    {"json.request.native_materialize_once.small_login", "json",
+     "validate a schema-backed JSON body and materialize one cached JSON value", 1000U, 50000U,
+     bench_json_request_native_materialize_once,
+     "models the native-validated materialize-once handoff without entering V8", false,
+     sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U, 1U, 0U},
+    {"json.request.generic_parse.malformed", "json", "generic baseline malformed JSON reject", 100U,
+     20000U, bench_json_request_generic_parse_reject,
+     "baseline malformed JSON parser rejection; no schema problem serialization", false,
+     sizeof("{\"username\":\"ada\",\"password\":") - 1U, 1U, 0U},
     {"json.request.native_schema.reject", "json",
      "reject a schema-backed JSON request body and build validation problem details", 100U, 20000U,
      bench_json_request_native_schema_reject,

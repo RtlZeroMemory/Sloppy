@@ -3,6 +3,7 @@
 #include "sloppy/http_context.h"
 #include "sloppy/http_dispatch.h"
 #include "sloppy/logging.h"
+#include "sloppy/plan.h"
 
 #include <stdint.h>
 
@@ -30,6 +31,8 @@ _Static_assert(sizeof(SlHttpRequestContext) == 192U,
                "SlHttpRequestContext must pack access-planning flags at the tail");
 _Static_assert(_Alignof(SlHttpRequestContext) == _Alignof(void*),
                "SlHttpRequestContext alignment should be pointer-sized");
+_Static_assert(SL_PLAN_INTERNAL_ABI_VERSION >= UINT32_C(2),
+               "native JSON dispatch layout changes must bump the internal Plan ABI tag");
 
 _Static_assert(sizeof(SlLogField) == 248U,
                "SlLogField must store only the active structured-field payload");

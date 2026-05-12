@@ -77,6 +77,18 @@ static void sl_cli_parse_route_json_plans(yyjson_val* value, SlCliRoute* route)
         route->json_response_schema = sl_cli_json_span(response, "schema");
         route->json_response_fallback = sl_cli_json_span(response, "fallbackReason");
     }
+    if (sl_cli_span_empty(route->json_request_mode)) {
+        route->json_request_mode = sl_cli_span_cstr("none");
+    }
+    if (sl_cli_span_empty(route->json_request_materialization)) {
+        route->json_request_materialization = sl_cli_span_cstr("none");
+    }
+    if (sl_cli_span_empty(route->json_response_mode)) {
+        route->json_response_mode = sl_cli_span_cstr("none");
+    }
+    if (sl_cli_span_empty(route->json_response_writer)) {
+        route->json_response_writer = sl_cli_span_cstr("none");
+    }
 }
 
 static void sl_cli_parse_route_effects(yyjson_val* value, SlCliRoute* route)

@@ -150,10 +150,14 @@ For routes with `jsonRequest.mode: "native-schema"`, the dispatcher lets
 the handler boundary. The validator enforces the route's Plan schema,
 unknown-field policy, route JSON body/depth/string/array limits, and supported
 schema bounds. Failures produce `400 application/problem+json` without entering
-V8 and without echoing raw request values. When the JavaScript handler still
-needs the body, generated wrappers omit duplicate schema validation and call the
-existing JSON helper once to create the JavaScript body object. Native body
-slot/projection handoff is reserved for future work.
+V8 and without echoing raw request values. Required schema-backed JSON body
+routes reject missing or empty bodies before JavaScript. The effective body
+limit is route `jsonRequest.maxBodyBytes` when non-zero, otherwise the
+transport/seed limit when non-zero, otherwise the default HTTP body limit.
+When the JavaScript handler still needs the body, generated wrappers omit
+duplicate schema validation and the V8 bridge marks the body as native
+validated while materializing one cached JavaScript JSON value. Lazy projected
+body slots are not implemented; routes must not claim projected mode.
 
 Incoming `HEAD` requests match the corresponding `GET` route. Dispatch
 still executes the handler so validation and metadata stay identical to

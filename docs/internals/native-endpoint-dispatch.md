@@ -43,6 +43,15 @@ read when the route table is built and stored on the dispatch table:
 - `validate` runs both paths and fails the request if the selected binding or
   method-mismatch result differs.
 
+`SLOPPY_JSON_DISPATCH` is a local diagnostics and benchmark switch:
+
+- `native` or unset uses native schema-backed request validation and
+  materialize-once body handoff when the Plan advertises it;
+- `generic` forces the generic JSON body policy path for baseline comparison;
+- `validate` keeps the native request path enabled and is reserved for
+  differential checks where the runtime can compare supported generic/native
+  behavior.
+
 ## Plan Metadata
 
 `routeDispatch.mode` is `native-compiled` for compiler-emitted web artifacts.
@@ -51,7 +60,7 @@ The Plan records the `routes.slrt` path and SHA-256 hash, route
 counts, endpoint counts, exact static paths, parameter route counts, native
 no-JS route counts, URL writer counts, candidate bucket counts, segment-trie
 node counts, known constraints, aggregate JSON request/response
-native/generic/fallback counts, and fallback counts.
+native/generic/fallback counts, and fallback reason summaries.
 
 `routes[].dispatch` records the endpoint ID, dispatch strategy, and execution
 kind for each static Plan route. Execution kind is `v8-handler`,

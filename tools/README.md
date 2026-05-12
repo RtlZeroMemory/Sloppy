@@ -26,6 +26,10 @@ Packaging scripts create experimental local artifacts under ignored `artifacts/p
   policy.
 - `tools/windows/bench.ps1` runs native benchmark smoke/list checks and the BENCH-01
   local runtime comparison engine.
+- `tools/windows/bench-json-dispatch.ps1` runs local native-vs-generic Sloppy JSON
+  dispatch benchmark rows and writes JSON output.
+- `tools/windows/bench-json-competitors.ps1` runs the opt-in local JSON competitor
+  harness and reports unavailable runtimes as `SKIPPED`.
 - `tools/unix/bench.sh` runs the native Unix benchmark wrapper and reports the local
   runtime comparison lane as unavailable until that runner is ported.
 
