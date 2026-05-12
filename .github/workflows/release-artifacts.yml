@@ -233,7 +233,7 @@ jobs:
           node --version
           npm --version
           clang --version
-          ldd --version | head -n 1
+          ldd --version | sed -n '1p'
 
       - name: Cache ccache
         uses: actions/cache@v4
