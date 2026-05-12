@@ -36,5 +36,14 @@ They do not copy raw body values into the response.
 the default JSON response body metadata. Static schema identifiers are emitted
 to the compiler Plan and consumed by `sloppy openapi`.
 
+In compiled/native runs, schema-backed JSON request metadata also enables the
+native validator. Invalid JSON, missing fields, type mismatches, string/number
+bounds, array length bounds, and rejected unknown fields fail before the handler
+runs. Generated wrappers omit duplicate schema validation and materialize a
+JavaScript body object through the existing JSON helper once when handler code
+needs it; native body slot/projection handoff is future work. Dynamic response
+shapes with `.returns(...)` remain metadata or fallback unless the compiler can
+prove a static native JSON response.
+
 The lowercase `schema` export remains available for existing code. New code
 should use `Schema` so request/response metadata reads like a first-party API.

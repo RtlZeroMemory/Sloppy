@@ -60,6 +60,25 @@ static void sl_cli_parse_route_bindings(yyjson_val* value, SlCliRoute* route)
     }
 }
 
+static void sl_cli_parse_route_json_plans(yyjson_val* value, SlCliRoute* route)
+{
+    yyjson_val* request = yyjson_obj_get(value, "jsonRequest");
+    yyjson_val* response = yyjson_obj_get(value, "jsonResponse");
+
+    if (request != NULL && yyjson_is_obj(request)) {
+        route->json_request_mode = sl_cli_json_span(request, "mode");
+        route->json_request_materialization = sl_cli_json_span(request, "materialization");
+        route->json_request_schema = sl_cli_json_span(request, "schema");
+        route->json_request_fallback = sl_cli_json_span(request, "fallbackReason");
+    }
+    if (response != NULL && yyjson_is_obj(response)) {
+        route->json_response_mode = sl_cli_json_span(response, "mode");
+        route->json_response_writer = sl_cli_json_span(response, "writer");
+        route->json_response_schema = sl_cli_json_span(response, "schema");
+        route->json_response_fallback = sl_cli_json_span(response, "fallbackReason");
+    }
+}
+
 static void sl_cli_parse_route_effects(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* effects = yyjson_obj_get(value, "effects");
@@ -237,6 +256,7 @@ static int sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* rou
         return 1;
     }
     sl_cli_parse_route_bindings(value, route);
+    sl_cli_parse_route_json_plans(value, route);
     sl_cli_parse_route_effects(value, route);
     return 0;
 }
@@ -1011,6 +1031,9 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
     yyjson_val* artifact = NULL;
     yyjson_val* stats = NULL;
     yyjson_val* fallback = NULL;
+    yyjson_val* json_metadata = NULL;
+    yyjson_val* json_request = NULL;
+    yyjson_val* json_response = NULL;
     yyjson_val* url_generation = NULL;
     yyjson_val* classic_available = NULL;
 
@@ -1063,6 +1086,30 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
             sl_cli_json_uint_or_zero(fallback, "dynamicRoutes");
         metadata->route_dispatch.partial_fallback_routes =
             sl_cli_json_uint_or_zero(fallback, "partialRoutes");
+    }
+
+    json_metadata = yyjson_obj_get(dispatch, "json");
+    if (json_metadata != NULL && yyjson_is_obj(json_metadata)) {
+        json_request = yyjson_obj_get(json_metadata, "request");
+        if (json_request != NULL && yyjson_is_obj(json_request)) {
+            metadata->route_dispatch.json_request_native_routes =
+                sl_cli_json_uint_or_zero(json_request, "native");
+            metadata->route_dispatch.json_request_generic_routes =
+                sl_cli_json_uint_or_zero(json_request, "generic");
+            metadata->route_dispatch.json_request_fallback_routes =
+                sl_cli_json_uint_or_zero(json_request, "fallback");
+            metadata->route_dispatch.json_request_materialized_routes =
+                sl_cli_json_uint_or_zero(json_request, "materialized");
+        }
+        json_response = yyjson_obj_get(json_metadata, "response");
+        if (json_response != NULL && yyjson_is_obj(json_response)) {
+            metadata->route_dispatch.json_response_native_routes =
+                sl_cli_json_uint_or_zero(json_response, "native");
+            metadata->route_dispatch.json_response_generic_routes =
+                sl_cli_json_uint_or_zero(json_response, "generic");
+            metadata->route_dispatch.json_response_fallback_routes =
+                sl_cli_json_uint_or_zero(json_response, "fallback");
+        }
     }
 }
 

@@ -263,6 +263,13 @@ static int test_plan_metadata_interns_stable_strings(void)
         .pattern = sl_str_from_cstr("/"),
         .handler_id = 1U,
         .name = sl_str_from_cstr("home"),
+        .json_request = {.mode = SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                         .materialization = SL_PLAN_JSON_MATERIALIZATION_MATERIALIZE_ONCE,
+                         .schema = sl_str_from_cstr("UserCreate")},
+        .json_response = {.mode = SL_PLAN_JSON_RESPONSE_FALLBACK,
+                          .schema = sl_str_from_cstr("UserCreate"),
+                          .fallback_reason = sl_str_from_cstr("dynamic-handler-result"),
+                          .content_type = sl_str_from_cstr("application/json")},
     }};
     SlPlanSchemaNode property_node = {.kind = SL_PLAN_SCHEMA_STRING,
                                       .validation = sl_str_from_cstr("email")};
@@ -325,6 +332,13 @@ static int test_plan_metadata_interns_stable_strings(void)
     }
     if (interned_plan.routes[0].bindings[0].schema.ptr != interned_plan.schemas[0].name.ptr) {
         return 81;
+    }
+    if (interned_plan.routes[0].json_request.schema.ptr != interned_plan.schemas[0].name.ptr ||
+        interned_plan.routes[0].json_response.schema.ptr != interned_plan.schemas[0].name.ptr ||
+        interned_plan.routes[0].json_response.fallback_reason.ptr ==
+            plan.routes[0].json_response.fallback_reason.ptr)
+    {
+        return 83;
     }
     if (interned_plan.schemas[0].definition.properties[0].schema == &property_node ||
         interned_plan.schemas[0].definition.properties[0].schema->validation.ptr ==

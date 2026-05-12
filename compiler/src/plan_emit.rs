@@ -8,7 +8,7 @@ use serde_json::{json, Map, Value};
 use crate::diagnostic::Diagnostic;
 use crate::graph::{
     route_parameter_names, route_pattern_has_params, AuthSchemeMetadata, ConfigurationPackageEntry,
-    DependencyGraph, ExtractedApp, ProjectKind,
+    DependencyGraph, ExtractedApp, ProjectKind, RequestBinding, ResponseMetadata,
 };
 use crate::hash::sha256_hex;
 use crate::route_artifact::{
@@ -92,6 +92,78 @@ fn route_dispatch_segment_trie_nodes(app: &ExtractedApp) -> usize {
     prefixes.len()
 }
 
+fn route_json_request_plan(bindings: &[RequestBinding]) -> Value {
+    let Some(binding) = bindings.iter().find(|binding| binding.kind == "body.json") else {
+        return json!({
+            "mode": "none",
+            "materialization": "none",
+            "unknownFields": "ignore"
+        });
+    };
+
+    if let Some(schema) = &binding.schema {
+        if !schema.is_empty() {
+            return json!({
+                "mode": "native-schema",
+                "schema": schema,
+                "materialization": "materialize-once",
+                "unknownFields": "ignore",
+                "maxBodyBytes": 65536,
+                "maxDepth": 50
+            });
+        }
+    }
+
+    json!({
+        "mode": "generic",
+        "materialization": "generic",
+        "unknownFields": "ignore",
+        "fallbackReason": "schema-missing",
+        "maxBodyBytes": 65536,
+        "maxDepth": 50
+    })
+}
+
+fn route_json_response_plan(response: Option<&ResponseMetadata>) -> Value {
+    let Some(response) = response else {
+        return json!({
+            "mode": "none",
+            "writer": "none"
+        });
+    };
+    if response.kind != "json" {
+        return json!({
+            "mode": "none",
+            "writer": "none"
+        });
+    }
+    if response.native_body.is_some() {
+        return json!({
+            "mode": "native-static",
+            "writer": "preencoded",
+            "contentType": "application/json"
+        });
+    }
+    if let Some(schema) = &response.body_schema {
+        return json!({
+            "mode": "fallback",
+            "writer": "none",
+            "schema": schema,
+            "fallbackReason": "handler-return-shape-dynamic"
+        });
+    }
+
+    json!({
+        "mode": "generic",
+        "writer": "none",
+        "fallbackReason": "dynamic-handler-result"
+    })
+}
+
+fn route_json_mode(value: &Value) -> &str {
+    value.get("mode").and_then(Value::as_str).unwrap_or("none")
+}
+
 fn route_dispatch_json(
     app: &ExtractedApp,
     route_completeness_values: &[Completeness],
@@ -146,6 +218,50 @@ fn route_dispatch_json(
             route_execution_kind(response_kind, native_body) != RouteExecutionKind::V8Handler
         })
         .count();
+    let request_native_json_routes = app
+        .routes
+        .iter()
+        .filter(|route| {
+            route_json_mode(&route_json_request_plan(&route.handler.bindings)) == "native-schema"
+        })
+        .count();
+    let request_generic_json_routes = app
+        .routes
+        .iter()
+        .filter(|route| {
+            route_json_mode(&route_json_request_plan(&route.handler.bindings)) == "generic"
+        })
+        .count();
+    let request_fallback_json_routes = app
+        .routes
+        .iter()
+        .filter(|route| {
+            route_json_mode(&route_json_request_plan(&route.handler.bindings)) == "fallback"
+        })
+        .count();
+    let response_native_json_routes = app
+        .routes
+        .iter()
+        .filter(|route| {
+            let plan = route_json_response_plan(route.handler.response.as_ref());
+            matches!(route_json_mode(&plan), "native-static" | "native-schema")
+        })
+        .count();
+    let response_generic_json_routes = app
+        .routes
+        .iter()
+        .filter(|route| {
+            route_json_mode(&route_json_response_plan(route.handler.response.as_ref())) == "generic"
+        })
+        .count();
+    let response_fallback_json_routes = app
+        .routes
+        .iter()
+        .filter(|route| {
+            route_json_mode(&route_json_response_plan(route.handler.response.as_ref()))
+                == "fallback"
+        })
+        .count();
     let artifact = route_artifact.map_or_else(
         || {
             json!({
@@ -184,6 +300,19 @@ fn route_dispatch_json(
                 "first-static-segment-bucket-fallback"
             ],
             "constraints": constraints
+        },
+        "json": {
+            "request": {
+                "native": request_native_json_routes,
+                "generic": request_generic_json_routes,
+                "fallback": request_fallback_json_routes,
+                "materialized": request_native_json_routes
+            },
+            "response": {
+                "native": response_native_json_routes,
+                "generic": response_generic_json_routes,
+                "fallback": response_fallback_json_routes
+            }
         },
         "fallback": {
             "classicAvailable": true,
@@ -648,6 +777,9 @@ pub(crate) fn emit_plan_with_route_artifact(
                     }
                     route_json["response"] = response_json;
                 }
+                route_json["jsonRequest"] = route_json_request_plan(&route.handler.bindings);
+                route_json["jsonResponse"] =
+                    route_json_response_plan(route.handler.response.as_ref());
                 if route.handler.responses.len() > 1 || route.handler.runtime_deferred {
                     route_json["responses"] = json!(route
                         .handler
@@ -1179,7 +1311,9 @@ pub(crate) fn emit_plan_with_route_artifact(
         value["routeDispatch"] =
             route_dispatch_json(app, &route_completeness_values, route_artifact);
         value["features"]["nativeEndpointDispatch"] = json!(true);
+        value["features"]["nativeJsonDispatch"] = json!(true);
         value["strongPlan"]["evidence"]["routeDispatch"] = json!(true);
+        value["strongPlan"]["evidence"]["nativeJsonDispatch"] = json!(true);
     }
     if app.kind == ProjectKind::Web && !app.dynamic_routes.is_empty() {
         let complete_count = route_completeness_values

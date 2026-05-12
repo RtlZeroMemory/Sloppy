@@ -49,6 +49,14 @@ typedef struct SlCliRoute
     SlCliSpan binding_names[SL_CLI_MAX_ROUTE_BINDINGS];
     SlCliSpan binding_schemas[SL_CLI_MAX_ROUTE_BINDINGS];
     size_t binding_count;
+    SlCliSpan json_request_mode;
+    SlCliSpan json_request_materialization;
+    SlCliSpan json_request_schema;
+    SlCliSpan json_request_fallback;
+    SlCliSpan json_response_mode;
+    SlCliSpan json_response_writer;
+    SlCliSpan json_response_schema;
+    SlCliSpan json_response_fallback;
     SlCliSpan effect_providers[SL_CLI_MAX_ROUTE_EFFECTS];
     SlCliSpan effect_provider_kinds[SL_CLI_MAX_ROUTE_EFFECTS];
     SlCliSpan effect_capability_kinds[SL_CLI_MAX_ROUTE_EFFECTS];
@@ -203,6 +211,13 @@ typedef struct SlCliRouteDispatch
     uint64_t segment_trie_nodes;
     uint64_t dynamic_fallback_routes;
     uint64_t partial_fallback_routes;
+    uint64_t json_request_native_routes;
+    uint64_t json_request_generic_routes;
+    uint64_t json_request_fallback_routes;
+    uint64_t json_request_materialized_routes;
+    uint64_t json_response_native_routes;
+    uint64_t json_response_generic_routes;
+    uint64_t json_response_fallback_routes;
     bool url_generation;
     bool classic_fallback_available;
 } SlCliRouteDispatch;

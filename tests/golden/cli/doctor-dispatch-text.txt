@@ -12,6 +12,8 @@ Sloppy Doctor
 [ok] route.dispatch.contract: Plan-backed native dispatch with routes.slrt integrity validation
 [ok] route.dispatch.artifact: sha256:5da3e79351754675348afd5e5dddff7717f06116fcef7245e46e4aeabcfb9733
 [ok] route.dispatch.fallback: classic dispatch fallback is available
+[info] route.dispatch.json.request: no native schema-backed JSON request routes are advertised
+[ok] route.dispatch.json.response: native JSON response writers are advertised
 [ok] route.dispatch.segment-trie: parameter routes advertise native segment-trie nodes
 [ok] app.plan.completeness: Plan completeness is complete
 [ok] optimization.native-json-candidate: route has response metadata for future native JSON analysis

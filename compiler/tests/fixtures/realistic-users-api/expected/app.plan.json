@@ -167,6 +167,7 @@
     "dataProviders": true,
     "metadataInference": true,
     "nativeEndpointDispatch": true,
+    "nativeJsonDispatch": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -244,6 +245,19 @@
       "dynamicRoutes": 0,
       "partialRoutes": 0
     },
+    "json": {
+      "request": {
+        "fallback": 0,
+        "generic": 0,
+        "materialized": 1,
+        "native": 1
+      },
+      "response": {
+        "fallback": 0,
+        "generic": 3,
+        "native": 0
+      }
+    },
     "mode": "native-compiled",
     "nativeNoJsEndpoints": 1,
     "parameterRoutes": 1,
@@ -289,6 +303,16 @@
         }
       ],
       "handlerId": 1,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "name": "Users.List",
       "pattern": "/api/users",
@@ -351,6 +375,19 @@
         }
       ],
       "handlerId": 2,
+      "jsonRequest": {
+        "materialization": "materialize-once",
+        "maxBodyBytes": 65536,
+        "maxDepth": 50,
+        "mode": "native-schema",
+        "schema": "UserCreate",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "POST",
       "name": "Users.Create",
       "pattern": "/api/users",
@@ -400,6 +437,16 @@
         }
       ],
       "handlerId": 3,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "name": "Users.Get",
       "pattern": "/api/users/{id:int}",
@@ -428,6 +475,15 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 4,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "GET",
       "name": null,
       "nativeResponse": {
@@ -506,6 +562,7 @@
       "capabilities": true,
       "effects": true,
       "ffi": false,
+      "nativeJsonDispatch": true,
       "providers": true,
       "routeDispatch": true,
       "routes": true,

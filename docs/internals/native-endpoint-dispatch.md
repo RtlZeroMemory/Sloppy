@@ -26,6 +26,9 @@ kinds before building the arena-owned native dispatch table from
 - `Results.text("literal")`, `Results.json(<literal>)`, and
   `Results.ok(<literal>)` handlers can execute as native static responses
   without entering V8;
+- schema-backed JSON request bodies can be validated natively before the
+  handler boundary when the route has a `jsonRequest` native schema plan;
+- static JSON response bodies use `jsonResponse` native static writer metadata;
 - dynamic route metadata can fall back to the current generated JavaScript
   runtime path when V8 is enabled.
 
@@ -47,11 +50,16 @@ That means Plan-backed native dispatch with `routes.slrt` integrity validation.
 The Plan records the `routes.slrt` path and SHA-256 hash, route
 counts, endpoint counts, exact static paths, parameter route counts, native
 no-JS route counts, URL writer counts, candidate bucket counts, segment-trie
-node counts, known constraints, and fallback counts.
+node counts, known constraints, aggregate JSON request/response
+native/generic/fallback counts, and fallback counts.
 
 `routes[].dispatch` records the endpoint ID, dispatch strategy, and execution
 kind for each static Plan route. Execution kind is `v8-handler`,
 `native-static-text`, or `native-static-json`.
+
+`routes[].jsonRequest` and `routes[].jsonResponse` record per-route JSON modes.
+Fallback reasons are part of the contract: if the route cannot use native JSON,
+inspection tools show why instead of silently implying success.
 
 ## Route Shapes
 

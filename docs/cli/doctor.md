@@ -57,6 +57,12 @@ integrity validation: the compiler emitted `routes.slrt`, the Plan recorded its
 hash, and the runtime validated it before building the native dispatch table
 from `app.plan.json`.
 
+Doctor also reports route JSON readiness when dispatch metadata is available:
+schema-backed native request routes, native JSON response routes, and whether
+any route has a JSON fallback reason. Per-route warnings identify body JSON
+bindings without schema metadata, request fallback reasons, and response
+fallback reasons so generic paths are visible instead of silent.
+
 ## Exit codes
 
 | Code | Meaning |

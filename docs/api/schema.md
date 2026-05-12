@@ -123,6 +123,20 @@ Use `.accepts(schema)` and `.returns(schema)` on the route registration when
 you want request and response schemas to appear in route snapshots, compiler
 Plan metadata, and OpenAPI output.
 
+In compiled/native runs, `.accepts(schema)` and compiler-visible
+`ctx.body.validate(SchemaName)` calls also drive route-level native JSON
+request validation. The generated Plan records the request JSON mode, schema
+name, materialization policy, unknown-field policy, and JSON body, depth,
+string, and array limits. When the route is schema-known, invalid JSON fails
+before the handler runs and the problem response does not include raw body
+values.
+
+`.returns(schema)` remains response metadata for dynamic handler return values
+unless the compiler can prove a static JSON result. Static `Results.json(...)`
+and `Results.ok(...)` values can use the native preencoded JSON response writer;
+dynamic or unsupported response shapes carry a fallback reason instead of
+claiming native enforcement.
+
 ## Limits
 
 The schema library covers the common shapes a handler needs. It is

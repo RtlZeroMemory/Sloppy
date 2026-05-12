@@ -650,6 +650,31 @@ static SlStatus sl_plan_intern_routes(SlArena* arena, SlInternTable* table, SlPl
         if (!sl_status_is_ok(status)) {
             return status;
         }
+        status = sl_plan_intern_required(table, routes[index].json_request.schema,
+                                         &routes[index].json_request.schema);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_required(table, routes[index].json_request.fallback_reason,
+                                         &routes[index].json_request.fallback_reason);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_required(table, routes[index].json_response.schema,
+                                         &routes[index].json_response.schema);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_required(table, routes[index].json_response.fallback_reason,
+                                         &routes[index].json_response.fallback_reason);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_required(table, routes[index].json_response.content_type,
+                                         &routes[index].json_response.content_type);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
         status = sl_plan_intern_bindings(arena, table, &routes[index]);
         if (!sl_status_is_ok(status)) {
             return status;

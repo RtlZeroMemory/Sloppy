@@ -124,7 +124,14 @@ app.post("/users", async (ctx) => {
 ```
 
 Invalid JSON and schema failures produce `400 application/problem+json`
-validation problems in the app host.
+validation problems. In compiled/native runs, compiler-visible
+`ctx.body.validate(SchemaName)` and `.accepts(SchemaName)` metadata is emitted
+as a route JSON request plan. Schema-known JSON bodies are checked by the native
+runtime before handler execution. Generated wrappers omit duplicate schema
+validation and materialize a JavaScript body object through the existing JSON
+helper once when the handler needs it; native slot/projection handoff is future
+work. Routes that accept JSON without compiler-visible schema metadata use the
+generic body helper path and are reported that way by `sloppy routes --dispatch`.
 
 JSON bodies must declare `application/json` or `application/*+json`;
 `ctx.request.json()` and `ctx.body.json()` are unavailable for any other media
@@ -189,6 +196,12 @@ runs:
 | 501    | Transfer encoding the runtime doesn't accept           |
 
 Handler exceptions and unsupported result descriptors return `500`.
+
+Native schema-backed JSON validation enforces malformed JSON, missing required
+fields, wrong types, literal/enum mismatch, string and number bounds, array
+length bounds, nullable/optional fields, route JSON depth/body limits, and the
+route's unknown-field policy. Problem details include safe `path`, `code`, and
+`message` entries and omit raw body values.
 
 ## `ctx.signal` and `ctx.deadline`
 

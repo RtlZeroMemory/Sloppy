@@ -1961,6 +1961,51 @@ static int test_plan_backed_body_validation_returns_problem_before_handler_call(
     return 0;
 }
 
+static int test_plan_backed_json_body_rejects_wrong_content_type_before_handler_call(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /users HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: text/plain\r\nContent-Length: 2\r\n\r\n{}",
+                      &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 143;
+    }
+
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_UNSUPPORTED_MEDIA_TYPE)
+    {
+        sl_engine_destroy(engine);
+        return 144;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_plan_backed_route_query_header_validation_returns_problem(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -2963,6 +3008,8 @@ int main(void)
         HTTP_DISPATCH_TEST(test_missing_plan_handler_fails_before_engine_call),
         HTTP_DISPATCH_TEST(test_stale_plan_route_table_ignores_cached_handler),
         HTTP_DISPATCH_TEST(test_plan_backed_body_validation_returns_problem_before_handler_call),
+        HTTP_DISPATCH_TEST(
+            test_plan_backed_json_body_rejects_wrong_content_type_before_handler_call),
         HTTP_DISPATCH_TEST(test_plan_backed_route_query_header_validation_returns_problem),
         HTTP_DISPATCH_TEST(test_plan_backed_nullable_required_body_field_must_be_present),
         HTTP_DISPATCH_TEST(test_plan_backed_array_validation_reports_indexed_paths),

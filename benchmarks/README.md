@@ -89,6 +89,10 @@ Handler dispatch benchmarks are split by current runtime capability:
 - Route dispatch benchmarks exercise the current native endpoint table: exact
   method/path hash lookup plus parameter-route segment-trie dispatch. They are
   local engineering measurements, not public performance claims.
+- JSON dispatch benchmarks isolate schema-backed native request validation,
+  validation rejection, preencoded native JSON response writing, HEAD metadata
+  writing, and a bounded native request-plus-response path. They do not include
+  sockets or public throughput claims.
 - V8 bridge benchmarks run only when the build is configured with a validated V8 SDK and
   the benchmark is explicitly gated with `--include-v8`.
 
@@ -141,6 +145,21 @@ It is not an HTTP server throughput benchmark.
 `http.body_reader.json_known_length` measures the bounded body reader for a declared
 JSON content length and records builder grow/copy counters in the checksum. It exists to
 evaluate request-body copy and allocation changes without involving sockets.
+
+Native JSON benchmark rows are intentionally scoped:
+
+- `json.request.native_schema.valid` parses and validates a small schema-backed
+  JSON request body. It excludes route lookup, sockets, response writing, and
+  JavaScript handler execution.
+- `json.request.native_schema.reject` measures the invalid-body path that builds
+  validation problem details without echoing request values.
+- `json.response.native_static.write` writes a preencoded native `Results.json`
+  response through the common HTTP response writer.
+- `json.response.native_static.head_write` writes response metadata with body
+  suppression, modeling `HEAD` after normal dispatch.
+- `json.dispatch.native_schema_static_response` combines native request
+  validation with native static JSON response writing and still excludes sockets
+  and user handler execution.
 
 V8 bridge benchmarks currently measure internal evidence for:
 

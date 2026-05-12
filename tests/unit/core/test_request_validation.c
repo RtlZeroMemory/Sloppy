@@ -510,6 +510,85 @@ static int test_malformed_json_body_fails_closed(void)
     return 0;
 }
 
+static int test_native_json_constraints_apply_max_bounds_and_unknown_field_policy(void)
+{
+    unsigned char arena_storage[16384];
+    SlArena arena = {0};
+    SlPlanSchemaProperty properties[3];
+    SlPlanSchemaNode tag_item = {.kind = SL_PLAN_SCHEMA_STRING};
+    SlPlanSchemaNode name_schema = {.kind = SL_PLAN_SCHEMA_STRING, .has_max = true, .max_value = 5};
+    SlPlanSchemaNode age_schema = {.kind = SL_PLAN_SCHEMA_INT, .has_max = true, .max_value = 6};
+    SlPlanSchemaNode tags_schema = {
+        .kind = SL_PLAN_SCHEMA_ARRAY, .items = &tag_item, .has_max = true, .max_value = 2};
+    SlPlanSchemaNode body_schema = {
+        .kind = SL_PLAN_SCHEMA_OBJECT, .properties = properties, .property_count = 3U};
+    SlPlanSchema schema = {.name = sl_str_from_cstr("CreateUser"), .definition = body_schema};
+    SlPlan plan = empty_plan();
+    SlPlanRequestBinding binding = {.kind = SL_PLAN_REQUEST_BINDING_BODY_JSON,
+                                    .schema = sl_str_from_cstr("CreateUser")};
+    SlPlanRoute route = {.bindings = &binding,
+                         .binding_count = 1U,
+                         .json_request = {
+                             .mode = SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                             .materialization = SL_PLAN_JSON_MATERIALIZATION_MATERIALIZE_ONCE,
+                             .unknown_fields = SL_PLAN_JSON_UNKNOWN_FIELDS_REJECT,
+                             .schema = sl_str_from_cstr("CreateUser"),
+                         }};
+    SlHttpRequestHead request = {0};
+    SlHttpRequestContext context = request_context(&request);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    properties[0] =
+        (SlPlanSchemaProperty){.name = sl_str_from_cstr("name"), .schema = &name_schema};
+    properties[1] = (SlPlanSchemaProperty){.name = sl_str_from_cstr("age"), .schema = &age_schema};
+    properties[2] =
+        (SlPlanSchemaProperty){.name = sl_str_from_cstr("tags"), .schema = &tags_schema};
+    plan.schemas = &schema;
+    plan.schema_count = 1U;
+    request.body = sl_bytes_from_parts(
+        (const unsigned char*)"{\"name\":\"abcdef\",\"age\":7,\"tags\":[\"a\",\"b\",\"c\"],"
+                              "\"extra\":true}",
+        sizeof("{\"name\":\"abcdef\",\"age\":7,\"tags\":[\"a\",\"b\",\"c\"],\"extra\":true}") - 1U);
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 60;
+    }
+
+    if (expect_status(
+            sl_request_validation_validate(&arena, &plan, &route, &context, &result, &diag),
+            SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED ||
+        !validation_problem_has_issue_shape(result.response.body) ||
+        !bytes_contains(result.response.body, "\"string.max\"") ||
+        !bytes_contains(result.response.body, "\"number.max\"") ||
+        !bytes_contains(result.response.body, "\"array.max\"") ||
+        !bytes_contains(result.response.body, "\"unknown\"") ||
+        bytes_contains(result.response.body, "abcdef"))
+    {
+        return 61;
+    }
+
+    sl_arena_reset(&arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    request.body = sl_bytes_from_parts(
+        (const unsigned char*)"{\"name\":\"Ada\",\"age\":6,\"tags\":[\"a\",\"b\"]}",
+        sizeof("{\"name\":\"Ada\",\"age\":6,\"tags\":[\"a\",\"b\"]}") - 1U);
+    if (expect_status(
+            sl_request_validation_validate(&arena, &plan, &route, &context, &result, &diag),
+            SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_NONE)
+    {
+        return 62;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     int (*tests[])(void) = {test_no_bindings_and_invalid_arguments_are_output_atomic,
@@ -519,7 +598,8 @@ int main(void)
                             test_issue_cap_truncates_without_failure,
                             test_body_schema_validates_required_literal_and_email_contracts,
                             test_nested_optional_and_nullable_shapes_validate_precisely,
-                            test_malformed_json_body_fails_closed};
+                            test_malformed_json_body_fails_closed,
+                            test_native_json_constraints_apply_max_bounds_and_unknown_field_policy};
     size_t index = 0U;
 
     for (index = 0U; index < sizeof(tests) / sizeof(tests[0]); index += 1U) {

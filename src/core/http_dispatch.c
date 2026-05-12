@@ -644,7 +644,8 @@ static SlStatus sl_http_dispatch_validate_json_body(SlArena* arena, SlBytes body
 }
 
 static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpRequestHead* request,
-                                                   size_t max_body_length,
+                                                   size_t max_body_length, bool json_body_expected,
+                                                   bool native_json_validation,
                                                    SlHttpRequestBodyKind* out_body_kind,
                                                    SlDiag* out_diag)
 {
@@ -673,8 +674,14 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     if (request->body.length == 0U) {
         if (sl_http_dispatch_find_header(request, SL_STR_LITERAL("Content-Type"), &content_type)) {
             media_type = sl_http_dispatch_media_type(content_type);
-            if (sl_str_equal_ci_ascii(media_type,
-                                      SL_STR_LITERAL("application/x-www-form-urlencoded")))
+            if (json_body_expected && !sl_http_dispatch_media_type_json(media_type)) {
+                return sl_http_dispatch_unsupported_media_type(arena, out_diag);
+            }
+            if (sl_http_dispatch_media_type_json(media_type)) {
+                *out_body_kind = SL_HTTP_REQUEST_BODY_JSON;
+            }
+            else if (sl_str_equal_ci_ascii(media_type,
+                                           SL_STR_LITERAL("application/x-www-form-urlencoded")))
             {
                 *out_body_kind = SL_HTTP_REQUEST_BODY_FORM;
             }
@@ -703,10 +710,15 @@ static SlStatus sl_http_dispatch_apply_body_policy(SlArena* arena, const SlHttpR
     }
 
     media_type = sl_http_dispatch_media_type(content_type);
+    if (json_body_expected && !sl_http_dispatch_media_type_json(media_type)) {
+        return sl_http_dispatch_unsupported_media_type(arena, out_diag);
+    }
     if (sl_http_dispatch_media_type_json(media_type)) {
-        SlStatus status = sl_http_dispatch_validate_json_body(arena, request->body, out_diag);
-        if (!sl_status_is_ok(status)) {
-            return status;
+        if (!native_json_validation) {
+            SlStatus status = sl_http_dispatch_validate_json_body(arena, request->body, out_diag);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
         *out_body_kind = SL_HTTP_REQUEST_BODY_JSON;
         return sl_status_ok();
@@ -3040,6 +3052,34 @@ static bool sl_http_dispatch_route_has_native_response(const SlPlanRoute* route)
            route->native_response_status >= 100U && route->native_response_status <= 599U;
 }
 
+static bool sl_http_dispatch_route_expects_json_body(const SlPlanRoute* route)
+{
+    size_t index = 0U;
+
+    if (route == NULL) {
+        return false;
+    }
+    if (route->json_request.mode == SL_PLAN_JSON_REQUEST_GENERIC ||
+        route->json_request.mode == SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA)
+    {
+        return true;
+    }
+    if (route->binding_count == 0U || route->bindings == NULL) {
+        return false;
+    }
+    for (index = 0U; index < route->binding_count; index += 1U) {
+        if (route->bindings[index].kind == SL_PLAN_REQUEST_BINDING_BODY_JSON) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_http_dispatch_route_uses_native_json_validation(const SlPlanRoute* route)
+{
+    return route != NULL && route->json_request.mode == SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA;
+}
+
 static SlStatus sl_http_dispatch_native_response(const SlPlanRoute* route,
                                                  SlEngineResult* out_result)
 {
@@ -3175,11 +3215,13 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
         needs = sl_http_dispatch_context_needs(validation_route);
     }
 
-    status = sl_http_dispatch_apply_body_policy(arena, request,
-                                                seed == NULL || seed->max_body_length == 0U
-                                                    ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH
+    status = sl_http_dispatch_apply_body_policy(
+        arena, request,
+        seed == NULL || seed->max_body_length == 0U ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH
                                                     : seed->max_body_length,
-                                                &request_context.body_kind, out_diag);
+        sl_http_dispatch_route_expects_json_body(validation_route),
+        sl_http_dispatch_route_uses_native_json_validation(validation_route),
+        &request_context.body_kind, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }

@@ -107,6 +107,10 @@ app.post("/users", createUser)
 
 The app host stores this metadata in route snapshots. The compiler also uses
 static schema identifiers in these fluent calls for Plan and OpenAPI metadata.
+For compiled/native runs, `.accepts(...)` can enable native schema-backed JSON
+request validation before the handler boundary. Static JSON result routes can
+carry native preencoded JSON response metadata. Dynamic or unsupported JSON
+shapes are still visible as generic/fallback modes in `sloppy routes --dispatch`.
 
 ## URL generation
 

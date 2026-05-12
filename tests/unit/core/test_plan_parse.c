@@ -904,6 +904,69 @@ static int test_body_schema_references_must_resolve(void)
     return 0;
 }
 
+static int test_route_json_request_response_metadata_and_max_constraints_parse(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    const SlPlanRoute* route = NULL;
+    const SlPlanSchemaNode* name = NULL;
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Users.Create\"}],"
+        "\"routes\":[{\"method\":\"POST\",\"pattern\":\"/users\",\"handlerId\":1,"
+        "\"bindings\":[{\"kind\":\"body.json\",\"parameter\":\"input\","
+        "\"schema\":\"UserCreate\"}],"
+        "\"jsonRequest\":{\"mode\":\"native-schema\",\"schema\":\"UserCreate\","
+        "\"materialization\":\"materialize-once\",\"unknownFields\":\"reject\","
+        "\"maxBodyBytes\":4096,\"maxDepth\":16,\"maxStringBytes\":128,"
+        "\"maxArrayLength\":32},"
+        "\"jsonResponse\":{\"mode\":\"native-schema\",\"schema\":\"UserCreate\","
+        "\"writer\":\"bounded\",\"contentType\":\"application/json\"}}],"
+        "\"schemas\":[{\"name\":\"UserCreate\",\"definition\":{\"kind\":\"object\","
+        "\"properties\":{\"name\":{\"kind\":\"string\",\"min\":1,\"max\":5}}}}]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
+        return 19;
+    }
+    if (plan.route_count != 1U || plan.schema_count != 1U) {
+        return 20;
+    }
+    route = &plan.routes[0];
+    if (route->json_request.mode != SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA ||
+        route->json_request.materialization != SL_PLAN_JSON_MATERIALIZATION_MATERIALIZE_ONCE ||
+        route->json_request.unknown_fields != SL_PLAN_JSON_UNKNOWN_FIELDS_REJECT ||
+        !sl_str_equal(route->json_request.schema, sl_str_from_cstr("UserCreate")) ||
+        route->json_request.max_body_bytes != 4096U || route->json_request.max_depth != 16U ||
+        route->json_request.max_string_bytes != 128U || route->json_request.max_array_length != 32U)
+    {
+        return 21;
+    }
+    if (route->json_response.mode != SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA ||
+        route->json_response.writer != SL_PLAN_JSON_WRITER_BOUNDED ||
+        !sl_str_equal(route->json_response.schema, sl_str_from_cstr("UserCreate")) ||
+        !sl_str_equal(route->json_response.content_type, sl_str_from_cstr("application/json")))
+    {
+        return 22;
+    }
+    if (plan.schemas[0].definition.property_count != 1U) {
+        return 23;
+    }
+    name = plan.schemas[0].definition.properties[0].schema;
+    if (name == NULL || name->kind != SL_PLAN_SCHEMA_STRING || !name->has_min ||
+        name->min_value != 1 || !name->has_max || name->max_value != 5)
+    {
+        return 24;
+    }
+    return 0;
+}
+
 static int test_empty_bindings_marks_route_metadata_available(void)
 {
     unsigned char arena_storage[TEST_ARENA_SIZE];
@@ -1375,6 +1438,14 @@ int main(void)
     result = test_body_schema_references_must_resolve();
     if (result != 0) {
         fprintf(stderr, "test_body_schema_references_must_resolve failed: %d\n", result);
+        return result;
+    }
+
+    result = test_route_json_request_response_metadata_and_max_constraints_parse();
+    if (result != 0) {
+        fprintf(stderr,
+                "test_route_json_request_response_metadata_and_max_constraints_parse failed: %d\n",
+                result);
         return result;
     }
 

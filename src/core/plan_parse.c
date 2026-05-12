@@ -19,6 +19,7 @@
 #include "sloppy/plan.h"
 
 #include "sloppy/container.h"
+#include "sloppy/http.h"
 #include "sloppy/route.h"
 
 #include <stdint.h>
@@ -1312,6 +1313,43 @@ static SlStatus sl_plan_parse_bool_field(SlPlanParseContext* ctx, yyjson_val* ob
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_parse_size_field(SlPlanParseContext* ctx, yyjson_val* object,
+                                         const char* field_name, size_t* out)
+{
+    yyjson_val* value = NULL;
+    uint64_t parsed = 0U;
+
+    if (ctx == NULL || object == NULL || field_name == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out = 0U;
+    value = yyjson_obj_get(object, field_name);
+    if (value == NULL || yyjson_is_null(value)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_uint(value)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("expected an unsigned integer for this metadata field",
+                                  sizeof("expected an unsigned integer for this metadata field") -
+                                      1U));
+    }
+
+    parsed = yyjson_get_uint(value);
+    if (parsed > (uint64_t)SIZE_MAX) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan limit", sizeof("invalid app plan limit") - 1U),
+            sl_plan_parse_literal("metadata limit does not fit this runtime",
+                                  sizeof("metadata limit does not fit this runtime") - 1U));
+    }
+    *out = (size_t)parsed;
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_parse_one_binding(SlPlanParseContext* ctx, yyjson_val* value,
                                           SlPlanRequestBinding* out)
 {
@@ -1477,6 +1515,347 @@ static SlStatus sl_plan_parse_route_native_response(SlPlanParseContext* ctx, yyj
     return sl_status_ok();
 }
 
+static SlPlanJsonRequestMode sl_plan_parse_json_request_mode(SlStr mode)
+{
+    if (sl_str_equal(mode, sl_str_from_cstr("none"))) {
+        return SL_PLAN_JSON_REQUEST_NONE;
+    }
+    if (sl_str_equal(mode, sl_str_from_cstr("generic"))) {
+        return SL_PLAN_JSON_REQUEST_GENERIC;
+    }
+    if (sl_str_equal(mode, sl_str_from_cstr("native-schema"))) {
+        return SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA;
+    }
+    if (sl_str_equal(mode, sl_str_from_cstr("fallback"))) {
+        return SL_PLAN_JSON_REQUEST_FALLBACK;
+    }
+    return SL_PLAN_JSON_REQUEST_NONE;
+}
+
+static SlPlanJsonMaterializationPolicy sl_plan_parse_json_materialization(SlStr value)
+{
+    if (sl_str_equal(value, sl_str_from_cstr("none"))) {
+        return SL_PLAN_JSON_MATERIALIZATION_NONE;
+    }
+    if (sl_str_equal(value, sl_str_from_cstr("generic"))) {
+        return SL_PLAN_JSON_MATERIALIZATION_GENERIC;
+    }
+    if (sl_str_equal(value, sl_str_from_cstr("materialize-once"))) {
+        return SL_PLAN_JSON_MATERIALIZATION_MATERIALIZE_ONCE;
+    }
+    if (sl_str_equal(value, sl_str_from_cstr("projected"))) {
+        return SL_PLAN_JSON_MATERIALIZATION_PROJECTED;
+    }
+    return SL_PLAN_JSON_MATERIALIZATION_NONE;
+}
+
+static SlPlanJsonUnknownFieldPolicy sl_plan_parse_json_unknown_fields(SlStr value)
+{
+    if (sl_str_equal(value, sl_str_from_cstr("ignore"))) {
+        return SL_PLAN_JSON_UNKNOWN_FIELDS_IGNORE;
+    }
+    if (sl_str_equal(value, sl_str_from_cstr("reject"))) {
+        return SL_PLAN_JSON_UNKNOWN_FIELDS_REJECT;
+    }
+    if (sl_str_equal(value, sl_str_from_cstr("passthrough"))) {
+        return SL_PLAN_JSON_UNKNOWN_FIELDS_PASSTHROUGH;
+    }
+    return SL_PLAN_JSON_UNKNOWN_FIELDS_IGNORE;
+}
+
+static SlPlanJsonResponseMode sl_plan_parse_json_response_mode(SlStr mode)
+{
+    if (sl_str_equal(mode, sl_str_from_cstr("none"))) {
+        return SL_PLAN_JSON_RESPONSE_NONE;
+    }
+    if (sl_str_equal(mode, sl_str_from_cstr("native-static"))) {
+        return SL_PLAN_JSON_RESPONSE_NATIVE_STATIC;
+    }
+    if (sl_str_equal(mode, sl_str_from_cstr("native-schema"))) {
+        return SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA;
+    }
+    if (sl_str_equal(mode, sl_str_from_cstr("generic"))) {
+        return SL_PLAN_JSON_RESPONSE_GENERIC;
+    }
+    if (sl_str_equal(mode, sl_str_from_cstr("fallback"))) {
+        return SL_PLAN_JSON_RESPONSE_FALLBACK;
+    }
+    return SL_PLAN_JSON_RESPONSE_NONE;
+}
+
+static SlPlanJsonWriterMode sl_plan_parse_json_writer(SlStr writer)
+{
+    if (sl_str_equal(writer, sl_str_from_cstr("none"))) {
+        return SL_PLAN_JSON_WRITER_NONE;
+    }
+    if (sl_str_equal(writer, sl_str_from_cstr("preencoded"))) {
+        return SL_PLAN_JSON_WRITER_PREENCODED;
+    }
+    if (sl_str_equal(writer, sl_str_from_cstr("bounded"))) {
+        return SL_PLAN_JSON_WRITER_BOUNDED;
+    }
+    if (sl_str_equal(writer, sl_str_from_cstr("streamable"))) {
+        return SL_PLAN_JSON_WRITER_STREAMABLE;
+    }
+    return SL_PLAN_JSON_WRITER_NONE;
+}
+
+static SlStatus sl_plan_parse_route_json_request(SlPlanParseContext* ctx, yyjson_val* route,
+                                                 SlPlanRoute* out)
+{
+    yyjson_val* request = NULL;
+    SlStr mode = {0};
+    SlStr materialization = {0};
+    SlStr unknown_fields = {0};
+    size_t index = 0U;
+    SlStatus status;
+
+    if (ctx == NULL || route == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    out->json_request.unknown_fields = SL_PLAN_JSON_UNKNOWN_FIELDS_IGNORE;
+    request = yyjson_obj_get(route, "jsonRequest");
+    if (request == NULL || yyjson_is_null(request)) {
+        for (index = 0U; index < out->binding_count; index += 1U) {
+            const SlPlanRequestBinding* binding = &out->bindings[index];
+
+            if (binding->kind != SL_PLAN_REQUEST_BINDING_BODY_JSON) {
+                continue;
+            }
+            out->json_request.max_body_bytes = SL_HTTP_DEFAULT_MAX_BODY_LENGTH;
+            if (sl_str_is_empty(binding->schema)) {
+                out->json_request.fallback_reason = sl_str_from_cstr("schema-missing");
+            }
+            out->json_request.mode = SL_PLAN_JSON_REQUEST_GENERIC;
+            out->json_request.materialization = SL_PLAN_JSON_MATERIALIZATION_GENERIC;
+            out->json_request.schema = binding->schema;
+            return sl_status_ok();
+        }
+        return sl_status_ok();
+    }
+    if (!yyjson_is_obj(request)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan route JSON request metadata",
+                                  sizeof("invalid app plan route JSON request metadata") - 1U),
+            sl_plan_parse_literal("routes[].jsonRequest must be a JSON object",
+                                  sizeof("routes[].jsonRequest must be a JSON object") - 1U));
+    }
+
+    status = sl_plan_parse_require_string(ctx, request, "mode", true, &mode);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    out->json_request.mode = sl_plan_parse_json_request_mode(mode);
+    if (!sl_str_equal(mode, sl_str_from_cstr("none")) &&
+        out->json_request.mode == SL_PLAN_JSON_REQUEST_NONE)
+    {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("unsupported JSON request mode",
+                                  sizeof("unsupported JSON request mode") - 1U),
+            sl_plan_parse_literal("jsonRequest.mode must be none, generic, native-schema, or "
+                                  "fallback",
+                                  sizeof("jsonRequest.mode must be none, generic, "
+                                         "native-schema, or fallback") -
+                                      1U));
+    }
+    status = sl_plan_parse_optional_string(ctx, request, "schema", true, &out->json_request.schema);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_optional_string(ctx, request, "materialization", true, &materialization);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (sl_str_is_empty(materialization)) {
+        out->json_request.materialization =
+            out->json_request.mode == SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA
+                ? SL_PLAN_JSON_MATERIALIZATION_MATERIALIZE_ONCE
+            : out->json_request.mode == SL_PLAN_JSON_REQUEST_GENERIC
+                ? SL_PLAN_JSON_MATERIALIZATION_GENERIC
+                : SL_PLAN_JSON_MATERIALIZATION_NONE;
+    }
+    else {
+        out->json_request.materialization = sl_plan_parse_json_materialization(materialization);
+    }
+    if (!sl_str_is_empty(materialization) &&
+        out->json_request.materialization == SL_PLAN_JSON_MATERIALIZATION_NONE &&
+        !sl_str_equal(materialization, sl_str_from_cstr("none")))
+    {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("unsupported JSON materialization policy",
+                                  sizeof("unsupported JSON materialization policy") - 1U),
+            sl_plan_parse_literal("jsonRequest.materialization must be none, generic, "
+                                  "materialize-once, or projected",
+                                  sizeof("jsonRequest.materialization must be none, generic, "
+                                         "materialize-once, or projected") -
+                                      1U));
+    }
+    status = sl_plan_parse_optional_string(ctx, request, "unknownFields", true, &unknown_fields);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_str_is_empty(unknown_fields)) {
+        out->json_request.unknown_fields = sl_plan_parse_json_unknown_fields(unknown_fields);
+        if (out->json_request.unknown_fields == SL_PLAN_JSON_UNKNOWN_FIELDS_IGNORE &&
+            !sl_str_equal(unknown_fields, sl_str_from_cstr("ignore")))
+        {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("unsupported JSON unknown-field policy",
+                                      sizeof("unsupported JSON unknown-field policy") - 1U),
+                sl_plan_parse_literal("jsonRequest.unknownFields must be ignore, reject, or "
+                                      "passthrough",
+                                      sizeof("jsonRequest.unknownFields must be ignore, reject, "
+                                             "or passthrough") -
+                                          1U));
+        }
+    }
+    status = sl_plan_parse_optional_string(ctx, request, "fallbackReason", true,
+                                           &out->json_request.fallback_reason);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status =
+        sl_plan_parse_size_field(ctx, request, "maxBodyBytes", &out->json_request.max_body_bytes);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_size_field(ctx, request, "maxDepth", &out->json_request.max_depth);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_size_field(ctx, request, "maxStringBytes",
+                                      &out->json_request.max_string_bytes);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_size_field(ctx, request, "maxArrayLength",
+                                      &out->json_request.max_array_length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (out->json_request.mode == SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA &&
+        sl_str_is_empty(out->json_request.schema))
+    {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid JSON request schema",
+                                  sizeof("invalid JSON request schema") - 1U),
+            sl_plan_parse_literal("native-schema JSON request plans must include schema",
+                                  sizeof("native-schema JSON request plans must include schema") -
+                                      1U));
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_route_json_response(SlPlanParseContext* ctx, yyjson_val* route,
+                                                  SlPlanRoute* out)
+{
+    yyjson_val* response = NULL;
+    SlStr mode = {0};
+    SlStr writer = {0};
+    SlStatus status;
+
+    if (ctx == NULL || route == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    response = yyjson_obj_get(route, "jsonResponse");
+    if (response == NULL || yyjson_is_null(response)) {
+        if (sl_str_equal(out->native_response_kind, sl_str_from_cstr("json"))) {
+            out->json_response.mode = SL_PLAN_JSON_RESPONSE_NATIVE_STATIC;
+            out->json_response.writer = SL_PLAN_JSON_WRITER_PREENCODED;
+            out->json_response.content_type = out->native_response_content_type;
+        }
+        return sl_status_ok();
+    }
+    if (!yyjson_is_obj(response)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan route JSON response metadata",
+                                  sizeof("invalid app plan route JSON response metadata") - 1U),
+            sl_plan_parse_literal("routes[].jsonResponse must be a JSON object",
+                                  sizeof("routes[].jsonResponse must be a JSON object") - 1U));
+    }
+
+    status = sl_plan_parse_require_string(ctx, response, "mode", true, &mode);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    out->json_response.mode = sl_plan_parse_json_response_mode(mode);
+    if (!sl_str_equal(mode, sl_str_from_cstr("none")) &&
+        out->json_response.mode == SL_PLAN_JSON_RESPONSE_NONE)
+    {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("unsupported JSON response mode",
+                                  sizeof("unsupported JSON response mode") - 1U),
+            sl_plan_parse_literal("jsonResponse.mode must be none, native-static, "
+                                  "native-schema, generic, or fallback",
+                                  sizeof("jsonResponse.mode must be none, native-static, "
+                                         "native-schema, generic, or fallback") -
+                                      1U));
+    }
+    status = sl_plan_parse_optional_string(ctx, response, "writer", true, &writer);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (sl_str_is_empty(writer)) {
+        out->json_response.writer = out->json_response.mode == SL_PLAN_JSON_RESPONSE_NATIVE_STATIC
+                                        ? SL_PLAN_JSON_WRITER_PREENCODED
+                                    : out->json_response.mode == SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA
+                                        ? SL_PLAN_JSON_WRITER_BOUNDED
+                                        : SL_PLAN_JSON_WRITER_NONE;
+    }
+    else {
+        out->json_response.writer = sl_plan_parse_json_writer(writer);
+    }
+    if (!sl_str_is_empty(writer) && out->json_response.writer == SL_PLAN_JSON_WRITER_NONE &&
+        !sl_str_equal(writer, sl_str_from_cstr("none")))
+    {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("unsupported JSON response writer",
+                                  sizeof("unsupported JSON response writer") - 1U),
+            sl_plan_parse_literal("jsonResponse.writer must be none, preencoded, bounded, or "
+                                  "streamable",
+                                  sizeof("jsonResponse.writer must be none, preencoded, bounded, "
+                                         "or streamable") -
+                                      1U));
+    }
+    status =
+        sl_plan_parse_optional_string(ctx, response, "schema", true, &out->json_response.schema);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_optional_string(ctx, response, "fallbackReason", true,
+                                           &out->json_response.fallback_reason);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_optional_string(ctx, response, "contentType", true,
+                                           &out->json_response.content_type);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (out->json_response.mode == SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA &&
+        sl_str_is_empty(out->json_response.schema))
+    {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid JSON response schema",
+                                  sizeof("invalid JSON response schema") - 1U),
+            sl_plan_parse_literal("native-schema JSON response plans must include schema",
+                                  sizeof("native-schema JSON response plans must include schema") -
+                                      1U));
+    }
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_parse_route_middleware(SlPlanParseContext* ctx, yyjson_val* route,
                                                bool* out_has_middleware)
 {
@@ -1610,6 +1989,14 @@ static SlStatus sl_plan_parse_one_route(SlPlanParseContext* ctx, const SlPlan* p
         return status;
     }
     status = sl_plan_parse_route_native_response(ctx, value, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_route_json_request(ctx, value, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_route_json_response(ctx, value, out);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1765,7 +2152,9 @@ static SlPlanSchemaKind sl_plan_parse_schema_kind(SlStr kind)
     if (sl_str_equal(kind, sl_str_from_cstr("number"))) {
         return SL_PLAN_SCHEMA_NUMBER;
     }
-    if (sl_str_equal(kind, sl_str_from_cstr("boolean"))) {
+    if (sl_str_equal(kind, sl_str_from_cstr("boolean")) ||
+        sl_str_equal(kind, sl_str_from_cstr("bool")))
+    {
         return SL_PLAN_SCHEMA_BOOLEAN;
     }
     if (sl_str_equal(kind, sl_str_from_cstr("int"))) {
@@ -2104,6 +2493,10 @@ static SlStatus sl_plan_parse_schema_node(SlPlanParseContext* ctx, yyjson_val* v
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    status = sl_plan_parse_i64_field(ctx, value, "max", &out->has_max, &out->max_value);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
 
     if (out->kind == SL_PLAN_SCHEMA_OBJECT) {
         return sl_plan_parse_schema_properties(ctx, value, out);
@@ -2250,7 +2643,7 @@ static SlStatus sl_plan_parse_validate_schema_references(SlPlanParseContext* ctx
 {
     size_t route_index = 0U;
 
-    if (plan == NULL || plan->route_count == 0U || plan->schema_count == 0U) {
+    if (plan == NULL || plan->route_count == 0U) {
         return sl_status_ok();
     }
     if (plan->routes == NULL) {
@@ -2272,7 +2665,8 @@ static SlStatus sl_plan_parse_validate_schema_references(SlPlanParseContext* ctx
             if (sl_str_is_empty(binding->schema)) {
                 continue;
             }
-            if (!sl_plan_parse_has_schema_named(plan, binding->schema)) {
+            if (plan->schema_count != 0U && !sl_plan_parse_has_schema_named(plan, binding->schema))
+            {
                 return sl_plan_parse_field_diag(
                     ctx,
                     sl_plan_parse_literal("app plan route binding references missing schema",
@@ -2284,6 +2678,36 @@ static SlStatus sl_plan_parse_validate_schema_references(SlPlanParseContext* ctx
                                                  "schemas[].name") -
                                               1U));
             }
+        }
+        if (route->json_request.mode == SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA &&
+            !sl_str_is_empty(route->json_request.schema) &&
+            !sl_plan_parse_has_schema_named(plan, route->json_request.schema))
+        {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("app plan JSON request references missing schema",
+                                      sizeof("app plan JSON request references missing schema") -
+                                          1U),
+                sl_plan_parse_literal("native-schema jsonRequest metadata must reference "
+                                      "schemas[].name",
+                                      sizeof("native-schema jsonRequest metadata must reference "
+                                             "schemas[].name") -
+                                          1U));
+        }
+        if (route->json_response.mode == SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA &&
+            !sl_str_is_empty(route->json_response.schema) &&
+            !sl_plan_parse_has_schema_named(plan, route->json_response.schema))
+        {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("app plan JSON response references missing schema",
+                                      sizeof("app plan JSON response references missing schema") -
+                                          1U),
+                sl_plan_parse_literal("native-schema jsonResponse metadata must reference "
+                                      "schemas[].name",
+                                      sizeof("native-schema jsonResponse metadata must reference "
+                                             "schemas[].name") -
+                                          1U));
         }
     }
     return sl_status_ok();

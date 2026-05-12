@@ -291,6 +291,12 @@
         fuzz_seed_http_route_dispatch fuzz.http_route_dispatch.seed_replay
         tests/fuzz/fuzz_http_route_dispatch.c http-route-dispatch)
     sloppy_add_fuzz_seed_replay(
+        fuzz_seed_json_request fuzz.json_request.seed_replay tests/fuzz/fuzz_json_request.c
+        json-request)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_json_response fuzz.json_response.seed_replay tests/fuzz/fuzz_json_response.c
+        json-response)
+    sloppy_add_fuzz_seed_replay(
         fuzz_seed_http_query fuzz.http_query.seed_replay tests/fuzz/fuzz_http_query.c http-query)
     sloppy_add_fuzz_seed_replay(
         fuzz_seed_diagnostics_render fuzz.diagnostics_render.seed_replay
@@ -308,6 +314,8 @@
     sloppy_add_libfuzzer_target(fuzz_http_request_libfuzzer tests/fuzz/fuzz_http_request.c)
     sloppy_add_libfuzzer_target(
         fuzz_http_route_dispatch_libfuzzer tests/fuzz/fuzz_http_route_dispatch.c)
+    sloppy_add_libfuzzer_target(fuzz_json_request_libfuzzer tests/fuzz/fuzz_json_request.c)
+    sloppy_add_libfuzzer_target(fuzz_json_response_libfuzzer tests/fuzz/fuzz_json_response.c)
     sloppy_add_libfuzzer_target(fuzz_http_query_libfuzzer tests/fuzz/fuzz_http_query.c)
     sloppy_add_libfuzzer_target(
         fuzz_diagnostics_render_libfuzzer tests/fuzz/fuzz_diagnostics_render.c)
