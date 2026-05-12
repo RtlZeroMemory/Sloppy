@@ -288,5 +288,7 @@ typedef struct SlCliOptions
     bool program_args_explicit;
     bool deps_explain;
     bool dispatch_details;
+    bool diagnostics_json;
+    bool doctor_report;
     bool help;
 } SlCliOptions;

@@ -4,7 +4,7 @@ Check the local runtime, packaged assets, optional provider dependencies, and
 optionally a compiled Plan.
 
 ```sh
-sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json] [--dispatch]
+sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json] [--dispatch] [--report]
 ```
 
 ## What it checks
@@ -56,6 +56,10 @@ no-JS endpoint count, and native URL writer count. In this alpha,
 integrity validation: the compiler emitted `routes.slrt`, the Plan recorded its
 hash, and the runtime validated it before building the native dispatch table
 from `app.plan.json`.
+
+With `--report`, doctor writes `.sloppy/reports/doctor-report.json` and
+breadcrumb JSONL. The report is local evidence for the command invocation and
+is not uploaded.
 
 ## Exit codes
 

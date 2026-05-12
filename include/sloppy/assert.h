@@ -12,7 +12,7 @@
 #endif
 
 #if SL_ENABLE_ASSERTS
-#include <stdlib.h>
+#include "sloppy/crash_report.h"
 /*
  * Use Sloppy's assertion toggle directly instead of <assert.h> so NDEBUG does not silently
  * disable invariants when SL_ENABLE_ASSERTS is still enabled.
@@ -20,14 +20,13 @@
 #define SL_ASSERT(expr)                                                                            \
     do {                                                                                           \
         if (!(expr)) {                                                                             \
-            exit(EXIT_FAILURE);                                                                    \
+            sl_fatal_invariant_failed(#expr, "native invariant failed", __FILE__, __LINE__);       \
         }                                                                                          \
     } while (0)
 #define SL_ASSERT_MSG(expr, msg)                                                                   \
     do {                                                                                           \
         if (!(expr)) {                                                                             \
-            (void)(msg);                                                                           \
-            exit(EXIT_FAILURE);                                                                    \
+            sl_fatal_invariant_failed(#expr, (msg), __FILE__, __LINE__);                           \
         }                                                                                          \
     } while (0)
 #define SL_UNREACHABLE() SL_ASSERT_MSG(0, "unreachable")

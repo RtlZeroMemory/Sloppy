@@ -26,6 +26,7 @@ exhaustive level — they're there for "I need every option" lookup.
 - [Data API](data-api.md)
 - [Providers](providers.md)
 - [Diagnostics](diagnostics.md)
+- [Error codes](error-codes.md)
 
 ## Compiler
 

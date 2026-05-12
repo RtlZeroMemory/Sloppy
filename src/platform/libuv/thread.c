@@ -7,6 +7,7 @@
 #include "sloppy/platform_thread.h"
 
 #include <stdbool.h>
+#include <stdlib.h>
 #include <uv.h>
 
 struct SlPlatformMutex
@@ -246,4 +247,27 @@ void sl_platform_sleep_ms(uint64_t milliseconds)
         uv_sleep((unsigned int)chunk);
         remaining -= chunk;
     }
+}
+
+static uv_once_t sl_platform_global_mutex_once = UV_ONCE_INIT;
+static uv_mutex_t sl_platform_global_mutex;
+
+static void sl_platform_global_mutex_init(void)
+{
+    int status = uv_mutex_init(&sl_platform_global_mutex);
+
+    if (status != 0) {
+        abort();
+    }
+}
+
+void sl_platform_global_mutex_lock(void)
+{
+    uv_once(&sl_platform_global_mutex_once, sl_platform_global_mutex_init);
+    uv_mutex_lock(&sl_platform_global_mutex);
+}
+
+void sl_platform_global_mutex_unlock(void)
+{
+    uv_mutex_unlock(&sl_platform_global_mutex);
 }

@@ -703,6 +703,44 @@ static void sl_cli_doctor_emit_environment(const SlCliOptions* options, SlArena*
                        sl_cli_span_cstr("package release status requires package smoke"), emitted);
 }
 
+static void sl_cli_doctor_write_report(const SlCliOptions* options, bool emitted)
+{
+    unsigned char arena_storage[SL_CLI_DIAG_ARENA_BYTES];
+    SlArena arena = {0};
+    SlDiagBuilder builder = {0};
+    SlDiag diag = {0};
+    SlDiagReportContext context = {0};
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)))) {
+        return;
+    }
+    if (!sl_status_is_ok(sl_diag_builder_init(
+            &builder, &arena, SL_DIAG_SEVERITY_NOTE, SL_DIAG_NONE,
+            sl_str_from_cstr("sloppy doctor report written"))))
+    {
+        return;
+    }
+    if (!sl_status_is_ok(sl_diag_builder_add_hint(
+            &builder, emitted ? sl_str_from_cstr("doctor checks emitted")
+                              : sl_str_from_cstr("no doctor checks emitted"))))
+    {
+        return;
+    }
+    if (!sl_status_is_ok(sl_diag_builder_finish(&builder, &diag))) {
+        return;
+    }
+    context.command = sl_str_from_cstr("doctor");
+    context.runtime_version = sl_str_from_cstr(SL_VERSION_STRING);
+    context.plan_path =
+        options != NULL && options->plan_path != NULL ? sl_str_from_cstr(options->plan_path)
+                                                      : sl_str_empty();
+    context.cause_message = sl_str_from_cstr("local doctor report");
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_CLI, SL_BREADCRUMB_EVENT_DOCTOR_REPORT,
+                                SL_STATUS_OK, 0U, 0U, 0U, 0U, context.cause_message);
+    sl_cli_write_diagnostic_report_file("doctor-report.json", &diag, &context,
+                                        sl_breadcrumb_global_ring());
+}
+
 static int sl_cli_command_doctor(const SlCliOptions* options)
 {
     unsigned char* json_storage = sl_cli_scratch_json_storage();
@@ -762,6 +800,10 @@ static int sl_cli_command_doctor(const SlCliOptions* options)
                                metadata->doctor_checks[index].status,
                                metadata->doctor_checks[index].message, &emitted);
         }
+    }
+
+    if (options->doctor_report) {
+        sl_cli_doctor_write_report(options, emitted);
     }
 
     if (doc != NULL) {

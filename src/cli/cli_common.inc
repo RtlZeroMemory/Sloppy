@@ -374,7 +374,8 @@ static void sl_cli_print_help(void)
     printf("             [--kind web|program] [--environment Development] [--host 127.0.0.1] "
            "[--port <port>]\n");
     printf("             [--once METHOD TARGET] [--header 'Name: value'] [--body text]\n");
-    printf("             [--body-file path] [--json json] [-- <program-args...>]\n");
+    printf("             [--body-file path] [--json json] [--diagnostics-json] "
+           "[-- <program-args...>]\n");
     printf("  sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json] [--dispatch]\n");
     printf("  sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
@@ -382,7 +383,7 @@ static void sl_cli_print_help(void)
     printf("  sloppy deps [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json] [--explain]\n");
     printf("  sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
-           "text|json] [--dispatch]\n");
+           "text|json] [--dispatch] [--report]\n");
     printf("  sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> [--format "
            "text|json]\n");
     printf("  sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
@@ -417,8 +418,9 @@ static void sl_cli_print_command_help(const char* command)
                "<dir>]\n");
         printf("                  [--kind web|program] [--environment Development]\n");
         printf("                  [--host 127.0.0.1] [--port <port>] [--once METHOD TARGET]\n");
-        printf("                  [--header 'Name: value'] [--body text|--body-file path|--json json]\n");
-        printf("                  [-- <program-args...>]\n");
+        printf("                  [--header 'Name: value'] [--body text|--body-file path|--json "
+               "json]\n");
+        printf("                  [--diagnostics-json] [-- <program-args...>]\n");
         printf("\n");
         printf("Source input compiles through sloppyc, validates artifacts, then runs the "
                "artifact path.\n");
@@ -482,7 +484,7 @@ static void sl_cli_print_command_help(const char* command)
     }
     if (strcmp(command, "doctor") == 0) {
         printf("Usage: sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
-               "[--format text|json] [--dispatch]\n");
+               "[--format text|json] [--dispatch] [--report]\n");
         return;
     }
     if (strcmp(command, "db") == 0) {
@@ -540,6 +542,61 @@ static bool sl_cli_parse_port(const char* text, uint16_t* out)
 
     *out = (uint16_t)value;
     return true;
+}
+
+static int sl_cli_write_diagnostic_report_file(const char* leaf, const SlDiag* diag,
+                                               const SlDiagReportContext* context,
+                                               const SlBreadcrumbRing* breadcrumbs)
+{
+    unsigned char arena_storage[SL_CLI_DIAG_ARENA_BYTES];
+    SlArena arena = {0};
+    SlStr report = {0};
+    SlStr breadcrumb_jsonl = {0};
+    char path[SL_RUN_PATH_MAX_BYTES];
+    char breadcrumbs_path[SL_RUN_PATH_MAX_BYTES];
+    SlStatus status;
+
+    if (leaf == NULL || diag == NULL) {
+        return 1;
+    }
+    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
+    if (!sl_status_is_ok(status)) {
+        return 1;
+    }
+    status = sl_fs_create_directory(sl_str_from_cstr(".sloppy/reports"), true, NULL);
+    if (!sl_status_is_ok(status) || !sl_cli_join_leaf(path, sizeof(path), ".sloppy/reports", leaf))
+    {
+        return 1;
+    }
+    status = sl_diag_render_report_json(&arena, diag, context, &report);
+    if (!sl_status_is_ok(status)) {
+        return 1;
+    }
+    status = sl_fs_write_file(sl_str_from_cstr(path),
+                              sl_bytes_from_parts((const unsigned char*)report.ptr, report.length),
+                              false, NULL);
+    if (!sl_status_is_ok(status)) {
+        return 1;
+    }
+    if (breadcrumbs != NULL) {
+        if (!sl_cli_join_leaf(breadcrumbs_path, sizeof(breadcrumbs_path), ".sloppy/reports",
+                              "breadcrumbs.jsonl"))
+        {
+            return 1;
+        }
+        status = sl_breadcrumb_ring_render_jsonl(&arena, breadcrumbs, &breadcrumb_jsonl);
+        if (!sl_status_is_ok(status)) {
+            return 1;
+        }
+        status = sl_fs_write_file(sl_str_from_cstr(breadcrumbs_path),
+                                  sl_bytes_from_parts((const unsigned char*)breadcrumb_jsonl.ptr,
+                                                      breadcrumb_jsonl.length),
+                                  false, NULL);
+        if (!sl_status_is_ok(status)) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 static int sl_cli_parse_run_path_option(int argc, char** argv, int* index, SlCliOptions* out)
@@ -646,6 +703,12 @@ static int sl_cli_parse_run_option(int argc, char** argv, int* index, SlCliOptio
         out->program_args = &argv[*index + 1];
         out->program_arg_count = (size_t)remaining;
         *index = argc;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--diagnostics-json") == 0) {
+        out->diagnostics_json = true;
+        *index += 1;
         return 1;
     }
 
@@ -1112,6 +1175,12 @@ static int sl_cli_parse_common_option(int argc, char** argv, int* index, SlCliOp
         return 1;
     }
 
+    if (strcmp(argv[*index], "--report") == 0 && strcmp(out->command, "doctor") == 0) {
+        out->doctor_report = true;
+        *index += 1;
+        return 1;
+    }
+
     if (strcmp(argv[*index], "--plan") == 0 || strcmp(argv[*index], "--app") == 0) {
         if (*index + 1 >= argc) {
             sl_cli_write_error_with_value("sloppy: ", argv[*index], " requires a path\n");
@@ -1253,12 +1322,11 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
     }
 
     if (!out->help && strcmp(out->command, "run") == 0 && out->once_method == NULL &&
-        (out->once_header_count != 0U || out->once_body != NULL ||
-         out->once_body_file != NULL || out->once_json != NULL))
+        (out->once_header_count != 0U || out->once_body != NULL || out->once_body_file != NULL ||
+         out->once_json != NULL))
     {
-        sl_cli_write_cstr(
-            stderr,
-            "sloppy run: --header, --body, --body-file, and --json require --once\n");
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: --header, --body, --body-file, and --json require --once\n");
         return 1;
     }
 

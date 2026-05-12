@@ -512,7 +512,7 @@ static int test_route_table_exact_index_reports_method_mismatch(void)
     if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0) {
         return 79;
     }
-    return expect_true(diag.code == SL_DIAG_HTTP_UNSUPPORTED_METHOD);
+    return expect_true(diag.code == SL_DIAG_HTTP_METHOD_NOT_ALLOWED);
 }
 
 static int test_route_table_param_buckets_preserve_specificity_order(void)
@@ -884,7 +884,7 @@ static int test_route_table_param_buckets_report_method_mismatch(void)
                                            &result, &diag);
     sl_engine_destroy(engine);
     if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 || result.kind != SL_ENGINE_RESULT_NONE ||
-        diag.code != SL_DIAG_HTTP_UNSUPPORTED_METHOD)
+        diag.code != SL_DIAG_HTTP_METHOD_NOT_ALLOWED)
     {
         return 164;
     }
@@ -1183,7 +1183,7 @@ static int test_method_mismatch_returns_method_not_allowed(void)
         return 11;
     }
 
-    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_UNSUPPORTED_METHOD ||
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_METHOD_NOT_ALLOWED ||
         expect_str_equal(diag.message, "HTTP method is not allowed for this route") != 0)
     {
         sl_engine_destroy(engine);
@@ -2480,7 +2480,7 @@ static int test_conformance_smoke_default_http_cases(void)
         {"GET /missing HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_GET, "/ok",
          SL_STATUS_OUT_OF_RANGE, SL_DIAG_HTTP_ROUTE_NOT_FOUND},
         {"POST /ok HTTP/1.1\r\nHost: example\r\n\r\n", SL_HTTP_METHOD_GET, "/ok",
-         SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_UNSUPPORTED_METHOD},
+         SL_STATUS_UNSUPPORTED, SL_DIAG_HTTP_METHOD_NOT_ALLOWED},
         {"POST /ok HTTP/1.1\r\nHost: example\r\nContent-Type: application/json\r\nContent-"
          "Length: 6\r\n\r\n"
          "{\"ok\":",
@@ -2820,7 +2820,7 @@ static int test_compiled_and_classic_dispatch_agree_in_validate_mode(void)
     set_native_text_route(&routes[0], "POST", "/users/{id}", 1U, "post");
     if (expect_validate_dispatch_agrees(
             routes, 1U, "GET /users/42 HTTP/1.1\r\nHost: example\r\n\r\n", SL_STATUS_UNSUPPORTED,
-            SL_DIAG_HTTP_UNSUPPORTED_METHOD, NULL) != 0)
+            SL_DIAG_HTTP_METHOD_NOT_ALLOWED, NULL) != 0)
     {
         return 5;
     }

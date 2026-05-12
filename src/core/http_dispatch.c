@@ -16,6 +16,7 @@
  */
 #include "sloppy/http_dispatch.h"
 
+#include "sloppy/breadcrumbs.h"
 #include "sloppy/http_context.h"
 #include "sloppy/request_validation.h"
 #include "sloppy/runtime_contract.h"
@@ -107,6 +108,9 @@ static SlStatus sl_http_dispatch_write_diag(SlArena* arena, SlDiag* out_diag, Sl
     SlStatus status;
 
     if (out_diag == NULL) {
+        sl_breadcrumb_global_record(sl_diag_metadata_for_code(code).subsystem,
+                                    SL_BREADCRUMB_EVENT_HTTP_REQUEST_END, status_code, 0U, 0U, 0U,
+                                    0U, message);
         return sl_status_from_code(status_code);
     }
 
@@ -132,6 +136,9 @@ static SlStatus sl_http_dispatch_write_diag(SlArena* arena, SlDiag* out_diag, Sl
         return status;
     }
 
+    sl_breadcrumb_global_record(sl_diag_metadata_for_code(code).subsystem,
+                                SL_BREADCRUMB_EVENT_HTTP_REQUEST_END, status_code, 0U, 0U, 0U, 0U,
+                                message);
     return sl_status_from_code(status_code);
 }
 
@@ -207,7 +214,7 @@ static SlStatus sl_http_dispatch_missing_route(SlArena* arena, SlDiag* out_diag)
 static SlStatus sl_http_dispatch_method_not_allowed(SlArena* arena, SlDiag* out_diag)
 {
     return sl_http_dispatch_write_diag(
-        arena, out_diag, SL_DIAG_HTTP_UNSUPPORTED_METHOD,
+        arena, out_diag, SL_DIAG_HTTP_METHOD_NOT_ALLOWED,
         sl_http_dispatch_literal("HTTP method is not allowed for this route",
                                  sizeof("HTTP method is not allowed for this route") - 1U),
         sl_http_dispatch_literal("register a route with matching method metadata before serving",
@@ -3103,6 +3110,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     SlHttpQuery query = {0};
     SlHttpDispatchContextNeeds needs = {0};
     SlHttpRequestContext request_context = {0};
+    SlStr breadcrumb_path = sl_str_empty();
     bool method_mismatch = false;
     bool route_match_captured = false;
     bool use_cached_handler = false;
@@ -3120,6 +3128,12 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     if (arena == NULL || engine == NULL || plan == NULL || request == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    if (request->path.length != 0U && request->path.ptr != NULL && request->path.ptr[0] == '/') {
+        breadcrumb_path = request->path;
+    }
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_HTTP_REQUEST_START,
+                                SL_STATUS_OK, seed == NULL ? 0U : seed->request_id,
+                                seed == NULL ? 0U : seed->connection_id, 0U, 0U, breadcrumb_path);
 
     status = sl_http_dispatch_validate_table(dispatch_table);
     if (!sl_status_is_ok(status)) {
@@ -3127,6 +3141,10 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     }
 
     if (!sl_http_dispatch_request_method_runnable(request->method)) {
+        sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_METHOD_MISMATCH,
+                                    SL_STATUS_UNSUPPORTED, seed == NULL ? 0U : seed->request_id,
+                                    seed == NULL ? 0U : seed->connection_id, 0U, 0U,
+                                    breadcrumb_path);
         return sl_http_dispatch_unsupported_method(arena, out_diag);
     }
 
@@ -3137,15 +3155,41 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding, &method_mismatch,
                                          NULL, NULL);
     if (!sl_status_is_ok(status)) {
+        if (sl_status_code(status) == SL_STATUS_INTERNAL) {
+            return sl_http_dispatch_write_diag(
+                arena, out_diag, SL_DIAG_ROUTE_VALIDATE_MISMATCH,
+                sl_http_dispatch_literal("compiled and classic route dispatch disagreed",
+                                         sizeof("compiled and classic route dispatch disagreed") -
+                                             1U),
+                sl_http_dispatch_literal("rebuild route artifacts or force classic dispatch for "
+                                         "triage",
+                                         sizeof("rebuild route artifacts or force classic dispatch "
+                                                "for triage") -
+                                             1U),
+                SL_STATUS_INTERNAL);
+        }
         return status;
     }
 
     if (binding == NULL) {
         if (method_mismatch) {
+            sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_METHOD_MISMATCH,
+                                        SL_STATUS_UNSUPPORTED, seed == NULL ? 0U : seed->request_id,
+                                        seed == NULL ? 0U : seed->connection_id, 0U, 0U,
+                                        breadcrumb_path);
             return sl_http_dispatch_method_not_allowed(arena, out_diag);
         }
+        sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_ROUTE_NOT_FOUND,
+                                    SL_STATUS_OUT_OF_RANGE, seed == NULL ? 0U : seed->request_id,
+                                    seed == NULL ? 0U : seed->connection_id, 0U, 0U,
+                                    breadcrumb_path);
         return sl_http_dispatch_missing_route(arena, out_diag);
     }
+    sl_breadcrumb_global_record(
+        SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_ROUTE_MATCHED, SL_STATUS_OK,
+        seed == NULL ? 0U : seed->request_id, seed == NULL ? 0U : seed->connection_id,
+        (uint64_t)binding->route_index, (uint64_t)binding->handler_id,
+        binding->pattern == NULL ? sl_str_empty() : binding->pattern->source);
 
     if (dispatch_table->handler_cache_trusted && dispatch_table->plan == plan &&
         binding->handler != NULL && binding->handler->id == binding->handler_id &&
@@ -3234,15 +3278,37 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
             return status;
         }
         if (sl_http_dispatch_route_has_native_response(validation_route)) {
+            sl_breadcrumb_global_record(
+                SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_NATIVE_RESPONSE_HIT, SL_STATUS_OK,
+                seed == NULL ? 0U : seed->request_id, seed == NULL ? 0U : seed->connection_id,
+                (uint64_t)binding->route_index, (uint64_t)binding->handler_id,
+                validation_route->pattern);
             return sl_http_dispatch_native_response(validation_route, out_result);
         }
     }
 
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_ENTER,
+                                SL_STATUS_OK, seed == NULL ? 0U : seed->request_id,
+                                seed == NULL ? 0U : seed->connection_id,
+                                (uint64_t)binding->route_index, (uint64_t)binding->handler_id,
+                                handler != NULL ? handler->export_name : sl_str_empty());
     if (use_cached_handler) {
         status = sl_engine_call_registered_handler_with_context(
             engine, arena, binding->handler_id, &request_context, out_result, out_diag);
         if (sl_status_is_ok(status)) {
             sl_http_dispatch_materialize_text_result(out_result);
+            sl_breadcrumb_global_record(
+                SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_EXIT, SL_STATUS_OK,
+                seed == NULL ? 0U : seed->request_id, seed == NULL ? 0U : seed->connection_id,
+                (uint64_t)binding->route_index, (uint64_t)binding->handler_id, sl_str_empty());
+        }
+        else {
+            sl_breadcrumb_global_record(
+                SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
+                sl_status_code(status), seed == NULL ? 0U : seed->request_id,
+                seed == NULL ? 0U : seed->connection_id, (uint64_t)binding->route_index,
+                (uint64_t)binding->handler_id,
+                out_diag == NULL ? sl_str_empty() : out_diag->message);
         }
         return status;
     }
@@ -3251,6 +3317,17 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
                                                            &request_context, out_result, out_diag);
     if (sl_status_is_ok(status)) {
         sl_http_dispatch_materialize_text_result(out_result);
+        sl_breadcrumb_global_record(
+            SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_EXIT, SL_STATUS_OK,
+            seed == NULL ? 0U : seed->request_id, seed == NULL ? 0U : seed->connection_id,
+            (uint64_t)binding->route_index, (uint64_t)binding->handler_id, sl_str_empty());
+    }
+    else {
+        sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
+                                    sl_status_code(status), seed == NULL ? 0U : seed->request_id,
+                                    seed == NULL ? 0U : seed->connection_id,
+                                    (uint64_t)binding->route_index, (uint64_t)binding->handler_id,
+                                    out_diag == NULL ? sl_str_empty() : out_diag->message);
     }
     return status;
 }

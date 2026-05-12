@@ -100,6 +100,7 @@ typedef struct SlRunApp
 } SlRunApp;
 
 static SlRunApp sl_run_command_app_storage;
+static bool sl_run_diagnostics_json_enabled;
 
 static void sl_run_reset_app_storage(SlRunApp* app)
 {
@@ -1126,13 +1127,26 @@ static void sl_run_print_diag(const char* prefix, SlArena* arena, const SlDiag* 
 {
     SlArenaMark mark = {0U};
     SlStr rendered = {0};
+    SlDiagReportContext report_context = {0};
     bool should_reset = false;
 
-    sl_cli_write_cstr(stderr, prefix);
     if (arena != NULL) {
         mark = sl_arena_mark(arena);
         should_reset = true;
     }
+    if (sl_run_diagnostics_json_enabled && diag != NULL && arena != NULL) {
+        report_context.command = sl_str_from_cstr("run");
+        report_context.runtime_version = sl_str_from_cstr(SL_VERSION_STRING);
+        report_context.cause_message = prefix != NULL ? sl_str_from_cstr(prefix) : sl_str_empty();
+        if (sl_status_is_ok(sl_diag_render_report_json(arena, diag, &report_context, &rendered))) {
+            sl_cli_write_str(stderr, rendered);
+            if (should_reset) {
+                sl_arena_reset_to(arena, mark);
+            }
+            return;
+        }
+    }
+    sl_cli_write_cstr(stderr, prefix);
     if (diag != NULL && arena != NULL &&
         sl_status_is_ok(sl_diag_render_text(arena, diag, &rendered)))
     {
@@ -1304,9 +1318,16 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
     SlDiag diag = {0};
     SlStatus status;
 
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_PLAN, SL_BREADCRUMB_EVENT_PLAN_LOAD_START,
+                                SL_STATUS_OK, 0U, 0U, 0U, 0U,
+                                plan_path != NULL ? sl_str_from_cstr(plan_path) : sl_str_empty());
+
     if (sl_run_read_file(app, plan_path, app->plan_json_storage, sizeof(app->plan_json_storage),
                          &json) != 0)
     {
+        sl_breadcrumb_global_record(
+            SL_DIAG_SUBSYSTEM_PLAN, SL_BREADCRUMB_EVENT_PLAN_LOAD_FAILED, SL_STATUS_OUT_OF_RANGE,
+            0U, 0U, 0U, 0U, plan_path != NULL ? sl_str_from_cstr(plan_path) : sl_str_empty());
         return 1;
     }
     app->has_dynamic_routes =
@@ -1316,6 +1337,9 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
     parse_options.source_name = sl_str_from_cstr(plan_path);
     status = sl_plan_parse_json(&app->plan_arena, json, &parse_options, &app->plan, &diag);
     if (!sl_status_is_ok(status)) {
+        sl_breadcrumb_global_record(
+            SL_DIAG_SUBSYSTEM_PLAN, SL_BREADCRUMB_EVENT_PLAN_LOAD_FAILED, sl_status_code(status),
+            0U, 0U, 0U, 0U, plan_path != NULL ? sl_str_from_cstr(plan_path) : sl_str_empty());
         sl_run_print_diag("sloppy run: malformed app.plan.json: ", &app->engine_arena, &diag);
         return 1;
     }
@@ -1341,6 +1365,9 @@ static int sl_run_load_plan(SlRunApp* app, const char* plan_path)
         return 1;
     }
 
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_PLAN, SL_BREADCRUMB_EVENT_PLAN_LOAD_DONE,
+                                SL_STATUS_OK, 0U, 0U, 0U, 0U,
+                                plan_path != NULL ? sl_str_from_cstr(plan_path) : sl_str_empty());
     return 0;
 }
 
@@ -3742,6 +3769,10 @@ static int sl_cli_command_run(const SlCliOptions* options)
     if (options == NULL) {
         return 1;
     }
+    sl_run_diagnostics_json_enabled = options->diagnostics_json;
+    sl_breadcrumb_ring_init(sl_breadcrumb_global_ring());
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_CLI, SL_BREADCRUMB_EVENT_PROCESS_START,
+                                SL_STATUS_OK, 0U, 0U, 0U, 0U, sl_str_from_cstr("sloppy run"));
     app = sl_run_command_app();
     artifacts_path = options->artifacts_path;
     stdlib_path = options->stdlib_path;
@@ -3819,6 +3850,18 @@ static int sl_cli_command_run(const SlCliOptions* options)
         }
     }
 
+    {
+        SlCrashReportOptions report_options = sl_crash_report_default_options();
+        SlCrashReportContext report_context = {0};
+        report_context.report_context.command = sl_str_from_cstr("run");
+        report_context.report_context.runtime_version = sl_str_from_cstr(SL_VERSION_STRING);
+        report_context.report_context.artifact_path =
+            artifacts_path != NULL ? sl_str_from_cstr(artifacts_path) : sl_str_empty();
+        report_context.report_context.package_path =
+            package_path != NULL ? sl_str_from_cstr(package_path) : sl_str_empty();
+        sl_crash_report_set_default_context(&report_options, &report_context,
+                                            sl_breadcrumb_global_ring());
+    }
     if (sl_run_load_app(artifacts_path, stdlib_path, package_path, app) != 0) {
         sl_run_shutdown_app(app);
         return 1;
