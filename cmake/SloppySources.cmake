@@ -151,6 +151,7 @@ set(
     tests/unit/core/test_crypto.c
     tests/unit/core/test_fs.c
     tests/unit/core/test_os.c
+    tests/unit/core/test_layout.c
     tests/unit/core/test_logging.c
     tests/unit/core/test_platform_thread.c
     tests/unit/core/test_app_host.c

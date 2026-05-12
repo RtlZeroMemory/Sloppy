@@ -85,6 +85,7 @@
     sloppy_add_c_unit_test(core_filesystem core.filesystem tests/unit/core/test_fs.c)
     sloppy_add_c_unit_test(core_os_system_environment core.os.system_environment
                            tests/unit/core/test_os.c)
+    sloppy_add_c_unit_test(core_layout_contract core.layout.contract tests/unit/core/test_layout.c)
     sloppy_add_c_unit_test(core_logging_structured core.logging.structured
                            tests/unit/core/test_logging.c)
     sloppy_add_c_unit_test(core_platform_thread core.platform.thread
@@ -142,8 +143,12 @@
     sloppy_add_c_unit_test(
         core_http_backend core.http.backend tests/unit/core/test_http_backend.c)
     if(CMAKE_CXX_COMPILER)
-        sloppy_add_cxx_unit_test(
-            core_http_transport core.http.transport tests/unit/core/test_http_transport.cc)
+        add_executable(core_http_transport tests/unit/core/test_http_transport.cc)
+        target_link_libraries(core_http_transport PRIVATE sloppy_core)
+        target_include_directories(core_http_transport PRIVATE "${PROJECT_SOURCE_DIR}/include")
+        target_compile_features(core_http_transport PRIVATE cxx_std_17)
+        sloppy_apply_warnings(core_http_transport)
+        sloppy_apply_sanitizers(core_http_transport)
         target_link_libraries(core_http_transport PRIVATE ${SLOPPY_LIBUV_TARGET})
         function(sloppy_add_http_transport_case test_name case_name)
             add_test(

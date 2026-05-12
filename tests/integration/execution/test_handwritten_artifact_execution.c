@@ -73,6 +73,12 @@ static int init_arena(SlArena* arena, unsigned char* storage, size_t storage_siz
     return expect_status(sl_arena_init(arena, storage, storage_size), SL_STATUS_OK);
 }
 
+static SlBytes bytes_from_cstr(const char* text)
+{
+    SlStr str = sl_str_from_cstr(text);
+    return sl_bytes_from_parts((const unsigned char*)str.ptr, str.length);
+}
+
 static SlEngineOptions v8_options(void)
 {
     SlEngineOptions options = {0};
@@ -247,7 +253,9 @@ static int test_compiler_artifact_plan_and_app_call_handler_1(void)
     }
 
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
-        !sl_str_equal(result.text, sl_str_from_cstr("Hello from Sloppy")))
+        result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE ||
+        result.response.status != 200U ||
+        !sl_bytes_equal(result.response.body, bytes_from_cstr("Hello from Sloppy")))
     {
         sl_engine_destroy(engine);
         return 5;

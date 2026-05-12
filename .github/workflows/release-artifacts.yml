@@ -19,9 +19,9 @@ on:
         default: true
         type: boolean
       include_macos_x64:
-        description: "Build the optional macOS x64 dry-run package."
+        description: "Build the macOS x64 dry-run package."
         required: true
-        default: false
+        default: true
         type: boolean
       run_package_smoke:
         description: "Run outside-checkout package smoke after packaging."
@@ -85,6 +85,11 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.93.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.17.0"
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -181,6 +186,11 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.93.0
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.17.0"
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -191,10 +201,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache clang libglib2.0-dev)
+          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache clang lld libglib2.0-dev)
           missing=()
 
-          for command in cmake ninja pkg-config curl zip unzip tar autoconf automake libtoolize bison flex ccache clang clang++; do
+          for command in cmake ninja pkg-config curl zip unzip tar autoconf automake libtoolize bison flex ccache clang clang++ ld.lld; do
             if ! command -v "$command" >/dev/null 2>&1; then
               missing=("${packages[@]}")
               break
@@ -278,10 +288,48 @@ jobs:
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
 
-      - name: Build Linux V8 SDK
+      - name: Restore Linux V8 SDK asset
         if: steps.linux-v8-sdk.outputs.cached != 'true'
         shell: bash
-        run: tools/unix/dev.sh build-v8
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          download_dir="$PWD/artifacts/v8-sdk-cache/linux-x64"
+          mkdir -p "$download_dir" "$PWD/.sdeps/v8"
+          gh release download sloppy-v8-sdk-cache \
+            --repo RtlZeroMemory/Slop \
+            --pattern 'sloppy-v8-sdk-linux-x64-*.tar.gz' \
+            --pattern 'sloppy-v8-sdk-linux-x64-*.tar.gz.sha256' \
+            --dir "$download_dir" \
+            --clobber
+          archives=()
+          while IFS= read -r item; do archives+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz' | sort)
+          checksums=()
+          while IFS= read -r item; do checksums+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz.sha256' | sort)
+          if [ "${#archives[@]}" -ne 1 ] || [ "${#checksums[@]}" -ne 1 ]; then
+            echo "Expected exactly one Linux x64 V8 SDK archive and checksum in $download_dir." >&2
+            find "$download_dir" -maxdepth 1 -type f -print >&2
+            exit 1
+          fi
+          expected_hash="$(awk '{print $1}' "${checksums[0]}")"
+          actual_hash="$(sha256sum "${archives[0]}" | awk '{print $1}')"
+          if [ "$actual_hash" != "$expected_hash" ]; then
+            echo "Linux x64 V8 SDK checksum mismatch." >&2
+            echo "expected: $expected_hash" >&2
+            echo "actual:   $actual_hash" >&2
+            exit 1
+          fi
+          rm -rf "$PWD/.sdeps/v8/linux-x64" "$PWD/.sdeps/v8/v8"
+          tar -xzf "${archives[0]}" -C "$PWD/.sdeps/v8"
+          if [ -d "$PWD/.sdeps/v8/v8" ]; then
+            mv "$PWD/.sdeps/v8/v8" "$PWD/.sdeps/v8/linux-x64"
+          elif [ ! -d "$PWD/.sdeps/v8/linux-x64" ]; then
+            echo "Linux x64 V8 SDK archive did not contain v8/ or linux-x64/." >&2
+            find "$PWD/.sdeps/v8" -maxdepth 2 -type d -print >&2
+            exit 1
+          fi
+          test -f "$PWD/.sdeps/v8/linux-x64/share/sloppy-v8-sdk.json"
 
       - name: Save Linux V8 SDK cache
         if: steps.linux-v8-sdk.outputs.cached != 'true'
@@ -346,6 +394,11 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.93.0
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.17.0"
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -408,6 +461,55 @@ jobs:
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
 
+      - name: Restore macOS arm64 V8 SDK asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          download_dir="$PWD/artifacts/v8-sdk-cache/macos-arm64"
+          mkdir -p "$download_dir" "$PWD/.sdeps/v8"
+          gh release download sloppy-v8-sdk-cache \
+            --repo RtlZeroMemory/Slop \
+            --pattern 'sloppy-v8-sdk-darwin-arm64-*.tar.gz' \
+            --pattern 'sloppy-v8-sdk-darwin-arm64-*.tar.gz.sha256' \
+            --dir "$download_dir" \
+            --clobber
+          archives=()
+          while IFS= read -r item; do archives+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz' | sort)
+          checksums=()
+          while IFS= read -r item; do checksums+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz.sha256' | sort)
+          if [ "${#archives[@]}" -ne 1 ] || [ "${#checksums[@]}" -ne 1 ]; then
+            echo "Expected exactly one macOS arm64 V8 SDK archive and checksum in $download_dir." >&2
+            find "$download_dir" -maxdepth 1 -type f -print >&2
+            exit 1
+          fi
+          archive="${archives[0]}"
+          expected_hash="$(awk '{print $1}' "${checksums[0]}")"
+          if command -v sha256sum >/dev/null 2>&1; then
+            actual_hash="$(sha256sum "$archive" | awk '{print $1}')"
+          else
+            actual_hash="$(shasum -a 256 "$archive" | awk '{print $1}')"
+          fi
+          if [ "$actual_hash" != "$expected_hash" ]; then
+            echo "macOS arm64 V8 SDK checksum mismatch." >&2
+            echo "expected: $expected_hash" >&2
+            echo "actual:   $actual_hash" >&2
+            exit 1
+          fi
+          rm -rf "$PWD/.sdeps/v8/macos-arm64" "$PWD/.sdeps/v8/v8"
+          tar -xzf "$archive" -C "$PWD/.sdeps/v8"
+          if [ -d "$PWD/.sdeps/v8/v8" ]; then
+            rm -rf "$PWD/.sdeps/v8/macos-arm64"
+            mv "$PWD/.sdeps/v8/v8" "$PWD/.sdeps/v8/macos-arm64"
+          elif [ ! -d "$PWD/.sdeps/v8/macos-arm64" ]; then
+            echo "macOS arm64 V8 SDK archive did not contain v8/ or macos-arm64/." >&2
+            find "$PWD/.sdeps/v8" -maxdepth 2 -type d -print >&2
+            exit 1
+          fi
+          test -f "$PWD/.sdeps/v8/macos-arm64/share/sloppy-v8-sdk.json"
+          echo "SLOPPY_V8_ROOT=$PWD/.sdeps/v8/macos-arm64" >> "$GITHUB_ENV"
+
       - name: Release artifact dry-run
         shell: bash
         env:
@@ -415,11 +517,15 @@ jobs:
           CXX: clang++
         run: |
           set -euo pipefail
-          args=(--preset macos-clang)
+          args=(--preset macos-clang --require-v8-runtime)
           if [ "${{ inputs.run_package_smoke }}" != "true" ]; then
             args+=(--skip-smoke)
           fi
           tools/unix/release-dry-run.sh "${args[@]}"
+
+      - name: npm launcher dry-run from macOS arm64 archive
+        shell: bash
+        run: tools/unix/npm-dry-run.sh --package-path artifacts/packages/sloppy-macos-arm64.tar.gz --require-v8-runtime
 
       - name: Save vcpkg cache
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
@@ -441,6 +547,8 @@ jobs:
             artifacts/packages/sloppy-*.tar.gz
             artifacts/packages/SHA256SUMS.txt
             artifacts/release-dry-run/**
+            artifacts/npm/summary.json
+            artifacts/npm/tarballs/*.tgz
 
   package-macos-x64:
     name: release dry-run / macos-x64
@@ -454,6 +562,11 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@1.93.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.17.0"
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -517,6 +630,55 @@ jobs:
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
 
+      - name: Restore macOS x64 V8 SDK asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          download_dir="$PWD/artifacts/v8-sdk-cache/macos-x64"
+          mkdir -p "$download_dir" "$PWD/.sdeps/v8"
+          gh release download sloppy-v8-sdk-cache \
+            --repo RtlZeroMemory/Slop \
+            --pattern 'sloppy-v8-sdk-darwin-x64-*.tar.gz' \
+            --pattern 'sloppy-v8-sdk-darwin-x64-*.tar.gz.sha256' \
+            --dir "$download_dir" \
+            --clobber
+          archives=()
+          while IFS= read -r item; do archives+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz' | sort)
+          checksums=()
+          while IFS= read -r item; do checksums+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz.sha256' | sort)
+          if [ "${#archives[@]}" -ne 1 ] || [ "${#checksums[@]}" -ne 1 ]; then
+            echo "Expected exactly one macOS x64 V8 SDK archive and checksum in $download_dir." >&2
+            find "$download_dir" -maxdepth 1 -type f -print >&2
+            exit 1
+          fi
+          archive="${archives[0]}"
+          expected_hash="$(awk '{print $1}' "${checksums[0]}")"
+          if command -v sha256sum >/dev/null 2>&1; then
+            actual_hash="$(sha256sum "$archive" | awk '{print $1}')"
+          else
+            actual_hash="$(shasum -a 256 "$archive" | awk '{print $1}')"
+          fi
+          if [ "$actual_hash" != "$expected_hash" ]; then
+            echo "macOS x64 V8 SDK checksum mismatch." >&2
+            echo "expected: $expected_hash" >&2
+            echo "actual:   $actual_hash" >&2
+            exit 1
+          fi
+          rm -rf "$PWD/.sdeps/v8/macos-x64" "$PWD/.sdeps/v8/v8"
+          tar -xzf "$archive" -C "$PWD/.sdeps/v8"
+          if [ -d "$PWD/.sdeps/v8/v8" ]; then
+            rm -rf "$PWD/.sdeps/v8/macos-x64"
+            mv "$PWD/.sdeps/v8/v8" "$PWD/.sdeps/v8/macos-x64"
+          elif [ ! -d "$PWD/.sdeps/v8/macos-x64" ]; then
+            echo "macOS x64 V8 SDK archive did not contain v8/ or macos-x64/." >&2
+            find "$PWD/.sdeps/v8" -maxdepth 2 -type d -print >&2
+            exit 1
+          fi
+          test -f "$PWD/.sdeps/v8/macos-x64/share/sloppy-v8-sdk.json"
+          echo "SLOPPY_V8_ROOT=$PWD/.sdeps/v8/macos-x64" >> "$GITHUB_ENV"
+
       - name: Release artifact dry-run
         shell: bash
         env:
@@ -524,11 +686,15 @@ jobs:
           CXX: clang++
         run: |
           set -euo pipefail
-          args=(--preset macos-clang)
+          args=(--preset macos-clang --require-v8-runtime)
           if [ "${{ inputs.run_package_smoke }}" != "true" ]; then
             args+=(--skip-smoke)
           fi
           tools/unix/release-dry-run.sh "${args[@]}"
+
+      - name: npm launcher dry-run from macOS x64 archive
+        shell: bash
+        run: tools/unix/npm-dry-run.sh --package-path artifacts/packages/sloppy-macos-x64.tar.gz --require-v8-runtime
 
       - name: Save vcpkg cache
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
@@ -550,3 +716,5 @@ jobs:
             artifacts/packages/sloppy-*.tar.gz
             artifacts/packages/SHA256SUMS.txt
             artifacts/release-dry-run/**
+            artifacts/npm/summary.json
+            artifacts/npm/tarballs/*.tgz

@@ -373,7 +373,7 @@ static SlStatus sl_http2_dispatch_handle_request_headers(SlHttp2ServerDispatcher
         return sl_http2_dispatch_reset_stream(dispatcher, event->stream_id,
                                               SL_HTTP2_ERROR_REFUSED_STREAM);
     }
-    stream->headers = event->headers;
+    stream->headers = event->payload.headers;
     stream->headers_seen = true;
     if (event->end_stream) {
         return sl_http2_dispatch_mark_stream_complete(dispatcher, stream);
@@ -400,7 +400,7 @@ static SlStatus sl_http2_dispatch_handle_data(SlHttp2ServerDispatcher* dispatche
                                               SL_HTTP2_ERROR_STREAM_CLOSED);
     }
 
-    status = sl_byte_builder_append_bytes(&stream->body, event->data);
+    status = sl_byte_builder_append_bytes(&stream->body, event->payload.data);
     if (!sl_status_is_ok(status)) {
         return sl_http2_dispatch_reset_stream(dispatcher, event->stream_id,
                                               SL_HTTP2_ERROR_REFUSED_STREAM);
@@ -443,8 +443,8 @@ static SlStatus sl_http2_dispatch_handle_trailers(SlHttp2ServerDispatcher* dispa
         return sl_http2_dispatch_reset_stream(dispatcher, event->stream_id,
                                               SL_HTTP2_ERROR_PROTOCOL_ERROR);
     }
-    for (size_t index = 0U; index < event->headers.count; index += 1U) {
-        const SlHttp2HeaderField* header = &event->headers.fields[index];
+    for (size_t index = 0U; index < event->payload.headers.count; index += 1U) {
+        const SlHttp2HeaderField* header = &event->payload.headers.fields[index];
         if (header->name.length != 0U && header->name.ptr[0] == ':') {
             return sl_http2_dispatch_reset_stream(dispatcher, event->stream_id,
                                                   SL_HTTP2_ERROR_PROTOCOL_ERROR);

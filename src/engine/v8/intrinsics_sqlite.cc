@@ -20,6 +20,7 @@
 #include <memory>
 #include <new>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace {
@@ -62,14 +63,13 @@ enum class SqliteV8Operation
     TransactionQueryOne,
 };
 
+using SqliteV8ParamStorage =
+    std::variant<std::monostate, std::string, std::vector<unsigned char>, int64_t, double, bool>;
+
 struct SqliteV8ParamValue
 {
     SlSqliteParamKind kind = SL_SQLITE_PARAM_NULL;
-    std::string text;
-    std::vector<unsigned char> bytes;
-    int64_t integer = 0;
-    double number = 0.0;
-    bool boolean = false;
+    SqliteV8ParamStorage value = std::monostate{};
 };
 
 struct SqliteV8Request
@@ -527,11 +527,11 @@ bool sqlite_v8_convert_param_values(v8::Isolate* isolate, v8::Local<v8::Context>
         }
         else if (item->IsBoolean()) {
             param.kind = SL_SQLITE_PARAM_BOOL;
-            param.boolean = item->BooleanValue(isolate);
+            param.value = item->BooleanValue(isolate);
         }
         else if (item->IsInt32()) {
             param.kind = SL_SQLITE_PARAM_INTEGER;
-            param.integer = item.As<v8::Int32>()->Value();
+            param.value = static_cast<int64_t>(item.As<v8::Int32>()->Value());
         }
         else if (item->IsNumber()) {
             const double number = item.As<v8::Number>()->Value();
@@ -549,11 +549,11 @@ bool sqlite_v8_convert_param_values(v8::Isolate* isolate, v8::Local<v8::Context>
             }
             if (std::trunc(number) == number) {
                 param.kind = SL_SQLITE_PARAM_INTEGER;
-                param.integer = static_cast<int64_t>(number);
+                param.value = static_cast<int64_t>(number);
             }
             else {
                 param.kind = SL_SQLITE_PARAM_FLOAT;
-                param.number = number;
+                param.value = number;
             }
         }
         else if (item->IsBigInt()) {
@@ -564,21 +564,25 @@ bool sqlite_v8_convert_param_values(v8::Isolate* isolate, v8::Local<v8::Context>
                 return false;
             }
             param.kind = SL_SQLITE_PARAM_INTEGER;
-            param.integer = value64;
+            param.value = value64;
         }
         else if (item->IsString()) {
+            std::string text;
             param.kind = SL_SQLITE_PARAM_TEXT;
-            if (!sl_v8_std_string_from_value(isolate, item, &param.text)) {
+            if (!sl_v8_std_string_from_value(isolate, item, &text)) {
                 sqlite_v8_throw_error(isolate, "sqlite bridge could not copy parameter text");
                 return false;
             }
+            param.value = std::move(text);
         }
         else if (item->IsUint8Array()) {
+            std::vector<unsigned char> bytes;
             param.kind = SL_SQLITE_PARAM_BLOB;
-            if (!sl_v8_db_copy_uint8_array(item, &param.bytes)) {
+            if (!sl_v8_db_copy_uint8_array(item, &bytes)) {
                 sqlite_v8_throw_type_error(isolate, "sqlite Uint8Array parameter is out of range");
                 return false;
             }
+            param.value = std::move(bytes);
         }
         else {
             sqlite_v8_throw_type_error(
@@ -613,22 +617,52 @@ void sqlite_v8_refresh_param_views(SqliteV8Request* request)
         SlSqliteParam param = {};
         param.kind = value.kind;
         switch (value.kind) {
-        case SL_SQLITE_PARAM_TEXT:
-            param.value.text = sl_str_from_parts(value.text.data(), value.text.size());
+        case SL_SQLITE_PARAM_TEXT: {
+            const auto* text = std::get_if<std::string>(&value.value);
+            if (text == nullptr) {
+                param.kind = SL_SQLITE_PARAM_NULL;
+                break;
+            }
+            param.value.text = sl_str_from_parts(text->data(), text->size());
             break;
-        case SL_SQLITE_PARAM_BLOB:
-            param.value.blob = sl_bytes_from_parts(
-                value.bytes.empty() ? nullptr : value.bytes.data(), value.bytes.size());
+        }
+        case SL_SQLITE_PARAM_BLOB: {
+            const auto* bytes = std::get_if<std::vector<unsigned char>>(&value.value);
+            if (bytes == nullptr) {
+                param.kind = SL_SQLITE_PARAM_NULL;
+                break;
+            }
+            param.value.blob =
+                sl_bytes_from_parts(bytes->empty() ? nullptr : bytes->data(), bytes->size());
             break;
-        case SL_SQLITE_PARAM_INTEGER:
-            param.value.integer = value.integer;
+        }
+        case SL_SQLITE_PARAM_INTEGER: {
+            const auto* integer = std::get_if<int64_t>(&value.value);
+            if (integer == nullptr) {
+                param.kind = SL_SQLITE_PARAM_NULL;
+                break;
+            }
+            param.value.integer = *integer;
             break;
-        case SL_SQLITE_PARAM_FLOAT:
-            param.value.number = value.number;
+        }
+        case SL_SQLITE_PARAM_FLOAT: {
+            const auto* number = std::get_if<double>(&value.value);
+            if (number == nullptr) {
+                param.kind = SL_SQLITE_PARAM_NULL;
+                break;
+            }
+            param.value.number = *number;
             break;
-        case SL_SQLITE_PARAM_BOOL:
-            param.value.boolean = value.boolean;
+        }
+        case SL_SQLITE_PARAM_BOOL: {
+            const auto* boolean = std::get_if<bool>(&value.value);
+            if (boolean == nullptr) {
+                param.kind = SL_SQLITE_PARAM_NULL;
+                break;
+            }
+            param.value.boolean = *boolean;
             break;
+        }
         case SL_SQLITE_PARAM_NULL:
         default:
             break;

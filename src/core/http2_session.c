@@ -31,6 +31,18 @@ typedef struct SlHttp2PrescanAction
     bool submit_goaway;
 } SlHttp2PrescanAction;
 
+static bool sl_http2_closed_stream_has(const SlHttp2ClosedStream* stream, uint32_t flag)
+{
+    return stream != NULL && (stream->flags & flag) != 0U;
+}
+
+static void sl_http2_closed_stream_set(SlHttp2ClosedStream* stream, uint32_t flag)
+{
+    if (stream != NULL) {
+        stream->flags |= flag;
+    }
+}
+
 static bool sl_http2_session_valid_bytes(SlBytes bytes)
 {
     return bytes.length == 0U || bytes.ptr != NULL;
@@ -126,7 +138,9 @@ static SlHttp2ClosedStream* sl_http2_session_find_closed_stream(SlHttp2Session* 
     }
     for (size_t index = 0U; index < SL_HTTP2_SESSION_CLOSED_STREAM_TRACK; index += 1U) {
         SlHttp2ClosedStream* closed = &session->closed_streams[index];
-        if (closed->active && closed->stream_id == stream_id) {
+        if (sl_http2_closed_stream_has(closed, SL_HTTP2_CLOSED_STREAM_FLAG_ACTIVE) &&
+            closed->stream_id == stream_id)
+        {
             return closed;
         }
     }
@@ -146,10 +160,10 @@ static SlHttp2ClosedStream* sl_http2_session_track_stream(SlHttp2Session* sessio
                                           SL_HTTP2_SESSION_CLOSED_STREAM_TRACK];
         session->next_closed_stream =
             (session->next_closed_stream + 1U) % SL_HTTP2_SESSION_CLOSED_STREAM_TRACK;
-        *closed = (SlHttp2ClosedStream){.stream_id = stream_id,
-                                        .outbound_window = session->outbound_initial_stream_window,
-                                        .active = true,
-                                        .outbound_window_known = true};
+        *closed = (SlHttp2ClosedStream){.outbound_window = session->outbound_initial_stream_window,
+                                        .stream_id = stream_id,
+                                        .flags = SL_HTTP2_CLOSED_STREAM_FLAG_ACTIVE |
+                                                 SL_HTTP2_CLOSED_STREAM_FLAG_OUTBOUND_WINDOW_KNOWN};
     }
     return closed;
 }
@@ -168,7 +182,7 @@ static bool sl_http2_session_accepts_rst_on_remote_closed_stream(SlHttp2Session*
     }
 
     closed = sl_http2_session_find_closed_stream(session, frame->hd.stream_id);
-    return closed != NULL && closed->remote_closed;
+    return sl_http2_closed_stream_has(closed, SL_HTTP2_CLOSED_STREAM_FLAG_REMOTE_CLOSED);
 }
 
 static bool sl_http2_session_known_http2_error_code(uint32_t error_code)
@@ -186,7 +200,7 @@ static void sl_http2_session_record_remote_closed_stream(SlHttp2Session* session
 {
     SlHttp2ClosedStream* closed = sl_http2_session_track_stream(session, stream_id);
     if (closed != NULL) {
-        closed->remote_closed = true;
+        sl_http2_closed_stream_set(closed, SL_HTTP2_CLOSED_STREAM_FLAG_REMOTE_CLOSED);
     }
 }
 
@@ -197,8 +211,10 @@ static void sl_http2_session_record_closed_stream(SlHttp2Session* session, int32
     if (closed == NULL) {
         return;
     }
-    closed->remote_closed = true;
-    closed->reset_by_peer = closed->reset_by_peer || reset_by_peer;
+    sl_http2_closed_stream_set(closed, SL_HTTP2_CLOSED_STREAM_FLAG_REMOTE_CLOSED);
+    if (reset_by_peer) {
+        sl_http2_closed_stream_set(closed, SL_HTTP2_CLOSED_STREAM_FLAG_RESET_BY_PEER);
+    }
 }
 
 static int sl_http2_session_callback_result(SlHttp2Session* session, SlStatus status)
@@ -390,8 +406,8 @@ static SlStatus sl_http2_session_finish_headers(SlHttp2Session* session, const n
     event.type = sl_http2_session_headers_event_type(session, session->current_header_category);
     event.stream_id = frame->hd.stream_id;
     event.end_stream = (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) != 0U;
-    event.headers.fields = session->current_headers;
-    event.headers.count = session->current_header_count;
+    event.payload.headers.fields = session->current_headers;
+    event.payload.headers.count = session->current_header_count;
     session->current_headers = NULL;
     session->current_header_count = 0U;
     session->current_header_bytes = 0U;
@@ -404,10 +420,10 @@ static SlStatus sl_http2_session_note_invalid_frame(SlHttp2Session* session, int
     if (session == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    return sl_http2_session_push_event(session,
-                                       (SlHttp2Event){.type = SL_HTTP2_EVENT_INVALID_FRAME,
-                                                      .stream_id = stream_id,
-                                                      .error_code = (uint32_t)(-lib_error_code)});
+    return sl_http2_session_push_event(
+        session, (SlHttp2Event){.type = SL_HTTP2_EVENT_INVALID_FRAME,
+                                .stream_id = stream_id,
+                                .payload.control.error_code = (uint32_t)(-lib_error_code)});
 }
 
 static bool sl_http2_session_bytes_start_with_preface(SlBytes bytes)
@@ -518,7 +534,10 @@ static SlStatus sl_http2_session_track_peer_settings(SlHttp2Session* session,
         session->outbound_initial_stream_window = (int64_t)value;
         for (size_t index = 0U; index < SL_HTTP2_SESSION_CLOSED_STREAM_TRACK; index += 1U) {
             SlHttp2ClosedStream* stream = &session->closed_streams[index];
-            if (!stream->active || !stream->outbound_window_known) {
+            if (!sl_http2_closed_stream_has(stream, SL_HTTP2_CLOSED_STREAM_FLAG_ACTIVE) ||
+                !sl_http2_closed_stream_has(stream,
+                                            SL_HTTP2_CLOSED_STREAM_FLAG_OUTBOUND_WINDOW_KNOWN))
+            {
                 continue;
             }
             stream->outbound_window += delta;
@@ -565,9 +584,10 @@ static SlStatus sl_http2_session_track_window_update(SlHttp2Session* session, in
         if (stream == NULL) {
             return sl_status_ok();
         }
-        if (!stream->outbound_window_known) {
+        if (!sl_http2_closed_stream_has(stream, SL_HTTP2_CLOSED_STREAM_FLAG_OUTBOUND_WINDOW_KNOWN))
+        {
             stream->outbound_window = session->outbound_initial_stream_window;
-            stream->outbound_window_known = true;
+            sl_http2_closed_stream_set(stream, SL_HTTP2_CLOSED_STREAM_FLAG_OUTBOUND_WINDOW_KNOWN);
         }
         if (stream->outbound_window > (int64_t)INT32_MAX - (int64_t)increment) {
             if (action != NULL) {
@@ -599,7 +619,7 @@ static void sl_http2_session_account_sent_data(SlHttp2Session* session, int32_t 
     stream = sl_http2_session_track_stream(session, stream_id);
     if (stream != NULL) {
         stream->outbound_window -= (int64_t)length;
-        stream->outbound_window_known = true;
+        sl_http2_closed_stream_set(stream, SL_HTTP2_CLOSED_STREAM_FLAG_OUTBOUND_WINDOW_KNOWN);
     }
 }
 
@@ -696,7 +716,8 @@ static SlStatus sl_http2_session_prescan_frames(SlHttp2Session* session, SlBytes
             bool reset_seen_in_input =
                 sl_http2_session_stream_id_seen(reset_streams, reset_stream_count, stream_id);
             closed = sl_http2_session_find_closed_stream(session, stream_id);
-            if (((closed != NULL && closed->remote_closed) || reset_seen_in_input) &&
+            if ((sl_http2_closed_stream_has(closed, SL_HTTP2_CLOSED_STREAM_FLAG_REMOTE_CLOSED) ||
+                 reset_seen_in_input) &&
                 (type == NGHTTP2_DATA || type == NGHTTP2_HEADERS))
             {
                 SlStatus status =
@@ -778,7 +799,7 @@ static SlStatus sl_http2_session_copy_data_event(SlHttp2Session* session, uint8_
         session, (SlHttp2Event){.type = SL_HTTP2_EVENT_DATA,
                                 .stream_id = stream_id,
                                 .end_stream = (flags & NGHTTP2_FLAG_END_STREAM) != 0U,
-                                .data = sl_owned_bytes_as_view(owned)});
+                                .payload.data = sl_owned_bytes_as_view(owned)});
 }
 
 static int sl_http2_on_begin_headers(nghttp2_session* ng_session, const nghttp2_frame* frame,
@@ -827,8 +848,8 @@ static int sl_http2_on_begin_frame(nghttp2_session* ng_session, const nghttp2_fr
     }
 
     closed = sl_http2_session_find_closed_stream(session, hd->stream_id);
-    if (closed != NULL && closed->reset_by_peer && hd->type != NGHTTP2_PRIORITY &&
-        hd->type != NGHTTP2_RST_STREAM)
+    if (sl_http2_closed_stream_has(closed, SL_HTTP2_CLOSED_STREAM_FLAG_RESET_BY_PEER) &&
+        hd->type != NGHTTP2_PRIORITY && hd->type != NGHTTP2_RST_STREAM)
     {
         rv = nghttp2_submit_goaway(ng_session, NGHTTP2_FLAG_NONE, session->highest_peer_stream_id,
                                    NGHTTP2_STREAM_CLOSED, NULL, 0U);
@@ -894,33 +915,39 @@ static int sl_http2_on_frame_recv(nghttp2_session* ng_session, const nghttp2_fra
         return NGHTTP2_ERR_CALLBACK_FAILURE;
     }
 
-    if (frame->hd.type == NGHTTP2_HEADERS) {
+    switch (frame->hd.type) {
+    case NGHTTP2_HEADERS:
         status = sl_http2_session_finish_headers(session, frame);
-    }
-    else if (frame->hd.type == NGHTTP2_DATA && (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) != 0U) {
-        sl_http2_session_record_remote_closed_stream(session, frame->hd.stream_id);
-        status =
-            sl_http2_session_push_event(session, (SlHttp2Event){.type = SL_HTTP2_EVENT_STREAM_END,
+        break;
+    case NGHTTP2_DATA:
+        if ((frame->hd.flags & NGHTTP2_FLAG_END_STREAM) != 0U) {
+            sl_http2_session_record_remote_closed_stream(session, frame->hd.stream_id);
+            status = sl_http2_session_push_event(session,
+                                                 (SlHttp2Event){.type = SL_HTTP2_EVENT_STREAM_END,
                                                                 .stream_id = frame->hd.stream_id});
-    }
-    else if (frame->hd.type == NGHTTP2_RST_STREAM) {
+        }
+        break;
+    case NGHTTP2_RST_STREAM:
         sl_http2_session_record_closed_stream(session, frame->hd.stream_id, true);
         status = sl_http2_session_push_event(
             session, (SlHttp2Event){.type = SL_HTTP2_EVENT_RST_STREAM,
                                     .stream_id = frame->hd.stream_id,
-                                    .error_code = frame->rst_stream.error_code});
-    }
-    else if (frame->hd.type == NGHTTP2_GOAWAY) {
+                                    .payload.control.error_code = frame->rst_stream.error_code});
+        break;
+    case NGHTTP2_GOAWAY:
         session->received_goaway = true;
         status = sl_http2_session_push_event(
             session, (SlHttp2Event){.type = SL_HTTP2_EVENT_GOAWAY,
-                                    .last_stream_id = frame->goaway.last_stream_id,
-                                    .error_code = frame->goaway.error_code});
-    }
-    else if (frame->hd.type == NGHTTP2_SETTINGS) {
+                                    .payload.control.last_stream_id = frame->goaway.last_stream_id,
+                                    .payload.control.error_code = frame->goaway.error_code});
+        break;
+    case NGHTTP2_SETTINGS:
         status = sl_http2_session_push_event(
             session, (SlHttp2Event){.type = SL_HTTP2_EVENT_SETTINGS,
                                     .end_stream = (frame->hd.flags & NGHTTP2_FLAG_ACK) != 0U});
+        break;
+    default:
+        break;
     }
 
     if (frame->hd.type == NGHTTP2_HEADERS && (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) != 0U) {
@@ -939,19 +966,21 @@ static int sl_http2_on_invalid_frame_recv(nghttp2_session* ng_session, const ngh
     if (sl_http2_session_accepts_rst_on_remote_closed_stream(session, frame, lib_error_code)) {
         sl_http2_session_record_closed_stream(session, frame->hd.stream_id, true);
         return sl_http2_session_callback_result(
-            session, sl_http2_session_push_event(
-                         session, (SlHttp2Event){.type = SL_HTTP2_EVENT_RST_STREAM,
-                                                 .stream_id = frame->hd.stream_id,
-                                                 .error_code = frame->rst_stream.error_code}));
+            session,
+            sl_http2_session_push_event(session, (SlHttp2Event){.type = SL_HTTP2_EVENT_RST_STREAM,
+                                                                .stream_id = frame->hd.stream_id,
+                                                                .payload.control.error_code =
+                                                                    frame->rst_stream.error_code}));
     }
 
     if (sl_http2_session_accepts_unknown_rst_error_code(frame)) {
         sl_http2_session_record_closed_stream(session, frame->hd.stream_id, true);
         return sl_http2_session_callback_result(
-            session, sl_http2_session_push_event(
-                         session, (SlHttp2Event){.type = SL_HTTP2_EVENT_RST_STREAM,
-                                                 .stream_id = frame->hd.stream_id,
-                                                 .error_code = frame->rst_stream.error_code}));
+            session,
+            sl_http2_session_push_event(session, (SlHttp2Event){.type = SL_HTTP2_EVENT_RST_STREAM,
+                                                                .stream_id = frame->hd.stream_id,
+                                                                .payload.control.error_code =
+                                                                    frame->rst_stream.error_code}));
     }
 
     if (session != NULL && ng_session != NULL && frame != NULL) {
@@ -977,7 +1006,7 @@ static int sl_http2_on_stream_close(nghttp2_session* ng_session, int32_t stream_
         sl_http2_session_push_event((SlHttp2Session*)user_data,
                                     (SlHttp2Event){.type = SL_HTTP2_EVENT_STREAM_CLOSE,
                                                    .stream_id = stream_id,
-                                                   .error_code = error_code}));
+                                                   .payload.control.error_code = error_code}));
 }
 
 static nghttp2_ssize sl_http2_body_read_callback(nghttp2_session* ng_session, int32_t stream_id,

@@ -36,6 +36,13 @@ typedef enum SlEngineResultKind
     SL_ENGINE_RESULT_BYTES = 4
 } SlEngineResultKind;
 
+typedef enum SlEngineResultPayloadKind
+{
+    SL_ENGINE_RESULT_PAYLOAD_NONE = 0,
+    SL_ENGINE_RESULT_PAYLOAD_TEXT = 1,
+    SL_ENGINE_RESULT_PAYLOAD_RESPONSE = 2
+} SlEngineResultPayloadKind;
+
 /*
  * Engine-neutral creation options.
  *
@@ -115,11 +122,35 @@ typedef struct SlEngineHandlerCall
     SlHandlerId handler_id;
 } SlEngineHandlerCall;
 
+/*
+ * Engine results keep mutually exclusive payloads in a tagged union. Callers must check
+ * `payload_kind` before reading `text` or `response`; `kind` describes the semantic result
+ * category, not the active storage member.
+ *
+ * Legal result pairs in this ABI are:
+ * - NONE + NONE: no value; do not read the union.
+ * - TEXT + TEXT: `text` is active and holds the direct string result.
+ * - NONE/TEXT/JSON/ERROR/BYTES + RESPONSE: `response` is active and holds the HTTP-style
+ *   result envelope. `kind` describes how the response body should be interpreted.
+ *
+ * All other pairs are contract errors. Callers should fail closed on an unknown kind,
+ * unknown payload_kind, or unsupported pair instead of guessing which union member is active.
+ * Future enum values may be appended, but they are invalid for current callers until this
+ * header documents the new pair.
+ *
+ * Nested views are borrowed. The engine call copies result-owned strings, response body,
+ * content type, and headers into the caller-provided arena when dynamic storage is needed;
+ * callers must not free nested pointers and must copy any view that must outlive that arena
+ * or the next reset of it. Empty SlStr/SlBytes views may use a NULL pointer with length 0.
+ */
 typedef struct SlEngineResult
 {
     SlEngineResultKind kind;
-    SlStr text;
-    SlHttpResponse response;
+    SlEngineResultPayloadKind payload_kind;
+    union {
+        SlStr text;
+        SlHttpResponse response;
+    };
 } SlEngineResult;
 
 /*
@@ -197,8 +228,10 @@ SlStatus sl_engine_call_function0(SlEngine* engine, SlArena* arena, SlStr functi
  * plain JS object with `route`, `query`, `request`, `signal`, and `deadline` fields and
  * never exposes native pointers or handles. If `request_context->cancellation` is already
  * cancelled, the bridge fails before entering JavaScript. On success, supported
- * `Results.*` descriptors and the plain-string compatibility fallback are converted into
- * `out_result->response`.
+ * `Results.*` descriptors are converted into `out_result->response` with
+ * `payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE`. The plain-string compatibility fallback
+ * is returned through `out_result->text` with `payload_kind == SL_ENGINE_RESULT_PAYLOAD_TEXT`;
+ * HTTP dispatch materializes that fallback into a normal text response at the dispatch boundary.
  */
 SlStatus sl_engine_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr function_name,
                                               const SlHttpRequestContext* request_context,

@@ -17,6 +17,14 @@ evidence and a completed readiness gate.
 - Added RELEASE-DIST dry-run contracts, canonical archive naming, runtime dependency audit
   scaffolding, npm launcher/platform package skeletons, and post-merge verifier handoff.
 
+## 0.1.0-alpha.3
+
+- Propagated the Linux V8 SDK libc++ link contract through `sloppy_core` so V8-enabled
+  C++ test/package targets use one standard library mode.
+- Fixed V8 SDK validation for truthful macOS arm64 SDK metadata.
+- Enabled macOS npm platform package staging/publish flow for the alpha package set.
+- Uses the `alpha` npm dist-tag only. This remains a public alpha, not production-ready.
+
 ## 0.1.0-alpha.0
 
 - Early alpha npm package records were published, but they did not prove

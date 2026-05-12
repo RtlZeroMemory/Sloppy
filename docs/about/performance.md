@@ -20,6 +20,20 @@ the request side.
 The V8 bridge is narrow — most calls cross it once per request, not
 thousands of times.
 
+Native layout work is one of the few performance optimizations that is allowed
+before broad benchmarking, because it can reduce the amount of memory the
+runtime has to touch in repeated structures. The rule is conservative: use
+normal C layouts that are easy to inspect, such as field reordering, tagged
+unions, flag masks, `_Alignof`, and layout tests. Do not use packed runtime
+structs, NaN boxing, or tagged pointers as shortcuts. Those techniques need a
+separate design with measurements and a clear portability/debugging story.
+
+The same standard applies to branch shape. Hot dispatch over frame types, event
+kinds, field kinds, or async operation kinds should use direct `switch`
+dispatch when there are several cases. Predicate-heavy code, string matching,
+and V8 type probes should stay as ordinary `if` checks unless measurements show
+otherwise.
+
 Generated static HTTP routes are indexed by method and path. Parameterized
 routes use a method-specific native segment trie, with the older first-static
 segment buckets retained as an internal fallback shape. Valid HTTP/1.1 error

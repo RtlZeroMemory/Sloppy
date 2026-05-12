@@ -844,7 +844,8 @@ bool net_v8_handle_to_resource(v8::Isolate* isolate, v8::Local<v8::Context> cont
 }
 
 bool net_v8_resource_to_handle(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                               SlResourceId id, v8::Local<v8::Object>* out)
+                               SlResourceId id, v8::Local<v8::Object>* out,
+                               const std::string* selected_protocol = nullptr)
 {
     v8::Local<v8::Object> object;
     v8::Local<v8::Private> slot_key;
@@ -862,9 +863,16 @@ bool net_v8_resource_to_handle(v8::Isolate* isolate, v8::Local<v8::Context> cont
         !object
              ->SetPrivate(context, generation_key,
                           v8::Integer::NewFromUnsigned(isolate, id.generation))
-             .FromMaybe(false) ||
-        !object->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false))
+             .FromMaybe(false))
     {
+        return false;
+    }
+    if (selected_protocol != nullptr && !selected_protocol->empty() &&
+        !net_v8_set_string(isolate, context, object, "selectedProtocol", *selected_protocol))
+    {
+        return false;
+    }
+    if (!object->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false)) {
         return false;
     }
     *out = object;
@@ -968,13 +976,22 @@ bool net_v8_lookup_local_server(SlV8Engine* backend, SlResourceId id,
 
 bool net_v8_is_local_operation(NetV8Operation operation)
 {
-    return operation == NetV8Operation::LocalConnect || operation == NetV8Operation::LocalListen ||
-           operation == NetV8Operation::LocalAccept || operation == NetV8Operation::LocalWrite ||
-           operation == NetV8Operation::LocalRead || operation == NetV8Operation::LocalReadLine ||
-           operation == NetV8Operation::LocalReadUntil || operation == NetV8Operation::LocalClose ||
-           operation == NetV8Operation::LocalAbort ||
-           operation == NetV8Operation::LocalCloseServer ||
-           operation == NetV8Operation::LocalAbortServer;
+    switch (operation) {
+    case NetV8Operation::LocalConnect:
+    case NetV8Operation::LocalListen:
+    case NetV8Operation::LocalAccept:
+    case NetV8Operation::LocalWrite:
+    case NetV8Operation::LocalRead:
+    case NetV8Operation::LocalReadLine:
+    case NetV8Operation::LocalReadUntil:
+    case NetV8Operation::LocalClose:
+    case NetV8Operation::LocalAbort:
+    case NetV8Operation::LocalCloseServer:
+    case NetV8Operation::LocalAbortServer:
+        return true;
+    default:
+        return false;
+    }
 }
 
 SlLocalEndpointBackend net_v8_default_local_backend(void)
@@ -1158,7 +1175,8 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             request->diag.message = sl_str_from_cstr("local IPC server handle is stale");
             return;
         }
-        if (request->operation == NetV8Operation::LocalAccept) {
+        switch (request->operation) {
+        case NetV8Operation::LocalAccept: {
             auto connection = std::make_shared<NetV8LocalConnection>();
             SlLocalAcceptOptions options = sl_local_accept_options_default();
             uint32_t remaining_timeout = request->timeout_ms;
@@ -1240,8 +1258,9 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
                     request->local_connection = connection;
                 }
             }
+            break;
         }
-        else if (request->operation == NetV8Operation::LocalCloseServer) {
+        case NetV8Operation::LocalCloseServer: {
             std::lock_guard<std::mutex> lock(request->local_server->mutex);
             if (request->local_server->closed) {
                 request->status = sl_status_ok();
@@ -1257,8 +1276,9 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             if (sl_status_is_ok(request->status)) {
                 request->local_server->closed = true;
             }
+            break;
         }
-        else if (request->operation == NetV8Operation::LocalAbortServer) {
+        case NetV8Operation::LocalAbortServer: {
             std::lock_guard<std::mutex> lock(request->local_server->mutex);
             if (request->local_server->closed) {
                 request->status = sl_status_ok();
@@ -1274,6 +1294,10 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             if (sl_status_is_ok(request->status)) {
                 request->local_server->closed = true;
             }
+            break;
+        }
+        default:
+            break;
         }
         return;
     }
@@ -1298,8 +1322,10 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
             request->diag.code = SL_DIAG_NET_LOCAL_IPC_DISPOSED;
             request->diag.message = sl_str_from_cstr("local IPC connection is closed");
+            return;
         }
-        else if (request->operation == NetV8Operation::LocalWrite) {
+        switch (request->operation) {
+        case NetV8Operation::LocalWrite: {
             SlLocalIoOptions options = sl_local_io_options_default();
             options.has_timeout_ms = request->has_timeout_ms;
             options.timeout_ms = request->timeout_ms;
@@ -1307,8 +1333,9 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
                 request->local_connection->native,
                 sl_bytes_from_parts(request->bytes.data(), request->bytes.size()), &options,
                 &request->diag);
+            break;
         }
-        else if (request->operation == NetV8Operation::LocalRead) {
+        case NetV8Operation::LocalRead: {
             SlOwnedBytes bytes = {};
             SlLocalIoOptions options = sl_local_io_options_default();
             options.has_timeout_ms = request->has_timeout_ms;
@@ -1319,8 +1346,9 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             if (sl_status_is_ok(request->status)) {
                 request->result_bytes.assign(bytes.ptr, bytes.ptr + bytes.length);
             }
+            break;
         }
-        else if (request->operation == NetV8Operation::LocalReadUntil) {
+        case NetV8Operation::LocalReadUntil: {
             SlOwnedBytes bytes = {};
             SlLocalIoOptions options = sl_local_io_options_default();
             options.has_timeout_ms = request->has_timeout_ms;
@@ -1332,8 +1360,9 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             if (sl_status_is_ok(request->status)) {
                 request->result_bytes.assign(bytes.ptr, bytes.ptr + bytes.length);
             }
+            break;
         }
-        else if (request->operation == NetV8Operation::LocalReadLine) {
+        case NetV8Operation::LocalReadLine: {
             SlOwnedStr line = {};
             SlLocalIoOptions options = sl_local_io_options_default();
             options.has_timeout_ms = request->has_timeout_ms;
@@ -1344,16 +1373,20 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             if (sl_status_is_ok(request->status)) {
                 request->result_text.assign(line.ptr, line.length);
             }
+            break;
         }
-        else if (request->operation == NetV8Operation::LocalClose) {
+        case NetV8Operation::LocalClose:
             request->status =
                 sl_local_connection_close(request->local_connection->native, &request->diag);
             request->local_connection->closed = true;
-        }
-        else if (request->operation == NetV8Operation::LocalAbort) {
+            break;
+        case NetV8Operation::LocalAbort:
             request->status =
                 sl_local_connection_abort(request->local_connection->native, &request->diag);
             request->local_connection->closed = true;
+            break;
+        default:
+            break;
         }
         return;
     }
@@ -1368,7 +1401,8 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             request->diag.message = sl_str_from_cstr("TCP listener handle is stale");
             return;
         }
-        if (request->operation == NetV8Operation::Accept) {
+        switch (request->operation) {
+        case NetV8Operation::Accept: {
             auto connection = std::make_shared<NetV8Connection>();
             SlTcpAcceptOptions options = sl_tcp_accept_options_default();
             uint32_t remaining_timeout = request->timeout_ms;
@@ -1447,8 +1481,9 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
                     request->connection = connection;
                 }
             }
+            break;
         }
-        else if (request->operation == NetV8Operation::CloseListener) {
+        case NetV8Operation::CloseListener: {
             std::lock_guard<std::mutex> lock(request->listener->mutex);
             if (request->listener->closed) {
                 request->status = sl_status_ok();
@@ -1464,8 +1499,9 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             if (sl_status_is_ok(request->status)) {
                 request->listener->closed = true;
             }
+            break;
         }
-        else if (request->operation == NetV8Operation::AbortListener) {
+        case NetV8Operation::AbortListener: {
             std::lock_guard<std::mutex> lock(request->listener->mutex);
             if (request->listener->closed) {
                 request->status = sl_status_ok();
@@ -1481,6 +1517,10 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
             if (sl_status_is_ok(request->status)) {
                 request->listener->closed = true;
             }
+            break;
+        }
+        default:
+            break;
         }
         return;
     }
@@ -1503,8 +1543,10 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
         request->status = sl_status_from_code(SL_STATUS_INVALID_STATE);
         request->diag.code = SL_DIAG_NET_CONNECTION_CLOSED;
         request->diag.message = sl_str_from_cstr("TCP connection is closed");
+        return;
     }
-    else if (request->operation == NetV8Operation::Write) {
+    switch (request->operation) {
+    case NetV8Operation::Write:
         if (request->connection->tls_active) {
             request->status = net_v8_tls_write(
                 *request->connection,
@@ -1519,8 +1561,8 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
                 request->connection->native,
                 sl_bytes_from_parts(request->bytes.data(), request->bytes.size()), &request->diag);
         }
-    }
-    else if (request->operation == NetV8Operation::Read) {
+        break;
+    case NetV8Operation::Read: {
         SlOwnedBytes bytes = {};
         request->status =
             request->connection->tls_active
@@ -1535,9 +1577,15 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
         if (sl_status_is_ok(request->status)) {
             request->result_bytes.assign(bytes.ptr, bytes.ptr + bytes.length);
         }
+        break;
     }
-    else if (request->operation == NetV8Operation::ReadUntil) {
+    case NetV8Operation::ReadUntil: {
         SlOwnedBytes bytes = {};
+        if (request->connection->tls_active) {
+            net_v8_set_diag(*request, SL_DIAG_NET_UNSUPPORTED_OPTION, SL_STATUS_UNSUPPORTED,
+                            "TLS readUntil is not supported; use read on TLS connections");
+            break;
+        }
         request->status = sl_tcp_connection_read_until(
             request->connection->native, &request->connection->arena,
             sl_bytes_from_parts(request->delimiter.data(), request->delimiter.size()),
@@ -1545,17 +1593,24 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
         if (sl_status_is_ok(request->status)) {
             request->result_bytes.assign(bytes.ptr, bytes.ptr + bytes.length);
         }
+        break;
     }
-    else if (request->operation == NetV8Operation::ReadLine) {
+    case NetV8Operation::ReadLine: {
         SlOwnedStr line = {};
+        if (request->connection->tls_active) {
+            net_v8_set_diag(*request, SL_DIAG_NET_UNSUPPORTED_OPTION, SL_STATUS_UNSUPPORTED,
+                            "TLS readLine is not supported; use read on TLS connections");
+            break;
+        }
         request->status =
             sl_tcp_connection_read_line(request->connection->native, &request->connection->arena,
                                         request->max_bytes, &line, &request->diag);
         if (sl_status_is_ok(request->status)) {
             request->result_text.assign(line.ptr, line.length);
         }
+        break;
     }
-    else if (request->operation == NetV8Operation::Close) {
+    case NetV8Operation::Close:
         if (request->connection->tls_active && request->connection->tls_ssl != nullptr) {
             SSL_shutdown(request->connection->tls_ssl);
             net_v8_tls_drain_write_bio(*request->connection, nullptr);
@@ -1563,11 +1618,14 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
         net_v8_tls_release(*request->connection);
         request->status = sl_tcp_connection_close(request->connection->native, &request->diag);
         request->connection->closed = true;
-    }
-    else if (request->operation == NetV8Operation::Abort) {
+        break;
+    case NetV8Operation::Abort:
         net_v8_tls_release(*request->connection);
         request->status = sl_tcp_connection_abort(request->connection->native, &request->diag);
         request->connection->closed = true;
+        break;
+    default:
+        break;
     }
 }
 
@@ -1604,23 +1662,115 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
         }
         ok = resolver->Reject(context, v8::Exception::Error(message)).FromMaybe(false);
     }
-    else if (request->operation == NetV8Operation::Connect ||
-             request->operation == NetV8Operation::ConnectTls ||
-             request->operation == NetV8Operation::Accept ||
-             request->operation == NetV8Operation::LocalConnect ||
-             request->operation == NetV8Operation::LocalAccept)
-    {
-        if (net_v8_is_local_operation(request->operation)) {
+    else {
+        switch (request->operation) {
+        case NetV8Operation::Connect:
+        case NetV8Operation::ConnectTls:
+        case NetV8Operation::Accept:
+        case NetV8Operation::LocalConnect:
+        case NetV8Operation::LocalAccept: {
+            if (net_v8_is_local_operation(request->operation)) {
+                SlResourceId id = {};
+                v8::Local<v8::Object> handle;
+                if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_LOCAL_CONNECTION,
+                                                   request->local_connection,
+                                                   net_v8_local_resource_cleanup, &id) ||
+                    !net_v8_resource_to_handle(isolate, context, id, &handle))
+                {
+                    if (sl_resource_id_is_valid(id)) {
+                        sl_resource_table_close_kind(&backend->resources, id,
+                                                     SL_RESOURCE_KIND_LOCAL_CONNECTION, nullptr);
+                    }
+                    ok = resolver
+                             ->Reject(
+                                 context,
+                                 v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                                     isolate,
+                                     "SLOPPY_E_NET_BACKEND_UNAVAILABLE: resource insert failed")))
+                             .FromMaybe(false);
+                }
+                else {
+                    ok = resolver->Resolve(context, handle).FromMaybe(false);
+                }
+                isolate->PerformMicrotaskCheckpoint();
+                return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
+            }
             SlResourceId id = {};
             v8::Local<v8::Object> handle;
-            if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_LOCAL_CONNECTION,
-                                               request->local_connection,
-                                               net_v8_local_resource_cleanup, &id) ||
+            bool insert_ok =
+                net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_TCP_CONNECTION,
+                                              request->connection, net_v8_resource_cleanup, &id);
+            const std::string* selected_protocol =
+                request->operation == NetV8Operation::ConnectTls &&
+                        !request->tls_selected_alpn.empty()
+                    ? &request->tls_selected_alpn
+                    : nullptr;
+            bool handle_ok = insert_ok && net_v8_resource_to_handle(isolate, context, id, &handle,
+                                                                    selected_protocol);
+            if (!insert_ok || !handle_ok) {
+                if (sl_resource_id_is_valid(id)) {
+                    sl_resource_table_close_kind(&backend->resources, id,
+                                                 SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
+                }
+                if (insert_ok && selected_protocol != nullptr) {
+                    ok = resolver
+                             ->Reject(context, v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                                                   isolate, "SLOPPY_E_NET_BACKEND_UNAVAILABLE: "
+                                                            "selected protocol set failed")))
+                             .FromMaybe(false);
+                }
+                else {
+                    ok = resolver
+                             ->Reject(context,
+                                      v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                                          isolate, "SLOPPY_E_NET_BACKEND_UNAVAILABLE: resource "
+                                                   "insert failed")))
+                             .FromMaybe(false);
+                }
+            }
+            else {
+                ok = resolver->Resolve(context, handle).FromMaybe(false);
+            }
+            break;
+        }
+        case NetV8Operation::Listen:
+        case NetV8Operation::LocalListen: {
+            if (request->operation == NetV8Operation::LocalListen) {
+                SlResourceId id = {};
+                v8::Local<v8::Object> handle;
+                if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_LOCAL_SERVER,
+                                                   request->local_server,
+                                                   net_v8_local_server_resource_cleanup, &id) ||
+                    !net_v8_resource_to_handle(isolate, context, id, &handle))
+                {
+                    if (sl_resource_id_is_valid(id)) {
+                        sl_resource_table_close_kind(&backend->resources, id,
+                                                     SL_RESOURCE_KIND_LOCAL_SERVER, nullptr);
+                    }
+                    ok = resolver
+                             ->Reject(
+                                 context,
+                                 v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                                     isolate,
+                                     "SLOPPY_E_NET_BACKEND_UNAVAILABLE: resource insert failed")))
+                             .FromMaybe(false);
+                }
+                else {
+                    ok = resolver->Resolve(context, handle).FromMaybe(false);
+                }
+                isolate->PerformMicrotaskCheckpoint();
+                return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
+            }
+            SlResourceId id = {};
+            v8::Local<v8::Object> handle;
+            if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_TCP_LISTENER,
+                                               request->listener, net_v8_listener_resource_cleanup,
+                                               &id) ||
                 !net_v8_resource_to_handle(isolate, context, id, &handle))
             {
                 if (sl_resource_id_is_valid(id)) {
                     sl_resource_table_close_kind(&backend->resources, id,
-                                                 SL_RESOURCE_KIND_LOCAL_CONNECTION, nullptr);
+                                                 SL_RESOURCE_KIND_TCP_LISTENER, nullptr);
                 }
                 ok = resolver
                          ->Reject(context,
@@ -1632,159 +1782,91 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
             else {
                 ok = resolver->Resolve(context, handle).FromMaybe(false);
             }
-            isolate->PerformMicrotaskCheckpoint();
-            return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
+            break;
         }
-        SlResourceId id = {};
-        v8::Local<v8::Object> handle;
-        if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_TCP_CONNECTION,
-                                           request->connection, net_v8_resource_cleanup, &id) ||
-            !net_v8_resource_to_handle(isolate, context, id, &handle))
-        {
-            if (sl_resource_id_is_valid(id)) {
-                sl_resource_table_close_kind(&backend->resources, id,
-                                             SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
+        case NetV8Operation::Read:
+        case NetV8Operation::ReadUntil:
+        case NetV8Operation::LocalRead:
+        case NetV8Operation::LocalReadUntil: {
+            std::unique_ptr<v8::BackingStore> backing =
+                v8::ArrayBuffer::NewBackingStore(isolate, request->result_bytes.size());
+            if (backing == nullptr) {
+                ok = resolver
+                         ->Reject(context,
+                                  v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                                      isolate,
+                                      "SLOPPY_E_NET_BACKEND_UNAVAILABLE: read allocation failed")))
+                         .FromMaybe(false);
+                break;
             }
-            ok = resolver
-                     ->Reject(
-                         context,
-                         v8::Exception::Error(v8::String::NewFromUtf8Literal(
-                             isolate, "SLOPPY_E_NET_BACKEND_UNAVAILABLE: resource insert failed")))
-                     .FromMaybe(false);
+            if (!request->result_bytes.empty()) {
+                std::copy(request->result_bytes.begin(), request->result_bytes.end(),
+                          static_cast<unsigned char*>(backing->Data()));
+            }
+            v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
+            v8::Local<v8::Uint8Array> view =
+                v8::Uint8Array::New(buffer, 0U, request->result_bytes.size());
+            ok = resolver->Resolve(context, view).FromMaybe(false);
+            break;
         }
-        else {
-            if (request->operation == NetV8Operation::ConnectTls &&
-                !request->tls_selected_alpn.empty() &&
-                !net_v8_set_string(isolate, context, handle, "selectedProtocol",
-                                   request->tls_selected_alpn))
+        case NetV8Operation::ReadLine:
+        case NetV8Operation::LocalReadLine: {
+            v8::Local<v8::String> line;
+            if (!sl_status_is_ok(net_v8_to_local_string(
+                    isolate,
+                    sl_str_from_parts(request->result_text.data(), request->result_text.size()),
+                    &line)))
             {
-                sl_resource_table_close_kind(&backend->resources, id,
-                                             SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
                 ok = resolver
                          ->Reject(
                              context,
                              v8::Exception::Error(v8::String::NewFromUtf8Literal(
                                  isolate,
-                                 "SLOPPY_E_NET_BACKEND_UNAVAILABLE: selected protocol set failed")))
+                                 "SLOPPY_E_NET_BACKEND_UNAVAILABLE: response conversion failed")))
                          .FromMaybe(false);
-                isolate->PerformMicrotaskCheckpoint();
-                return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
+                break;
             }
-            ok = resolver->Resolve(context, handle).FromMaybe(false);
+            ok = resolver->Resolve(context, line).FromMaybe(false);
+            break;
         }
-    }
-    else if (request->operation == NetV8Operation::Listen ||
-             request->operation == NetV8Operation::LocalListen)
-    {
-        if (request->operation == NetV8Operation::LocalListen) {
-            SlResourceId id = {};
-            v8::Local<v8::Object> handle;
-            if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_LOCAL_SERVER,
-                                               request->local_server,
-                                               net_v8_local_server_resource_cleanup, &id) ||
-                !net_v8_resource_to_handle(isolate, context, id, &handle))
-            {
-                if (sl_resource_id_is_valid(id)) {
-                    sl_resource_table_close_kind(&backend->resources, id,
-                                                 SL_RESOURCE_KIND_LOCAL_SERVER, nullptr);
-                }
-                ok = resolver
-                         ->Reject(context,
-                                  v8::Exception::Error(v8::String::NewFromUtf8Literal(
-                                      isolate,
-                                      "SLOPPY_E_NET_BACKEND_UNAVAILABLE: resource insert failed")))
-                         .FromMaybe(false);
+        case NetV8Operation::Close:
+        case NetV8Operation::Abort:
+            if (sl_resource_id_is_valid(request->resource_id)) {
+                sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                             SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
             }
-            else {
-                ok = resolver->Resolve(context, handle).FromMaybe(false);
+            ok = resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
+            break;
+        case NetV8Operation::LocalClose:
+        case NetV8Operation::LocalAbort:
+            if (sl_resource_id_is_valid(request->resource_id)) {
+                sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                             SL_RESOURCE_KIND_LOCAL_CONNECTION, nullptr);
             }
-            isolate->PerformMicrotaskCheckpoint();
-            return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
-        }
-        SlResourceId id = {};
-        v8::Local<v8::Object> handle;
-        if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_TCP_LISTENER,
-                                           request->listener, net_v8_listener_resource_cleanup,
-                                           &id) ||
-            !net_v8_resource_to_handle(isolate, context, id, &handle))
-        {
-            if (sl_resource_id_is_valid(id)) {
-                sl_resource_table_close_kind(&backend->resources, id, SL_RESOURCE_KIND_TCP_LISTENER,
-                                             nullptr);
+            ok = resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
+            break;
+        case NetV8Operation::CloseListener:
+        case NetV8Operation::AbortListener:
+            if (sl_resource_id_is_valid(request->resource_id)) {
+                sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                             SL_RESOURCE_KIND_TCP_LISTENER, nullptr);
             }
-            ok = resolver
-                     ->Reject(
-                         context,
-                         v8::Exception::Error(v8::String::NewFromUtf8Literal(
-                             isolate, "SLOPPY_E_NET_BACKEND_UNAVAILABLE: resource insert failed")))
-                     .FromMaybe(false);
+            ok = resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
+            break;
+        case NetV8Operation::LocalCloseServer:
+        case NetV8Operation::LocalAbortServer:
+            if (sl_resource_id_is_valid(request->resource_id)) {
+                sl_resource_table_close_kind(&backend->resources, request->resource_id,
+                                             SL_RESOURCE_KIND_LOCAL_SERVER, nullptr);
+            }
+            ok = resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
+            break;
+        case NetV8Operation::Write:
+        case NetV8Operation::LocalWrite:
+        default:
+            ok = resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
+            break;
         }
-        else {
-            ok = resolver->Resolve(context, handle).FromMaybe(false);
-        }
-    }
-    else if (request->operation == NetV8Operation::Read ||
-             request->operation == NetV8Operation::ReadUntil ||
-             request->operation == NetV8Operation::LocalRead ||
-             request->operation == NetV8Operation::LocalReadUntil)
-    {
-        std::unique_ptr<v8::BackingStore> backing =
-            v8::ArrayBuffer::NewBackingStore(isolate, request->result_bytes.size());
-        if (backing == nullptr) {
-            return sl_status_from_code(SL_STATUS_OUT_OF_MEMORY);
-        }
-        if (!request->result_bytes.empty()) {
-            std::copy(request->result_bytes.begin(), request->result_bytes.end(),
-                      static_cast<unsigned char*>(backing->Data()));
-        }
-        v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, std::move(backing));
-        v8::Local<v8::Uint8Array> view =
-            v8::Uint8Array::New(buffer, 0U, request->result_bytes.size());
-        ok = resolver->Resolve(context, view).FromMaybe(false);
-    }
-    else if (request->operation == NetV8Operation::ReadLine ||
-             request->operation == NetV8Operation::LocalReadLine)
-    {
-        v8::Local<v8::String> line;
-        if (!sl_status_is_ok(net_v8_to_local_string(
-                isolate,
-                sl_str_from_parts(request->result_text.data(), request->result_text.size()),
-                &line)))
-        {
-            return sl_status_from_code(SL_STATUS_INTERNAL);
-        }
-        ok = resolver->Resolve(context, line).FromMaybe(false);
-    }
-    else {
-        if ((request->operation == NetV8Operation::Close ||
-             request->operation == NetV8Operation::Abort) &&
-            sl_resource_id_is_valid(request->resource_id))
-        {
-            sl_resource_table_close_kind(&backend->resources, request->resource_id,
-                                         SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
-        }
-        if ((request->operation == NetV8Operation::LocalClose ||
-             request->operation == NetV8Operation::LocalAbort) &&
-            sl_resource_id_is_valid(request->resource_id))
-        {
-            sl_resource_table_close_kind(&backend->resources, request->resource_id,
-                                         SL_RESOURCE_KIND_LOCAL_CONNECTION, nullptr);
-        }
-        if ((request->operation == NetV8Operation::CloseListener ||
-             request->operation == NetV8Operation::AbortListener) &&
-            sl_resource_id_is_valid(request->resource_id))
-        {
-            sl_resource_table_close_kind(&backend->resources, request->resource_id,
-                                         SL_RESOURCE_KIND_TCP_LISTENER, nullptr);
-        }
-        if ((request->operation == NetV8Operation::LocalCloseServer ||
-             request->operation == NetV8Operation::LocalAbortServer) &&
-            sl_resource_id_is_valid(request->resource_id))
-        {
-            sl_resource_table_close_kind(&backend->resources, request->resource_id,
-                                         SL_RESOURCE_KIND_LOCAL_SERVER, nullptr);
-        }
-        ok = resolver->Resolve(context, v8::Undefined(isolate)).FromMaybe(false);
     }
 
     isolate->PerformMicrotaskCheckpoint();

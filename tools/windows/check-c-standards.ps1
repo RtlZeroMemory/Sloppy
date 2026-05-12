@@ -180,6 +180,7 @@ $ignoredCallVoidCastPattern = '\(void\)\s*(?:(?:[A-Za-z_][A-Za-z0-9_]*\s*(?:(?:-
 $allocPattern = '\b(malloc|free|realloc|calloc)\s*\('
 $analysisSuppressionPattern = '\bNOLINT(?:NEXTLINE|BEGIN|END)?\b'
 $validAnalysisSuppressionPattern = 'sloppy-analysis-suppress:\s*#\d+\s+.+;\s*remove when .+$'
+$packedLayoutPattern = '#\s*pragma\s+pack\b|__attribute__\s*\(\(\s*packed\b|__declspec\s*\(\s*align\b'
 
 function Test-AllowedMemoryPrimitiveBoundary {
     param(
@@ -329,6 +330,16 @@ foreach ($file in $files) {
                 -Severity "error"
         }
 
+        if ((Test-ImplementationPath $relativePath) -and $line -match $packedLayoutPattern) {
+            $violations += New-Finding `
+                -File $relativePath `
+                -Line $lineNumber `
+                -Pattern $Matches[0] `
+                -Rule "Packed or compiler-specific runtime layout is forbidden in Sloppy-owned C/C++ code." `
+                -Fix "Use field reordering, tagged unions, private flags, _Alignof, and layout tests; see docs/contributor/c-standards.md." `
+                -Severity "error"
+        }
+
         $previousLine = $line
     }
 }
@@ -373,6 +384,9 @@ void* bad_alloc(void) { return malloc(16); }
 int bad_suppression(void) { return 0; }
 void bad_void_cast(FILE* file) { (void)fputs("bad", file); }
 void bad_close_cast(FILE* file) { (void)fclose(file); }
+#pragma pack(push, 1)
+struct BadPacked { char c; int i; };
+#pragma pack(pop)
 '@
         Set-Content -LiteralPath (Join-Path $invalidRoot "src/cli/bad_fragment.inc") -Value @'
 #include <string.h>

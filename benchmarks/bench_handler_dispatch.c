@@ -126,6 +126,38 @@ static SlHttpRouteDispatchMode sl_bench_route_dispatch_mode_value(SlBenchRouteDi
     return SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED;
 }
 
+static bool sl_bench_result_text_equal(const SlEngineResult* result, const char* expected)
+{
+    size_t expected_length = expected == NULL ? 0U : strlen(expected);
+
+    if (result == NULL || expected == NULL || result->kind != SL_ENGINE_RESULT_TEXT) {
+        return false;
+    }
+    if (result->payload_kind == SL_ENGINE_RESULT_PAYLOAD_TEXT) {
+        return sl_str_equal(result->text, sl_str_from_cstr(expected));
+    }
+    if (result->payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE) {
+        return result->response.body.length == expected_length &&
+               result->response.body.ptr != NULL &&
+               memcmp(result->response.body.ptr, expected, expected_length) == 0;
+    }
+    return false;
+}
+
+static size_t sl_bench_result_body_length(const SlEngineResult* result)
+{
+    if (result == NULL) {
+        return 0U;
+    }
+    if (result->payload_kind == SL_ENGINE_RESULT_PAYLOAD_TEXT) {
+        return result->text.length;
+    }
+    if (result->payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE) {
+        return result->response.body.length;
+    }
+    return 0U;
+}
+
 static void sl_bench_set_native_text_route(SlPlanRoute* route, const char* method,
                                            const char* pattern, SlHandlerId handler_id,
                                            const char* body)
@@ -655,16 +687,14 @@ static SlStatus sl_bench_param_trie_dispatch_loop(SlBenchRouteDispatchMode mode,
             }
         }
         else {
-            if (!sl_status_is_ok(status) || result.kind != SL_ENGINE_RESULT_TEXT ||
-                !sl_str_equal(result.text, sl_str_from_cstr(expected_text)))
-            {
+            if (!sl_status_is_ok(status) || !sl_bench_result_text_equal(&result, expected_text)) {
                 sl_engine_destroy(engine);
                 return sl_status_from_code(SL_STATUS_INVALID_STATE);
             }
         }
         checksum += (uint64_t)sl_status_code(status);
         checksum += (uint64_t)result.kind;
-        checksum += result.kind == SL_ENGINE_RESULT_TEXT ? (uint64_t)result.text.length : 0U;
+        checksum += (uint64_t)sl_bench_result_body_length(&result);
     }
 
     sl_engine_destroy(engine);
@@ -812,14 +842,12 @@ static SlStatus sl_bench_param_heavy_dispatch_loop(size_t route_count, size_t ta
         sl_arena_reset(&dispatch_arena);
         status = sl_http_dispatch_request_head(&dispatch_arena, engine, &plan,
                                                &cached_table.dispatch, &request, &result, NULL);
-        if (!sl_status_is_ok(status) || result.kind != SL_ENGINE_RESULT_TEXT ||
-            !sl_str_equal(result.text, sl_str_from_cstr("param-heavy")))
-        {
+        if (!sl_status_is_ok(status) || !sl_bench_result_text_equal(&result, "param-heavy")) {
             sl_engine_destroy(engine);
             return sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
         checksum += (uint64_t)result.kind;
-        checksum += (uint64_t)result.text.length;
+        checksum += (uint64_t)sl_bench_result_body_length(&result);
     }
 
     sl_engine_destroy(engine);
@@ -925,14 +953,14 @@ static SlStatus sl_bench_native_response_loop(const char* kind, const char* body
         status = sl_http_dispatch_request_head(&dispatch_arena, engine, &plan,
                                                &cached_table.dispatch, &request, &result, NULL);
         if (!sl_status_is_ok(status) ||
-            (result.kind != SL_ENGINE_RESULT_TEXT && result.kind != SL_ENGINE_RESULT_JSON))
+            (result.kind != SL_ENGINE_RESULT_TEXT && result.kind != SL_ENGINE_RESULT_JSON) ||
+            result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE)
         {
             sl_engine_destroy(engine);
             return sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
         checksum += (uint64_t)result.kind;
-        checksum += result.kind == SL_ENGINE_RESULT_JSON ? (uint64_t)result.response.body.length
-                                                         : (uint64_t)result.text.length;
+        checksum += (uint64_t)sl_bench_result_body_length(&result);
         checksum += (uint64_t)result.response.status;
     }
 

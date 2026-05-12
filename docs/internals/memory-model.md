@@ -92,6 +92,19 @@ General rules:
 - Size arithmetic and buffer writes should use checked helpers and bounded
   builders.
 
+Compact native structs are allowed only when they preserve the same ownership model. A
+smaller type must not make borrowed data look owned, hide which payload is active, or let a
+pointer escape a shorter lifetime.
+
+The normal tools are field reordering, tagged unions, private flag masks, and
+`_Alignof`-based typed allocation. These keep the memory model readable: a contributor can
+still see which object owns the bytes, how long the view lives, and which member is active.
+
+Packed runtime structs, NaN-boxed values, and tagged native pointers are not part of the
+current memory model. They are not banned because performance does not matter; they are
+deferred because they change how debugging, sanitizers, and portability work. Future work
+must design, measure, and document those tradeoffs before using them.
+
 ## Plan and artifact lifetime
 
 The compiler writes the Plan, bundle, source map, and optional dependency graph

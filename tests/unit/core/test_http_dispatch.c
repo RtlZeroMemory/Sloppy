@@ -48,6 +48,24 @@ static int expect_str_equal(SlStr actual, const char* expected)
     return expect_true(sl_str_equal(actual, sl_str_from_cstr(expected)));
 }
 
+static int expect_result_text_equal(const SlEngineResult* result, const char* expected)
+{
+    size_t expected_length = strlen(expected);
+
+    if (result == NULL || expected == NULL || result->kind != SL_ENGINE_RESULT_TEXT) {
+        return 1;
+    }
+    if (result->payload_kind == SL_ENGINE_RESULT_PAYLOAD_TEXT) {
+        return expect_true(sl_str_equal(result->text, sl_str_from_cstr(expected)));
+    }
+    if (result->payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE) {
+        return expect_true(result->response.body.length == expected_length &&
+                           result->response.body.ptr != NULL &&
+                           memcmp(result->response.body.ptr, expected, expected_length) == 0);
+    }
+    return 1;
+}
+
 static int set_test_env_value(const char* key, const char* value)
 {
 #ifdef _WIN32
@@ -2672,8 +2690,9 @@ static int test_native_static_text_response_skips_engine(void)
 
     sl_engine_destroy(engine);
     return expect_true(
-        result.kind == SL_ENGINE_RESULT_TEXT && result.response.status == 200U &&
-        expect_str_equal(result.text, "ok") == 0 &&
+        result.kind == SL_ENGINE_RESULT_TEXT &&
+        result.payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE &&
+        result.response.status == 200U && expect_result_text_equal(&result, "ok") == 0 &&
         sl_str_equal(result.response.content_type, sl_str_from_cstr("text/sloppy-test")));
 }
 
@@ -2737,9 +2756,7 @@ static int expect_validate_dispatch_agrees(SlPlanRoute* routes, size_t route_cou
         goto cleanup;
     }
     if (expected_text != NULL) {
-        if (result.kind != SL_ENGINE_RESULT_TEXT ||
-            expect_str_equal(result.text, expected_text) != 0)
-        {
+        if (expect_result_text_equal(&result, expected_text) != 0) {
             result_code = 5;
             goto cleanup;
         }
