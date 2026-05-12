@@ -99,6 +99,15 @@ typedef struct SlRunApp
     bool has_dynamic_routes;
 } SlRunApp;
 
+static volatile sig_atomic_t sl_run_stop_requested = 0;
+
+static void sl_run_signal_handler(int signum)
+{
+    if (signum == SIGINT || signum == SIGTERM) {
+        sl_run_stop_requested = 1;
+    }
+}
+
 static SlRunApp sl_run_command_app_storage;
 static bool sl_run_diagnostics_json_enabled;
 
@@ -2866,9 +2875,32 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
            host, (unsigned)port);
     printf("Development server: HTTP/1.1%s, local development only.\n",
            config.tls.enabled ? " over TLS" : "");
-    status = sl_http_transport_server_run(&server, &diag);
-    if (!sl_status_is_ok(status)) {
-        result = 1;
+    {
+        sl_run_stop_requested = 0;
+        void (*old_sigint)(int) = signal(SIGINT, sl_run_signal_handler);
+        void (*old_sigterm)(int) = signal(SIGTERM, sl_run_signal_handler);
+        while (!sl_run_stop_requested) {
+            status = sl_http_transport_server_poll(&server, &diag);
+            if (!sl_status_is_ok(status)) {
+                sl_run_print_diag("sloppy run: HTTP server poll failed: ", &transport_arena, &diag);
+                result = 1;
+                break;
+            }
+            sl_platform_sleep_ms(1U);
+        }
+        if (old_sigint != SIG_ERR) {
+            signal(SIGINT, old_sigint);
+        }
+        if (old_sigterm != SIG_ERR) {
+            signal(SIGTERM, old_sigterm);
+        }
+        if (result == 0 && sl_run_stop_requested) {
+            status = sl_http_transport_server_stop(&server, &diag);
+            if (!sl_status_is_ok(status)) {
+                sl_run_print_diag("sloppy run: HTTP server stop failed: ", &transport_arena, &diag);
+                result = 1;
+            }
+        }
     }
     sl_http_transport_server_dispose(&server, NULL);
     sl_heap_buffer_dispose(&transport_storage);

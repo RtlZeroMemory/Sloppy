@@ -39,6 +39,7 @@ struct SlHttpPlatformConnection
     uv_tcp_t handle;
     uv_write_t write;
     uv_write_t tls_write;
+    uv_async_t write_completion_async;
     uv_shutdown_t shutdown;
     uv_timer_t header_timer;
     uv_timer_t body_timer;
@@ -56,6 +57,8 @@ struct SlHttpPlatformConnection
     size_t tls_write_buffer_size;
     SSL* tls_ssl;
     bool initialized;
+    bool write_completion_async_initialized;
+    bool write_completion_pending;
     bool header_timer_initialized;
     bool body_timer_initialized;
     bool request_timer_initialized;
@@ -71,6 +74,7 @@ struct SlHttpPlatformConnection
     bool tls_shutdown_writing;
     bool graceful_shutdown;
     bool shutdown_pending;
+    int write_completion_status;
 };
 
 struct SlHttpPlatformListener
@@ -601,6 +605,7 @@ static void sl_http_transport_connection_close_cb(uv_handle_t* handle)
     platform->tls_alpn_h2 = false;
     platform->tls_writing = false;
     platform->tls_shutdown_writing = false;
+    platform->write_completion_pending = false;
     platform->graceful_shutdown = false;
     platform->shutdown_pending = false;
     platform->closing = false;
@@ -609,7 +614,6 @@ static void sl_http_transport_connection_close_cb(uv_handle_t* handle)
         platform->owner->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED;
     }
     sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_CONNECTIONS_CLOSED, 1U);
-    sl_http_profile_flush_if_requested();
 }
 
 static void sl_http_transport_shutdown_cb(uv_shutdown_t* request, int status)
@@ -883,6 +887,10 @@ static void sl_http_transport_stop_timer(uv_timer_t* timer, bool* initialized);
 static void sl_http_transport_write_timeout_cb(uv_timer_t* timer);
 static void sl_http_transport_idle_timeout_cb(uv_timer_t* timer);
 static void sl_http_transport_write_cb(uv_write_t* request, int status);
+static void sl_http_transport_complete_write(SlHttpPlatformConnection* platform, int status);
+static void sl_http_transport_deferred_write_completion_cb(uv_async_t* async);
+static SlStatus sl_http_transport_queue_write_completion(SlHttpPlatformConnection* platform,
+                                                         int status);
 static void sl_http_transport_tls_write_cb(uv_write_t* request, int status);
 static void sl_http_transport_tls_shutdown_write_cb(uv_write_t* request, int status);
 static SlStatus sl_http_transport_restart_keep_alive_read(SlHttpTransportConnection* connection,
@@ -1472,9 +1480,20 @@ static SlStatus sl_http_transport_start_write_bytes(SlHttpTransportConnection* c
         sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_SOCKET_WRITE_SCHEDULING,
                                      sl_http_profile_now_ns() - started_ns);
         if (rc == (int)bytes.length) {
+            status = sl_http_transport_queue_write_completion(connection->platform, 0);
+            if (!sl_status_is_ok(status)) {
+                return sl_http_transport_connection_diag(
+                    connection, out_diag, SL_DIAG_HTTP_WRITE_FAILED, sl_status_code(status),
+                    sl_http_transport_literal("HTTP transport write completion could not be queued",
+                                              sizeof("HTTP transport write completion could not be "
+                                                     "queued") -
+                                                  1U),
+                    sl_http_transport_literal(
+                        "the response write already completed inline",
+                        sizeof("the response write already completed inline") - 1U));
+            }
             connection->platform->writing = true;
             connection->write_started = true;
-            sl_http_transport_write_cb(&connection->platform->write, 0);
             return sl_status_ok();
         }
         if (rc > 0) {
@@ -2272,6 +2291,48 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
 {
     SlHttpPlatformConnection* platform =
         request == NULL ? NULL : (SlHttpPlatformConnection*)request->data;
+    sl_http_transport_complete_write(platform, status);
+}
+
+static void sl_http_transport_deferred_write_completion_cb(uv_async_t* async)
+{
+    SlHttpPlatformConnection* platform =
+        async == NULL ? NULL : (SlHttpPlatformConnection*)async->data;
+    int status = 0;
+
+    if (platform == NULL || !platform->write_completion_pending) {
+        return;
+    }
+    status = platform->write_completion_status;
+    platform->write_completion_pending = false;
+    sl_http_transport_complete_write(platform, status);
+}
+
+static SlStatus sl_http_transport_queue_write_completion(SlHttpPlatformConnection* platform,
+                                                         int status)
+{
+    int rc = 0;
+
+    if (platform == NULL || platform->owner == NULL || !platform->initialized) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!platform->write_completion_async_initialized) {
+        rc = uv_async_init(platform->handle.loop, &platform->write_completion_async,
+                           sl_http_transport_deferred_write_completion_cb);
+        if (rc != 0) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        platform->write_completion_async.data = platform;
+        platform->write_completion_async_initialized = true;
+    }
+    platform->write_completion_status = status;
+    platform->write_completion_pending = true;
+    rc = uv_async_send(&platform->write_completion_async);
+    return rc == 0 ? sl_status_ok() : sl_status_from_code(SL_STATUS_INTERNAL);
+}
+
+static void sl_http_transport_complete_write(SlHttpPlatformConnection* platform, int status)
+{
     SlHttpTransportConnection* connection = platform == NULL ? NULL : platform->owner;
     SlDiag diag = {0};
     uint64_t profile_started_ns = sl_http_profile_now_ns();
@@ -2345,13 +2406,11 @@ static void sl_http_transport_write_cb(uv_write_t* request, int status)
 
     if (status == 0 && connection->keep_alive_after_write && !connection->close_after_write) {
         sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_REQUESTS_TOTAL, 1U);
-        sl_http_profile_flush_if_requested();
         sl_http_transport_restart_keep_alive_read(connection, NULL);
         return;
     }
 
     sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_REQUESTS_TOTAL, 1U);
-    sl_http_profile_flush_if_requested();
     sl_http_transport_connection_close(connection, NULL);
 }
 
@@ -2559,6 +2618,17 @@ static void sl_http_transport_close_timer(uv_timer_t* timer, bool* initialized)
     *initialized = false;
 }
 
+static void sl_http_transport_close_async(uv_async_t* async, bool* initialized)
+{
+    if (async == NULL || initialized == NULL || !*initialized) {
+        return;
+    }
+    if (!uv_is_closing((uv_handle_t*)async)) {
+        uv_close((uv_handle_t*)async, NULL);
+    }
+    *initialized = false;
+}
+
 static void sl_http_transport_stop_connection_timers(SlHttpPlatformConnection* platform)
 {
     if (platform == NULL) {
@@ -2581,6 +2651,7 @@ static void sl_http_transport_close_connection_timers(SlHttpPlatformConnection* 
     sl_http_transport_close_timer(&platform->request_timer, &platform->request_timer_initialized);
     sl_http_transport_close_timer(&platform->write_timer, &platform->write_timer_initialized);
     sl_http_transport_close_timer(&platform->idle_timer, &platform->idle_timer_initialized);
+    platform->write_completion_pending = false;
 }
 
 static SlStatus sl_http_transport_start_timer(SlHttpPlatformConnection* platform, uv_timer_t* timer,
@@ -4929,6 +5000,7 @@ SlStatus sl_http_transport_server_run(SlHttpTransportServer* server, SlDiag* out
 {
     int rc = 0;
     size_t previous_accept_failures = 0U;
+    SlStatus status;
 
     sl_http_transport_clear_diag(out_diag);
     if (server == NULL || server->platform == NULL || !server->platform->loop_initialized) {
@@ -4952,7 +5024,8 @@ SlStatus sl_http_transport_server_run(SlHttpTransportServer* server, SlDiag* out
                                              "boundary") -
                                           1U));
     }
-    return sl_status_ok();
+    status = sl_http_profile_flush_if_requested();
+    return status;
 }
 
 SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connection, SlDiag* out_diag)
@@ -5189,6 +5262,9 @@ SlStatus sl_http_transport_server_stop(SlHttpTransportServer* server, SlDiag* ou
     {
         status = sl_http_backend_stop(&server->backend, out_diag);
     }
+    if (server->platform != NULL && server->platform->loop_initialized) {
+        uv_run(&server->platform->loop, UV_RUN_NOWAIT);
+    }
 
     for (size_t index = 0U; index < server->connection_capacity; index += 1U) {
         if (server->connections[index].state == SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE)
@@ -5199,13 +5275,23 @@ SlStatus sl_http_transport_server_stop(SlHttpTransportServer* server, SlDiag* ou
     }
 
     if (server->platform != NULL) {
+        for (size_t index = 0U; index < server->connection_capacity; index += 1U) {
+            sl_http_transport_close_async(
+                &server->platform_connections[index].write_completion_async,
+                &server->platform_connections[index].write_completion_async_initialized);
+            server->platform_connections[index].write_completion_pending = false;
+        }
         sl_http_transport_close_listener(server->platform);
         if (server->platform->loop_initialized) {
+            uv_run(&server->platform->loop, UV_RUN_DEFAULT);
             uv_loop_close(&server->platform->loop);
             server->platform->loop_initialized = false;
         }
     }
     server->state = SL_HTTP_TRANSPORT_SERVER_STATE_STOPPED;
+    if (sl_status_is_ok(status)) {
+        status = sl_http_profile_flush_if_requested();
+    }
     return status;
 }
 
@@ -5237,6 +5323,10 @@ SlStatus sl_http_transport_server_dispose(SlHttpTransportServer* server, SlDiag*
         sl_http_transport_release_tls_context(server->platform);
     }
     server->state = SL_HTTP_TRANSPORT_SERVER_STATE_DISPOSED;
+    status = sl_http_profile_flush_if_requested();
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     return sl_status_ok();
 }
 

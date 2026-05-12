@@ -3490,6 +3490,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
                 seed == NULL ? 0U : seed->request_id, seed == NULL ? 0U : seed->connection_id,
                 (uint64_t)binding->route_index, (uint64_t)binding->handler_id,
                 validation_route->pattern);
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NATIVE_RESPONSE_ELIGIBLE, 1U);
             sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NATIVE_RESPONSE_HITS, 1U);
             started_ns = sl_http_profile_now_ns();
             status = sl_http_dispatch_native_response(validation_route, out_result);

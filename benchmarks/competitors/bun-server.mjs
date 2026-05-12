@@ -20,6 +20,17 @@ const server = Bun.serve({
     if (request.method === "GET" && url.pathname === "/large") {
       return json({ items: largeList() });
     }
+    if (request.method === "GET" && url.pathname === "/static-json") {
+      return json({ ok: true, mode: "static" });
+    }
+    if (request.method === "GET" && url.pathname === "/static-text") {
+      return new Response("ok\n", {
+        headers: { "content-type": "text/plain; charset=utf-8", "content-length": "3" },
+      });
+    }
+    if (request.method === "GET" && url.pathname === "/dynamic-json") {
+      return json({ ok: true, mode: "dynamic-0" });
+    }
     if (request.method === "GET" && url.pathname.startsWith("/route/")) {
       return json({ ok: true, route: url.pathname });
     }

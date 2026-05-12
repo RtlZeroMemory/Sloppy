@@ -4,12 +4,13 @@
 #include "sloppy/platform_thread.h"
 
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
 static SlBreadcrumbRing sl_global_breadcrumb_ring;
-static bool sl_success_breadcrumbs_cached;
-static bool sl_success_breadcrumbs_initialized;
+static atomic_bool sl_success_breadcrumbs_cached;
+static atomic_bool sl_success_breadcrumbs_initialized;
 
 static bool sl_breadcrumb_is_global_ring(const SlBreadcrumbRing* ring)
 {
@@ -34,7 +35,7 @@ static bool sl_breadcrumb_success_events_enabled(void)
 {
     char value[16];
 
-    if (!sl_success_breadcrumbs_initialized) {
+    if (!atomic_load_explicit(&sl_success_breadcrumbs_initialized, memory_order_acquire)) {
 #if defined(_WIN32)
         size_t required = 0U;
         value[0] = '\0';
@@ -55,10 +56,11 @@ static bool sl_breadcrumb_success_events_enabled(void)
             value[index] = '\0';
         }
 #endif
-        sl_success_breadcrumbs_cached = sl_breadcrumb_env_truthy(value);
-        sl_success_breadcrumbs_initialized = true;
+        atomic_store_explicit(&sl_success_breadcrumbs_cached, sl_breadcrumb_env_truthy(value),
+                              memory_order_release);
+        atomic_store_explicit(&sl_success_breadcrumbs_initialized, true, memory_order_release);
     }
-    return sl_success_breadcrumbs_cached;
+    return atomic_load_explicit(&sl_success_breadcrumbs_cached, memory_order_acquire);
 }
 
 static bool sl_breadcrumb_is_routine_success_event(SlBreadcrumbEvent event, SlStatusCode status)

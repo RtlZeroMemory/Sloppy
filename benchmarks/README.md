@@ -233,6 +233,12 @@ rows are the only JSON rows in this family intended for local
 Sloppy-vs-runtime loopback comparison. In-process `sloppy_bench` JSON rows must
 not be compared directly against competitor loopback rows.
 
+The Sloppy loopback matrix includes static no-JS `Results.json` and
+`Results.text` rows, a dynamic V8 `Results.json` row, request-body JSON rows,
+large JSON response rows, and route-table rows. When `-HttpProfile` is enabled,
+the static no-JS rows should show `nativeResponseHits > 0`; a zero value means
+the benchmark app did not exercise the native response path being investigated.
+
 Pass `-HttpProfile` to run Sloppy loopback rows with `SLOPPY_HTTP_PROFILE=1`.
 The runner starts a fresh Sloppy process per profiled scenario and writes
 machine-readable phase summaries to `artifacts/bench/http-profile-*.json`, plus

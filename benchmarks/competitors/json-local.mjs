@@ -29,6 +29,7 @@ const httpProfileOut = args.get("http-profile-out") ?? path.join("artifacts", "b
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..");
 const httpProfileOutDir = path.resolve(repoRoot, httpProfileOut);
+const httpProfileRunId = `${Date.now().toString(36)}-${process.pid.toString(36)}`;
 
 const payloads = {
   small: { username: "ada", password: "correct horse battery staple" },
@@ -83,9 +84,10 @@ function resolveSloppyBin() {
     path.join(repoRoot, "build", "unix-release", "sloppy"),
   ].filter(Boolean);
   for (const candidate of candidates) {
-    const result = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+    const resolved = path.resolve(repoRoot, candidate);
+    const result = spawnSync(resolved, ["--version"], { encoding: "utf8" });
     if (!result.error && result.status === 0) {
-      return { available: true, path: candidate, version: (result.stdout || result.stderr).trim() };
+      return { available: true, path: resolved, version: (result.stdout || result.stderr).trim() };
     }
   }
   return { available: false, path: null, version: null };
@@ -116,6 +118,11 @@ function expectedForScenario(scenario, requestIndex, text, status) {
       ? { ok: true }
       : { ok: false, reason: `invalid scenario expected 400, got ${status}` };
   }
+  if (scenario === "static-text") {
+    return status === 200 && text === "ok\n"
+      ? { ok: true }
+      : { ok: false, reason: "static-text response did not contain the expected text payload" };
+  }
 
   let parsed = null;
   try {
@@ -142,6 +149,16 @@ function expectedForScenario(scenario, requestIndex, text, status) {
       ? { ok: true }
       : { ok: false, reason: "large response did not contain the expected 256 items" };
   }
+  if (scenario === "static-json") {
+    return parsed?.ok === true && parsed?.mode === "static"
+      ? { ok: true }
+      : { ok: false, reason: "static-json response did not contain the expected static payload" };
+  }
+  if (scenario === "dynamic-json") {
+    return parsed?.ok === true && parsed?.mode === "dynamic-0"
+      ? { ok: true }
+      : { ok: false, reason: "dynamic-json response did not contain the expected dynamic payload" };
+  }
   const expectedRoute = `/route/${requestIndex % 1000}`;
   return parsed?.ok === true && parsed?.route === expectedRoute
     ? { ok: true }
@@ -158,6 +175,23 @@ function handleScenario(req, res) {
   if (req.method === "GET" && req.url?.startsWith("/route/")) {
     const body = JSON.stringify({ ok: true, route: req.url });
     res.writeHead(200, { "content-type": "application/json" });
+    res.end(body);
+    return;
+  }
+  if (req.method === "GET" && req.url === "/static-json") {
+    const body = JSON.stringify({ ok: true, mode: "static" });
+    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+    res.end(body);
+    return;
+  }
+  if (req.method === "GET" && req.url === "/static-text") {
+    res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "content-length": 3 });
+    res.end("ok\n");
+    return;
+  }
+  if (req.method === "GET" && req.url === "/dynamic-json") {
+    const body = JSON.stringify({ ok: true, mode: "dynamic-0" });
+    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
     res.end(body);
     return;
   }
@@ -214,6 +248,9 @@ async function startExpressServer() {
   app.post("/invalid", (_req, res) => res.status(400).json({ error: "malformed_json" }));
   app.get("/large", (_req, res) => res.json({ items: largeList() }));
   app.get("/route/:id", (req, res) => res.json({ ok: true, route: `/route/${req.params.id}` }));
+  app.get("/static-json", (_req, res) => res.json({ ok: true, mode: "static" }));
+  app.get("/static-text", (_req, res) => res.type("text/plain; charset=utf-8").send("ok\n"));
+  app.get("/dynamic-json", (_req, res) => res.json({ ok: true, mode: "dynamic-0" }));
   app.use((error, _req, res, _next) => {
     if (error instanceof SyntaxError) {
       res.status(400).json({ error: "malformed_json" });
@@ -240,16 +277,19 @@ async function startFastifyServer() {
   app.post("/medium", async (req) => ({ ok: true, echo: req.body }));
   app.get("/large", async () => ({ items: largeList() }));
   app.get("/route/:id", async (req) => ({ ok: true, route: `/route/${req.params.id}` }));
+  app.get("/static-json", async () => ({ ok: true, mode: "static" }));
+  app.get("/static-text", async (_req, reply) => reply.type("text/plain; charset=utf-8").send("ok\n"));
+  app.get("/dynamic-json", async () => ({ ok: true, mode: "dynamic-0" }));
   await app.listen({ host: "127.0.0.1", port: 0 });
   return { baseUrl: app.server.address() ? `http://127.0.0.1:${app.server.address().port}` : "", close: () => app.close() };
 }
 
-async function waitForHttpReady(baseUrl) {
+async function waitForHttpReady(baseUrl, pathName = "/large") {
   const deadline = Date.now() + 10_000;
   let lastError = null;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${baseUrl}/large`);
+      const response = await fetch(`${baseUrl}${pathName}`);
       if (response.status === 200) {
         await response.arrayBuffer();
         return;
@@ -303,9 +343,9 @@ async function startSloppyServer(mode, sloppyInfo, profile = null) {
   child.once("error", () => {});
   const baseUrl = `http://127.0.0.1:${port}`;
   try {
-    await waitForHttpReady(baseUrl);
+    await waitForHttpReady(baseUrl, "/static-json");
   } catch (error) {
-    child.kill();
+    child.kill("SIGINT");
     throw new Error(`sloppy server did not become ready: ${error.message}\n${stderr}`);
   }
   return {
@@ -313,7 +353,7 @@ async function startSloppyServer(mode, sloppyInfo, profile = null) {
     close: () =>
       new Promise((resolve) => {
         child.once("exit", resolve);
-        child.kill();
+        child.kill("SIGINT");
         setTimeout(resolve, 1000).unref();
       }),
   };
@@ -343,6 +383,15 @@ async function issueScenarioRequest(baseUrl, scenario, index) {
   }
   if (scenario === "large") {
     return await fetch(`${baseUrl}/large`);
+  }
+  if (scenario === "static-json") {
+    return await fetch(`${baseUrl}/static-json`);
+  }
+  if (scenario === "static-text") {
+    return await fetch(`${baseUrl}/static-text`);
+  }
+  if (scenario === "dynamic-json") {
+    return await fetch(`${baseUrl}/dynamic-json`);
   }
   return await fetch(`${baseUrl}/route/${index % 1000}`);
 }
@@ -399,7 +448,7 @@ function runtimeRowPrefix(runtime) {
 
 function profilePathFor(runtime, scenario, repeatIndex) {
   const name = `${runtimeRowPrefix(runtime)}.${scenarioRowSegment(scenario)}`.replaceAll(/[^\w.-]/g, "_");
-  return path.join(httpProfileOutDir, `http-profile-${name}-repeat-${repeatIndex}.json`);
+  return path.join(httpProfileOutDir, `http-profile-${httpProfileRunId}-${name}-repeat-${repeatIndex}.json`);
 }
 
 function median(values) {
@@ -442,7 +491,16 @@ function summarizeRows(results) {
 
 async function runRuntime(name, version, start) {
   let server = null;
-  const scenarios = ["small", "invalid", "medium", "large", "route-table"];
+  const scenarios = [
+    "static-json",
+    "static-text",
+    "dynamic-json",
+    "small",
+    "invalid",
+    "medium",
+    "large",
+    "route-table",
+  ];
   try {
     if (httpProfile && name.startsWith("sloppy:loopback:")) {
       const rows = [];
@@ -626,6 +684,7 @@ const report = {
   httpProfile: {
     enabled: httpProfile,
     outDir: httpProfile ? httpProfileOutDir : null,
+    runId: httpProfile ? httpProfileRunId : null,
   },
   client: "node fetch loop, one awaited request at a time",
   scenarios: {
@@ -633,6 +692,9 @@ const report = {
     invalid: "POST /small with malformed JSON; expects HTTP 400",
     medium: "POST /medium with nested JSON payload; validates JSON echo response",
     large: "GET /large; validates 256-item JSON response",
+    "static-json": "GET /static-json; validates a static Results.json payload eligible for native no-JS response dispatch",
+    "static-text": "GET /static-text; validates a static Results.text payload eligible for native no-JS response dispatch",
+    "dynamic-json": "GET /dynamic-json; validates a Results.json payload that still requires V8 handler execution and result conversion",
     "route-table": "GET /route/{id}; validates route echo; raw runtimes may use a parameter route, so this is loopback routing evidence rather than a generated 1000-route-table comparison",
   },
   host: {
@@ -649,20 +711,19 @@ await fs.mkdir(path.dirname(outPath), { recursive: true });
 await fs.writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
 if (httpProfile) {
   const files = (await fs.readdir(httpProfileOutDir))
-    .filter((entry) => entry.startsWith("http-profile-") && entry.endsWith(".json"))
+    .filter((entry) => entry.startsWith(`http-profile-${httpProfileRunId}-`) && entry.endsWith(".json"))
     .sort();
   const lines = [
     "# HTTP phase profile summary",
     "",
-    "| Scenario | Requests | HTTP parse avg ns | Route dispatch avg ns | JSON validation avg ns | V8 handler avg ns | V8 handler count | Response serialization avg ns | Socket write avg ns | Write completion avg ns |",
-    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Scenario | Requests | Native response hits | HTTP parse avg ns | Route dispatch avg ns | JSON validation avg ns | V8 total avg ns | V8 context avg ns | V8 call avg ns | V8 conversion avg ns | V8 result construction avg ns | JSON stringify avg ns | Response serialization avg ns | Socket write avg ns | Write completion avg ns |",
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   ];
   for (const file of files) {
     const profile = JSON.parse(await fs.readFile(path.join(httpProfileOutDir, file), "utf8"));
     const phaseAvg = (name) => profile.phases?.[name]?.avgNs ?? 0;
-    const phaseCount = (name) => profile.phases?.[name]?.count ?? 0;
     lines.push(
-      `| ${profile.scenario ?? file} | ${profile.requests ?? 0} | ${phaseAvg("http_parse")} | ${phaseAvg("route_dispatch")} | ${phaseAvg("json_validation")} | ${phaseAvg("v8_handler_execution")} | ${phaseCount("v8_handler_execution")} | ${phaseAvg("response_serialization_header_writing")} | ${phaseAvg("socket_write_scheduling")} | ${phaseAvg("write_completion")} |`,
+      `| ${profile.scenario ?? file} | ${profile.requests ?? 0} | ${profile.counters?.nativeResponseHits ?? 0} | ${phaseAvg("http_parse")} | ${phaseAvg("route_dispatch")} | ${phaseAvg("json_validation")} | ${phaseAvg("v8_handler_execution")} | ${phaseAvg("v8_context_construction")} | ${phaseAvg("v8_handler_call")} | ${phaseAvg("v8_result_conversion")} | ${phaseAvg("v8_result_construction")} | ${phaseAvg("v8_json_stringify_generic_serialization")} | ${phaseAvg("response_serialization_header_writing")} | ${phaseAvg("socket_write_scheduling")} | ${phaseAvg("write_completion")} |`,
     );
   }
   await fs.writeFile(path.join(httpProfileOutDir, "http-profile-summary.md"), `${lines.join("\n")}\n`, "utf8");

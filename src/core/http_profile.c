@@ -70,6 +70,11 @@ static const char* sl_http_profile_phase_name(SlHttpProfilePhase phase)
         "json_validation",
         "body_materialization",
         "v8_handler_execution",
+        "v8_context_construction",
+        "v8_handler_call",
+        "v8_result_conversion",
+        "v8_result_construction",
+        "v8_json_stringify_generic_serialization",
         "native_response_selection",
         "response_serialization_header_writing",
         "socket_write_scheduling",
@@ -107,7 +112,8 @@ static const char* sl_http_profile_counter_name(SlHttpProfileCounter counter)
                                                                "responseBufferCopies",
                                                                "arenaResets",
                                                                "diagnosticsRendered",
-                                                               "breadcrumbsRecorded"};
+                                                               "breadcrumbsRecorded",
+                                                               "nativeResponseEligible"};
     if ((unsigned int)counter >= SL_HTTP_PROFILE_COUNTER_COUNT) {
         return "unknown";
     }
@@ -182,6 +188,7 @@ void sl_http_profile_count(SlHttpProfileCounter counter, uint64_t amount)
 
 static SlStatus sl_http_profile_append_json_string(SlByteBuilder* builder, const char* text)
 {
+    static const char hex[] = "0123456789abcdef";
     const unsigned char* cursor = (const unsigned char*)text;
     SlStatus status = sl_byte_builder_append_byte(builder, (unsigned char)'"');
 
@@ -198,8 +205,17 @@ static SlStatus sl_http_profile_append_json_string(SlByteBuilder* builder, const
             if (!sl_status_is_ok(status)) {
                 return status;
             }
+            status = sl_byte_builder_append_byte(builder, ch);
         }
-        if (ch == '\n') {
+        else if (ch == '\b') {
+            status = sl_byte_builder_append_bytes(
+                builder, sl_bytes_from_parts((const unsigned char*)"\\b", 2U));
+        }
+        else if (ch == '\f') {
+            status = sl_byte_builder_append_bytes(
+                builder, sl_bytes_from_parts((const unsigned char*)"\\f", 2U));
+        }
+        else if (ch == '\n') {
             status = sl_byte_builder_append_bytes(
                 builder, sl_bytes_from_parts((const unsigned char*)"\\n", 2U));
         }
@@ -210,6 +226,11 @@ static SlStatus sl_http_profile_append_json_string(SlByteBuilder* builder, const
         else if (ch == '\t') {
             status = sl_byte_builder_append_bytes(
                 builder, sl_bytes_from_parts((const unsigned char*)"\\t", 2U));
+        }
+        else if (ch < 0x20U) {
+            unsigned char escaped[6] = {
+                '\\', 'u', '0', '0', (unsigned char)hex[ch >> 4U], (unsigned char)hex[ch & 0x0FU]};
+            status = sl_byte_builder_append_bytes(builder, sl_bytes_from_parts(escaped, 6U));
         }
         else {
             status = sl_byte_builder_append_byte(builder, ch);

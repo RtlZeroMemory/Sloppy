@@ -12,15 +12,16 @@ Use benchmark reports to answer specific engineering questions:
   behavior differ across runtimes;
 - whether compiler-generated metadata helps a workload.
 
-## HTTP phase profiling
+## HTTP phase profiling (experimental)
 
-The HTTP server has an opt-in phase profiler for loopback bottleneck work. It is
-disabled unless `SLOPPY_HTTP_PROFILE=1` is present. When enabled with
-`SLOPPY_HTTP_PROFILE_OUT=<path>`, the runtime writes a JSON summary containing
-per-phase count/total/average/min/max nanoseconds and counters such as request
-count, keep-alive reuse, parser bytes, route/native JSON hits, response bytes,
-libuv write calls, response buffer copies, arena resets, diagnostics, and
-breadcrumbs.
+The HTTP server has an experimental, opt-in phase profiler for loopback
+bottleneck work. It is disabled unless `SLOPPY_HTTP_PROFILE=1` is present. When
+enabled with `SLOPPY_HTTP_PROFILE_OUT=<path>`, the runtime writes a JSON summary
+containing per-phase count/total/average/min/max nanoseconds and counters such
+as request count, keep-alive reuse, parser bytes, route/native JSON hits,
+response bytes, libuv write calls, response buffer copies, arena resets,
+diagnostics, and breadcrumbs. This env-driven surface is subject to change and
+is not production telemetry.
 
 Use the JSON competitor harness when a profile must line up with Sloppy
 loopback rows:
@@ -34,6 +35,11 @@ The harness writes one profile artifact per Sloppy runtime/scenario/repeat under
 `artifacts/bench/http-profile-summary.md` phase table. Treat profile numbers as
 local engineering evidence and keep them with the benchmark JSON that produced
 them.
+
+The profiler is a process-global engineering probe for the current single
+Sloppy HTTP server loop and V8 owner-thread path. Do not use one profiled
+process to aggregate multiple concurrently updated servers or worker-thread
+handler paths without first making the profile state thread-safe.
 
 Optional external profiler commands for deeper investigation:
 
