@@ -694,7 +694,12 @@ Reason:
   The operation deadline was already expired before provider dispatch.`);
 }
 
-function normalizeOperationOptions(options, operation, allowResultMode = false) {
+function normalizeOperationOptions(
+    options,
+    operation,
+    allowResultMode = false,
+    allowMaxRows = false,
+) {
     if (options === undefined) {
         return undefined;
     }
@@ -704,6 +709,9 @@ function normalizeOperationOptions(options, operation, allowResultMode = false) 
     const allowedKeys = new Set(["deadline", "signal", "timeoutMs"]);
     if (allowResultMode) {
         allowedKeys.add("mode");
+    }
+    if (allowMaxRows) {
+        allowedKeys.add("maxRows");
     }
     const keys = Object.keys(options);
     for (const key of keys) {
@@ -741,6 +749,15 @@ function normalizeOperationOptions(options, operation, allowResultMode = false) 
         }
     }
 
+    const maxRows = options.maxRows;
+    if (maxRows !== undefined) {
+        if (!Number.isInteger(maxRows) || maxRows < 1 || maxRows > 0xffffffff) {
+            throw new TypeError(
+                `Sloppy data ${operation} maxRows option must be an integer from 1 to 4294967295.`,
+            );
+        }
+    }
+
     if (deadline !== undefined && deadline !== null) {
         if (deadline.expired === true) {
             throw createOperationDeadlineError(operation);
@@ -770,11 +787,13 @@ function normalizeOperationOptions(options, operation, allowResultMode = false) 
     const mode = allowResultMode ? normalizeResultMode(options.mode, operation) : undefined;
     const normalized = Object.freeze({
         deadline: deadline ?? undefined,
+        maxRows,
         mode: mode === "raw" ? mode : undefined,
         signal: signal ?? undefined,
         timeoutMs,
     });
     return normalized.deadline === undefined
+        && normalized.maxRows === undefined
         && normalized.mode === undefined
         && normalized.signal === undefined
         && normalized.timeoutMs === undefined
@@ -830,6 +849,24 @@ function operationAllowsResultMode(operation) {
         || operation.endsWith(".transaction.query");
 }
 
+function operationAllowsMaxRows(operation) {
+    return operation === "query"
+        || operation === "queryRaw"
+        || operation.endsWith(".query")
+        || operation.endsWith(".queryRaw");
+}
+
+function nativeQueryOptions(options) {
+    return options?.maxRows === undefined ? undefined : Object.freeze({ maxRows: options.maxRows });
+}
+
+function invokeNativeQuery(method, handle, query) {
+    const nativeOptions = nativeQueryOptions(query.options);
+    return nativeOptions === undefined
+        ? method(handle, query.text, query.parameters)
+        : method(handle, query.text, query.parameters, nativeOptions);
+}
+
 function normalizeResultMode(value, operation) {
     if (value === undefined) {
         return "object";
@@ -846,8 +883,14 @@ function hasInlineOperationOptions(args) {
 
 function normalizeProviderCallArguments(operation, placeholderStyle, args) {
     const allowResultMode = operationAllowsResultMode(operation);
+    const allowMaxRows = operationAllowsMaxRows(operation);
     if (args.length === 2 && isLoweredQuery(args[0])) {
-        const options = normalizeOperationOptions(args[1], operation, allowResultMode);
+        const options = normalizeOperationOptions(
+            args[1],
+            operation,
+            allowResultMode,
+            allowMaxRows,
+        );
         return {
             query: args[0],
             options,
@@ -868,8 +911,18 @@ function normalizeProviderCallArguments(operation, placeholderStyle, args) {
     };
 }
 
-function validateOperationOptions(options, operation, allowResultMode = false) {
-    const normalized = normalizeOperationOptions(options, operation, allowResultMode);
+function validateOperationOptions(
+    options,
+    operation,
+    allowResultMode = false,
+    allowMaxRows = false,
+) {
+    const normalized = normalizeOperationOptions(
+        options,
+        operation,
+        allowResultMode,
+        allowMaxRows,
+    );
     if (normalized !== undefined) {
         throwIfOperationCancelled(normalized, operation);
     }
@@ -1076,6 +1129,7 @@ function validateSqliteParams(params, operation) {
 
 function normalizeSqliteOperation(operation, args) {
     const allowResultMode = operation === "query";
+    const allowMaxRows = operation === "query" || operation === "queryRaw";
     if (args.length === 1 && isLoweredQuery(args[0])) {
         return {
             text: args[0].text,
@@ -1085,7 +1139,12 @@ function normalizeSqliteOperation(operation, args) {
         };
     }
     if (args.length === 2 && isLoweredQuery(args[0])) {
-        const options = normalizeOperationOptions(args[1], `sqlite.${operation}`, allowResultMode);
+        const options = normalizeOperationOptions(
+            args[1],
+            `sqlite.${operation}`,
+            allowResultMode,
+            allowMaxRows,
+        );
         return {
             text: args[0].text,
             parameters: validateSqliteParams(args[0].parameters, operation),
@@ -1104,6 +1163,7 @@ function normalizeSqliteOperation(operation, args) {
             inlineOptions ? args[1] : args[2],
             `sqlite.${operation}`,
             allowResultMode,
+            allowMaxRows,
         );
 
         if (args[0].length === 0) {
@@ -1160,14 +1220,14 @@ function createSqliteConnection(nativeBridge, handle) {
                     ? nativeBridge.transactionQueryRaw
                     : nativeBridge.transactionQuery;
                 return invokeProviderOperation("sqlite.transaction.query", query.options, () =>
-                    method(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(method, state.handle, query));
             },
 
             queryRaw(...args) {
                 assertTransactionOpen("transaction.queryRaw");
                 const query = normalizeSqliteOperation("queryRaw", args);
                 return invokeProviderOperation("sqlite.transaction.queryRaw", query.options, () =>
-                    nativeBridge.transactionQueryRaw(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query));
             },
 
             queryOne(...args) {
@@ -1243,14 +1303,14 @@ function createSqliteConnection(nativeBridge, handle) {
             const query = normalizeSqliteOperation("query", args);
             const method = query.mode === "raw" ? nativeBridge.queryRaw : nativeBridge.query;
             return invokeProviderOperation("sqlite.query", query.options, () =>
-                method(state.handle, query.text, query.parameters));
+                invokeNativeQuery(method, state.handle, query));
         },
 
         queryRaw(...args) {
             assertOpen("queryRaw");
             const query = normalizeSqliteOperation("queryRaw", args);
             return invokeProviderOperation("sqlite.queryRaw", query.options, () =>
-                nativeBridge.queryRaw(state.handle, query.text, query.parameters));
+                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query));
         },
 
         queryOne(...args) {
@@ -1573,6 +1633,7 @@ Fix:
 
 function normalizePostgresOperation(operation, args) {
     const allowResultMode = operation === "query";
+    const allowMaxRows = operation === "query" || operation === "queryRaw";
     if (args.length === 1 && isLoweredQuery(args[0])) {
         return {
             text: args[0].text,
@@ -1582,7 +1643,12 @@ function normalizePostgresOperation(operation, args) {
         };
     }
     if (args.length === 2 && isLoweredQuery(args[0])) {
-        const options = normalizeOperationOptions(args[1], `postgres.${operation}`, allowResultMode);
+        const options = normalizeOperationOptions(
+            args[1],
+            `postgres.${operation}`,
+            allowResultMode,
+            allowMaxRows,
+        );
         return {
             text: args[0].text,
             parameters: args[0].parameters,
@@ -1601,6 +1667,7 @@ function normalizePostgresOperation(operation, args) {
             inlineOptions ? args[1] : args[2],
             `postgres.${operation}`,
             allowResultMode,
+            allowMaxRows,
         );
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy postgres.${operation} SQL must be a non-empty string.`);
@@ -1655,13 +1722,13 @@ function createPostgresConnection(nativeBridge, handle) {
                     ? nativeBridge.transactionQueryRaw
                     : nativeBridge.transactionQuery;
                 return invokeProviderOperation("postgres.transaction.query", query.options, () =>
-                    method(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(method, state.handle, query));
             },
             queryRaw(...args) {
                 assertTransactionOpen("transaction.queryRaw");
                 const query = normalizePostgresOperation("queryRaw", args);
                 return invokeProviderOperation("postgres.transaction.queryRaw", query.options, () =>
-                    nativeBridge.transactionQueryRaw(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query));
             },
             queryOne(...args) {
                 assertTransactionOpen("transaction.queryOne");
@@ -1730,13 +1797,13 @@ function createPostgresConnection(nativeBridge, handle) {
             const query = normalizePostgresOperation("query", args);
             const method = query.mode === "raw" ? nativeBridge.queryRaw : nativeBridge.query;
             return invokeProviderOperation("postgres.query", query.options, () =>
-                method(state.handle, query.text, query.parameters));
+                invokeNativeQuery(method, state.handle, query));
         },
         queryRaw(...args) {
             assertOpen("queryRaw");
             const query = normalizePostgresOperation("queryRaw", args);
             return invokeProviderOperation("postgres.queryRaw", query.options, () =>
-                nativeBridge.queryRaw(state.handle, query.text, query.parameters));
+                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query));
         },
         queryOne(...args) {
             assertOpen("queryOne");
@@ -1838,6 +1905,7 @@ Fix:
 
 function normalizeSqlServerOperation(operation, args) {
     const allowResultMode = operation === "query";
+    const allowMaxRows = operation === "query" || operation === "queryRaw";
     if (args.length === 1 && isLoweredQuery(args[0])) {
         return {
             text: args[0].text,
@@ -1847,7 +1915,12 @@ function normalizeSqlServerOperation(operation, args) {
         };
     }
     if (args.length === 2 && isLoweredQuery(args[0])) {
-        const options = normalizeOperationOptions(args[1], `sqlserver.${operation}`, allowResultMode);
+        const options = normalizeOperationOptions(
+            args[1],
+            `sqlserver.${operation}`,
+            allowResultMode,
+            allowMaxRows,
+        );
         return {
             text: args[0].text,
             parameters: args[0].parameters,
@@ -1866,6 +1939,7 @@ function normalizeSqlServerOperation(operation, args) {
             inlineOptions ? args[1] : args[2],
             `sqlserver.${operation}`,
             allowResultMode,
+            allowMaxRows,
         );
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy sqlserver.${operation} SQL must be a non-empty string.`);
@@ -1920,13 +1994,13 @@ function createSqlServerConnection(nativeBridge, handle) {
                     ? nativeBridge.transactionQueryRaw
                     : nativeBridge.transactionQuery;
                 return invokeProviderOperation("sqlserver.transaction.query", query.options, () =>
-                    method(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(method, state.handle, query));
             },
             queryRaw(...args) {
                 assertTransactionOpen("transaction.queryRaw");
                 const query = normalizeSqlServerOperation("queryRaw", args);
                 return invokeProviderOperation("sqlserver.transaction.queryRaw", query.options, () =>
-                    nativeBridge.transactionQueryRaw(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query));
             },
             queryOne(...args) {
                 assertTransactionOpen("transaction.queryOne");
@@ -1995,13 +2069,13 @@ function createSqlServerConnection(nativeBridge, handle) {
             const query = normalizeSqlServerOperation("query", args);
             const method = query.mode === "raw" ? nativeBridge.queryRaw : nativeBridge.query;
             return invokeProviderOperation("sqlserver.query", query.options, () =>
-                method(state.handle, query.text, query.parameters));
+                invokeNativeQuery(method, state.handle, query));
         },
         queryRaw(...args) {
             assertOpen("queryRaw");
             const query = normalizeSqlServerOperation("queryRaw", args);
             return invokeProviderOperation("sqlserver.queryRaw", query.options, () =>
-                nativeBridge.queryRaw(state.handle, query.text, query.parameters));
+                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query));
         },
         queryOne(...args) {
             assertOpen("queryOne");

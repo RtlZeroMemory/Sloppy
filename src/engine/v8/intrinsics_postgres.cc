@@ -250,6 +250,7 @@ struct PgV8Request
     std::vector<int> param_formats;
     PGresult* result = nullptr;
     std::string error;
+    uint32_t max_rows = SL_POSTGRES_DEFAULT_MAX_ROWS;
     bool release_after = true;
     bool transaction_terminal = false;
 };
@@ -511,6 +512,24 @@ bool pg_v8_result_status_ok(PgV8Operation operation, ExecStatusType status)
     default:
         return false;
     }
+}
+
+bool pg_v8_operation_allows_max_rows(PgV8Operation operation)
+{
+    return operation == PgV8Operation::Query || operation == PgV8Operation::QueryRaw ||
+           operation == PgV8Operation::TransactionQuery ||
+           operation == PgV8Operation::TransactionQueryRaw;
+}
+
+bool pg_v8_result_exceeds_max_rows(const PgV8Request* request, PGresult* result)
+{
+    if (request == nullptr || result == nullptr ||
+        !pg_v8_operation_allows_max_rows(request->operation))
+    {
+        return false;
+    }
+    const int row_count = PQntuples(result);
+    return row_count >= 0 && static_cast<uint32_t>(row_count) > request->max_rows;
 }
 
 bool pg_v8_prepare_columns(v8::Isolate* isolate, v8::Local<v8::Context> context, PGresult* result,
@@ -1022,6 +1041,12 @@ void pg_v8_complete_read(PgV8Connection* connection)
         ExecStatusType status = PQresultStatus(result);
         if (!pg_v8_result_status_ok(request->operation, status)) {
             request->error = PQresultErrorMessage(result);
+            PQclear(result);
+            pg_v8_settle_request(request, false);
+            return;
+        }
+        if (pg_v8_result_exceeds_max_rows(request.get(), result)) {
+            request->error = "postgres provider query exceeded max rows";
             PQclear(result);
             pg_v8_settle_request(request, false);
             return;
@@ -1658,8 +1683,15 @@ void pg_v8_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& args,
             return;
         }
         if (!pg_v8_convert_params(isolate, context,
-                                  args.Length() == 3 ? args[2] : v8::Undefined(isolate),
+                                  args.Length() >= 3 ? args[2] : v8::Undefined(isolate),
                                   &request->params))
+        {
+            return;
+        }
+        if (pg_v8_operation_allows_max_rows(operation) &&
+            !sl_v8_db_parse_max_rows_option(
+                isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
+                SL_POSTGRES_DEFAULT_MAX_ROWS, &request->max_rows, "postgres query"))
         {
             return;
         }

@@ -11,13 +11,12 @@ JavaScript.
 include/sloppy/data.h               provider-neutral C contract
 src/data/
   common.c                          shared value/result/redaction helpers
-  sqlite.c                          SQLite (embedded, single-process)
-  postgres.c                        PostgreSQL via libpq (nonblocking)
-  sqlserver.c                       SQL Server via ODBC (async)
+  sqlite.c                          SQLite direct C provider
+  postgres.c                        PostgreSQL direct C provider via libpq
+  sqlserver.c                       SQL Server direct C provider via ODBC
 src/core/provider_executor.c        execution mode dispatch + queueing
 src/engine/v8/intrinsics_*          JS bridge for each provider
 stdlib/sloppy/data.js               public sql template + value wrappers
-stdlib/sloppy/providers/sqlite.js   SQLite-specific public surface
 ```
 
 ## Three layers
@@ -30,11 +29,8 @@ stdlib/sloppy/data.js, stdlib/sloppy/providers/sqlite.js
    │  Validate args, lower sql template, delegate to bridge
    ▼
 src/engine/v8/intrinsics_<provider>.cc
-   │  Marshal args to Sloppy types, call into provider_executor
-   ▼
-src/core/provider_executor.c
-   │  Pick execution mode (serialized vs async-backed),
-   │  honor capability/access checks, deadlines, signals
+   │  Marshal args, check provider handles/capabilities,
+   │  use provider_executor where that bridge is wired
    ▼
 src/data/<provider>.c
    │  Execute against the driver
@@ -59,32 +55,32 @@ diagnostic.
 
 ## Execution modes
 
-`provider_executor.c` selects an execution mode per provider:
+Provider execution is currently split between the shared executor and
+provider-specific V8 bridges:
 
 | Mode             | Used by    | Behavior                                                  |
 | ---------------- | ---------- | --------------------------------------------------------- |
-| Serialized       | SQLite     | One operation at a time per provider instance, queued     |
-| True-async       | PostgreSQL | Nonblocking libpq state machine + Sloppy async backend    |
-| True-async (ODBC)| SQL Server | Async ODBC handles when the driver supports them          |
-| Blocking pool    | fallback   | Bounded thread pool when no async path exists             |
+| Serialized       | SQLite V8  | One operation at a time through `provider_executor`       |
+| Direct blocking  | C providers| Caller-owned connection APIs under `src/data/*`           |
+| True-async       | PostgreSQL V8 | Nonblocking libpq state machine + Sloppy async backend |
+| True-async (ODBC)| SQL Server V8 | Async ODBC handles when the driver supports them       |
 
-Mode selection is decided at provider open. SQLite is intentionally
-serialized — the underlying engine is single-writer; serializing
-operations avoids surprises. PostgreSQL and SQL Server prefer
-true-async; the blocking pool is the explicit fallback when async
-support is unavailable.
+SQLite is intentionally serialized in the V8 bridge because the provider
+instance is single-writer. PostgreSQL and SQL Server V8 bridges own their
+driver state machines directly; they do not yet share a generic database
+provider vtable.
 
 ## Connection management
 
 | Provider   | Pool model                                                     |
 | ---------- | -------------------------------------------------------------- |
-| SQLite     | One writer, optional readers; opened once per provider         |
-| PostgreSQL | Bounded connection pool with admission queue                   |
-| SQL Server | Bounded connection pool, async-when-available                  |
+| SQLite     | One connection per handle; V8 operations are serialized        |
+| PostgreSQL | Bounded pool; acquisition is fail-fast                         |
+| SQL Server | Bounded pool; acquisition is fail-fast                         |
 
-Pools are sized from provider config (`max-connections`, `min-connections`,
-acquisition timeout). Acquisition is fail-fast; calls that can't get a
-connection within the deadline raise a typed error.
+PostgreSQL and SQL Server pools are sized by `maxConnections`. They do not
+currently expose a wait queue, idle pruning, or acquisition timeout. If every
+connection is busy, acquisition fails immediately.
 
 ## Value and result conversion
 
@@ -107,17 +103,28 @@ representations.
 
 ## Cancellation, deadlines, late completion
 
-Provider operations honor `{ deadline, signal, timeoutMs }` options:
+The JavaScript API accepts `{ deadline, signal, timeoutMs }` operation options
+and checks them before provider dispatch. A signal already aborted, an expired
+deadline, or a zero timeout rejects before native work starts.
 
-- The executor sets a per-operation deadline.
-- Cancellation cancels in-flight driver work where the driver supports
-  it (libpq `PQcancel`, ODBC `SQLCancel`).
-- A late completion (driver returns *after* deadline) does cleanup
-  only — the JS Promise has already settled with a cancellation
-  error. There is no double-settle.
+The current portable data-provider contract does not cancel already in-flight
+driver work from those JavaScript options. SQL Server's V8 bridge has an
+internal async-progress watchdog and cleanup path, but `timeoutMs` is not yet a
+driver-level `SQLCancel`/`PQcancel` API across providers.
 
-Shutdown drains in-flight operations within their deadlines, then
-forces close.
+## Result Bounds
+
+All providers expose a bounded materialization path for `query` and `queryRaw`:
+
+- The default provider cap is `128` rows.
+- `maxRows` can raise or lower the per-call cap.
+- Exceeding the cap fails the query rather than truncating results.
+- `queryOne` materializes at most one row.
+
+PostgreSQL V8 still receives a complete `PGresult` from libpq before enforcing
+the cap. SQL Server and SQLite enforce during row fetch/materialization. Cursor
+streams and incremental JSON row streaming are not part of the current public
+data-provider API.
 
 ## Redaction
 
@@ -144,7 +151,9 @@ Provider-specific redaction lives in each provider's `*.c` (e.g.
 | Live SQL Server (opt-in) | Real database + ODBC driver                          |
 | Stress / torture (opt-in)| Long-running workload for leak/cancellation behavior |
 
-Live and V8 lanes are opt-in. Default CI covers native and conformance.
+Live and V8 lanes are opt-in. Default CI covers native and conformance. Missing
+Docker, missing drivers, or unsupported async driver behavior is an unavailable
+live-provider lane, not a pass.
 
 ## Adding a provider
 

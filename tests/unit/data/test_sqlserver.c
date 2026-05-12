@@ -110,6 +110,15 @@ static SlSqlServerParam bool_param(bool value)
     return param;
 }
 
+static SlSqlServerParam bytes_param(const unsigned char* value, size_t length)
+{
+    SlSqlServerParam param;
+
+    param.kind = SL_SQLSERVER_PARAM_BYTES;
+    param.value.bytes = sl_bytes_from_parts(value, length);
+    return param;
+}
+
 static int close_and_return(SlSqlServerConnection* connection, int code)
 {
     if (connection != NULL && connection->open) {
@@ -517,6 +526,12 @@ static int test_live_query_exec_and_transactions(void)
     SlSqlServerParam insert_params[] = {text_param("Ada"), bool_param(true)};
     SlSqlServerParam rollback_params[] = {text_param("rollback"), bool_param(false)};
     SlSqlServerParam unsupported_param = {.kind = SL_SQLSERVER_PARAM_UNSUPPORTED};
+    const char attack_text[] = "Robert'); drop table dbo.sloppy_sqlserver_provider_test; --";
+    const char unicode_text[] = {'u', 'n', 'i',        'c',        'o',        'd',
+                                 'e', ' ', (char)0xe2, (char)0x98, (char)0x83, '\0'};
+    const unsigned char raw_bytes[] = {0x00U, 0x27U, 0x3bU, 0x2dU, 0x2dU, 0xffU};
+    SlSqlServerParam safety_params[] = {text_param(attack_text), text_param(unicode_text),
+                                        bytes_param(raw_bytes, sizeof(raw_bytes))};
     SlDiag diag = {0};
     char long_alias_sql[180] = {0};
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
@@ -542,6 +557,32 @@ static int test_live_query_exec_and_transactions(void)
                           NULL, 0U, &exec_result, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0) {
         return close_and_return(&connection, 42);
+    }
+    status = sl_sqlserver_query_one(
+        &arena, &connection,
+        sl_str_from_cstr("select cast(? as nvarchar(200)) as payload, "
+                         "cast(? as nvarchar(100)) as utf8, cast(? as varbinary(16)) as raw"),
+        safety_params, 3U, &one, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found || one.column_count != 3U ||
+        one.values[0].kind != SL_SQLSERVER_VALUE_TEXT ||
+        expect_str_equal(one.values[0].value.text, attack_text) != 0 ||
+        one.values[1].kind != SL_SQLSERVER_VALUE_TEXT ||
+        expect_str_equal(one.values[1].value.text, unicode_text) != 0 ||
+        one.values[2].kind != SL_SQLSERVER_VALUE_BYTES ||
+        one.values[2].value.bytes.length != sizeof(raw_bytes) ||
+        one.values[2].value.bytes.ptr[0] != 0U || one.values[2].value.bytes.ptr[1] != 0x27U ||
+        one.values[2].value.bytes.ptr[5] != 0xffU)
+    {
+        return close_and_return(&connection, 66);
+    }
+    status = sl_sqlserver_query_one(
+        &arena, &connection,
+        sl_str_from_cstr("select count(*) from dbo.sloppy_sqlserver_provider_test"), NULL, 0U, &one,
+        NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found ||
+        one.values[0].kind != SL_SQLSERVER_VALUE_INTEGER || one.values[0].value.integer != 0)
+    {
+        return close_and_return(&connection, 67);
     }
     status = sl_sqlserver_exec(
         &arena, &connection,
