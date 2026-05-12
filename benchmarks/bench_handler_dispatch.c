@@ -435,8 +435,8 @@ static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t ta
     SlArena route_arena;
     SlArena dispatch_arena;
     SlEngine* engine = NULL;
-    SlPlanHandler handler = {1U, sl_str_from_cstr("handlerOne"), sl_str_from_cstr("GET /routes")};
-    SlPlan plan = sl_bench_plan(&handler, 1U);
+    static SlPlanHandler handler;
+    SlPlan plan;
     SlHttpRequestHead request = {0};
     uint64_t checksum = 0U;
     uint64_t index;
@@ -447,6 +447,9 @@ static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t ta
     if (route_count == 0U || route_count > SL_BENCH_MAX_ROUTES || out_checksum == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+
+    handler = (SlPlanHandler){1U, sl_str_from_cstr("handlerOne"), sl_str_from_cstr("GET /routes")};
+    plan = sl_bench_plan(&handler, 1U);
 
     status = sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage));
     if (!sl_status_is_ok(status)) {
@@ -594,17 +597,8 @@ static SlStatus sl_bench_param_trie_dispatch_loop(SlBenchRouteDispatchMode mode,
     SlArena route_arena;
     SlArena dispatch_arena;
     SlEngine* engine = NULL;
-    SlPlanHandler handlers[8] = {
-        {1U, sl_str_from_cstr("handlerOne"), sl_str_from_cstr("one")},
-        {2U, sl_str_from_cstr("handlerTwo"), sl_str_from_cstr("two")},
-        {3U, sl_str_from_cstr("handlerThree"), sl_str_from_cstr("three")},
-        {4U, sl_str_from_cstr("handlerFour"), sl_str_from_cstr("four")},
-        {5U, sl_str_from_cstr("handlerFive"), sl_str_from_cstr("five")},
-        {6U, sl_str_from_cstr("handlerSix"), sl_str_from_cstr("six")},
-        {7U, sl_str_from_cstr("handlerSeven"), sl_str_from_cstr("seven")},
-        {8U, sl_str_from_cstr("handlerEight"), sl_str_from_cstr("eight")},
-    };
-    SlPlan plan = sl_bench_plan(handlers, sizeof(handlers) / sizeof(handlers[0]));
+    static SlPlanHandler handlers[8];
+    SlPlan plan;
     SlHttpRequestHead request = {0};
     uint64_t checksum = 0U;
     uint64_t index;
@@ -614,6 +608,15 @@ static SlStatus sl_bench_param_trie_dispatch_loop(SlBenchRouteDispatchMode mode,
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    handlers[0] = (SlPlanHandler){1U, sl_str_from_cstr("handlerOne"), sl_str_from_cstr("one")};
+    handlers[1] = (SlPlanHandler){2U, sl_str_from_cstr("handlerTwo"), sl_str_from_cstr("two")};
+    handlers[2] = (SlPlanHandler){3U, sl_str_from_cstr("handlerThree"), sl_str_from_cstr("three")};
+    handlers[3] = (SlPlanHandler){4U, sl_str_from_cstr("handlerFour"), sl_str_from_cstr("four")};
+    handlers[4] = (SlPlanHandler){5U, sl_str_from_cstr("handlerFive"), sl_str_from_cstr("five")};
+    handlers[5] = (SlPlanHandler){6U, sl_str_from_cstr("handlerSix"), sl_str_from_cstr("six")};
+    handlers[6] = (SlPlanHandler){7U, sl_str_from_cstr("handlerSeven"), sl_str_from_cstr("seven")};
+    handlers[7] = (SlPlanHandler){8U, sl_str_from_cstr("handlerEight"), sl_str_from_cstr("eight")};
+    plan = sl_bench_plan(handlers, sizeof(handlers) / sizeof(handlers[0]));
     plan.routes = routes;
     plan.route_count = sizeof(routes) / sizeof(routes[0]);
 
@@ -771,8 +774,8 @@ static SlStatus sl_bench_param_heavy_dispatch_loop(size_t route_count, size_t ta
     SlArena route_arena;
     SlArena dispatch_arena;
     SlEngine* engine = NULL;
-    SlPlanHandler handler = {1U, sl_str_from_cstr("handlerOne"), sl_str_from_cstr("GET /routes")};
-    SlPlan plan = sl_bench_plan(&handler, 1U);
+    static SlPlanHandler handler;
+    SlPlan plan;
     SlHttpRequestHead request = {0};
     uint64_t checksum = 0U;
     uint64_t index;
@@ -784,6 +787,9 @@ static SlStatus sl_bench_param_heavy_dispatch_loop(size_t route_count, size_t ta
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+
+    handler = (SlPlanHandler){1U, sl_str_from_cstr("handlerOne"), sl_str_from_cstr("GET /routes")};
+    plan = sl_bench_plan(&handler, 1U);
 
     status = sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage));
     if (!sl_status_is_ok(status)) {
@@ -892,9 +898,8 @@ static SlStatus sl_bench_native_response_loop(const char* kind, const char* body
     SlArena route_arena;
     SlArena dispatch_arena;
     SlEngine* engine = NULL;
-    SlPlanHandler handler = {1U, sl_str_from_cstr("nativeResponse"),
-                             sl_str_from_cstr("GET /native")};
-    SlPlan plan = sl_bench_plan(&handler, 1U);
+    static SlPlanHandler handler;
+    SlPlan plan;
     SlHttpRequestHead request = {0};
     uint64_t checksum = 0U;
     uint64_t index;
@@ -903,6 +908,9 @@ static SlStatus sl_bench_native_response_loop(const char* kind, const char* body
     if (kind == NULL || body == NULL || out_checksum == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    handler =
+        (SlPlanHandler){1U, sl_str_from_cstr("nativeResponse"), sl_str_from_cstr("GET /native")};
+    plan = sl_bench_plan(&handler, 1U);
     plan.routes = &route;
     plan.route_count = 1U;
 
