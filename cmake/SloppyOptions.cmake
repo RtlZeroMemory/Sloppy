@@ -424,6 +424,8 @@ if(SLOPPY_ENABLE_V8)
             sloppy_require_v8_path("support/libcxx/include/memory" "libc++ support headers")
             sloppy_require_v8_path("support/libcxx/buildtools/__config_site"
                                    "libc++ build configuration header")
+            sloppy_require_v8_path("support/libcxx/buildtools/__assertion_handler"
+                                   "libc++ assertion handler header")
             if(CMAKE_BUILD_TYPE STREQUAL "Debug")
                 message(
                     FATAL_ERROR

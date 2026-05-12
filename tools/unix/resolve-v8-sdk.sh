@@ -100,6 +100,7 @@ validate_sdk_root() {
       ;;
     macos-arm64|macos-x64)
       [[ -f "$root/lib/libv8_monolith.a" || -f "$root/lib/libv8_monolith.dylib" ]] || return 1
+      [[ -f "$root/support/libcxx/buildtools/__assertion_handler" ]] || return 1
       grep -Eq "\"platform\"[[:space:]]*:[[:space:]]*\"$platform\"" "$root/share/sloppy-v8-sdk.json" || return 1
       ;;
     *)
