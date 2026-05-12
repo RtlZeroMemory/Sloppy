@@ -54,6 +54,9 @@ Common operation methods:
 
 - `query(...)`
 - `queryRaw(...)`
+- `queryCursor(...)`
+- `queryRawCursor(...)`
+- `stream(...)` on connection objects as a `queryCursor(...)` alias
 - `queryOne(...)`
 - `exec(...)`
 - `transaction(async (tx) => ...)`
@@ -74,7 +77,8 @@ Operation options currently support:
 - `signal`
 - `timeoutMs`
 - `mode` on `query(...)` only: `object` (default) or `raw`
-- `maxRows` on `query(...)` and `queryRaw(...)`: integer `1..4294967295`
+- `batchSize` on cursor APIs: integer `1..4096`
+- `maxRows` on `query(...)`, `queryRaw(...)`, and cursor APIs: integer `1..4294967295`
 
 Unsupported option keys are rejected.
 
@@ -101,8 +105,34 @@ JS property semantics apply and the last duplicate column value wins.
 
 Query materialization is bounded. The default cap is 128 rows, and `maxRows`
 changes the cap for one `query` or `queryRaw` call. Exceeding the cap fails the
-operation instead of returning a partial row set. The public data API returns
-materialized result sets rather than cursor-style incremental row streams.
+operation instead of returning a partial row set.
+
+## Cursor Results
+
+`queryCursor(...)` opens an object-row cursor. `queryRawCursor(...)` opens a
+raw positional cursor. `queryCursor(..., { mode: "raw" })` is equivalent to
+`queryRawCursor(...)`.
+
+Cursor objects expose:
+
+- `next()`, `return()`, `throw()`, and `[Symbol.asyncIterator]()`
+- `close()` for explicit cleanup; close is idempotent
+- `closed`, `provider`, `mode`, `columns`, and `columnNames`
+
+The cursor owns the active native statement/result and pins the provider
+connection until the cursor reaches end-of-stream or closes. Early `for await`
+break, consumer errors, iterator `return()`, explicit close, provider close,
+and runtime shutdown release or invalidate the native cursor deterministically.
+Calling `next()` after close fails deterministically.
+
+Cursor APIs do not apply the materialized 128-row cap by default. Pass
+`maxRows` to put a hard cap on a cursor stream. Unsupported cursor option keys
+are rejected before provider dispatch. Driver pointers and handles never cross
+the JavaScript boundary.
+
+SQLite cursors step a prepared statement incrementally. PostgreSQL cursors use
+libpq single-row mode. SQL Server cursors keep an ODBC statement active and
+fetch rows incrementally with `SQLFetch`.
 
 ## sqlite.open Options
 
@@ -150,6 +180,9 @@ provider integration checks.
 - No prepared statement handle API in sqlite surface.
 - Automatic retry/pool tuning is limited to the exposed bounded options.
 - `deadline`, `signal`, and `timeoutMs` are checked before provider dispatch.
-  Native `query` and `queryRaw` bridge calls also pass finite timeout budgets
-  to driver-level interruption. Signals are a pre-dispatch cancellation
-  mechanism for data providers.
+  Native `query`, `queryRaw`, and cursor bridge calls also pass finite timeout
+  budgets to driver-level interruption. Signals are a pre-dispatch
+  cancellation mechanism for data providers.
+- HTTP response streaming currently consumes database cursors as async
+  iterables; no helper may materialize every cursor row before writing a
+  response. Cursor column metadata is stable for future native JSON streaming.

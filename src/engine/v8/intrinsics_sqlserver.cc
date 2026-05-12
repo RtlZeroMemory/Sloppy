@@ -69,6 +69,8 @@ enum class SqlSrvV8Operation
     Exec,
     Query,
     QueryRaw,
+    QueryCursor,
+    QueryRawCursor,
     QueryOne,
     Begin,
     Commit,
@@ -76,6 +78,8 @@ enum class SqlSrvV8Operation
     TransactionExec,
     TransactionQuery,
     TransactionQueryRaw,
+    TransactionQueryCursor,
+    TransactionQueryRawCursor,
     TransactionQueryOne,
 };
 
@@ -110,6 +114,12 @@ bool sqlsrv_v8_make_resource_handle(v8::Isolate* isolate, v8::Local<v8::Context>
                                     SlResourceId id, v8::Local<v8::Object>* out)
 {
     return sl_v8_db_make_resource_handle(isolate, context, id, "sqlserver.connection", out);
+}
+
+bool sqlsrv_v8_make_cursor_handle(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                  SlResourceId id, v8::Local<v8::Object>* out)
+{
+    return sl_v8_db_make_resource_handle(isolate, context, id, "sqlserver.cursor", out);
 }
 
 bool sqlsrv_v8_get_optional_object_string(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -175,6 +185,7 @@ enum class SqlSrvV8CellKind
 struct SqlSrvV8ConnectionResource;
 struct SqlSrvV8Connection;
 struct SqlSrvV8Request;
+struct SqlSrvV8CursorResource;
 
 struct SqlSrvV8Param
 {
@@ -232,6 +243,13 @@ struct SqlSrvV8Request
     std::thread timeout_thread;
     bool timeout_stop_requested = false;
     bool transaction_terminal = false;
+    bool cursor_mode = false;
+    bool cursor_raw = false;
+    bool cursor_open_resolved = false;
+    bool cursor_done = false;
+    bool cursor_close_requested = false;
+    bool cursor_next_pending = false;
+    size_t cursor_rows_read = 0U;
     bool connect_pending = false;
     bool execute_pending = false;
     bool fetch_pending = false;
@@ -259,6 +277,12 @@ struct SqlSrvV8ConnectionResource
     std::vector<SqlSrvV8Connection> connections;
     bool transaction_active = false;
     size_t transaction_index = 0U;
+};
+
+struct SqlSrvV8CursorResource
+{
+    std::shared_ptr<SqlSrvV8Request> request;
+    bool closed = false;
 };
 
 struct SqlSrvV8CompletionPayload
@@ -479,20 +503,91 @@ void sqlsrv_v8_connection_cleanup(void* ptr, void* user)
     delete resource;
 }
 
+void sqlsrv_v8_close_cursor_request(const std::shared_ptr<SqlSrvV8Request>& request)
+{
+    SqlSrvV8Connection* connection = request == nullptr ? nullptr : request->connection;
+    if (request == nullptr || connection == nullptr) {
+        return;
+    }
+    request->terminal.store(true);
+    request->cursor_done = true;
+    sqlsrv_v8_stop_timeout_watch(request);
+    sqlsrv_v8_cancel_statement(request.get());
+    sqlsrv_v8_free_statement(request.get());
+    if (connection->request == request) {
+        connection->request.reset();
+    }
+    if (connection->state != SqlSrvV8ConnectionState::Closed) {
+        connection->state = SqlSrvV8ConnectionState::Idle;
+    }
+}
+
+void sqlsrv_v8_cursor_cleanup(void* ptr, void* user)
+{
+    SqlSrvV8CursorResource* cursor = static_cast<SqlSrvV8CursorResource*>(ptr);
+    (void)user;
+    if (cursor == nullptr) {
+        return;
+    }
+    if (!cursor->closed) {
+        cursor->closed = true;
+        sqlsrv_v8_close_cursor_request(cursor->request);
+    }
+    delete cursor;
+}
+
+SqlSrvV8CursorResource* sqlsrv_v8_lookup_cursor(v8::Isolate* isolate,
+                                                v8::Local<v8::Context> context, SlV8Engine* backend,
+                                                v8::Local<v8::Value> handle_value)
+{
+    SlResourceId id = {};
+    SlDiag diag = {};
+    void* ptr = nullptr;
+
+    if (!sqlsrv_v8_get_resource_id(isolate, context, handle_value, &id)) {
+        sqlsrv_v8_throw_type_error(isolate,
+                                   "sqlserver cursor handle must be an opaque Sloppy handle");
+        return nullptr;
+    }
+    SlStatus status = sl_resource_table_get(&backend->resources, id,
+                                            SL_RESOURCE_KIND_SQLSERVER_CURSOR, &ptr, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlsrv_v8_throw_error(isolate, "sqlserver cursor handle is invalid");
+        return nullptr;
+    }
+    return static_cast<SqlSrvV8CursorResource*>(ptr);
+}
+
 bool sqlsrv_v8_result_is_query(SqlSrvV8Operation operation)
 {
     return operation == SqlSrvV8Operation::Query || operation == SqlSrvV8Operation::QueryRaw ||
+           operation == SqlSrvV8Operation::QueryCursor ||
+           operation == SqlSrvV8Operation::QueryRawCursor ||
            operation == SqlSrvV8Operation::QueryOne ||
            operation == SqlSrvV8Operation::TransactionQuery ||
            operation == SqlSrvV8Operation::TransactionQueryRaw ||
+           operation == SqlSrvV8Operation::TransactionQueryCursor ||
+           operation == SqlSrvV8Operation::TransactionQueryRawCursor ||
            operation == SqlSrvV8Operation::TransactionQueryOne;
 }
 
 bool sqlsrv_v8_operation_allows_max_rows(SqlSrvV8Operation operation)
 {
     return operation == SqlSrvV8Operation::Query || operation == SqlSrvV8Operation::QueryRaw ||
+           operation == SqlSrvV8Operation::QueryCursor ||
+           operation == SqlSrvV8Operation::QueryRawCursor ||
            operation == SqlSrvV8Operation::TransactionQuery ||
-           operation == SqlSrvV8Operation::TransactionQueryRaw;
+           operation == SqlSrvV8Operation::TransactionQueryRaw ||
+           operation == SqlSrvV8Operation::TransactionQueryCursor ||
+           operation == SqlSrvV8Operation::TransactionQueryRawCursor;
+}
+
+bool sqlsrv_v8_operation_is_cursor(SqlSrvV8Operation operation)
+{
+    return operation == SqlSrvV8Operation::QueryCursor ||
+           operation == SqlSrvV8Operation::QueryRawCursor ||
+           operation == SqlSrvV8Operation::TransactionQueryCursor ||
+           operation == SqlSrvV8Operation::TransactionQueryRawCursor;
 }
 
 bool sqlsrv_v8_result_is_exec(SqlSrvV8Operation operation)
@@ -769,6 +864,40 @@ bool sqlsrv_v8_rows_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context,
     return sl_v8_db_make_raw_result(isolate, context, &columns, rows, out);
 }
 
+bool sqlsrv_v8_row_to_cursor_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                   const SqlSrvV8Request& request,
+                                   const std::vector<SqlSrvV8Cell>& row, v8::Local<v8::Value>* out)
+{
+    SlV8DbColumnSet columns;
+    std::vector<v8::Local<v8::Value>> values(request.columns.size());
+    if (out == nullptr || row.size() < request.columns.size() ||
+        !sqlsrv_v8_prepare_columns(isolate, context, request, &columns))
+    {
+        return false;
+    }
+    for (size_t column = 0U; column < request.columns.size(); column += 1U) {
+        if (!sqlsrv_v8_cell_to_value(isolate, context, row[column], &values[column])) {
+            return false;
+        }
+    }
+    if (request.cursor_raw) {
+        v8::Local<v8::Array> raw;
+        if (!sl_v8_db_make_raw_row(isolate, context, values.data(), values.size(), &raw)) {
+            return false;
+        }
+        *out = raw;
+        return true;
+    }
+    v8::Local<v8::Object> object;
+    if (!sl_v8_db_make_row_object(isolate, context, &columns, values.data(), values.size(),
+                                  &object))
+    {
+        return false;
+    }
+    *out = object;
+    return true;
+}
+
 bool sqlsrv_v8_exec_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
                            const SqlSrvV8Request& request, v8::Local<v8::Value>* out)
 {
@@ -793,6 +922,116 @@ bool sqlsrv_v8_exec_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
     return true;
 }
 
+bool sqlsrv_v8_resolve_cursor_open(const std::shared_ptr<SqlSrvV8Request>& request)
+{
+    SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
+    v8::Isolate* isolate = backend == nullptr ? nullptr : backend->isolate;
+    if (backend == nullptr || isolate == nullptr || request->cursor_open_resolved) {
+        return false;
+    }
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = backend->context.Get(isolate);
+    v8::Context::Scope context_scope(context);
+    v8::Local<v8::Promise::Resolver> resolver = request->resolver.Get(isolate);
+    v8::Local<v8::Object> handle;
+    SlResourceId id = sl_resource_id_invalid();
+    SlDiag diag = {};
+    SlV8DbColumnSet columns;
+
+    auto cursor = std::make_unique<SqlSrvV8CursorResource>();
+    if (!cursor) {
+        sl_v8_db_reject_promise(isolate, context, resolver, "sqlserver cursor allocation failed",
+                                "sqlserver operation failed");
+        sqlsrv_v8_finish_request(request, false);
+        return false;
+    }
+    cursor->request = request;
+    SlStatus status =
+        sl_resource_table_insert(&backend->resources, SL_RESOURCE_KIND_SQLSERVER_CURSOR,
+                                 cursor.get(), sqlsrv_v8_cursor_cleanup, nullptr, &id, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_v8_db_reject_promise(isolate, context, resolver, "sqlserver cursor registration failed",
+                                "sqlserver operation failed");
+        sqlsrv_v8_finish_request(request, false);
+        return false;
+    }
+    if (!sqlsrv_v8_make_cursor_handle(isolate, context, id, &handle) ||
+        !sqlsrv_v8_prepare_columns(isolate, context, *request, &columns) ||
+        !handle->Set(context, v8::String::NewFromUtf8Literal(isolate, "columns"), columns.columns)
+             .FromMaybe(false) ||
+        !handle
+             ->Set(context, v8::String::NewFromUtf8Literal(isolate, "provider"),
+                   v8::String::NewFromUtf8Literal(isolate, "sqlserver"))
+             .FromMaybe(false) ||
+        !handle
+             ->Set(context, v8::String::NewFromUtf8Literal(isolate, "closed"),
+                   v8::Boolean::New(isolate, false))
+             .FromMaybe(false))
+    {
+        sl_resource_table_close_kind(&backend->resources, id, SL_RESOURCE_KIND_SQLSERVER_CURSOR,
+                                     nullptr);
+        sl_v8_db_reject_promise(isolate, context, resolver,
+                                "sqlserver cursor handle creation failed",
+                                "sqlserver operation failed");
+        sqlsrv_v8_finish_request(request, false);
+        return false;
+    }
+    cursor.release();
+    request->cursor_open_resolved = true;
+    sl_v8_db_resolve_promise(context, resolver, handle);
+    request->resolver.Reset();
+    return true;
+}
+
+bool sqlsrv_v8_resolve_cursor_next(const std::shared_ptr<SqlSrvV8Request>& request, bool done)
+{
+    SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
+    v8::Isolate* isolate = backend == nullptr ? nullptr : backend->isolate;
+    if (backend == nullptr || isolate == nullptr) {
+        return false;
+    }
+    request->cursor_next_pending = false;
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = backend->context.Get(isolate);
+    v8::Context::Scope context_scope(context);
+    v8::Local<v8::Promise::Resolver> resolver = request->resolver.Get(isolate);
+    v8::Local<v8::Object> result = v8::Object::New(isolate);
+
+    if (done) {
+        request->cursor_done = true;
+        sqlsrv_v8_close_cursor_request(request);
+        if (!result
+                 ->Set(context, v8::String::NewFromUtf8Literal(isolate, "done"),
+                       v8::Boolean::New(isolate, true))
+                 .FromMaybe(false))
+        {
+            return false;
+        }
+        sl_v8_db_resolve_promise(context, resolver, result);
+        request->resolver.Reset();
+        return true;
+    }
+
+    if (request->rows.empty()) {
+        return false;
+    }
+    v8::Local<v8::Value> value;
+    if (!sqlsrv_v8_row_to_cursor_value(isolate, context, *request, request->rows.back(), &value) ||
+        !result
+             ->Set(context, v8::String::NewFromUtf8Literal(isolate, "done"),
+                   v8::Boolean::New(isolate, false))
+             .FromMaybe(false) ||
+        !result->Set(context, v8::String::NewFromUtf8Literal(isolate, "value"), value)
+             .FromMaybe(false))
+    {
+        return false;
+    }
+    request->rows.clear();
+    sl_v8_db_resolve_promise(context, resolver, result);
+    request->resolver.Reset();
+    return true;
+}
+
 void sqlsrv_v8_settle_request(const std::shared_ptr<SqlSrvV8Request>& request, bool ok)
 {
     SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
@@ -807,6 +1046,10 @@ void sqlsrv_v8_settle_request(const std::shared_ptr<SqlSrvV8Request>& request, b
     if (!ok) {
         sl_v8_db_reject_promise(isolate, context, resolver, request->error,
                                 "sqlserver operation failed");
+        if (request->cursor_mode) {
+            sqlsrv_v8_close_cursor_request(request);
+            return;
+        }
         sqlsrv_v8_finish_request(request, false);
         return;
     }
@@ -1490,6 +1733,12 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                 sqlsrv_v8_fail_request(request, request->error);
                 return;
             }
+            if (request->cursor_mode) {
+                if (!sqlsrv_v8_resolve_cursor_open(request)) {
+                    sqlsrv_v8_fail_request(request, "sqlserver cursor open failed");
+                }
+                return;
+            }
             if (request->state != SqlSrvV8RequestState::Fetching) {
                 return;
             }
@@ -1529,6 +1778,10 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
             if (rc == SQL_NO_DATA) {
                 sqlsrv_v8_note_async_activity(request.get());
                 request->state = SqlSrvV8RequestState::Terminal;
+                if (request->cursor_mode) {
+                    sqlsrv_v8_resolve_cursor_next(request, true);
+                    return;
+                }
                 sqlsrv_v8_settle_request(request, true);
                 return;
             }
@@ -1537,8 +1790,10 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                                                                "sqlserver fetch failed"));
                 return;
             }
-            if (sqlsrv_v8_operation_allows_max_rows(request->operation) &&
-                request->rows.size() >= request->max_rows)
+            const size_t observed_rows =
+                request->cursor_mode ? request->cursor_rows_read : request->rows.size();
+            if (sqlsrv_v8_operation_allows_max_rows(request->operation) && request->max_rows > 0U &&
+                observed_rows >= request->max_rows)
             {
                 sqlsrv_v8_fail_request(request, "sqlserver provider query exceeded max rows");
                 return;
@@ -1548,6 +1803,11 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                 return;
             }
             sqlsrv_v8_note_async_activity(request.get());
+            if (request->cursor_mode) {
+                request->cursor_rows_read += 1U;
+                sqlsrv_v8_resolve_cursor_next(request, false);
+                return;
+            }
             if (request->operation == SqlSrvV8Operation::QueryOne ||
                 request->operation == SqlSrvV8Operation::TransactionQueryOne)
             {
@@ -1612,6 +1872,8 @@ SqlSrvV8Connection* sqlsrv_v8_acquire_connection(SqlSrvV8ConnectionResource* res
     if (request->operation == SqlSrvV8Operation::TransactionExec ||
         request->operation == SqlSrvV8Operation::TransactionQuery ||
         request->operation == SqlSrvV8Operation::TransactionQueryRaw ||
+        request->operation == SqlSrvV8Operation::TransactionQueryCursor ||
+        request->operation == SqlSrvV8Operation::TransactionQueryRawCursor ||
         request->operation == SqlSrvV8Operation::TransactionQueryOne ||
         request->operation == SqlSrvV8Operation::Commit ||
         request->operation == SqlSrvV8Operation::Rollback)
@@ -2091,7 +2353,8 @@ void sqlsrv_v8_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
         if (sqlsrv_v8_operation_allows_max_rows(operation) &&
             !sl_v8_db_parse_max_rows_option(
                 isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
-                SL_SQLSERVER_DEFAULT_MAX_ROWS, &request->max_rows, "sqlserver query"))
+                sqlsrv_v8_operation_is_cursor(operation) ? 0U : SL_SQLSERVER_DEFAULT_MAX_ROWS,
+                &request->max_rows, "sqlserver query"))
         {
             return;
         }
@@ -2105,6 +2368,9 @@ void sqlsrv_v8_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
     request->backend = backend;
     request->resource = resource;
     request->operation = operation;
+    request->cursor_mode = sqlsrv_v8_operation_is_cursor(operation);
+    request->cursor_raw = operation == SqlSrvV8Operation::QueryRawCursor ||
+                          operation == SqlSrvV8Operation::TransactionQueryRawCursor;
     if (!sqlsrv_v8_make_promise(isolate, context, request, &promise)) {
         sqlsrv_v8_throw_error(isolate, "sqlserver bridge could not create a promise");
         return;
@@ -2150,6 +2416,78 @@ void sqlsrv_v8_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
     sqlsrv_v8_operation_callback(
         args, SqlSrvV8Operation::QueryRaw,
         "__sloppy.data.sqlserver.queryRaw requires a handle, SQL string, and optional params");
+}
+
+void sqlsrv_v8_query_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_operation_callback(
+        args, SqlSrvV8Operation::QueryCursor,
+        "__sloppy.data.sqlserver.queryCursor requires a handle, SQL string, and optional params");
+}
+
+void sqlsrv_v8_query_raw_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_operation_callback(args, SqlSrvV8Operation::QueryRawCursor,
+                                 "__sloppy.data.sqlserver.queryRawCursor requires a handle, SQL "
+                                 "string, and optional params");
+}
+
+void sqlsrv_v8_cursor_next_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    SqlSrvV8CursorResource* cursor = nullptr;
+    v8::Local<v8::Promise> promise;
+
+    if (backend == nullptr || args.Length() != 1) {
+        sqlsrv_v8_throw_type_error(isolate, "__sloppy.data.sqlserver.cursorNext requires a cursor");
+        return;
+    }
+    cursor = sqlsrv_v8_lookup_cursor(isolate, context, backend, args[0]);
+    if (cursor == nullptr) {
+        return;
+    }
+    if (cursor->closed || cursor->request == nullptr || cursor->request->cursor_done) {
+        sqlsrv_v8_throw_error(isolate, "sqlserver cursor is closed");
+        return;
+    }
+    if (cursor->request->cursor_next_pending) {
+        sqlsrv_v8_throw_error(isolate, "sqlserver cursor already has a pending fetch");
+        return;
+    }
+    if (!sqlsrv_v8_make_promise(isolate, context, cursor->request, &promise)) {
+        sqlsrv_v8_throw_error(isolate, "sqlserver bridge could not create a promise");
+        return;
+    }
+    cursor->request->cursor_next_pending = true;
+    cursor->request->state = SqlSrvV8RequestState::Fetching;
+    sqlsrv_v8_pump_connection(cursor->request->connection);
+    args.GetReturnValue().Set(promise);
+}
+
+void sqlsrv_v8_cursor_close_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    SlResourceId id = {};
+    SlDiag diag = {};
+
+    if (backend == nullptr || args.Length() != 1 ||
+        !sqlsrv_v8_get_resource_id(isolate, context, args[0], &id))
+    {
+        sqlsrv_v8_throw_type_error(isolate,
+                                   "__sloppy.data.sqlserver.cursorClose requires a cursor");
+        return;
+    }
+    SlStatus status = sl_resource_table_close_kind(&backend->resources, id,
+                                                   SL_RESOURCE_KIND_SQLSERVER_CURSOR, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlsrv_v8_throw_error(isolate, "sqlserver cursor close failed");
+        return;
+    }
+    args.GetReturnValue().Set(v8::Undefined(isolate));
 }
 
 void sqlsrv_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
@@ -2198,6 +2536,21 @@ void sqlsrv_v8_transaction_query_raw_callback(const v8::FunctionCallbackInfo<v8:
                                  "SQL string, and optional params");
 }
 
+void sqlsrv_v8_transaction_query_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_operation_callback(args, SqlSrvV8Operation::TransactionQueryCursor,
+                                 "__sloppy.data.sqlserver.transactionQueryCursor requires a "
+                                 "handle, SQL string, and optional params");
+}
+
+void sqlsrv_v8_transaction_query_raw_cursor_callback(
+    const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_operation_callback(args, SqlSrvV8Operation::TransactionQueryRawCursor,
+                                 "__sloppy.data.sqlserver.transactionQueryRawCursor requires a "
+                                 "handle, SQL string, and optional params");
+}
+
 void sqlsrv_v8_transaction_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     sqlsrv_v8_operation_callback(args, SqlSrvV8Operation::TransactionQueryOne,
@@ -2230,6 +2583,26 @@ void sqlsrv_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 }
 
 void sqlsrv_v8_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_open_callback(args);
+}
+
+void sqlsrv_v8_query_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_open_callback(args);
+}
+
+void sqlsrv_v8_query_raw_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_open_callback(args);
+}
+
+void sqlsrv_v8_cursor_next_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_open_callback(args);
+}
+
+void sqlsrv_v8_cursor_close_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     sqlsrv_v8_open_callback(args);
 }
@@ -2269,6 +2642,17 @@ void sqlsrv_v8_transaction_query_raw_callback(const v8::FunctionCallbackInfo<v8:
     sqlsrv_v8_open_callback(args);
 }
 
+void sqlsrv_v8_transaction_query_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_open_callback(args);
+}
+
+void sqlsrv_v8_transaction_query_raw_cursor_callback(
+    const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlsrv_v8_open_callback(args);
+}
+
 void sqlsrv_v8_transaction_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     sqlsrv_v8_open_callback(args);
@@ -2302,6 +2686,10 @@ void sl_v8_append_sqlserver_external_references(std::vector<intptr_t>* refs)
     refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_exec_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_query_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_query_raw_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_query_cursor_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_query_raw_cursor_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_cursor_next_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_cursor_close_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_query_one_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_begin_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_commit_callback));
@@ -2309,6 +2697,8 @@ void sl_v8_append_sqlserver_external_references(std::vector<intptr_t>* refs)
     refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_transaction_exec_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_transaction_query_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_transaction_query_raw_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_transaction_query_cursor_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_transaction_query_raw_cursor_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlsrv_v8_transaction_query_one_callback));
 }
 
@@ -2357,6 +2747,14 @@ bool sl_v8_install_sqlserver_intrinsics(v8::Isolate* isolate, v8::Local<v8::Cont
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "query", sqlsrv_v8_query_callback) ||
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "queryRaw",
                                 sqlsrv_v8_query_raw_callback) ||
+        !sqlsrv_v8_set_function(isolate, context, sqlserver, "queryCursor",
+                                sqlsrv_v8_query_cursor_callback) ||
+        !sqlsrv_v8_set_function(isolate, context, sqlserver, "queryRawCursor",
+                                sqlsrv_v8_query_raw_cursor_callback) ||
+        !sqlsrv_v8_set_function(isolate, context, sqlserver, "cursorNext",
+                                sqlsrv_v8_cursor_next_callback) ||
+        !sqlsrv_v8_set_function(isolate, context, sqlserver, "cursorClose",
+                                sqlsrv_v8_cursor_close_callback) ||
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "queryOne",
                                 sqlsrv_v8_query_one_callback) ||
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "transactionBegin",
@@ -2371,6 +2769,10 @@ bool sl_v8_install_sqlserver_intrinsics(v8::Isolate* isolate, v8::Local<v8::Cont
                                 sqlsrv_v8_transaction_query_callback) ||
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "transactionQueryRaw",
                                 sqlsrv_v8_transaction_query_raw_callback) ||
+        !sqlsrv_v8_set_function(isolate, context, sqlserver, "transactionQueryCursor",
+                                sqlsrv_v8_transaction_query_cursor_callback) ||
+        !sqlsrv_v8_set_function(isolate, context, sqlserver, "transactionQueryRawCursor",
+                                sqlsrv_v8_transaction_query_raw_cursor_callback) ||
         !sqlsrv_v8_set_function(isolate, context, sqlserver, "transactionQueryOne",
                                 sqlsrv_v8_transaction_query_one_callback) ||
         !data->Set(context, sqlserver_key, sqlserver).FromMaybe(false))

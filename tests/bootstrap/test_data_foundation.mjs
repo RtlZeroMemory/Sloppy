@@ -214,6 +214,9 @@ function createForgedLoweredQuery() {
     assert.equal(data.sqlite.supports.memory, true);
     assert.equal(data.sqlite.supports.transactions, true);
     assert.equal(data.sqlite.supports.transactionsMode, "callback");
+    assert.equal(data.sqlite.supports.cursors, true);
+    assert.deepEqual(data.sqlite.supports.cursorModes, ["object", "raw"]);
+    assert.equal(data.sqlite.supports.responseStreamingAdapter, false);
     assert.equal(data.sqlite.supports.preparedStatements, false);
     assert.equal(data.sqlite.supports.pooling, false);
     assert.deepEqual(data.sqlite.supports.parameters, [
@@ -271,6 +274,18 @@ function createForgedLoweredQuery() {
 
 {
     const calls = [];
+    const cursorRows = new Map();
+    let nextCursorSlot = 10;
+    function makeCursor(provider, columns, rows) {
+        const cursor = {
+            slot: nextCursorSlot++,
+            generation: 1,
+            kind: `${provider}.cursor`,
+            columns,
+        };
+        cursorRows.set(cursor, [...rows]);
+        return cursor;
+    }
     const previousSloppy = globalThis.__sloppy;
     globalThis.__sloppy = {
         data: {
@@ -304,6 +319,34 @@ function createForgedLoweredQuery() {
                     }
                     calls.push(call);
                     return { mode: "raw", columnNames: ["name"], rows: [["Ada"]] };
+                },
+                queryCursor(handle, text, params, options) {
+                    const call = ["queryCursor", handle.generation, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
+                    return makeCursor("sqlite", ["name"], [{ name: "Ada" }, { name: "Grace" }]);
+                },
+                queryRawCursor(handle, text, params, options) {
+                    const call = ["queryRawCursor", handle.generation, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
+                    return makeCursor("sqlite", ["name"], [["Ada"], ["Grace"]]);
+                },
+                cursorNext(cursor) {
+                    calls.push(["cursorNext", cursor.slot]);
+                    const rows = cursorRows.get(cursor) ?? [];
+                    if (rows.length === 0) {
+                        return { done: true };
+                    }
+                    return { done: false, value: rows.shift() };
+                },
+                cursorClose(cursor) {
+                    calls.push(["cursorClose", cursor.slot]);
+                    cursorRows.delete(cursor);
                 },
                 queryOne(handle, text, params) {
                     calls.push(["queryOne", handle.kind, text, params]);
@@ -341,6 +384,22 @@ function createForgedLoweredQuery() {
                     calls.push(call);
                     return { mode: "raw", columnNames: ["tx"], rows: [[true]] };
                 },
+                transactionQueryCursor(handle, text, params, options) {
+                    const call = ["txQueryCursor", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
+                    return makeCursor("sqlite", ["tx"], [{ tx: true }]);
+                },
+                transactionQueryRawCursor(handle, text, params, options) {
+                    const call = ["txQueryRawCursor", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
+                    return makeCursor("sqlite", ["tx"], [[true]]);
+                },
                 transactionQueryOne(handle, text, params) {
                     calls.push(["txQueryOne", handle.slot, text, params]);
                     return { tx: true, text };
@@ -367,6 +426,34 @@ function createForgedLoweredQuery() {
                     calls.push(call);
                     return { mode: "raw", rows: [[true]] };
                 },
+                queryCursor(handle, text, params, options) {
+                    const call = ["pgQueryCursor", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
+                    return makeCursor("postgres", ["pg"], [{ pg: true }]);
+                },
+                queryRawCursor(handle, text, params, options) {
+                    const call = ["pgQueryRawCursor", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
+                    return makeCursor("postgres", ["pg"], [[true]]);
+                },
+                cursorNext(cursor) {
+                    calls.push(["pgCursorNext", cursor.slot]);
+                    const rows = cursorRows.get(cursor) ?? [];
+                    if (rows.length === 0) {
+                        return { done: true };
+                    }
+                    return { done: false, value: rows.shift() };
+                },
+                cursorClose(cursor) {
+                    calls.push(["pgCursorClose", cursor.slot]);
+                    cursorRows.delete(cursor);
+                },
                 close(handle) {
                     calls.push(["pgClose", handle.slot]);
                 },
@@ -391,6 +478,34 @@ function createForgedLoweredQuery() {
                     }
                     calls.push(call);
                     return { mode: "raw", rows: [[true]] };
+                },
+                queryCursor(handle, text, params, options) {
+                    const call = ["mssqlQueryCursor", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
+                    return makeCursor("sqlserver", ["mssql"], [{ mssql: true }]);
+                },
+                queryRawCursor(handle, text, params, options) {
+                    const call = ["mssqlQueryRawCursor", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
+                    return makeCursor("sqlserver", ["mssql"], [[true]]);
+                },
+                cursorNext(cursor) {
+                    calls.push(["mssqlCursorNext", cursor.slot]);
+                    const rows = cursorRows.get(cursor) ?? [];
+                    if (rows.length === 0) {
+                        return { done: true };
+                    }
+                    return { done: false, value: rows.shift() };
+                },
+                cursorClose(cursor) {
+                    calls.push(["mssqlCursorClose", cursor.slot]);
+                    cursorRows.delete(cursor);
                 },
                 close(handle) {
                     calls.push(["mssqlClose", handle.slot]);
@@ -434,6 +549,33 @@ function createForgedLoweredQuery() {
             columnNames: ["name"],
             rows: [["Ada"]],
         });
+        const cursor = await db.queryCursor("select name from users", [], {
+            batchSize: 2,
+            maxRows: 200,
+            timeoutMs: 500,
+        });
+        assert.equal(cursor.provider, "sqlite");
+        assert.equal(cursor.mode, "object");
+        assert.deepEqual(cursor.columns, ["name"]);
+        const streamedRows = [];
+        for await (const row of cursor) {
+            streamedRows.push(row);
+        }
+        assert.deepEqual(streamedRows, [{ name: "Ada" }, { name: "Grace" }]);
+        assert.equal(cursor.closed, true);
+        await cursor.close();
+        const rawCursor = await db.queryCursor("select name from users", [], { mode: "raw" });
+        const rawIterator = rawCursor[Symbol.asyncIterator]();
+        assert.deepEqual(await rawIterator.next(), { done: false, value: ["Ada"] });
+        assert.deepEqual(await rawIterator.return(), { done: true, value: undefined });
+        assert.equal(rawCursor.closed, true);
+        const aliasCursor = await db.stream("select name from users");
+        assert.deepEqual(await aliasCursor.next(), { done: false, value: { name: "Ada" } });
+        await aliasCursor.close();
+        await assertRejectsMessage(
+            () => db.queryCursor("select name from users", [], { batchSize: 0 }),
+            /batchSize option must be an integer from 1 to 4096/,
+        );
         assertThrowsMessage(
             () => db.query("select name from users", { mode: "facade" }),
             /mode must be object or raw/,
@@ -486,6 +628,14 @@ function createForgedLoweredQuery() {
             mode: "raw",
             rows: [[true]],
         });
+        assert.equal(data.postgres.supports.cursors, true);
+        const pgCursor = await pgDb.queryCursor("select id from users", [], { batchSize: 4 });
+        assert.equal(pgCursor.provider, "postgres");
+        assert.deepEqual(await pgCursor.next(), { done: false, value: { pg: true } });
+        await pgCursor.close();
+        const pgRawCursor = await pgDb.queryRawCursor("select id from users");
+        assert.deepEqual(await pgRawCursor.next(), { done: false, value: [true] });
+        await pgRawCursor.close();
         pgDb.close();
         const sqlServerDb = data.sqlserver.open({ connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost;" });
         assert.deepEqual(sqlServerDb.query("select id from users", { timeoutMs: 250 }), [{ mssql: true }]);
@@ -493,6 +643,14 @@ function createForgedLoweredQuery() {
             mode: "raw",
             rows: [[true]],
         });
+        assert.equal(data.sqlserver.supports.cursors, true);
+        const mssqlCursor = await sqlServerDb.queryCursor("select id from users", [], { batchSize: 4 });
+        assert.equal(mssqlCursor.provider, "sqlserver");
+        assert.deepEqual(await mssqlCursor.next(), { done: false, value: { mssql: true } });
+        await mssqlCursor.close();
+        const mssqlRawCursor = await sqlServerDb.queryRawCursor("select id from users");
+        assert.deepEqual(await mssqlRawCursor.next(), { done: false, value: [true] });
+        await mssqlRawCursor.close();
         sqlServerDb.close();
         let capturedTx;
         const txResult = await db.transaction(async (tx) => {
@@ -514,6 +672,10 @@ function createForgedLoweredQuery() {
                 columnNames: ["tx"],
                 rows: [[true]],
             });
+            const txCursor = await tx.queryCursor("select tx from users", [], { batchSize: 1 });
+            assert.deepEqual(await txCursor.next(), { done: false, value: { tx: true } });
+            await txCursor.close();
+            await tx.queryCursor("select auto close from users", [], { batchSize: 1 });
             assert.deepEqual(tx.queryOne(sql`select name from users where id = ${2}`), {
                 tx: true,
                 text: "select name from users where id = ?",
@@ -532,7 +694,10 @@ function createForgedLoweredQuery() {
         assert.equal(db.prepare, undefined);
         assert.equal(db.__debug().resource, "opaque");
         assert.equal(db.__debug().transactionActive, false);
+        const closeCursor = await db.queryCursor("select close from users", [], { batchSize: 1 });
         db.close();
+        assert.equal(closeCursor.closed, true);
+        await assertRejectsMessage(() => closeCursor.next(), /cursor is closed/);
         db.close();
         assertThrowsMessage(() => db.query("select 1"), /sqlite connection is closed/);
         assert.deepEqual(calls, [
@@ -548,28 +713,58 @@ function createForgedLoweredQuery() {
             ["query", 1, "select name from users", [], { maxRows: 2 }],
             ["queryRaw", 1, "select name from users", []],
             ["queryRaw", 1, "select name from users", [], { maxRows: 3 }],
+            ["queryCursor", 1, "select name from users", [], { batchSize: 2, maxRows: 200, timeoutMs: 500 }],
+            ["cursorNext", 10],
+            ["cursorNext", 10],
+            ["cursorNext", 10],
+            ["cursorClose", 10],
+            ["queryRawCursor", 1, "select name from users", []],
+            ["cursorNext", 11],
+            ["cursorClose", 11],
+            ["queryCursor", 1, "select name from users", []],
+            ["cursorNext", 12],
+            ["cursorClose", 12],
             ["queryOne", "sqlite.connection", "select name from users where id = ?", [1]],
             ["query", 1, "select name from users", [], { timeoutMs: 500 }],
             ["pgOpen", "postgres://localhost/sloppy"],
             ["pgQuery", 2, "select id from users", [], { timeoutMs: 250 }],
             ["pgQuery", 2, "select id from users", [], { maxRows: 4 }],
             ["pgQueryRaw", 2, "select id from users", [], { maxRows: 5 }],
+            ["pgQueryCursor", 2, "select id from users", [], { batchSize: 4 }],
+            ["pgCursorNext", 13],
+            ["pgCursorClose", 13],
+            ["pgQueryRawCursor", 2, "select id from users", []],
+            ["pgCursorNext", 14],
+            ["pgCursorClose", 14],
             ["pgClose", 2],
             ["mssqlOpen", "Driver={ODBC Driver 18 for SQL Server};Server=localhost;"],
             ["mssqlQuery", 3, "select id from users", [], { timeoutMs: 250 }],
             ["mssqlQueryRaw", 3, "select id from users", [], { maxRows: 6 }],
+            ["mssqlQueryCursor", 3, "select id from users", [], { batchSize: 4 }],
+            ["mssqlCursorNext", 15],
+            ["mssqlCursorClose", 15],
+            ["mssqlQueryRawCursor", 3, "select id from users", []],
+            ["mssqlCursorNext", 16],
+            ["mssqlCursorClose", 16],
             ["mssqlClose", 3],
             ["begin", 1],
             ["txExec", 1, "insert into users (name) values (?)", ["Grace"]],
             ["txQuery", 1, "select name from users", []],
             ["txQueryRaw", 1, "select name from users", []],
             ["txQueryRaw", 1, "select name from users", [], { maxRows: 7 }],
+            ["txQueryCursor", 1, "select tx from users", [], { batchSize: 1 }],
+            ["cursorNext", 17],
+            ["cursorClose", 17],
+            ["txQueryCursor", 1, "select auto close from users", [], { batchSize: 1 }],
             ["txQueryOne", 1, "select name from users where id = ?", [2]],
+            ["cursorClose", 18],
             ["commit", 1],
             ["begin", 1],
             ["rollback", 1],
             ["begin", 1],
             ["rollback", 1],
+            ["queryCursor", 1, "select close from users", [], { batchSize: 1 }],
+            ["cursorClose", 19],
             ["close", 1],
         ]);
     } finally {
@@ -586,6 +781,9 @@ function createForgedLoweredQuery() {
     assert.equal(data.postgres.placeholderStyle, "postgres");
     assert.equal(data.postgres.supports.connectionString, true);
     assert.equal(data.postgres.supports.transactions, true);
+    assert.equal(data.postgres.supports.cursors, true);
+    assert.deepEqual(data.postgres.supports.cursorModes, ["object", "raw"]);
+    assert.equal(data.postgres.supports.responseStreamingAdapter, false);
     assert.equal(data.postgres.supports.pooling, true);
     assert.equal(data.postgres.supports.maxPoolConnections, 256);
     assert.equal(data.postgres.supports.executionMode, "TRUE_ASYNC");
@@ -665,6 +863,9 @@ function createForgedLoweredQuery() {
     assert.equal(data.sqlserver.supports.connectionString, true);
     assert.equal(data.sqlserver.supports.odbc, true);
     assert.equal(data.sqlserver.supports.transactions, true);
+    assert.equal(data.sqlserver.supports.cursors, true);
+    assert.deepEqual(data.sqlserver.supports.cursorModes, ["object", "raw"]);
+    assert.equal(data.sqlserver.supports.responseStreamingAdapter, false);
     assert.equal(data.sqlserver.supports.pooling, true);
     assert.equal(data.sqlserver.supports.maxPoolConnections, 256);
     assert.equal(data.sqlserver.supports.executionMode, "TRUE_ASYNC");

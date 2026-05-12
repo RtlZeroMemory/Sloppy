@@ -15,6 +15,6 @@ if(NOT result EQUAL 0)
     message(FATAL_ERROR "PostgreSQL bridge live run failed without printing secrets.\n${error}")
 endif()
 
-if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace" OR NOT output MATCHES "postgresTimedOut.*true")
-    message(FATAL_ERROR "PostgreSQL bridge live output did not include expected rows and timeout cancellation evidence.\n${output}")
+if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace" OR NOT output MATCHES "postgresTimedOut.*true" OR NOT output MATCHES "materializedRejected.*true" OR NOT output MATCHES "cursorCount.*152" OR NOT output MATCHES "cursorMaxRowsRejected.*true" OR NOT output MATCHES "poolPinned.*true" OR NOT output MATCHES "cursorTimedOut.*true")
+    message(FATAL_ERROR "PostgreSQL bridge live output did not include expected cursor, bounded materialization, pool pinning, and timeout evidence.\n${output}")
 endif()
