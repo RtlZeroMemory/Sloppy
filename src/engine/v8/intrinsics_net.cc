@@ -844,7 +844,8 @@ bool net_v8_handle_to_resource(v8::Isolate* isolate, v8::Local<v8::Context> cont
 }
 
 bool net_v8_resource_to_handle(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                               SlResourceId id, v8::Local<v8::Object>* out)
+                               SlResourceId id, v8::Local<v8::Object>* out,
+                               const std::string* selected_protocol = nullptr)
 {
     v8::Local<v8::Object> object;
     v8::Local<v8::Private> slot_key;
@@ -862,9 +863,16 @@ bool net_v8_resource_to_handle(v8::Isolate* isolate, v8::Local<v8::Context> cont
         !object
              ->SetPrivate(context, generation_key,
                           v8::Integer::NewFromUnsigned(isolate, id.generation))
-             .FromMaybe(false) ||
-        !object->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false))
+             .FromMaybe(false))
     {
+        return false;
+    }
+    if (selected_protocol != nullptr && !selected_protocol->empty() &&
+        !net_v8_set_string(isolate, context, object, "selectedProtocol", *selected_protocol))
+    {
+        return false;
+    }
+    if (!object->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false)) {
         return false;
     }
     *out = object;
@@ -1573,6 +1581,11 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
     }
     case NetV8Operation::ReadUntil: {
         SlOwnedBytes bytes = {};
+        if (request->connection->tls_active) {
+            net_v8_set_diag(*request, SL_DIAG_NET_UNSUPPORTED_OPTION, SL_STATUS_UNSUPPORTED,
+                            "TLS readUntil is not supported; use read on TLS connections");
+            break;
+        }
         request->status = sl_tcp_connection_read_until(
             request->connection->native, &request->connection->arena,
             sl_bytes_from_parts(request->delimiter.data(), request->delimiter.size()),
@@ -1584,6 +1597,11 @@ void net_v8_worker(std::shared_ptr<SlV8NetRequest> request)
     }
     case NetV8Operation::ReadLine: {
         SlOwnedStr line = {};
+        if (request->connection->tls_active) {
+            net_v8_set_diag(*request, SL_DIAG_NET_UNSUPPORTED_OPTION, SL_STATUS_UNSUPPORTED,
+                            "TLS readLine is not supported; use read on TLS connections");
+            break;
+        }
         request->status =
             sl_tcp_connection_read_line(request->connection->native, &request->connection->arena,
                                         request->max_bytes, &line, &request->diag);
@@ -1679,37 +1697,38 @@ SlStatus net_v8_completion_dispatch(SlAsyncLoop* loop, const SlAsyncCompletion* 
             }
             SlResourceId id = {};
             v8::Local<v8::Object> handle;
-            if (!net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_TCP_CONNECTION,
-                                               request->connection, net_v8_resource_cleanup, &id) ||
-                !net_v8_resource_to_handle(isolate, context, id, &handle))
-            {
+            bool insert_ok =
+                net_v8_insert_shared_resource(backend, SL_RESOURCE_KIND_TCP_CONNECTION,
+                                              request->connection, net_v8_resource_cleanup, &id);
+            const std::string* selected_protocol =
+                request->operation == NetV8Operation::ConnectTls &&
+                        !request->tls_selected_alpn.empty()
+                    ? &request->tls_selected_alpn
+                    : nullptr;
+            bool handle_ok = insert_ok && net_v8_resource_to_handle(isolate, context, id, &handle,
+                                                                    selected_protocol);
+            if (!insert_ok || !handle_ok) {
                 if (sl_resource_id_is_valid(id)) {
                     sl_resource_table_close_kind(&backend->resources, id,
                                                  SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
                 }
-                ok = resolver
-                         ->Reject(context,
-                                  v8::Exception::Error(v8::String::NewFromUtf8Literal(
-                                      isolate,
-                                      "SLOPPY_E_NET_BACKEND_UNAVAILABLE: resource insert failed")))
-                         .FromMaybe(false);
-            }
-            else {
-                if (request->operation == NetV8Operation::ConnectTls &&
-                    !request->tls_selected_alpn.empty() &&
-                    !net_v8_set_string(isolate, context, handle, "selectedProtocol",
-                                       request->tls_selected_alpn))
-                {
-                    sl_resource_table_close_kind(&backend->resources, id,
-                                                 SL_RESOURCE_KIND_TCP_CONNECTION, nullptr);
+                if (insert_ok && selected_protocol != nullptr) {
                     ok = resolver
                              ->Reject(context, v8::Exception::Error(v8::String::NewFromUtf8Literal(
                                                    isolate, "SLOPPY_E_NET_BACKEND_UNAVAILABLE: "
                                                             "selected protocol set failed")))
                              .FromMaybe(false);
-                    isolate->PerformMicrotaskCheckpoint();
-                    return ok ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
                 }
+                else {
+                    ok = resolver
+                             ->Reject(context,
+                                      v8::Exception::Error(v8::String::NewFromUtf8Literal(
+                                          isolate, "SLOPPY_E_NET_BACKEND_UNAVAILABLE: resource "
+                                                   "insert failed")))
+                             .FromMaybe(false);
+                }
+            }
+            else {
                 ok = resolver->Resolve(context, handle).FromMaybe(false);
             }
             break;
