@@ -84,11 +84,7 @@ function createSseStream(userHandler, options = undefined) {
                     throw new TypeError("Sloppy SSE bounded write queue is full.");
                 }
                 queued += 1;
-                try {
-                    writer.writeText(frame);
-                } finally {
-                    queued -= 1;
-                }
+                writer.writeText(frame);
             }
 
             const stream = Object.freeze({

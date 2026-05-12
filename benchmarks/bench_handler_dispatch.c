@@ -1402,7 +1402,10 @@ static SlStatus bench_http_body_reader_json_known_length(const SlBenchContext* c
      100000U,                                                                                      \
      function_name,                                                                                \
      note "; dispatch_mode=" #mode,                                                                \
-     false}
+     false,                                                                                        \
+     0U,                                                                                           \
+     0U,                                                                                           \
+     0U}
 
 #define SL_BENCH_ROUTE_TABLE_ENTRIES(count, mode)                                                  \
     SL_BENCH_ROUTE_TABLE_ENTRY(                                                                    \
@@ -1431,7 +1434,10 @@ static SlStatus bench_http_body_reader_json_known_length(const SlBenchContext* c
      100000U,                                                                                      \
      function_name,                                                                                \
      "mixed parameter route table is cached after warmup; dispatch_mode=" #mode,                   \
-     false}
+     false,                                                                                        \
+     0U,                                                                                           \
+     0U,                                                                                           \
+     0U}
 
 #define SL_BENCH_PARAM_HEAVY_ENTRY(count, mode, function_name, measured_iterations)                \
     {"route.dispatch.param_heavy." #count "." #mode ".last",                                       \
@@ -1441,24 +1447,30 @@ static SlStatus bench_http_body_reader_json_known_length(const SlBenchContext* c
      measured_iterations,                                                                          \
      function_name,                                                                                \
      "parameter route table is cached after warmup; dispatch_mode=" #mode,                         \
-     false}
+     false,                                                                                        \
+     0U,                                                                                           \
+     0U,                                                                                           \
+     0U}
 
 static const SlBenchDefinition handler_definitions[] = {
     {"handler.plan.lookup", "handler", "lookup handler IDs in a borrowed Sloppy Plan table", 10000U,
      1000000U, bench_plan_handler_lookup, "non-V8 lookup only; no JavaScript enters this benchmark",
-     false, 0U, 0U},
+     false, 0U, 0U, 0U},
     {"handler.runtime_contract.noop_unsupported", "handler",
      "resolve handler export then hit the current noop engine boundary", 1000U, 100000U,
      bench_runtime_contract_noop_dispatch,
-     "measures current non-V8 dispatch plumbing and expected unsupported engine result", false, 0U, 0U},
+     "measures current non-V8 dispatch plumbing and expected unsupported engine result", false, 0U,
+     0U, 0U},
     {"http.dispatch.get.noop_unsupported", "handler",
      "synthetic parsed GET dispatch through route match, plan lookup, and noop engine", 1000U,
      100000U, bench_http_get_dispatch_noop,
-     "not a server throughput benchmark; no sockets or response writer are involved", false, 0U, 0U},
+     "not a server throughput benchmark; no sockets or response writer are involved", false, 0U, 0U,
+     0U},
     {"route.dispatch.generated_table.param", "route",
      "dispatch and capture params through a generated route table", 1000U, 100000U,
      bench_route_table_param_dispatch_noop,
-     "generated route table is built before timing; noop engine result is expected", false},
+     "generated route table is built before timing; noop engine result is expected", false, 0U, 0U,
+     0U},
     SL_BENCH_ROUTE_TABLE_ENTRIES(10, compiled),
     SL_BENCH_ROUTE_TABLE_ENTRIES(10, classic),
     SL_BENCH_ROUTE_TABLE_ENTRIES(10, validate),
@@ -1534,45 +1546,52 @@ static const SlBenchDefinition handler_definitions[] = {
     {"route.dispatch.native_response.text", "route",
      "dispatch a native Results.text literal and construct the response", 1000U, 100000U,
      bench_native_response_text,
-     "measures dispatch plus native response construction; no sockets or response writer", false},
+     "measures dispatch plus native response construction; no sockets or response writer", false,
+     0U, 0U, 0U},
     {"route.dispatch.native_response.json", "route",
      "dispatch a native Results.json literal and construct the response", 1000U, 100000U,
      bench_native_response_json,
-     "measures dispatch plus native response construction; no sockets or response writer", false},
+     "measures dispatch plus native response construction; no sockets or response writer", false,
+     0U, 0U, 0U},
     {"route.dispatch.native_response.ok", "route",
      "dispatch a native Results.ok literal and construct the response", 1000U, 100000U,
      bench_native_response_ok,
-     "measures dispatch plus native response construction; no sockets or response writer", false},
+     "measures dispatch plus native response construction; no sockets or response writer", false,
+     0U, 0U, 0U},
     {"route.dispatch.table_build.1000", "route",
      "build a route dispatch table from a 1000-route Plan", 100U, 1000U,
      bench_route_table_build_1000,
-     "measures Plan-backed route table materialization before serving", false},
+     "measures Plan-backed route table materialization before serving", false, 0U, 0U, 0U},
     {"route.dispatch.table_build.10000", "route",
      "build a route dispatch table from a 10000-route Plan", 10U, 100U,
      bench_route_table_build_10000,
-     "measures Plan-backed route table materialization before serving", false},
+     "measures Plan-backed route table materialization before serving", false, 0U, 0U, 0U},
     {"route.dispatch.table_build_param.100", "route",
      "build a route dispatch table from a 100-route shared-prefix parameter Plan", 100U, 1000U,
      bench_route_table_build_param_100,
-     "measures Plan-backed parameter bucket and trie materialization before serving", false},
+     "measures Plan-backed parameter bucket and trie materialization before serving", false, 0U, 0U,
+     0U},
     {"route.dispatch.table_build_param.1000", "route",
      "build a route dispatch table from a 1000-route shared-prefix parameter Plan", 20U, 200U,
      bench_route_table_build_param_1000,
-     "measures Plan-backed parameter bucket and trie materialization before serving", false},
+     "measures Plan-backed parameter bucket and trie materialization before serving", false, 0U, 0U,
+     0U},
     {"route.dispatch.table_build_param.10000", "route",
      "build a route dispatch table from a 10000-route shared-prefix parameter Plan", 1U, 3U,
      bench_route_table_build_param_10000,
-     "measures Plan-backed parameter bucket and trie materialization before serving", false},
+     "measures Plan-backed parameter bucket and trie materialization before serving", false, 0U, 0U,
+     0U},
     {"route.dispatch.artifact_validate.1", "route",
      "validate a one-route routes.slrt artifact against Plan metadata", 1000U, 100000U,
      bench_route_artifact_validate,
      "artifactSizeBytes=128; routeCount=1; validates artifact contract but dispatch table still "
      "comes from Plan",
-     false},
+     false, 0U, 0U, 0U},
     {"http.body_reader.json_known_length", "handler",
      "bounded HTTP body reader with a declared JSON content length and chunked appends", 1000U,
      100000U, bench_http_body_reader_json_known_length,
-     "tracks builder checksum counters for the known-length body reader optimization", false, 0U, 0U},
+     "tracks builder checksum counters for the known-length body reader optimization", false, 0U,
+     0U, 0U},
 };
 
 #undef SL_BENCH_PARAM_TRIE_ENTRY

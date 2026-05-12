@@ -89,10 +89,14 @@ return Results.stream(async (writer) => {
 ```
 
 The JavaScript callback writes into a bounded descriptor before the handler
-returns. Native HTTP/1.1 transports serialize that descriptor with chunked
-frames and bounded pending writes, but the public JS surface is still a
-descriptor builder, not live handler push, incremental file send, WHATWG
-Streams, or Node streams.
+returns. The native response writer validates that descriptor, computes
+`Content-Length` for bounded serialization, and preserves that length for
+`HEAD` responses. The HTTP/1.1 transport lowers the descriptor into a Core
+readable stream and emits bounded chunked frames with pending-write and response
+caps.
+
+The public JS surface is still a descriptor builder, not live handler push,
+incremental file send, WHATWG Streams, or Node streams.
 
 `Realtime.sse(...)` uses this bounded stream descriptor path and sets
 `text/event-stream` headers for SSE frames. It does not add live incremental

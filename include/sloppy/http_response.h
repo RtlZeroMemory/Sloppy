@@ -94,7 +94,9 @@ SlStatus sl_http_response_stream_readable_init(SlHttpResponseStreamReadable* ada
  * remain valid until the caller mutates that storage. Supported statuses are 200, 201, 202,
  * 204, 304, 400, 401, 404, 405, 408, 413, 415, 417, 500, 501, and 503. Unknown statuses, invalid
  * custom header names, managed custom headers, and CR/LF in Content-Type or header values are
- * rejected. Status 204 and 304 always write no Content-Type, no Content-Length, and no body.
+ * rejected. Bounded stream descriptors are validated and serialized with computed
+ * Content-Length. Status 204 and 304 always write no Content-Type, no Content-Length, and no body;
+ * non-empty stream bodies for those statuses are rejected.
  */
 SlStatus sl_http_response_write(const SlHttpResponse* response, unsigned char* buffer,
                                 size_t capacity, SlBytes* out_bytes);

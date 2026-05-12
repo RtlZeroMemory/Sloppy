@@ -109,8 +109,7 @@ typedef struct SlStreamWriteResult
 typedef struct SlReadableStream SlReadableStream;
 typedef struct SlWritableStream SlWritableStream;
 
-typedef SlStreamStatus (*SlReadableStreamReadFn)(SlReadableStream* stream,
-                                                 SlStreamReadResult* out);
+typedef SlStreamStatus (*SlReadableStreamReadFn)(SlReadableStream* stream, SlStreamReadResult* out);
 typedef SlStreamStatus (*SlStreamControlFn)(void* user, SlStr message);
 
 typedef struct SlReadableStreamVTable
@@ -122,6 +121,13 @@ typedef struct SlReadableStreamVTable
     const char* name;
 } SlReadableStreamVTable;
 
+/*
+ * Writable adapters may accept a prefix of a non-empty chunk and report that count in
+ * `out->bytes_written`. Returning OK with a partial prefix means the caller may immediately
+ * retry the remaining slice. Returning BACKPRESSURE with a partial prefix means the caller
+ * must retain the unwritten tail and retry after drain/resume. `bytes_written` must never
+ * exceed the input length, and OK with zero bytes for a non-empty chunk is invalid.
+ */
 typedef SlStreamStatus (*SlWritableStreamWriteFn)(SlWritableStream* stream, SlStreamChunk chunk,
                                                   SlStreamWriteResult* out);
 typedef SlStreamStatus (*SlWritableStreamDrainFn)(SlWritableStream* stream, size_t bytes);
@@ -211,6 +217,11 @@ typedef struct SlChunkListReadableStream
     size_t chunk_offset;
 } SlChunkListReadableStream;
 
+/*
+ * Bounded descriptor sink for Core stream tests and deterministic adapters. It stores
+ * borrowed chunk views, not byte copies; every non-empty chunk's bytes must outlive the
+ * adapter reset/destroy or any readable view created from it.
+ */
 typedef struct SlChunkListWritableStream
 {
     SlStreamChunk* chunks;
@@ -225,9 +236,8 @@ SlStr sl_stream_state_name(SlStreamState state);
 SlStr sl_stream_status_name(SlStreamStatus status);
 SlStatus sl_stream_status_to_status(SlStreamStatus status);
 
-SlStatus sl_readable_stream_init(SlReadableStream* stream,
-                                 const SlReadableStreamVTable* vtable, void* user,
-                                 const SlStreamOptions* options);
+SlStatus sl_readable_stream_init(SlReadableStream* stream, const SlReadableStreamVTable* vtable,
+                                 void* user, const SlStreamOptions* options);
 SlStreamStatus sl_readable_stream_read(SlReadableStream* stream, SlStreamReadResult* out);
 SlStreamStatus sl_readable_stream_close(SlReadableStream* stream, SlStr message);
 SlStreamStatus sl_readable_stream_fail(SlReadableStream* stream, SlStreamStatus code,
@@ -235,9 +245,8 @@ SlStreamStatus sl_readable_stream_fail(SlReadableStream* stream, SlStreamStatus 
 SlStreamStatus sl_readable_stream_abort(SlReadableStream* stream, SlStr message);
 SlStreamStats sl_readable_stream_stats(const SlReadableStream* stream);
 
-SlStatus sl_writable_stream_init(SlWritableStream* stream,
-                                 const SlWritableStreamVTable* vtable, void* user,
-                                 const SlStreamOptions* options);
+SlStatus sl_writable_stream_init(SlWritableStream* stream, const SlWritableStreamVTable* vtable,
+                                 void* user, const SlStreamOptions* options);
 SlStreamStatus sl_writable_stream_write(SlWritableStream* stream, SlStreamChunk chunk,
                                         SlStreamWriteResult* out);
 SlStreamStatus sl_writable_stream_drain(SlWritableStream* stream, size_t bytes);
@@ -251,8 +260,7 @@ SlStreamStats sl_writable_stream_stats(const SlWritableStream* stream);
 SlStatus sl_stream_pump_init(SlStreamPump* pump, SlReadableStream* readable,
                              SlWritableStream* writable, const SlCancellationToken* cancellation);
 SlStreamStatus sl_stream_pump_step(SlStreamPump* pump, SlStreamPumpResult* out);
-SlStreamStatus sl_stream_pump_run(SlStreamPump* pump, size_t max_steps,
-                                  SlStreamPumpResult* out);
+SlStreamStatus sl_stream_pump_run(SlStreamPump* pump, size_t max_steps, SlStreamPumpResult* out);
 
 SlStatus sl_memory_readable_stream_init(SlMemoryReadableStream* adapter,
                                         const SlStreamChunk* chunks, size_t chunk_count,

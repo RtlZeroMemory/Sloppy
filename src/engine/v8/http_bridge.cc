@@ -3803,9 +3803,8 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         SlStreamChunk* native_chunks = nullptr;
         SlStatus status = sl_status_ok();
         if (chunks->Length() != 0U) {
-            status =
-                sl_arena_array_alloc(arena, chunks->Length(), sizeof(SlStreamChunk),
-                                     alignof(SlStreamChunk), &chunk_storage);
+            status = sl_arena_array_alloc(arena, chunks->Length(), sizeof(SlStreamChunk),
+                                          alignof(SlStreamChunk), &chunk_storage);
             if (!sl_status_is_ok(status)) {
                 return status;
             }

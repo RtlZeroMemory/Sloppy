@@ -271,8 +271,7 @@ static SlStatus sequence_dispatch_hook(SlHttpTransportConnection* connection, Sl
         SlStatus status = sl_status_ok();
 
         if (response.stream_chunk_count != 0U) {
-            status = sl_arena_alloc(arena, chunk_bytes, alignof(SlStreamChunk),
-                                    &chunk_storage);
+            status = sl_arena_alloc(arena, chunk_bytes, alignof(SlStreamChunk), &chunk_storage);
             if (!sl_status_is_ok(status)) {
                 return status;
             }
@@ -2891,6 +2890,34 @@ static int test_head_response_suppresses_body_and_preserves_content_length(void)
     return 0;
 }
 
+static int test_head_stream_response_uses_core_stream_metadata(void)
+{
+    static const char expected[] =
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\n"
+        "Content-Length: 5\r\n\r\n";
+    SlStreamChunk chunks[2] = {};
+    SlHttpTransportConfig config = {};
+    DispatchHook dispatch = {};
+    SlBytes response = {};
+    SlHttpTransportServer server = {};
+
+    chunks[0].bytes = bytes_from_cstr("he");
+    chunks[1].bytes = bytes_from_cstr("llo");
+    dispatch.response = sl_http_response_stream(200U, sl_str_from_cstr("text/plain"), chunks, 2U);
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+
+    if (run_localhost_request(&config, "HEAD /stream HTTP/1.1\r\nHost: local\r\n\r\n", &response,
+                              &server, &dispatch) != 0 ||
+        dispatch.method != SL_HTTP_METHOD_HEAD || expect_bytes_equal(response, expected) != 0)
+    {
+        return 92;
+    }
+
+    return 0;
+}
+
 static int test_method_not_allowed_response_can_advertise_head(void)
 {
     static const char expected[] =
@@ -3102,7 +3129,7 @@ static int test_streaming_response_multiple_empty_and_keep_alive(void)
             (sizeof(first_expected) - 1U) + (sizeof(second_expected) - 1U)) != 0 ||
         dispatch.count != 2U || server.connections[0].core.request_count != 2U ||
         server.connections[0].streaming_response ||
-        server.connections[0].stream_chunk_index != 0U ||
+        server.connections[0].stream_chunks_written != 0U ||
         server.connections[0].response_length != 0U)
     {
         stop_one_connection(&server, &client);
@@ -4481,6 +4508,10 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_head_response_suppresses_body_and_preserves_content_length();
+    if (result != 0) {
+        return result;
+    }
+    result = test_head_stream_response_uses_core_stream_metadata();
     if (result != 0) {
         return result;
     }

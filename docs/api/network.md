@@ -126,8 +126,10 @@ await conn.close();
 | `conn.closed` | boolean |
 
 `readChunks(...)` is a JavaScript async-iterator helper over repeated
-`read(...)` calls. It is not the native Core stream foundation and does not
-expose a transferable or Node-compatible stream handle.
+`read(...)` calls. It follows the same bounded chunk-size and cancellation
+rules as `read(...)`, but it does not expose a native Core stream handle,
+transferable stream, WHATWG stream, or Node-compatible stream. TCP and local IPC
+currently keep their libuv read/backpressure model at the bridge boundary.
 
 ## Local IPC
 

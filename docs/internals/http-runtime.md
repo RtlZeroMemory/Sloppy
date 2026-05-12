@@ -84,9 +84,10 @@ WebSocket route registrations are Plan-visible, but the native HTTP upgrade
 execution path is not implemented and generated handlers return `501`
 unavailable.
 
-Native Core streams are an internal foundation for bounded byte flow between
-runtime components. They do not expose live request-body streams or JavaScript
-stream handles today. See [Core Streaming](streaming.md).
+Native Core streams are the internal byte-flow vocabulary for bounded response
+descriptors, transport stream emission, HTTP/2 response body mapping, and
+request-body readable adapters. They do not expose live request-body streams or
+JavaScript stream handles today. See [Core Streaming](streaming.md).
 
 ## Route table
 
@@ -136,9 +137,10 @@ bodies before validation. Unsupported transfer codings, trailers,
 invalid chunk framing, and `Transfer-Encoding` plus `Content-Length`
 conflicts are rejected before handler dispatch.
 
-The runtime owns the body — the parser allocates it inside the
-per-request arena. JS body helpers (`request.text()`, `request.json()`)
-return copies into V8-owned storage.
+The runtime owns the body — the parser allocates it inside the per-request
+arena. Native code can adapt that bounded body to `SlReadableStream` for
+internal streaming consumers. JS body helpers (`request.text()`,
+`request.json()`) return copies into V8-owned storage.
 
 Incoming `HEAD` requests match the corresponding `GET` route. Dispatch
 still executes the handler so validation and metadata stay identical to
@@ -211,13 +213,13 @@ windows are owned by the HTTP/2 session adapter. Server push is disabled.
 
 ## Response writing
 
-For HTTP/1.1, `sl_http_response_write` serializes fixed response descriptors
-into `connection->response_storage`, then the transport writes that
-per-connection buffer. Headers are normalized to lowercase; `Content-Length` is
-computed from the body. Streaming responses are transport-owned and use bounded
-HTTP/1.1 chunked frames. `SlHttpResponse.stream_chunks` stores `SlStreamChunk`
-descriptors and can also be consumed through the Core stream readable adapter
-for native transport work and benchmarking.
+For HTTP/1.1, `sl_http_response_write` serializes fixed and bounded stream
+response descriptors into caller-provided storage. For stream descriptors it
+validates chunks, computes `Content-Length` with checked arithmetic, preserves
+HEAD metadata, and rejects non-empty `204`/`304` stream bodies. The libuv
+transport uses Core readable streams for bounded stream descriptors and emits
+HTTP/1.1 chunked frames under `max-pending-write-bytes` and
+`max-response-bytes`.
 
 For HTTP/2, the dispatcher submits response HEADERS and DATA for the stream.
 HTTP/2 does not use HTTP/1.1 chunked framing or connection-specific headers.

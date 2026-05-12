@@ -26,6 +26,7 @@ typedef struct SlBenchResult
     double bytes_per_second;
     double chunks_per_second;
     uint64_t checksum;
+    uint64_t backpressure_count;
     const char* note;
 } SlBenchResult;
 
@@ -44,6 +45,7 @@ typedef struct SlBenchDefinition
     bool requires_v8;
     uint64_t bytes_per_iteration;
     uint64_t chunks_per_iteration;
+    uint64_t backpressure_per_iteration;
 } SlBenchDefinition;
 
 const SlBenchDefinition* sl_bench_route_definitions(size_t* out_count);

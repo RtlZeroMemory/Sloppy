@@ -1,11 +1,13 @@
+#include "sloppy/http_response.h"
 #include "sloppy/stream.h"
 
 #include "fuzz_support.h"
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#define FUZZ_STREAM_MAX_CHUNKS 8U
+#define FUZZ_STREAM_MAX_CHUNKS 64U
 #define FUZZ_STREAM_OUTPUT_BYTES 64U
 
 static size_t fuzz_bounded_size(uint8_t value, size_t max)
@@ -39,10 +41,11 @@ static int exercise_memory_pump(const uint8_t* data, size_t size)
     options.max_chunk_bytes = size > 0U ? fuzz_bounded_size(data[0], 16U) + 1U : 4U;
     options.max_buffered_bytes = output_capacity == 0U ? 1U : output_capacity;
     for (index = 0U; index < FUZZ_STREAM_MAX_CHUNKS && cursor < size; index += 1U) {
-        size_t remaining = size - cursor;
         size_t length = fuzz_bounded_size(data[cursor], 16U);
+        size_t remaining;
 
         cursor += 1U;
+        remaining = size - cursor;
         if (length > remaining) {
             length = remaining;
         }
@@ -53,8 +56,8 @@ static int exercise_memory_pump(const uint8_t* data, size_t size)
 
     if (!fuzz_status_ok(sl_memory_readable_stream_init(&readable_adapter, chunks, chunk_count,
                                                        &options, &readable)) ||
-        !fuzz_status_ok(sl_memory_writable_stream_init(&writable_adapter, output,
-                                                       output_capacity, &options, &writable)) ||
+        !fuzz_status_ok(sl_memory_writable_stream_init(&writable_adapter, output, output_capacity,
+                                                       &options, &writable)) ||
         !fuzz_status_ok(sl_stream_pump_init(&pump, &readable, &writable, NULL)))
     {
         return 1;
@@ -110,11 +113,12 @@ static int exercise_chunk_list(const uint8_t* data, size_t size)
     }
 
     while (cursor < size && index < 64U) {
-        size_t remaining = size - cursor;
         size_t length = fuzz_bounded_size(data[cursor], 16U);
+        size_t remaining;
         SlStreamStatus status;
 
         cursor += 1U;
+        remaining = size - cursor;
         if (length > remaining) {
             length = remaining;
         }
@@ -127,8 +131,7 @@ static int exercise_chunk_list(const uint8_t* data, size_t size)
         }
         cursor += length;
         index += 1U;
-        if (status == SL_STREAM_STATUS_BACKPRESSURE ||
-            status == SL_STREAM_STATUS_CAPACITY_EXCEEDED)
+        if (status == SL_STREAM_STATUS_BACKPRESSURE || status == SL_STREAM_STATUS_CAPACITY_EXCEEDED)
         {
             break;
         }
@@ -157,12 +160,55 @@ static int exercise_chunk_list(const uint8_t* data, size_t size)
     return 0;
 }
 
+static int exercise_response_stream_serialization(const uint8_t* data, size_t size)
+{
+    SlStreamChunk chunks[FUZZ_STREAM_MAX_CHUNKS];
+    unsigned char output[256];
+    SlBytes bytes = {0};
+    SlHttpResponse response = {0};
+    size_t cursor = size > 1U ? 1U : size;
+    size_t chunk_count = 0U;
+    size_t index = 0U;
+    bool force_invalid_chunk = size > 0U && (data[0] & 0x01U) != 0U;
+    bool no_body_status = size > 0U && (data[0] & 0x02U) != 0U;
+
+    for (index = 0U; index < FUZZ_STREAM_MAX_CHUNKS && cursor < size; index += 1U) {
+        size_t length = fuzz_bounded_size(data[cursor], 24U);
+        size_t remaining;
+
+        cursor += 1U;
+        remaining = size - cursor;
+        if (length > remaining) {
+            length = remaining;
+        }
+        chunks[chunk_count].bytes = sl_bytes_from_parts(data + cursor, length);
+        chunk_count += 1U;
+        cursor += length;
+    }
+    if (force_invalid_chunk && chunk_count != 0U) {
+        chunks[0].bytes.ptr = NULL;
+        chunks[0].bytes.length = 1U;
+    }
+
+    response =
+        sl_http_response_stream(no_body_status ? 204U : 200U,
+                                sl_str_from_cstr("application/octet-stream"), chunks, chunk_count);
+    if (sl_status_is_ok(sl_http_response_write(&response, output, sizeof(output), &bytes)) &&
+        bytes.length > sizeof(output))
+    {
+        return 1;
+    }
+    return 0;
+}
+
 int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     if (data == NULL) {
         return 0;
     }
-    if (exercise_memory_pump(data, size) != 0 || exercise_chunk_list(data, size) != 0) {
+    if (exercise_memory_pump(data, size) != 0 || exercise_chunk_list(data, size) != 0 ||
+        exercise_response_stream_serialization(data, size) != 0)
+    {
         return 1;
     }
     return 0;

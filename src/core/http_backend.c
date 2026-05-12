@@ -883,6 +883,35 @@ SlStatus sl_http_request_body_reader_close(SlHttpBodyReader* reader, SlDiag* out
     return sl_status_ok();
 }
 
+SlStatus sl_http_request_body_readable_init(SlHttpRequestBodyReadable* adapter,
+                                            SlHttpRequestLifecycle* request,
+                                            const SlStreamOptions* options,
+                                            SlReadableStream* out_stream)
+{
+    SlStreamOptions stream_options;
+    size_t chunk_count = 0U;
+
+    if (adapter == NULL || request == NULL || out_stream == NULL ||
+        (request->head.body.ptr == NULL && request->head.body.length != 0U))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    stream_options = options == NULL ? sl_stream_default_options() : *options;
+    if (stream_options.cancellation == NULL) {
+        stream_options.cancellation = &request->cancellation;
+    }
+
+    *adapter = (SlHttpRequestBodyReadable){0};
+    if (request->head.body.length != 0U) {
+        adapter->chunk.bytes = request->head.body;
+        chunk_count = 1U;
+    }
+    return sl_memory_readable_stream_init(&adapter->adapter,
+                                          chunk_count == 0U ? NULL : &adapter->chunk, chunk_count,
+                                          &stream_options, out_stream);
+}
+
 SlStatus sl_http_request_begin_dispatch(SlHttpRequestLifecycle* request, SlDiag* out_diag)
 {
     if (out_diag != NULL) {

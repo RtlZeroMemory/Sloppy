@@ -268,7 +268,17 @@ try {
     const streamingCompressedChunks = await collectAsyncChunks(Compression.gzipStream([new Uint8Array([1]), new Uint8Array([2])]));
     assert.equal(streamingCompressedChunks.length, 1);
     const streamingCompressed = streamingCompressedChunks[0];
-    assertBytes(await collectAsyncBytes(Compression.gunzipStream([streamingCompressed])), new Uint8Array([1, 2]));
+    assertBytes(
+        await collectAsyncBytes(Compression.gunzipStream([
+            streamingCompressed.slice(0, fakeGzipPrefix.length),
+            streamingCompressed.slice(fakeGzipPrefix.length),
+        ])),
+        new Uint8Array([1, 2]),
+    );
+    await assert.rejects(
+        async () => collectAsyncBytes(Compression.gunzipStream([streamingCompressed], { maxOutputBytes: 1 })),
+        /SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED/,
+    );
     await assert.rejects(
         async () => collectAsyncBytes(Compression.gzipStream([new Uint8Array([1]), new Uint8Array([2])], { maxInputBytes: 1 })),
         TypeError,

@@ -7,9 +7,7 @@
  */
 #include "sloppy/stream.h"
 
-#include "sloppy/checked_math.h"
-
-#include <string.h>
+#include "sloppy/builder.h"
 
 static bool sl_stream_bytes_valid(SlBytes bytes)
 {
@@ -64,9 +62,7 @@ static void sl_readable_stream_set_status(SlReadableStream* stream, SlStreamStat
     if (status == SL_STREAM_STATUS_EOF) {
         stream->state = SL_STREAM_STATE_ENDED;
     }
-    else if (status == SL_STREAM_STATUS_CANCELLED ||
-             status == SL_STREAM_STATUS_DEADLINE_EXCEEDED)
-    {
+    else if (status == SL_STREAM_STATUS_CANCELLED || status == SL_STREAM_STATUS_DEADLINE_EXCEEDED) {
         stream->state = SL_STREAM_STATE_CANCELLED;
     }
     stream->stats.state = stream->state;
@@ -78,9 +74,7 @@ static void sl_writable_stream_set_status(SlWritableStream* stream, SlStreamStat
         return;
     }
     stream->stats.last_status = status;
-    if (status == SL_STREAM_STATUS_CANCELLED ||
-        status == SL_STREAM_STATUS_DEADLINE_EXCEEDED)
-    {
+    if (status == SL_STREAM_STATUS_CANCELLED || status == SL_STREAM_STATUS_DEADLINE_EXCEEDED) {
         stream->state = SL_STREAM_STATE_CANCELLED;
     }
     stream->stats.state = stream->state;
@@ -235,9 +229,8 @@ SlStatus sl_stream_status_to_status(SlStreamStatus status)
     }
 }
 
-SlStatus sl_readable_stream_init(SlReadableStream* stream,
-                                 const SlReadableStreamVTable* vtable, void* user,
-                                 const SlStreamOptions* options)
+SlStatus sl_readable_stream_init(SlReadableStream* stream, const SlReadableStreamVTable* vtable,
+                                 void* user, const SlStreamOptions* options)
 {
     SlStreamOptions normalized;
 
@@ -385,9 +378,8 @@ SlStreamStats sl_readable_stream_stats(const SlReadableStream* stream)
     return stream->stats;
 }
 
-SlStatus sl_writable_stream_init(SlWritableStream* stream,
-                                 const SlWritableStreamVTable* vtable, void* user,
-                                 const SlStreamOptions* options)
+SlStatus sl_writable_stream_init(SlWritableStream* stream, const SlWritableStreamVTable* vtable,
+                                 void* user, const SlStreamOptions* options)
 {
     SlStreamOptions normalized;
 
@@ -417,9 +409,7 @@ SlStreamStatus sl_writable_stream_write(SlWritableStream* stream, SlStreamChunk 
     if (out != NULL) {
         *out = (SlStreamWriteResult){0};
     }
-    if (stream == NULL || out == NULL || stream->vtable == NULL ||
-        stream->vtable->write == NULL)
-    {
+    if (stream == NULL || out == NULL || stream->vtable == NULL || stream->vtable->write == NULL) {
         return SL_STREAM_STATUS_INVALID_ARGUMENT;
     }
     if (!sl_stream_bytes_valid(chunk.bytes)) {
@@ -446,16 +436,22 @@ SlStreamStatus sl_writable_stream_write(SlWritableStream* stream, SlStreamChunk 
     }
 
     status = stream->vtable->write(stream, chunk, out);
+    if (out->bytes_written > chunk.bytes.length ||
+        (status != SL_STREAM_STATUS_OK && status != SL_STREAM_STATUS_BACKPRESSURE &&
+         out->bytes_written != 0U) ||
+        (status == SL_STREAM_STATUS_OK && chunk.bytes.length != 0U && out->bytes_written == 0U))
+    {
+        status = SL_STREAM_STATUS_INVALID_STATE;
+        out->bytes_written = 0U;
+    }
     out->status = status;
-    if (status == SL_STREAM_STATUS_OK) {
+    if (status == SL_STREAM_STATUS_OK || status == SL_STREAM_STATUS_BACKPRESSURE) {
         stream->stats.bytes_written += out->bytes_written;
         if (out->bytes_written != 0U) {
             stream->stats.chunks_written += 1U;
         }
     }
-    else if (status == SL_STREAM_STATUS_BACKPRESSURE ||
-             status == SL_STREAM_STATUS_CAPACITY_EXCEEDED)
-    {
+    if (status == SL_STREAM_STATUS_BACKPRESSURE || status == SL_STREAM_STATUS_CAPACITY_EXCEEDED) {
         stream->stats.backpressure_hits += 1U;
     }
     out->backpressure = sl_writable_stream_backpressure(stream);
@@ -505,8 +501,7 @@ SlStreamStatus sl_writable_stream_close(SlWritableStream* stream, SlStr message)
     return status;
 }
 
-SlStreamStatus sl_writable_stream_fail(SlWritableStream* stream, SlStreamStatus code,
-                                       SlStr message)
+SlStreamStatus sl_writable_stream_fail(SlWritableStream* stream, SlStreamStatus code, SlStr message)
 {
     SlStreamStatus status = SL_STREAM_STATUS_OK;
 
@@ -655,20 +650,29 @@ SlStreamStatus sl_stream_pump_step(SlStreamPump* pump, SlStreamPumpResult* out)
     }
 
     status = sl_writable_stream_write(pump->writable, chunk, &write);
-    if (status != SL_STREAM_STATUS_OK) {
+    if (status != SL_STREAM_STATUS_OK && status != SL_STREAM_STATUS_BACKPRESSURE) {
         pump->last_status = status;
         sl_stream_pump_snapshot(pump, status, out);
         return status;
     }
+    pump->bytes_transferred += write.bytes_written;
+    if (write.bytes_written < chunk.bytes.length) {
+        pump->pending_chunk.bytes = sl_bytes_from_parts(chunk.bytes.ptr + write.bytes_written,
+                                                        chunk.bytes.length - write.bytes_written);
+        pump->has_pending_chunk = true;
+        pump->last_status = status;
+        sl_stream_pump_snapshot(pump, status, out);
+        return status;
+    }
+
     pump->has_pending_chunk = false;
     pump->pending_chunk = (SlStreamChunk){0};
-    pump->bytes_transferred += write.bytes_written;
-    if (write.bytes_written != 0U) {
+    if (chunk.bytes.length != 0U) {
         pump->chunks_transferred += 1U;
     }
-    pump->last_status = SL_STREAM_STATUS_OK;
-    sl_stream_pump_snapshot(pump, SL_STREAM_STATUS_OK, out);
-    return SL_STREAM_STATUS_OK;
+    pump->last_status = status;
+    sl_stream_pump_snapshot(pump, status, out);
+    return status;
 }
 
 SlStreamStatus sl_stream_pump_run(SlStreamPump* pump, size_t max_steps, SlStreamPumpResult* out)
@@ -708,8 +712,7 @@ static SlStreamStatus sl_chunk_read(const SlStreamChunk* chunks, size_t chunk_co
         }
         remaining = source->bytes.length - *chunk_offset;
         length = remaining > max_chunk_bytes ? max_chunk_bytes : remaining;
-        out->chunk.bytes =
-            sl_bytes_from_parts(source->bytes.ptr + *chunk_offset, length);
+        out->chunk.bytes = sl_bytes_from_parts(source->bytes.ptr + *chunk_offset, length);
         *chunk_offset += length;
         if (*chunk_offset >= source->bytes.length) {
             *chunk_index += 1U;
@@ -732,8 +735,8 @@ static SlStreamStatus sl_memory_readable_read(SlReadableStream* stream, SlStream
 }
 
 static const SlReadableStreamVTable sl_memory_readable_vtable = {
-    sl_memory_readable_read, sl_stream_control_noop, sl_stream_control_noop,
-    sl_stream_control_noop, "memory-readable"};
+    sl_memory_readable_read, sl_stream_control_noop, sl_stream_control_noop, sl_stream_control_noop,
+    "memory-readable"};
 
 SlStatus sl_memory_readable_stream_init(SlMemoryReadableStream* adapter,
                                         const SlStreamChunk* chunks, size_t chunk_count,
@@ -753,14 +756,18 @@ static SlStreamBackpressureState sl_memory_writable_backpressure(const SlWritabl
 {
     const SlMemoryWritableStream* adapter = (const SlMemoryWritableStream*)stream->user;
     SlStreamBackpressureState state = {0};
+    size_t effective_capacity = 0U;
 
     if (adapter == NULL) {
         return state;
     }
+    effective_capacity = adapter->capacity < stream->max_buffered_bytes
+                             ? adapter->capacity
+                             : stream->max_buffered_bytes;
     state.buffered_bytes = adapter->length;
     state.high_water_mark = adapter->high_water_mark;
-    state.available_bytes = adapter->capacity > adapter->length ? adapter->capacity - adapter->length
-                                                                : 0U;
+    state.available_bytes =
+        effective_capacity > adapter->length ? effective_capacity - adapter->length : 0U;
     state.writable = state.available_bytes != 0U && stream->state == SL_STREAM_STATE_OPEN;
     return state;
 }
@@ -769,8 +776,11 @@ static SlStreamStatus sl_memory_writable_write(SlWritableStream* stream, SlStrea
                                                SlStreamWriteResult* out)
 {
     SlMemoryWritableStream* adapter = (SlMemoryWritableStream*)stream->user;
-    size_t next_length = 0U;
-    SlStatus status;
+    SlByteBuilder builder = {0};
+    SlStatus append_status;
+    size_t effective_capacity = 0U;
+    size_t available = 0U;
+    size_t write_length = 0U;
 
     if (adapter == NULL) {
         return SL_STREAM_STATUS_INVALID_ARGUMENT;
@@ -779,21 +789,33 @@ static SlStreamStatus sl_memory_writable_write(SlWritableStream* stream, SlStrea
         out->bytes_written = 0U;
         return SL_STREAM_STATUS_OK;
     }
-    if (chunk.bytes.length > stream->max_buffered_bytes ||
-        adapter->length > stream->max_buffered_bytes)
-    {
+    effective_capacity = adapter->capacity < stream->max_buffered_bytes
+                             ? adapter->capacity
+                             : stream->max_buffered_bytes;
+    if (adapter->length > effective_capacity) {
         return SL_STREAM_STATUS_CAPACITY_EXCEEDED;
     }
-    status = sl_checked_add_size(adapter->length, chunk.bytes.length, &next_length);
-    if (!sl_status_is_ok(status)) {
-        return SL_STREAM_STATUS_CAPACITY_EXCEEDED;
-    }
-    if (next_length > adapter->capacity || next_length > stream->max_buffered_bytes) {
+    available = effective_capacity - adapter->length;
+    if (available == 0U) {
         return SL_STREAM_STATUS_BACKPRESSURE;
     }
+    write_length = chunk.bytes.length > available ? available : chunk.bytes.length;
 
-    memmove(adapter->buffer + adapter->length, chunk.bytes.ptr, chunk.bytes.length);
-    adapter->length = next_length;
+    append_status = sl_byte_builder_init_fixed(&builder, adapter->buffer, effective_capacity);
+    if (!sl_status_is_ok(append_status)) {
+        return SL_STREAM_STATUS_INVALID_STATE;
+    }
+    append_status = sl_byte_builder_append_bytes(
+        &builder, sl_bytes_from_parts(adapter->buffer, adapter->length));
+    if (!sl_status_is_ok(append_status)) {
+        return SL_STREAM_STATUS_INVALID_STATE;
+    }
+    append_status =
+        sl_byte_builder_append_bytes(&builder, sl_bytes_from_parts(chunk.bytes.ptr, write_length));
+    if (!sl_status_is_ok(append_status)) {
+        return SL_STREAM_STATUS_CAPACITY_EXCEEDED;
+    }
+    adapter->length = sl_byte_builder_length(&builder);
     if (adapter->length > adapter->high_water_mark) {
         adapter->high_water_mark = adapter->length;
     }
@@ -801,13 +823,16 @@ static SlStreamStatus sl_memory_writable_write(SlWritableStream* stream, SlStrea
     if (adapter->high_water_mark > stream->stats.high_water_mark) {
         stream->stats.high_water_mark = adapter->high_water_mark;
     }
-    out->bytes_written = chunk.bytes.length;
-    return SL_STREAM_STATUS_OK;
+    out->bytes_written = write_length;
+    return write_length == chunk.bytes.length ? SL_STREAM_STATUS_OK : SL_STREAM_STATUS_BACKPRESSURE;
 }
 
 static SlStreamStatus sl_memory_writable_drain(SlWritableStream* stream, size_t bytes)
 {
     SlMemoryWritableStream* adapter = (SlMemoryWritableStream*)stream->user;
+    SlByteBuilder builder = {0};
+    SlStatus status;
+    size_t remaining = 0U;
 
     if (adapter == NULL) {
         return SL_STREAM_STATUS_INVALID_ARGUMENT;
@@ -815,21 +840,26 @@ static SlStreamStatus sl_memory_writable_drain(SlWritableStream* stream, size_t 
     if (bytes > adapter->length) {
         return SL_STREAM_STATUS_INVALID_ARGUMENT;
     }
-    if (bytes != 0U) {
-        memmove(adapter->buffer, adapter->buffer + bytes, adapter->length - bytes);
-        adapter->length -= bytes;
+    if (bytes != 0U && adapter->length != 0U) {
+        remaining = adapter->length - bytes;
+        status = sl_byte_builder_init_fixed(&builder, adapter->buffer, adapter->capacity);
+        if (!sl_status_is_ok(status)) {
+            return SL_STREAM_STATUS_INVALID_STATE;
+        }
+        status = sl_byte_builder_append_bytes(
+            &builder, sl_bytes_from_parts(adapter->buffer + bytes, remaining));
+        if (!sl_status_is_ok(status)) {
+            return SL_STREAM_STATUS_INVALID_STATE;
+        }
+        adapter->length = sl_byte_builder_length(&builder);
     }
     stream->stats.buffered_bytes = adapter->length;
     return SL_STREAM_STATUS_OK;
 }
 
 static const SlWritableStreamVTable sl_memory_writable_vtable = {
-    sl_memory_writable_write,
-    sl_memory_writable_drain,
-    sl_memory_writable_backpressure,
-    sl_stream_control_noop,
-    sl_stream_control_noop,
-    sl_stream_control_noop,
+    sl_memory_writable_write, sl_memory_writable_drain, sl_memory_writable_backpressure,
+    sl_stream_control_noop,   sl_stream_control_noop,   sl_stream_control_noop,
     "memory-writable"};
 
 SlStatus sl_memory_writable_stream_init(SlMemoryWritableStream* adapter, unsigned char* buffer,
@@ -867,8 +897,7 @@ void sl_memory_writable_stream_reset(SlMemoryWritableStream* adapter)
     adapter->length = 0U;
 }
 
-static SlStreamStatus sl_chunk_list_readable_read(SlReadableStream* stream,
-                                                  SlStreamReadResult* out)
+static SlStreamStatus sl_chunk_list_readable_read(SlReadableStream* stream, SlStreamReadResult* out)
 {
     SlChunkListReadableStream* adapter = (SlChunkListReadableStream*)stream->user;
 
@@ -907,21 +936,20 @@ static SlStreamBackpressureState sl_chunk_list_writable_backpressure(const SlWri
     }
     state.buffered_bytes = adapter->total_bytes;
     state.high_water_mark = adapter->total_bytes;
-    state.available_bytes =
-        adapter->max_total_bytes > adapter->total_bytes ? adapter->max_total_bytes - adapter->total_bytes
-                                                        : 0U;
+    state.available_bytes = adapter->max_total_bytes > adapter->total_bytes
+                                ? adapter->max_total_bytes - adapter->total_bytes
+                                : 0U;
     state.writable = adapter->count < adapter->capacity && state.available_bytes != 0U &&
                      stream->state == SL_STREAM_STATE_OPEN;
     return state;
 }
 
-static SlStreamStatus sl_chunk_list_writable_write(SlWritableStream* stream,
-                                                   SlStreamChunk chunk,
+static SlStreamStatus sl_chunk_list_writable_write(SlWritableStream* stream, SlStreamChunk chunk,
                                                    SlStreamWriteResult* out)
 {
     SlChunkListWritableStream* adapter = (SlChunkListWritableStream*)stream->user;
-    size_t next_total = 0U;
-    SlStatus status;
+    size_t available = 0U;
+    size_t write_length = 0U;
 
     if (adapter == NULL) {
         return SL_STREAM_STATUS_INVALID_ARGUMENT;
@@ -933,19 +961,23 @@ static SlStreamStatus sl_chunk_list_writable_write(SlWritableStream* stream,
     if (adapter->count >= adapter->capacity) {
         return SL_STREAM_STATUS_BACKPRESSURE;
     }
-    status = sl_checked_add_size(adapter->total_bytes, chunk.bytes.length, &next_total);
-    if (!sl_status_is_ok(status) || next_total > adapter->max_total_bytes) {
+    if (adapter->total_bytes > adapter->max_total_bytes) {
+        return SL_STREAM_STATUS_CAPACITY_EXCEEDED;
+    }
+    available = adapter->max_total_bytes - adapter->total_bytes;
+    if (available == 0U) {
         return SL_STREAM_STATUS_BACKPRESSURE;
     }
-    adapter->chunks[adapter->count] = chunk;
+    write_length = chunk.bytes.length > available ? available : chunk.bytes.length;
+    adapter->chunks[adapter->count].bytes = sl_bytes_from_parts(chunk.bytes.ptr, write_length);
     adapter->count += 1U;
-    adapter->total_bytes = next_total;
+    adapter->total_bytes += write_length;
     stream->stats.buffered_bytes = adapter->total_bytes;
     if (adapter->total_bytes > stream->stats.high_water_mark) {
         stream->stats.high_water_mark = adapter->total_bytes;
     }
-    out->bytes_written = chunk.bytes.length;
-    return SL_STREAM_STATUS_OK;
+    out->bytes_written = write_length;
+    return write_length == chunk.bytes.length ? SL_STREAM_STATUS_OK : SL_STREAM_STATUS_BACKPRESSURE;
 }
 
 static const SlWritableStreamVTable sl_chunk_list_writable_vtable = {
@@ -976,7 +1008,8 @@ SlStatus sl_chunk_list_writable_stream_init(SlChunkListWritableStream* adapter,
     adapter->chunks = chunks;
     adapter->capacity = capacity;
     adapter->max_total_bytes = normalized.max_buffered_bytes;
-    status = sl_writable_stream_init(out_stream, &sl_chunk_list_writable_vtable, adapter, &normalized);
+    status =
+        sl_writable_stream_init(out_stream, &sl_chunk_list_writable_vtable, adapter, &normalized);
     if (!sl_status_is_ok(status)) {
         *adapter = (SlChunkListWritableStream){0};
     }
@@ -992,5 +1025,5 @@ SlStatus sl_chunk_list_writable_stream_as_readable(const SlChunkListWritableStre
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     return sl_chunk_list_readable_stream_init(adapter, writable->chunks, writable->count, options,
-                                             out_stream);
+                                              out_stream);
 }

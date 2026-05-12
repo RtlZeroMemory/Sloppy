@@ -121,8 +121,10 @@ for await (const chunk of Compression.gunzipStream(input, options?)) { ... }
 `AsyncIterable<Uint8Array>`. Stream options accept `signal`, `deadline`, and
 `maxInputBytes` / `maxOutputBytes` size guards. The current implementation
 buffers all input chunks up to `maxInputBytes`, invokes the whole-buffer gzip
-or gunzip bridge, and yields one output chunk. It is not a Core stream adapter
-and does not provide incremental zlib backpressure yet.
+or gunzip bridge, and yields one output chunk. Multi-chunk gzip and gunzip
+inputs are covered, including output limits and cancellation/deadline paths, but
+this remains a bounded compatibility wrapper. It is not a native Core zlib
+stream adapter and does not provide incremental compression backpressure yet.
 
 Errors:
 

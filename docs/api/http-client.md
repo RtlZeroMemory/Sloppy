@@ -105,8 +105,11 @@ after the request completes.
 
 Response bodies are consumed once with `response.text()`, `response.json()`,
 `response.bytes()`, or `response.stream(options?)`. `response.stream(...)`
-chunks the already-buffered response body; it is not a live socket stream.
-`HEAD` responses always produce an empty body.
+chunks the already-buffered response body at the JavaScript boundary; it is not
+a live socket stream and does not expose a native Core stream handle. Native
+HTTP response descriptor streaming uses Core streams on the server side, but the
+HTTP client response iterator remains a bounded body helper. `HEAD` responses
+always produce an empty body.
 
 `response.headers` exposes `get(name) → string | null` and
 `entries() → [name, value][]`. Reading the body twice rejects with

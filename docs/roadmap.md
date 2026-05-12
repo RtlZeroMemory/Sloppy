@@ -3,7 +3,7 @@
 Sloppy is public alpha, pre-production software. This page separates what
 exists now from the directions that are still being designed.
 
-## Current foundation
+## Current Runtime
 
 Current Sloppy includes:
 
@@ -15,9 +15,9 @@ Current Sloppy includes:
 - `sloppy create`, `build`, `run`, `routes`, `deps`, `capabilities`,
   `doctor`, `audit`, `openapi`, and `package`;
 - HTTP/1.1, opt-in TLS, and experimental HTTP/2 over TLS ALPN plus h2c;
-- native Core stream foundation for bounded memory/chunk-list flow,
-  response-stream descriptor compatibility, pump/backpressure status, and
-  benchmark/fuzz evidence;
+- native Core streams for bounded memory/chunk-list flow, partial-write pump
+  retry, HTTP response stream serialization, transport stream descriptors,
+  request-body readable adapters, benchmarks, and fuzzing;
 - experimental build-time static file routes for supported project assets;
 - first-party APIs for routing, results, services, config, logging,
   capabilities, data, filesystem, network, OS, time, crypto, codec, workers,
@@ -39,9 +39,8 @@ shape:
   compatibility;
 - broader provider evidence for PostgreSQL and SQL Server;
 - repeated HTTP/2 conformance and client/server coverage;
-- incremental adoption of Core streams inside transport, filesystem, process,
-  codec, and HTTP client internals where that reduces duplicated bounded
-  chunk handling;
+- incremental adoption of Core streams inside filesystem, process, codec, and
+  HTTP client internals where that reduces duplicated bounded chunk handling;
 - stronger production static-file behavior such as range requests,
   compression negotiation, and cache policy hardening.
 
