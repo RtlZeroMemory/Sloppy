@@ -30,10 +30,15 @@ permissions:
   actions: read
   contents: read
   security-events: write
+  packages: write
 
 env:
   VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
-  VCPKG_CACHE_VERSION: v2
+  VCPKG_CACHE_VERSION: v3
+  VCPKG_BINARY_SOURCES: "clear;nuget,GitHubPackages,readwrite"
+  NUGET_FEED_URL: "https://nuget.pkg.github.com/RtlZeroMemory/index.json"
+  NUGET_USERNAME: "RtlZeroMemory"
+  NUGET_PAT: ${{ secrets.VCPKG_PAT }}
 
 jobs:
   analyze-c-cpp:
@@ -107,6 +112,22 @@ jobs:
           fi
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
+          if [ -n "${NUGET_PAT:-}" ]; then
+            if ! command -v mono >/dev/null 2>&1; then
+              if command -v apt-get >/dev/null 2>&1; then
+                sudo apt-get update -y >/dev/null
+                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mono-complete >/dev/null
+              elif command -v brew >/dev/null 2>&1; then
+                brew install mono >/dev/null
+              fi
+            fi
+            nuget_path="$("$vcpkg_root/vcpkg" fetch nuget | tail -n 1)"
+            mono "$nuget_path" sources add -Source "$NUGET_FEED_URL" -StorePasswordInClearText -Name GitHubPackages -UserName "$NUGET_USERNAME" -Password "$NUGET_PAT" >/dev/null 2>&1 || true
+            mono "$nuget_path" setapikey "$NUGET_PAT" -Source "$NUGET_FEED_URL" >/dev/null 2>&1 || true
+          else
+            echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            echo "VCPKG_BINARY_SOURCES=default,readwrite" >> "$GITHUB_ENV"
+          fi
 
       - name: Configure traced native build
         shell: bash
