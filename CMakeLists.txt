@@ -119,7 +119,7 @@ endif()
 if(SLOPPY_ENABLE_V8)
     target_compile_features(sloppy_core PRIVATE cxx_std_20)
     target_compile_definitions(sloppy_core PUBLIC SLOPPY_ENABLE_V8_BRIDGE=1)
-    target_link_libraries(sloppy_core PRIVATE Sloppy::V8)
+    target_link_libraries(sloppy_core PUBLIC Sloppy::V8)
 endif()
 
 if(SLOPPY_ENABLE_ASSERTS)

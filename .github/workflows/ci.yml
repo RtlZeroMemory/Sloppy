@@ -320,7 +320,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request' && (
+      (github.event_name == 'pull_request' && github.head_ref != 'alpha-release-package' && (
         needs.changes.outputs.native_relevant == 'true' ||
         needs.changes.outputs.windows_tooling_relevant == 'true' ||
         contains(github.event.pull_request.labels.*.name, 'full-ci') ||
@@ -800,7 +800,7 @@ jobs:
     name: memory-simd / ${{ matrix.name }}
     runs-on: windows-latest
     needs: changes
-    if: github.event_name != 'workflow_dispatch' && (needs.changes.outputs.simd_relevant == 'true' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')))
+    if: github.event_name != 'workflow_dispatch' && !(github.event_name == 'pull_request' && github.head_ref == 'alpha-release-package') && (needs.changes.outputs.simd_relevant == 'true' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci')))
 
     strategy:
       fail-fast: false

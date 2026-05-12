@@ -94,10 +94,8 @@ node "$repo_root/tools/unix/scripts/validate-npm-release-manifest.mjs" "$manifes
 triplet="$(node -e 'const fs=require("fs"); const manifest=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.stdout.write(String(manifest.platformTriplet || ""));' "$manifest_path")"
 case "$triplet" in
   linux-x64) platform_package_dir="sloppy-linux-x64" ;;
-  macos-arm64|macos-x64)
-    echo "macOS npm packages are not staged in this alpha." >&2
-    exit 1
-    ;;
+  macos-arm64) platform_package_dir="sloppy-darwin-arm64" ;;
+  macos-x64) platform_package_dir="sloppy-darwin-x64" ;;
   windows-x64) platform_package_dir="sloppy-win32-x64" ;;
   *) echo "Unsupported npm platform package triplet in manifest: $triplet" >&2; exit 1 ;;
 esac
