@@ -114,12 +114,14 @@ typedef struct SlLogRoutePatternText
 typedef struct SlLogField
 {
     SlLogShortText key;
-    SlLogText value;
     SlLogFieldKind kind;
     bool redacted;
-    bool bool_value;
-    int64_t i64_value;
-    double f64_value;
+    union {
+        SlLogText value;
+        bool bool_value;
+        int64_t i64_value;
+        double f64_value;
+    };
 } SlLogField;
 
 typedef struct SlLogEvent

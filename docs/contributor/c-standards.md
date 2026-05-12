@@ -19,6 +19,85 @@ Use C17 as the baseline. C23 is allowed only when isolated, guarded, documented,
 supported by active toolchains. `clang-cl` is first on Windows; clang/gcc follow later. Do
 not depend on compiler-specific behavior in core unless it is abstracted.
 
+## Representation and Layout Optimization
+
+Sloppy is still pre-alpha, so we can change native contracts when a better layout removes
+real cost. Use that freedom carefully. Layout work is useful when a type appears many times
+in memory, moves through a hot path, or sits in a cache-sensitive batch. Examples include
+HTTP/2 event arrays, route tables, request contexts, log fields, and engine result values.
+
+The goal is to make those structures smaller or cheaper to scan without making them
+surprising to read, debug, or port. Prefer ordinary C17 techniques:
+
+- field reordering to remove padding;
+- tagged unions for mutually exclusive payloads;
+- integer flag masks or bit-fields for dense private boolean state, especially when callers
+  do not need addresses for individual flags;
+- `_Alignof(T)` when allocating typed storage;
+- `_Static_assert` layout contracts in focused tests for hot structs;
+- C++ standard-library representation helpers, such as `std::variant`, inside
+  `src/engine/v8/*` when they avoid constructing inactive payloads.
+
+Tagged unions need an unambiguous active-member rule. If an existing field already tells the
+reader which union member is live, document that at the type definition. If it does not,
+add a separate payload tag. For example, a semantic result kind such as “text” might not be
+enough when text can be represented either as a raw `SlStr` or as an HTTP response body; in
+that case the payload tag is part of the contract, not an implementation detail.
+
+Every layout change must explain the practical reason for it. In the commit, PR, or nearby
+comment, name the hot path or repeated storage and state the expected size/cache effect.
+Preserve ownership and lifetime comments, because smaller structs do not excuse unclear
+ownership. Cover behavior with normal tests. If the byte size is part of the value, add a
+layout test guarded to the platform model being claimed, usually 64-bit.
+
+Do not add clever representation changes just because they are possible. A good layout
+change should still be easy for a contributor to inspect in a debugger and reason about
+from the header.
+
+## Branching on Hot Enums and Tags
+
+Prefer `switch` when code dispatches on a stable enum, protocol tag, operation kind, or
+small integer discriminator with three or more cases. This is not a blanket style rule:
+it applies where the selector is already a single value and each branch represents a
+distinct operation. Examples include frame types, event kinds, logging field kinds, result
+payload tags, and async operation kinds.
+
+Use `if` statements for predicates that are genuinely different tests, such as pointer
+validation, status checks, string comparisons, feature gates, and V8 shape/type probes.
+Forcing those into a switch usually makes the code less direct and does not give the
+compiler a better dispatch shape.
+
+A good switch should make the hot path easier to scan:
+
+- group cases that share the same behavior;
+- keep precondition checks before the switch when they apply to every case;
+- include a `default` only when unknown values are valid to ignore or should map to a
+  clear error;
+- avoid fallthrough unless it is intentional, documented, and covered by tests.
+
+Do not rewrite small two-branch checks just to use `switch`. The point is to clarify and
+optimize real dispatch, not to satisfy a cosmetic pattern.
+
+Forbidden for normal runtime hot paths:
+
+- packed structs, `#pragma pack`, and compiler-specific packed attributes;
+- NaN boxing;
+- low-bit tagged pointers;
+- pointer/integer punning that depends on allocator alignment;
+- public ABI changes whose layout is not documented and tested.
+
+Packed layouts are only acceptable at an external wire, disk, or FFI boundary, and even
+there the code should parse or copy into a normal native type before field access. Directly
+reading unaligned packed fields is too easy to get wrong across compilers and CPUs.
+
+NaN packing and low-bit tagged pointers are also off by default. They can be fast in a
+specialized value runtime, but they make debugging harder, interact poorly with sanitizers,
+and depend on assumptions about floating-point payloads, pointer width, and allocator
+alignment. If future measurements show one of those techniques is worth considering, start
+with a design document that includes benchmark evidence, portability limits, sanitizer and
+debugging implications, and a simpler fallback path. Do not land those techniques
+opportunistically.
+
 ## Naming
 
 - Functions use the `sl_` prefix.
@@ -628,6 +707,8 @@ when it is enabled, assertions must remain active even if a toolchain or build m
 
 - Raw `malloc`/`free` outside allocator modules.
 - `strcpy`, `strcat`, `sprintf`, `vsprintf`, `gets`.
+- Packed structs or `#pragma pack` in runtime representation.
+- NaN boxing or low-bit tagged pointers without an accepted design document.
 - `(void)` casts around ignored function calls.
 - Unchecked `memcpy`, `memmove`, `snprintf`.
 - `strlen` on untrusted/non-boundary strings.

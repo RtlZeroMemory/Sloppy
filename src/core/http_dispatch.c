@@ -2175,6 +2175,21 @@ static SlStatus sl_http_dispatch_capture_route_params(SlArena* arena,
     return sl_route_pattern_match(arena, binding->pattern, request->path, out_match);
 }
 
+static void sl_http_dispatch_materialize_text_result(SlEngineResult* result)
+{
+    SlStr text = sl_str_empty();
+
+    if (result == NULL || result->kind != SL_ENGINE_RESULT_TEXT ||
+        result->payload_kind != SL_ENGINE_RESULT_PAYLOAD_TEXT)
+    {
+        return;
+    }
+
+    text = result->text;
+    result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
+    result->response = sl_http_response_text(200U, text);
+}
+
 static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, const SlPlan* plan,
                                               const SlHttpDispatchTable* dispatch_table,
                                               const SlHttpRequestHead* request,
@@ -2314,12 +2329,20 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     }
 
     if (use_cached_handler) {
-        return sl_engine_call_registered_handler_with_context(
+        status = sl_engine_call_registered_handler_with_context(
             engine, arena, binding->handler_id, &request_context, out_result, out_diag);
+        if (sl_status_is_ok(status)) {
+            sl_http_dispatch_materialize_text_result(out_result);
+        }
+        return status;
     }
 
-    return sl_runtime_contract_call_handler_with_context(engine, arena, plan, binding->handler_id,
-                                                         &request_context, out_result, out_diag);
+    status = sl_runtime_contract_call_handler_with_context(engine, arena, plan, binding->handler_id,
+                                                           &request_context, out_result, out_diag);
+    if (sl_status_is_ok(status)) {
+        sl_http_dispatch_materialize_text_result(out_result);
+    }
+    return status;
 }
 
 SlStatus sl_http_dispatch_request_head(SlArena* arena, SlEngine* engine, const SlPlan* plan,

@@ -3198,7 +3198,8 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         return sl_status_ok();
     }
 
-    if (fast_kind == HTTP_V8_FAST_RESULT_TEXT_OK) {
+    switch (fast_kind) {
+    case HTTP_V8_FAST_RESULT_TEXT_OK:
         if (status_code != 200U ||
             !http_v8_string_property_equals(isolate, context, object, SL_V8_HTTP_STRING_KIND,
                                             "text") ||
@@ -3210,13 +3211,12 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         }
 
         out_result->kind = SL_ENGINE_RESULT_TEXT;
-        out_result->text = sl_str_from_cstr("ok");
-        out_result->response = sl_http_response_text(200U, out_result->text);
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
+        out_result->response = sl_http_response_text(200U, sl_str_from_cstr("ok"));
         *out_handled = true;
         return sl_status_ok();
-    }
 
-    if (fast_kind == HTTP_V8_FAST_RESULT_NO_CONTENT) {
+    case HTTP_V8_FAST_RESULT_NO_CONTENT:
         if (status_code != 204U ||
             !http_v8_string_property_equals(isolate, context, object, SL_V8_HTTP_STRING_KIND,
                                             "empty") ||
@@ -3227,12 +3227,13 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         }
 
         out_result->kind = SL_ENGINE_RESULT_NONE;
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
         out_result->response = sl_http_response_empty(204U);
         *out_handled = true;
         return sl_status_ok();
-    }
 
-    if (fast_kind == HTTP_V8_FAST_RESULT_JSON || fast_kind == HTTP_V8_FAST_RESULT_CREATED) {
+    case HTTP_V8_FAST_RESULT_JSON:
+    case HTTP_V8_FAST_RESULT_CREATED: {
         SlBytes bytes = {nullptr, 0U};
 
         if ((fast_kind == HTTP_V8_FAST_RESULT_JSON && status_code != 200U) ||
@@ -3253,6 +3254,7 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         }
 
         out_result->kind = SL_ENGINE_RESULT_JSON;
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
         out_result->response = sl_http_response_json(status_code, bytes);
         if (fast_kind == HTTP_V8_FAST_RESULT_CREATED) {
             bool has_location = false;
@@ -3280,6 +3282,9 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
             out_result->response.header_count = 1U;
         }
         *out_handled = true;
+        return sl_status_ok();
+    }
+    default:
         return sl_status_ok();
     }
 
@@ -3616,7 +3621,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         }
 
         out_result->kind = SL_ENGINE_RESULT_TEXT;
-        out_result->response = sl_http_response_text(200U, out_result->text);
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_TEXT;
         return sl_status_ok();
     }
 
@@ -3690,6 +3695,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
 
     if (sl_str_equal(kind, sl_str_from_cstr("empty"))) {
         out_result->kind = SL_ENGINE_RESULT_NONE;
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
         out_result->response = sl_http_response_empty(status_code);
         out_result->response.headers = response_headers;
         out_result->response.header_count = response_header_count;
@@ -3735,6 +3741,8 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
     if (sl_str_equal(kind, sl_str_from_cstr("text")) ||
         sl_str_equal(kind, sl_str_from_cstr("html")))
     {
+        SlStr body_text = sl_str_empty();
+
         if (!body->IsString()) {
             return http_v8_write_diag(
                 engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
@@ -3743,13 +3751,14 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                 sl_str_empty());
         }
 
-        SlStatus status = http_v8_copy_value_string(isolate, arena, body, &out_result->text);
+        SlStatus status = http_v8_copy_value_string(isolate, arena, body, &body_text);
         if (!sl_status_is_ok(status)) {
             return status;
         }
 
         out_result->kind = SL_ENGINE_RESULT_TEXT;
-        out_result->response = sl_http_response_text(status_code, out_result->text);
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
+        out_result->response = sl_http_response_text(status_code, body_text);
         out_result->response.headers = response_headers;
         out_result->response.header_count = response_header_count;
         out_result->response.content_type = content_type;
@@ -3774,6 +3783,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         }
 
         out_result->kind = SL_ENGINE_RESULT_BYTES;
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
         out_result->response = sl_http_response_bytes(status_code, content_type, bytes);
         out_result->response.headers = response_headers;
         out_result->response.header_count = response_header_count;
@@ -3822,6 +3832,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
             native_chunks[chunk_index].bytes = bytes;
         }
         out_result->kind = SL_ENGINE_RESULT_BYTES;
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
         out_result->response =
             sl_http_response_stream(status_code, content_type, native_chunks, chunks->Length());
         out_result->response.headers = response_headers;
@@ -3854,6 +3865,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         }
 
         out_result->kind = is_json ? SL_ENGINE_RESULT_JSON : SL_ENGINE_RESULT_ERROR;
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
         out_result->response = is_json ? sl_http_response_json(status_code, bytes)
                                        : sl_http_response_problem(status_code, bytes);
         out_result->response.headers = response_headers;

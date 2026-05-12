@@ -85,6 +85,7 @@
     sloppy_add_c_unit_test(core_filesystem core.filesystem tests/unit/core/test_fs.c)
     sloppy_add_c_unit_test(core_os_system_environment core.os.system_environment
                            tests/unit/core/test_os.c)
+    sloppy_add_c_unit_test(core_layout_contract core.layout.contract tests/unit/core/test_layout.c)
     sloppy_add_c_unit_test(core_logging_structured core.logging.structured
                            tests/unit/core/test_logging.c)
     sloppy_add_c_unit_test(core_platform_thread core.platform.thread

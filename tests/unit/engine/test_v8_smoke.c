@@ -4453,7 +4453,8 @@ static int test_result_descriptor_fast_paths_cover_common_results(void)
                                                &diag),
                       SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_TEXT ||
-        expect_str_equal(result.text, sl_str_from_cstr("ok")) != 0)
+        result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE ||
+        expect_bytes_equal(result.response.body, "ok") != 0)
     {
         sl_engine_destroy(engine);
         return 444;
@@ -4646,7 +4647,8 @@ static int test_result_descriptor_fast_paths_fall_back_for_mutated_shapes(void)
                                                &result, &diag),
                       SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_TEXT ||
-        expect_str_equal(result.text, sl_str_from_cstr("mutated")) != 0)
+        result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE ||
+        expect_bytes_equal(result.response.body, "mutated") != 0)
     {
         sl_engine_destroy(engine);
         return 455;

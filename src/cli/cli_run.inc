@@ -1987,6 +1987,9 @@ static SlStatus sl_run_dispatch_with_request_scope(SlAppRequestScope* request_sc
     if (context->response == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    if (result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
     *context->response = result.response;
     return sl_status_ok();
 }
@@ -2482,7 +2485,9 @@ static int sl_run_once(SlRunApp* app, const SlCliOptions* options)
         }
         status = sl_engine_call_function0(
             app->engine, &request_arena, sl_str_from_cstr("__sloppy_dynamic_once"), &result, &diag);
-        if (!sl_status_is_ok(status) || result.kind != SL_ENGINE_RESULT_TEXT) {
+        if (!sl_status_is_ok(status) || result.kind != SL_ENGINE_RESULT_TEXT ||
+            result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_TEXT)
+        {
             sl_run_print_diag("sloppy run: dynamic dispatch failed: ", &app->engine_arena, &diag);
             return 1;
         }
@@ -3542,13 +3547,28 @@ static int sl_run_program_main(SlRunApp* app, const SlCliOptions* options, const
         return 1;
     }
 
-    if (result.kind == SL_ENGINE_RESULT_TEXT) {
+    if (result.kind == SL_ENGINE_RESULT_TEXT &&
+        result.payload_kind == SL_ENGINE_RESULT_PAYLOAD_TEXT)
+    {
         if (!sl_cli_write_str(stdout, result.text)) {
             return 1;
         }
         sl_cli_write_cstr(stdout, "\n");
     }
-    else if (result.kind == SL_ENGINE_RESULT_JSON) {
+    else if (result.kind == SL_ENGINE_RESULT_TEXT &&
+             result.payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE)
+    {
+        if (result.response.body.length != 0U &&
+            fwrite(result.response.body.ptr, 1U, result.response.body.length, stdout) !=
+                result.response.body.length)
+        {
+            return 1;
+        }
+        sl_cli_write_cstr(stdout, "\n");
+    }
+    else if (result.kind == SL_ENGINE_RESULT_JSON &&
+             result.payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE)
+    {
         if (sl_run_program_emit_json_result(result.response.body, &handled_program_result,
                                             &program_exit_code) != 0)
         {
@@ -3565,13 +3585,22 @@ static int sl_run_program_main(SlRunApp* app, const SlCliOptions* options, const
         }
         sl_cli_write_cstr(stdout, "\n");
     }
-    else if (result.kind == SL_ENGINE_RESULT_BYTES) {
+    else if (result.kind == SL_ENGINE_RESULT_BYTES &&
+             result.payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE)
+    {
         if (result.response.body.length != 0U &&
             fwrite(result.response.body.ptr, 1U, result.response.body.length, stdout) !=
                 result.response.body.length)
         {
             return 1;
         }
+    }
+    else {
+        fprintf(stderr,
+                "sloppy run: engine returned unsupported program result payload: kind=%d "
+                "payload_kind=%d\n",
+                (int)result.kind, (int)result.payload_kind);
+        return 1;
     }
 
     return 0;

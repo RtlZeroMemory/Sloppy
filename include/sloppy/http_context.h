@@ -64,16 +64,16 @@ typedef struct SlHttpRequestContext
     const SlCancellationToken* cancellation;
     SlStr route_name;
     SlStr route_pattern;
-    bool needs_route_params;
-    bool needs_query_params;
-    bool needs_headers;
-    bool needs_body;
-    bool needs_header_facade;
-    bool needs_request;
-    bool needs_connection;
-    bool needs_signal;
-    bool needs_log;
-    bool needs_metadata;
+    unsigned needs_route_params : 1;
+    unsigned needs_query_params : 1;
+    unsigned needs_headers : 1;
+    unsigned needs_body : 1;
+    unsigned needs_header_facade : 1;
+    unsigned needs_request : 1;
+    unsigned needs_connection : 1;
+    unsigned needs_signal : 1;
+    unsigned needs_log : 1;
+    unsigned needs_metadata : 1;
 } SlHttpRequestContext;
 
 /*

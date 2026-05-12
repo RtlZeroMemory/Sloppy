@@ -27,11 +27,11 @@ extern "C" {
  */
 typedef struct SlHttpRouteBinding
 {
-    SlHttpMethod method;
     const SlRoutePattern* pattern;
-    SlHandlerId handler_id;
     const SlPlanHandler* handler;
     size_t route_index;
+    SlHttpMethod method;
+    SlHandlerId handler_id;
 } SlHttpRouteBinding;
 
 typedef struct SlHttpRouteCandidateBucket
