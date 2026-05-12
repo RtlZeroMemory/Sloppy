@@ -4209,7 +4209,7 @@ export default app;
 
 #[test]
 fn extracts_named_schema_references_inside_schema_dsl() {
-    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+    let source = r#"import { Sloppy, Results, Schema, RequestContext, Route } from "sloppy";
 const User = Schema.object({
   id: Schema.integer(),
   name: Schema.string()

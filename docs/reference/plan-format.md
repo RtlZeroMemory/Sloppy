@@ -228,11 +228,11 @@ request values.
 - `fallback` means response metadata is known but unsupported for native
   writing; `fallbackReason` explains why.
 
-`jsonResponse.writer` values are `none`, `preencoded`, `bounded`, and
-`streamable`. Native static responses use `preencoded`. Supported
-schema-backed dynamic JSON responses use `bounded`. Unsupported response schema
-shapes remain fallback and carry a `native-schema-response-writer-unsupported:*`
-reason.
+`jsonResponse.writer` values emitted today are `none`, `preencoded`, and
+`bounded`; `streamable` is reserved for a future streaming writer. Native static
+responses use `preencoded`. Supported schema-backed dynamic JSON responses use
+`bounded`. Unsupported response schema shapes remain fallback and carry a
+`native-schema-response-writer-unsupported:*` reason.
 
 Typed handler metadata is compiler/Plan-first. For the current supported
 typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after

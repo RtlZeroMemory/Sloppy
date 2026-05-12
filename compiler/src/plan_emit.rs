@@ -163,20 +163,11 @@ fn route_json_response_plan(
     responses: &[ResponseMetadata],
     resolved_schemas: &BTreeMap<String, Value>,
 ) -> Value {
-    let Some(response) = response else {
-        return json!({
-            "mode": "none",
-            "writer": "none"
-        });
-    };
-    if response.kind != "json" {
-        return json!({
-            "mode": "none",
-            "writer": "none"
-        });
-    }
     let json_responses = if responses.is_empty() {
-        vec![response]
+        response
+            .filter(|candidate| candidate.kind == "json")
+            .into_iter()
+            .collect::<Vec<_>>()
     } else {
         responses
             .iter()
@@ -1872,6 +1863,20 @@ mod tests {
         }
     }
 
+    fn text_response() -> ResponseMetadata {
+        ResponseMetadata {
+            helper: "text".to_string(),
+            status: 200,
+            kind: "text".to_string(),
+            body_schema: None,
+            native_body: None,
+            source_name: None,
+            source_text: None,
+            span: None,
+            partial: false,
+        }
+    }
+
     #[test]
     fn object_schema_without_properties_is_an_explicit_response_fallback() {
         let schema = json!({ "kind": "object" });
@@ -1901,5 +1906,22 @@ mod tests {
         assert_eq!(plan["mode"], "fallback");
         assert_eq!(plan["writer"], "none");
         assert_eq!(plan["fallbackReason"], "multiple-json-response-schemas");
+    }
+
+    #[test]
+    fn route_json_response_plan_uses_declared_json_responses_when_primary_is_non_json() {
+        let primary = text_response();
+        let responses = vec![primary.clone(), json_response(Some("UserDto"))];
+        let mut resolved = BTreeMap::new();
+        resolved.insert(
+            "UserDto".to_string(),
+            json!({ "kind": "object", "properties": { "id": { "kind": "int" } } }),
+        );
+
+        let plan = route_json_response_plan(Some(&primary), &responses, &resolved);
+
+        assert_eq!(plan["mode"], "native-schema");
+        assert_eq!(plan["writer"], "bounded");
+        assert_eq!(plan["schema"], "UserDto");
     }
 }
