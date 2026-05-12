@@ -376,6 +376,47 @@ static int test_strict_system_info_denied(void)
     return 0;
 }
 
+static int test_process_info_is_normalized(void)
+{
+    unsigned char storage[65536];
+    SlArena arena = {0};
+    SlOsPolicy policy = sl_os_development_policy();
+    SlOsProcessInfo info = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_info(&arena, &policy, &info, NULL), SL_STATUS_OK) != 0)
+    {
+        return 12;
+    }
+    if (info.pid == 0U || info.current_working_directory.length == 0U) {
+        return 13;
+    }
+    if (info.args_available && info.arg_count != 0U && info.args[0].value.length == 0U) {
+        return 14;
+    }
+    return 0;
+}
+
+static int test_strict_process_info_denied(void)
+{
+    unsigned char storage[1024];
+    SlArena arena = {0};
+    SlOsPolicy policy = sl_os_strict_policy(NULL, 0U, false, sl_str_empty());
+    SlOsProcessInfo info = {0};
+    SlDiag diag = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_os_process_info(&arena, &policy, &info, &diag), SL_STATUS_INVALID_STATE) !=
+            0)
+    {
+        return 15;
+    }
+    if (diag.code != SL_DIAG_OS_FEATURE_UNAVAILABLE || info.pid != 0U) {
+        return 16;
+    }
+    return 0;
+}
+
 static int test_environment_get_has_and_missing(void)
 {
     unsigned char storage[16384];
@@ -941,6 +982,16 @@ static int test_system_and_environment_suite(void)
     result = test_strict_system_info_denied();
     if (result != 0) {
         fprintf(stderr, "test_strict_system_info_denied failed: %d\n", result);
+        return result;
+    }
+    result = test_process_info_is_normalized();
+    if (result != 0) {
+        fprintf(stderr, "test_process_info_is_normalized failed: %d\n", result);
+        return result;
+    }
+    result = test_strict_process_info_denied();
+    if (result != 0) {
+        fprintf(stderr, "test_strict_process_info_denied failed: %d\n", result);
         return result;
     }
     result = test_environment_get_has_and_missing();

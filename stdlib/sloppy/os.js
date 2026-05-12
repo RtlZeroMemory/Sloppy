@@ -261,6 +261,21 @@ function validateWaitOptions(options) {
     return normalized;
 }
 
+function normalizeProcessInfo(value) {
+    if (value === null || typeof value !== "object") {
+        throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process info bridge returned invalid data.");
+    }
+    const args = Array.isArray(value.args) ? value.args.map(String) : [];
+    return Object.freeze({
+        pid: Number.isFinite(value.pid) && value.pid >= 0 ? Math.trunc(value.pid) : 0,
+        parentPid: Number.isFinite(value.parentPid) && value.parentPid >= 0 ? Math.trunc(value.parentPid) : 0,
+        executablePath: typeof value.executablePath === "string" ? value.executablePath : "",
+        cwd: typeof value.cwd === "string" ? value.cwd : "",
+        args: Object.freeze(args),
+        argsAvailable: value.argsAvailable === true,
+    });
+}
+
 function callProcessBridge(handle, directName, bridgeName, args, unavailableMessage) {
     if (handle !== null && typeof handle === "object" && typeof handle[directName] === "function") {
         return handle[directName](...args);
@@ -496,6 +511,13 @@ const Environment = Object.freeze({
 });
 
 const Process = Object.freeze({
+    info() {
+        const os = bridge();
+        if (typeof os.processInfo !== "function") {
+            throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process info bridge is unavailable.");
+        }
+        return normalizeProcessInfo(os.processInfo());
+    },
     async run(command, args = [], options = undefined) {
         const argv = requireArgv(command, args);
         const runOptions = validateRunOptions(options);

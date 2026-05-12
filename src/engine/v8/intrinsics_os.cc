@@ -131,6 +131,22 @@ bool os_v8_set_uint32(v8::Isolate* isolate, v8::Local<v8::Context> context,
            object->Set(context, key, v8::Integer::NewFromUnsigned(isolate, value)).FromMaybe(false);
 }
 
+bool os_v8_set_number(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                      v8::Local<v8::Object> object, const char* name, double value)
+{
+    v8::Local<v8::String> key;
+    return sl_status_is_ok(os_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) &&
+           object->Set(context, key, v8::Number::New(isolate, value)).FromMaybe(false);
+}
+
+bool os_v8_set_bool(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                    v8::Local<v8::Object> object, const char* name, bool value)
+{
+    v8::Local<v8::String> key;
+    return sl_status_is_ok(os_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) &&
+           object->Set(context, key, v8::Boolean::New(isolate, value)).FromMaybe(false);
+}
+
 bool os_v8_resource_private(v8::Isolate* isolate, const char* name, v8::Local<v8::Private>* out)
 {
     v8::Local<v8::String> key;
@@ -1470,6 +1486,53 @@ void os_v8_env_list_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     args.GetReturnValue().Set(result);
 }
 
+void os_v8_process_info_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlOsProcessInfo info = {};
+    SlOsPolicy policy = sl_os_development_policy();
+    v8::Local<v8::Object> result;
+    v8::Local<v8::Array> argv;
+    v8::Local<v8::String> key;
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, storage, sizeof(storage))) ||
+        !sl_status_is_ok(sl_os_process_info(&arena, &policy, &info, nullptr)))
+    {
+        os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: process info unavailable");
+        return;
+    }
+    result = v8::Object::New(isolate);
+    argv = v8::Array::New(isolate, static_cast<int>(info.arg_count));
+    for (size_t index = 0U; index < info.arg_count; index += 1U) {
+        v8::Local<v8::String> item;
+        if (!sl_status_is_ok(os_v8_to_local_string(
+                isolate, sl_owned_str_as_view(info.args[index].value), &item)) ||
+            !argv->Set(context, static_cast<uint32_t>(index), item).FromMaybe(false))
+        {
+            os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: process argv unavailable");
+            return;
+        }
+    }
+    if (!os_v8_set_number(isolate, context, result, "pid", static_cast<double>(info.pid)) ||
+        !os_v8_set_number(isolate, context, result, "parentPid",
+                          static_cast<double>(info.parent_pid)) ||
+        !os_v8_set_string(isolate, context, result, "executablePath", info.executable_path) ||
+        !os_v8_set_string(isolate, context, result, "cwd", info.current_working_directory) ||
+        !os_v8_set_bool(isolate, context, result, "argsAvailable", info.args_available) ||
+        !sl_status_is_ok(os_v8_key(isolate, "args", &key)) ||
+        !result->Set(context, key, argv).FromMaybe(false) ||
+        !result->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false))
+    {
+        os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: process info unavailable");
+        return;
+    }
+    args.GetReturnValue().Set(result);
+}
+
 bool os_v8_set_function(v8::Isolate* isolate, v8::Local<v8::Context> context,
                         v8::Local<v8::Object> object, const char* name,
                         v8::FunctionCallback callback)
@@ -1492,6 +1555,7 @@ void sl_v8_append_os_external_references(std::vector<intptr_t>* refs)
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_env_get_callback));
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_env_has_callback));
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_env_list_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_info_callback));
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_run_callback));
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_start_callback));
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_wait_callback));
@@ -1530,6 +1594,7 @@ bool sl_v8_install_os_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> con
         !os_v8_set_function(isolate, context, os, "environmentGet", os_v8_env_get_callback) ||
         !os_v8_set_function(isolate, context, os, "environmentHas", os_v8_env_has_callback) ||
         !os_v8_set_function(isolate, context, os, "environmentList", os_v8_env_list_callback) ||
+        !os_v8_set_function(isolate, context, os, "processInfo", os_v8_process_info_callback) ||
         !os_v8_set_function(isolate, context, os, "processRun", os_v8_process_run_callback) ||
         !os_v8_set_function(isolate, context, os, "processStart", os_v8_process_start_callback) ||
         !os_v8_set_function(isolate, context, os, "processWait", os_v8_process_wait_callback) ||

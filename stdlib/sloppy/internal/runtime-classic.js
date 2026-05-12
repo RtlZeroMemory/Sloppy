@@ -54,6 +54,16 @@
         return prototype === Object.prototype || prototype === null;
     }
 
+    function validateWorkerOptions(options, operation) {
+        if (options === undefined || options === null) {
+            return {};
+        }
+        if (!isPlainObject(options)) {
+            throw new TypeError(`${operation} options must be a plain object.`);
+        }
+        return options;
+    }
+
     const DEFAULT_JSON_OPTIONS = Object.freeze({
         casing: "preserve",
         includeNulls: true,
@@ -762,8 +772,8 @@ Reason:
     }
 
     function normalizeSqliteProviderToken(name) {
-        if (typeof name !== "string" || name.length === 0) {
-            throw new TypeError("Sloppy data.sqlite provider name must be a non-empty string.");
+        if (typeof name !== "string" || name.length === 0 || name.includes("\0")) {
+            throw new TypeError("Sloppy data.sqlite provider name must be a non-empty string without NUL.");
         }
 
         return name.includes(".") ? name : `data.${name}`;
@@ -782,8 +792,8 @@ Reason:
         }
 
         const database = options.database ?? options.path;
-        if (typeof database !== "string" || database.length === 0) {
-            throw new TypeError("Sloppy sqlite.open database must be a non-empty string.");
+        if (typeof database !== "string" || database.length === 0 || database.includes("\0")) {
+            throw new TypeError("Sloppy sqlite.open database must be a non-empty string without NUL.");
         }
 
         if (
@@ -796,8 +806,8 @@ Reason:
             );
         }
 
-        if (typeof options.capability !== "string" || options.capability.length === 0) {
-            throw new TypeError("Sloppy sqlite.open capability must be a non-empty string.");
+        if (typeof options.capability !== "string" || options.capability.length === 0 || options.capability.includes("\0")) {
+            throw new TypeError("Sloppy sqlite.open capability must be a non-empty string without NUL.");
         }
 
         const access = options.access ?? "readwrite";
@@ -1324,15 +1334,16 @@ Operation:
     });
 
     function sqlite(name) {
+        const provider = normalizeSqliteProviderToken(name);
         const bridge = requireSqliteBridge();
         return createSqliteConnection(bridge, bridge.open({
-            provider: normalizeSqliteProviderToken(name),
+            provider,
         }));
     }
 
     sqlite.open = function open(options) {
-        const bridge = requireSqliteBridge();
         const safeOptions = normalizeSqliteOpenOptions(options);
+        const bridge = requireSqliteBridge();
         return createSqliteConnection(bridge, bridge.open(safeOptions));
     };
 
@@ -1364,8 +1375,12 @@ Reason:
         if (!isPlainObject(options)) {
             throw new TypeError("Sloppy postgres.open options must be a plain object.");
         }
-        if (typeof options.connectionString !== "string" || options.connectionString.length === 0) {
-            throw new TypeError("Sloppy postgres.open connectionString must be a non-empty string.");
+        if (typeof options.connectionString !== "string" || options.connectionString.length === 0 || options.connectionString.includes("\0")) {
+            throw new TypeError("Sloppy postgres.open connectionString must be a non-empty string without NUL.");
+        }
+        const capability = options.capability ?? "data.postgres";
+        if (typeof capability !== "string" || capability.length === 0 || capability.includes("\0")) {
+            throw new TypeError("Sloppy postgres.open capability must be a non-empty string without NUL.");
         }
         const access = options.access ?? "readwrite";
         const maxConnections = options.maxConnections ?? 1;
@@ -1382,7 +1397,7 @@ Reason:
         return Object.freeze({
             provider: "postgres",
             connectionString: options.connectionString,
-            capability: options.capability ?? "data.postgres",
+            capability,
             access,
             maxConnections,
         });
@@ -1630,8 +1645,12 @@ Reason:
         if (!isPlainObject(options)) {
             throw new TypeError("Sloppy sqlserver.open options must be a plain object.");
         }
-        if (typeof options.connectionString !== "string" || options.connectionString.length === 0) {
-            throw new TypeError("Sloppy sqlserver.open connectionString must be a non-empty string.");
+        if (typeof options.connectionString !== "string" || options.connectionString.length === 0 || options.connectionString.includes("\0")) {
+            throw new TypeError("Sloppy sqlserver.open connectionString must be a non-empty string without NUL.");
+        }
+        const capability = options.capability ?? "data.sqlserver";
+        if (typeof capability !== "string" || capability.length === 0 || capability.includes("\0")) {
+            throw new TypeError("Sloppy sqlserver.open capability must be a non-empty string without NUL.");
         }
         const access = options.access ?? "readwrite";
         const maxConnections = options.maxConnections ?? 1;
@@ -1648,7 +1667,7 @@ Reason:
         return Object.freeze({
             provider: "sqlserver",
             connectionString: options.connectionString,
-            capability: options.capability ?? "data.sqlserver",
+            capability,
             access,
             maxConnections,
         });
@@ -2306,8 +2325,8 @@ Reason:
     }
 
     function validateFsPath(path, operation) {
-        if (typeof path !== "string" || path.length === 0) {
-            throw new TypeError(`Sloppy File.${operation} path must be a non-empty string.`);
+        if (typeof path !== "string" || path.length === 0 || path.includes("\0")) {
+            throw new TypeError(`Sloppy File.${operation} path must be a non-empty string without NUL.`);
         }
         return path;
     }
@@ -2377,6 +2396,14 @@ Reason:
             throw new TypeError("Sloppy filesystem watch snapshotCapacity must be 1..1024.");
         }
         return Object.freeze({ recursive, queueCapacity, snapshotCapacity });
+    }
+
+    function validateFsTempPrefix(options, operation) {
+        const prefix = options?.prefix ?? "sloppy-";
+        if (typeof prefix !== "string" || prefix.length === 0 || prefix.includes("\0")) {
+            throw new TypeError(`${operation} prefix must be a non-empty string without NUL.`);
+        }
+        return prefix;
     }
 
     function stringifyFsJson(value, options) {
@@ -2619,10 +2646,7 @@ Reason:
             );
         },
         createTemp(directory, options) {
-            const prefix = options?.prefix ?? "sloppy-";
-            if (typeof prefix !== "string" || prefix.length === 0) {
-                throw new TypeError("Sloppy File.createTemp prefix must be a non-empty string.");
-            }
+            const prefix = validateFsTempPrefix(options, "Sloppy File.createTemp");
             return applyFsTimeOptions(
                 () => requireFsBridge("tempFile").tempFile(validateFsPath(directory, "createTemp"), prefix),
                 options,
@@ -2701,10 +2725,7 @@ Reason:
             return stat.exists && stat.kind === "directory";
         },
         createTemp(directory, options) {
-            const prefix = options?.prefix ?? "sloppy-";
-            if (typeof prefix !== "string" || prefix.length === 0) {
-                throw new TypeError("Sloppy Directory.createTemp prefix must be a non-empty string.");
-            }
+            const prefix = validateFsTempPrefix(options, "Sloppy Directory.createTemp");
             return applyFsTimeOptions(
                 () => requireFsBridge("tempDirectory").tempDirectory(validateFsPath(directory, "createTemp"), prefix),
                 options,
@@ -4101,9 +4122,25 @@ Reason:
         sha256(secret, value) {
             return Promise.resolve(sloppyHmac("sha256", secret, value, "Hmac.sha256"));
         },
+        sha384(secret, value) {
+            return Promise.resolve(sloppyHmac("sha384", secret, value, "Hmac.sha384"));
+        },
+        sha512(secret, value) {
+            return Promise.resolve(sloppyHmac("sha512", secret, value, "Hmac.sha512"));
+        },
         async verifySha256(secret, value, signature) {
             const actual = sloppyHmac("sha256", secret, value, "Hmac.verifySha256");
             const expected = sloppyCryptoDataToBytes(signature, "Hmac.verifySha256");
+            return ConstantTime.equals(actual, expected);
+        },
+        async verifySha384(secret, value, signature) {
+            const actual = sloppyHmac("sha384", secret, value, "Hmac.verifySha384");
+            const expected = sloppyCryptoDataToBytes(signature, "Hmac.verifySha384");
+            return ConstantTime.equals(actual, expected);
+        },
+        async verifySha512(secret, value, signature) {
+            const actual = sloppyHmac("sha512", secret, value, "Hmac.verifySha512");
+            const expected = sloppyCryptoDataToBytes(signature, "Hmac.verifySha512");
             return ConstantTime.equals(actual, expected);
         },
     });
@@ -4928,6 +4965,26 @@ Reason:
         );
     }
 
+    const COMPRESSION_BRIDGE_ERROR_CODES = new Set([
+        "SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE",
+        "SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED",
+        "SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT",
+    ]);
+
+    function normalizeCompressionError(error) {
+        if (error instanceof CodecError) {
+            return error;
+        }
+        const message = typeof error?.message === "string" ? error.message : String(error);
+        const match = /\b(SLOPPY_E_CODEC_[A-Z_]+)\b(?::\s*)?(.*)$/u.exec(message);
+        if (match !== null && COMPRESSION_BRIDGE_ERROR_CODES.has(match[1])) {
+            const normalized = codecError(match[1], match[2] || "Compression backend failed.");
+            normalized.cause = error;
+            return normalized;
+        }
+        return error;
+    }
+
     function sloppyNativeCodec(operation) {
         const bridge = globalThis.__sloppy?.codec ?? null;
         if (bridge === null) {
@@ -5073,7 +5130,7 @@ Reason:
         const signal = options.signal;
         const remainingMs = codecDeadlineRemainingMs(options.deadline, operation);
         if (!codecIsCancellationSignal(signal) && remainingMs === Infinity) {
-            return promise;
+            return promise.catch((error) => Promise.reject(normalizeCompressionError(error)));
         }
         return new Promise((resolve, reject) => {
             let finished = false;
@@ -5107,7 +5164,7 @@ Reason:
                     finish(resolve, value);
                 },
                 (error) => {
-                    finish(reject, error);
+                    finish(reject, normalizeCompressionError(error));
                 },
             );
             function cleanupAll() {
@@ -5132,7 +5189,7 @@ Reason:
             );
             return raceCompressionTerminal(promise, options ?? {}, operation);
         } catch (error) {
-            return Promise.reject(error);
+            return Promise.reject(normalizeCompressionError(error));
         }
     }
 
@@ -5254,7 +5311,6 @@ Reason:
     const CRC32_INITIAL = 0xffffffff;
     const CRC32_FINAL_XOR = 0xffffffff;
     const CRC32_TABLE = makeCrc32Table();
-    const CHECKSUM_UNSUPPORTED_ALGORITHM_DIAGNOSTIC = "SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM";
 
     function crc32(bytes) {
         bytes = requireBytes(bytes, "Checksums.crc32");
@@ -9279,6 +9335,21 @@ Reason:
         return normalized;
     }
 
+    function sloppyProcessInfo(value) {
+        if (value === null || typeof value !== "object") {
+            throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process info bridge returned invalid data.");
+        }
+        const args = Array.isArray(value.args) ? value.args.map(String) : [];
+        return Object.freeze({
+            pid: Number.isFinite(value.pid) && value.pid >= 0 ? Math.trunc(value.pid) : 0,
+            parentPid: Number.isFinite(value.parentPid) && value.parentPid >= 0 ? Math.trunc(value.parentPid) : 0,
+            executablePath: typeof value.executablePath === "string" ? value.executablePath : "",
+            cwd: typeof value.cwd === "string" ? value.cwd : "",
+            args: Object.freeze(args),
+            argsAvailable: value.argsAvailable === true,
+        });
+    }
+
     function sloppyCallProcessBridge(handle, directName, bridgeName, args, unavailableMessage) {
         if (handle !== null && typeof handle === "object" && typeof handle[directName] === "function") {
             return handle[directName](...args);
@@ -9508,6 +9579,13 @@ Reason:
     });
 
     const Process = Object.freeze({
+        info() {
+            const bridge = sloppyNativeOs();
+            if (typeof bridge.processInfo !== "function") {
+                throw sloppyOsError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process info bridge is unavailable.");
+            }
+            return sloppyProcessInfo(bridge.processInfo());
+        },
         async run(command, args = [], options = undefined) {
             const bridge = sloppyNativeOs();
             if (typeof bridge.processRun !== "function") {
@@ -9809,6 +9887,7 @@ Reason:
 
     class ClassicWorkQueue {
         constructor(name, options = undefined) {
+            options = validateWorkerOptions(options, "WorkQueue.create");
             this.name = sloppyWorkerName(name, "WorkQueue");
             this.maxQueued = sloppyWorkerPositive(options?.maxQueued, "WorkQueue.maxQueued", 1024);
             this.concurrency = sloppyWorkerPositive(options?.concurrency, "WorkQueue.concurrency", 1);
@@ -9967,6 +10046,7 @@ Reason:
 
     const BackgroundService = Object.freeze({
         create(name, handler, options = undefined) {
+            options = validateWorkerOptions(options, "BackgroundService.create");
             sloppyWorkerName(name, "BackgroundService");
             if (typeof handler !== "function") {
                 throw new TypeError("BackgroundService.create requires a function.");
@@ -10013,6 +10093,7 @@ Reason:
 
     const WorkerPool = Object.freeze({
         create(name, options = undefined) {
+            options = validateWorkerOptions(options, "WorkerPool.create");
             const queue = new ClassicWorkQueue(name, { maxQueued: options?.maxQueued ?? 64, concurrency: options?.workers ?? 1 });
             queue.process(async (job, ctx) => {
                 const bridge = globalThis.__sloppy?.workers;
@@ -10111,8 +10192,9 @@ Reason:
 
     const Worker = Object.freeze({
         async start(modulePath, options = undefined) {
-            if (typeof modulePath !== "string" || modulePath.length === 0) {
-                throw new TypeError("Worker.start module path must be a non-empty string.");
+            options = validateWorkerOptions(options, "Worker.start");
+            if (typeof modulePath !== "string" || modulePath.length === 0 || modulePath.includes("\0")) {
+                throw new TypeError("Worker.start module path must be a non-empty string without NUL.");
             }
             const memoryLimitMb = sloppyWorkerPositive(options?.memoryLimitMb, "Worker.memoryLimitMb", 128);
             const bridge = globalThis.__sloppy?.workers;

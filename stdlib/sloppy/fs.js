@@ -37,8 +37,8 @@ Reason:
 }
 
 function validatePath(path, operation) {
-    if (typeof path !== "string" || path.length === 0) {
-        throw new TypeError(`Sloppy File.${operation} path must be a non-empty string.`);
+    if (typeof path !== "string" || path.length === 0 || path.includes("\0")) {
+        throw new TypeError(`Sloppy File.${operation} path must be a non-empty string without NUL.`);
     }
     return path;
 }
@@ -116,6 +116,14 @@ function validateWatchOptions(options, directory) {
         throw new TypeError("Sloppy filesystem watch snapshotCapacity must be 1..1024.");
     }
     return Object.freeze({ recursive, queueCapacity, snapshotCapacity });
+}
+
+function validateTempPrefix(options, operation) {
+    const prefix = options?.prefix ?? "sloppy-";
+    if (typeof prefix !== "string" || prefix.length === 0 || prefix.includes("\0")) {
+        throw new TypeError(`${operation} prefix must be a non-empty string without NUL.`);
+    }
+    return prefix;
 }
 
 function stringifyJson(value, options) {
@@ -464,10 +472,7 @@ const File = Object.freeze({
     },
 
     createTemp(directory, options) {
-        const prefix = options?.prefix ?? "sloppy-";
-        if (typeof prefix !== "string" || prefix.length === 0) {
-            throw new TypeError("Sloppy File.createTemp prefix must be a non-empty string.");
-        }
+        const prefix = validateTempPrefix(options, "Sloppy File.createTemp");
         return applyTimeOptions(
             () => nativeFsBridge("tempFile").tempFile(validatePath(directory, "createTemp"), prefix),
             options,
@@ -551,10 +556,7 @@ const Directory = Object.freeze({
     },
 
     createTemp(directory, options) {
-        const prefix = options?.prefix ?? "sloppy-";
-        if (typeof prefix !== "string" || prefix.length === 0) {
-            throw new TypeError("Sloppy Directory.createTemp prefix must be a non-empty string.");
-        }
+        const prefix = validateTempPrefix(options, "Sloppy Directory.createTemp");
         return applyTimeOptions(
             () => nativeFsBridge("tempDirectory").tempDirectory(
                 validatePath(directory, "createTemp"),

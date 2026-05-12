@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +19,14 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 
 extern char** environ;
 
@@ -193,6 +202,120 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
         }
     }
     return sl_status_ok();
+}
+
+static SlStatus sl_os_posix_copy_cwd(SlArena* arena, SlOwnedStr* out)
+{
+    char cwd[PATH_MAX];
+
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        return sl_str_copy_to_arena(arena, sl_str_empty(), out);
+    }
+    return sl_str_copy_to_arena(arena, sl_str_from_cstr(cwd), out);
+}
+
+static SlStatus sl_os_posix_copy_executable_path(SlArena* arena, SlOwnedStr* out)
+{
+#if defined(__linux__)
+    char path[PATH_MAX];
+    ssize_t length = readlink("/proc/self/exe", path, sizeof(path) - 1U);
+    if (length < 0) {
+        return sl_str_copy_to_arena(arena, sl_str_empty(), out);
+    }
+    path[length] = '\0';
+    return sl_str_copy_to_arena(arena, sl_str_from_parts(path, (size_t)length), out);
+#elif defined(__APPLE__)
+    char path[PATH_MAX];
+    uint32_t size = (uint32_t)sizeof(path);
+    if (_NSGetExecutablePath(path, &size) != 0) {
+        return sl_str_copy_to_arena(arena, sl_str_empty(), out);
+    }
+    return sl_str_copy_to_arena(arena, sl_str_from_cstr(path), out);
+#else
+    return sl_str_copy_to_arena(arena, sl_str_empty(), out);
+#endif
+}
+
+#if defined(__linux__)
+static SlStatus sl_os_posix_copy_cmdline_args(SlArena* arena, SlOsProcessInfo* out)
+{
+    char buffer[65536];
+    FILE* file = fopen("/proc/self/cmdline", "rb");
+    size_t length = 0U;
+    size_t count = 0U;
+    size_t offset = 0U;
+    SlSlice entries = {0};
+    SlStatus status;
+
+    if (file == NULL) {
+        out->args_available = false;
+        return sl_status_ok();
+    }
+    length = fread(buffer, 1U, sizeof(buffer), file);
+    fclose(file);
+    if (length == 0U) {
+        out->args_available = false;
+        return sl_status_ok();
+    }
+    for (size_t index = 0U; index < length; index += 1U) {
+        if (buffer[index] == '\0') {
+            count += 1U;
+        }
+    }
+    if (buffer[length - 1U] != '\0') {
+        count += 1U;
+    }
+    if (count == 0U) {
+        out->args_available = true;
+        return sl_status_ok();
+    }
+    status = sl_arena_array_alloc(arena, count, sizeof(SlOsProcessArg), _Alignof(SlOsProcessArg),
+                                  &entries);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    out->args = (SlOsProcessArg*)entries.ptr;
+    out->arg_count = count;
+    out->args_available = true;
+    count = 0U;
+    while (offset < length) {
+        size_t start = offset;
+        while (offset < length && buffer[offset] != '\0') {
+            offset += 1U;
+        }
+        status = sl_str_copy_to_arena(arena, sl_str_from_parts(buffer + start, offset - start),
+                                      &out->args[count].value);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        count += 1U;
+        offset += 1U;
+    }
+    return sl_status_ok();
+}
+#endif
+
+SlStatus sl_os_platform_process_info(SlArena* arena, SlOsProcessInfo* out, SlDiag* out_diag)
+{
+    SlStatus status;
+
+    (void)out_diag;
+    if (arena == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = (SlOsProcessInfo){.pid = (uint64_t)getpid(), .parent_pid = (uint64_t)getppid()};
+    status = sl_os_posix_copy_executable_path(arena, &out->executable_path);
+    if (sl_status_is_ok(status)) {
+        status = sl_os_posix_copy_cwd(arena, &out->current_working_directory);
+    }
+#if defined(__linux__)
+    if (sl_status_is_ok(status)) {
+        status = sl_os_posix_copy_cmdline_args(arena, out);
+    }
+#else
+    out->args_available = false;
+#endif
+    return status;
 }
 
 static SlDiag sl_os_posix_process_diag(SlDiagCode code, SlStr message, SlStr hint)

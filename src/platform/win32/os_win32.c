@@ -7,6 +7,8 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <shellapi.h>
+#include <tlhelp32.h>
 
 #include <stdint.h>
 #include <string.h>
@@ -217,6 +219,132 @@ SlStatus sl_os_platform_environment_list(SlArena* arena, SlStr prefix, SlOsEnvir
     }
     FreeEnvironmentStringsA(block);
     return sl_status_ok();
+}
+
+static uint64_t sl_os_win32_parent_process_id(void)
+{
+    DWORD current = GetCurrentProcessId();
+    uint64_t parent = 0U;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0U);
+    PROCESSENTRY32W entry = {.dwSize = sizeof(entry)};
+
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        return 0U;
+    }
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            if (entry.th32ProcessID == current) {
+                parent = (uint64_t)entry.th32ParentProcessID;
+                break;
+            }
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    return parent;
+}
+
+static SlStatus sl_os_win32_copy_module_path(SlArena* arena, SlOwnedStr* out)
+{
+    char path[32768];
+    DWORD length = GetModuleFileNameA(NULL, path, (DWORD)sizeof(path));
+
+    if (length == 0U || length >= sizeof(path)) {
+        return sl_str_copy_to_arena(arena, sl_str_empty(), out);
+    }
+    return sl_str_copy_to_arena(arena, sl_str_from_parts(path, (size_t)length), out);
+}
+
+static SlStatus sl_os_win32_copy_cwd(SlArena* arena, SlOwnedStr* out)
+{
+    char cwd[32768];
+    DWORD length = GetCurrentDirectoryA((DWORD)sizeof(cwd), cwd);
+
+    if (length == 0U || length >= sizeof(cwd)) {
+        return sl_str_copy_to_arena(arena, sl_str_empty(), out);
+    }
+    return sl_str_copy_to_arena(arena, sl_str_from_parts(cwd, (size_t)length), out);
+}
+
+static SlStatus sl_os_win32_copy_command_line_args(SlArena* arena, SlOsProcessInfo* out)
+{
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    size_t total_bytes = 0U;
+    SlSlice entries = {0};
+    SlStatus status;
+
+    if (argc <= 0 || argv == NULL) {
+        if (argv != NULL) {
+            LocalFree(argv);
+        }
+        out->args_available = false;
+        return sl_status_ok();
+    }
+    for (size_t index = 0U; index < (size_t)argc; index += 1U) {
+        int required = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, argv[index], -1, NULL, 0,
+                                           NULL, NULL);
+        if (required <= 0 || required > 32768) {
+            LocalFree(argv);
+            out->args_available = false;
+            return sl_status_ok();
+        }
+        total_bytes += (size_t)required - 1U;
+        if (total_bytes > 65536U) {
+            LocalFree(argv);
+            out->args_available = false;
+            return sl_status_ok();
+        }
+    }
+    status = sl_arena_array_alloc(arena, (size_t)argc, sizeof(SlOsProcessArg),
+                                  _Alignof(SlOsProcessArg), &entries);
+    if (!sl_status_is_ok(status)) {
+        LocalFree(argv);
+        return status;
+    }
+    out->args = (SlOsProcessArg*)entries.ptr;
+    out->arg_count = (size_t)argc;
+    out->args_available = true;
+
+    for (size_t index = 0U; index < (size_t)argc; index += 1U) {
+        char utf8[32768];
+        int written = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, argv[index], -1, utf8,
+                                          (int)sizeof(utf8), NULL, NULL);
+        if (written <= 0) {
+            LocalFree(argv);
+            out->args_available = false;
+            out->arg_count = 0U;
+            out->args = NULL;
+            return sl_status_ok();
+        }
+        status = sl_str_copy_to_arena(arena, sl_str_from_parts(utf8, (size_t)written - 1U),
+                                      &out->args[index].value);
+        if (!sl_status_is_ok(status)) {
+            LocalFree(argv);
+            return status;
+        }
+    }
+    LocalFree(argv);
+    return sl_status_ok();
+}
+
+SlStatus sl_os_platform_process_info(SlArena* arena, SlOsProcessInfo* out, SlDiag* out_diag)
+{
+    SlStatus status;
+
+    (void)out_diag;
+    if (arena == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = (SlOsProcessInfo){.pid = (uint64_t)GetCurrentProcessId(),
+                             .parent_pid = sl_os_win32_parent_process_id()};
+    status = sl_os_win32_copy_module_path(arena, &out->executable_path);
+    if (sl_status_is_ok(status)) {
+        status = sl_os_win32_copy_cwd(arena, &out->current_working_directory);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_os_win32_copy_command_line_args(arena, out);
+    }
+    return status;
 }
 
 static SlDiag sl_os_win32_process_diag(SlDiagCode code, SlStr message, SlStr hint)

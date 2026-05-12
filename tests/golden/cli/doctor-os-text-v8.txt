@@ -11,7 +11,7 @@ Sloppy Doctor
 [ok] stdlib.os.required: OS runtime feature metadata is Plan-visible
 [ok] stdlib.os.capabilities: OS capability metadata is visible without values or native handles
 [ok] stdlib.os.environment: environment access metadata omits environment values
-[ok] stdlib.os.process: process metadata is explicit-argv and exposes no native handles
+[ok] stdlib.os.process: process metadata includes current-process snapshots and explicit argv only
 [warn] stdlib.os.shell: shell capability metadata is visible but shell execution is denied
 [ok] stdlib.os.signals: shutdown signal metadata is visible for the current platform
-[ok] stdlib.os.redaction: OS doctor metadata omits environment values, secret args, captured output, raw PIDs, and native handles
+[ok] stdlib.os.redaction: OS doctor metadata omits environment values, secret args, captured output, pid-as-handle capabilities, and native handles

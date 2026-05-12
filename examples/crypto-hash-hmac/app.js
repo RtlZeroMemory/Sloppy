@@ -13,8 +13,8 @@ export async function describePayload(payload, config) {
         hasher.update("event:");
         hasher.update(payload);
         const incrementalHex = await hasher.digest("hex");
-        const signature = await Hmac.sha256(signingKey, payload);
-        const signatureOk = await Hmac.verifySha256(signingKey, payload, signature);
+        const signature = await Hmac.sha512(signingKey, payload);
+        const signatureOk = await Hmac.verifySha512(signingKey, payload, signature);
 
         return {
             sha256Hex,

@@ -24,6 +24,7 @@ import {
 The constructible classes use static `.create(...)` factories
 (`Worker.start(...)` for worker isolates) rather than `new`.
 `WorkerCancellationController` is the one that uses `new`.
+Factory/start option bags must be plain objects when provided.
 
 ## Current status
 

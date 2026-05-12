@@ -19,6 +19,7 @@ import {
     NamedPipe,
     NonCryptoHash,
     Password,
+    Path,
     ProblemDetails,
     Random,
     Realtime,
@@ -87,10 +88,15 @@ async function flushMicrotasks(count = 6) {
                     return new Uint8Array([0xba, 0x78]);
                 },
                 hmac(algorithm, secret, bytes) {
-                    assert.equal(algorithm, "sha256");
+                    const signatures = {
+                        sha256: [1, 2, 3],
+                        sha384: [4, 5, 6],
+                        sha512: [7, 8, 9],
+                    };
+                    assert.ok(Object.hasOwn(signatures, algorithm));
                     assert.deepEqual(secret, encodeAscii("key"));
                     assert.deepEqual(bytes, encodeAscii("abc"));
-                    return new Uint8Array([1, 2, 3]);
+                    return new Uint8Array(signatures[algorithm]);
                 },
                 constantTimeEquals(left, right) {
                     return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
@@ -126,7 +132,11 @@ async function flushMicrotasks(count = 6) {
         assert.equal(Random.bytes(2).byteLength, 2);
         assert.equal(await Hash.sha256Hex("abc"), "ba78");
         assert.deepEqual(await Hmac.sha256("key", "abc"), new Uint8Array([1, 2, 3]));
+        assert.deepEqual(await Hmac.sha384("key", "abc"), new Uint8Array([4, 5, 6]));
+        assert.deepEqual(await Hmac.sha512("key", "abc"), new Uint8Array([7, 8, 9]));
         assert.equal(await Hmac.verifySha256("key", "abc", new Uint8Array([1, 2, 3])), true);
+        assert.equal(await Hmac.verifySha384("key", "abc", new Uint8Array([4, 5, 6])), true);
+        assert.equal(await Hmac.verifySha512("key", "abc", new Uint8Array([7, 8, 9])), true);
         const encoded = await Password.hash("password");
         assert.equal(encoded.startsWith("$argon2id$"), true);
         assert.equal(await Password.verify("password", encoded), true);
@@ -749,6 +759,12 @@ async function flushMicrotasks(count = 6) {
         );
         assert.equal(readCalls, 0);
 
+        assert.throws(() => Path.classify("bad\0path"), TypeError);
+        assert.throws(() => File.readText("data:/bad\0path"), TypeError);
+        assert.throws(() => File.createTemp("data:/", { prefix: "bad\0prefix" }), TypeError);
+        assert.throws(() => Directory.createTemp("data:/", { prefix: "bad\0prefix" }), TypeError);
+        assert.equal(readCalls, 0);
+
         assert.equal(await File.readText("data:/users.json", { deadline: Deadline.never() }), "ok");
         assert.equal(await Directory.exists("data:/", { deadline: Deadline.never() }), true);
         assert.equal(readCalls, 2);
@@ -872,6 +888,8 @@ async function flushMicrotasks(count = 6) {
     assertThrowsMessage(() => builder.config.getInt("app.name"), /number/);
     assertThrowsMessage(() => builder.config.require("missing"), /required/);
     assertThrowsMessage(() => builder.config.get(""), /non-empty string/);
+    assertThrowsMessage(() => builder.config.get("bad\0key"), /without NUL/);
+    assertThrowsMessage(() => builder.config.addObject({ "bad\0key": "value" }), /without NUL/);
     assertThrowsMessage(() => builder.config.get("A::B"), /empty segments/);
 
     const memorySink = builder.logging.addMemorySink();
@@ -881,6 +899,8 @@ async function flushMicrotasks(count = 6) {
     builder.logging.writeTo.console({ format: "jsonl" });
     builder.logging.writeTo.file({ path: "logs/app.jsonl" });
     assertThrowsMessage(() => builder.logging.setMinimumLevel("verbose"), /log level/);
+    assertThrowsMessage(() => builder.logging.addRedactionKey("bad\0key"), /without NUL/);
+    assertThrowsMessage(() => builder.logging.writeTo.file({ path: "bad\0path" }), /without NUL/);
 
     let singletonCalls = 0;
     let transientCalls = 0;
@@ -974,6 +994,7 @@ async function flushMicrotasks(count = 6) {
     assert.equal(Object.isFrozen(memorySink.entries()[0].fields), true);
     assert.equal(app.log.isEnabled("debug"), false);
     assert.equal(app.log.isEnabled("info"), true);
+    assertThrowsMessage(() => app.log.forCategory("bad\0category"), /without NUL/);
 
     const userLog = app.log.forCategory("users");
     userLog.warn("loaded user", {
@@ -994,6 +1015,7 @@ async function flushMicrotasks(count = 6) {
     });
     assert.equal(JSON.stringify(memorySink.entries()).includes("SECRET_TOKEN_SHOULD_NOT_APPEAR"), false);
     assert.equal(JSON.stringify(memorySink.entries()).includes("SECRET_CUSTOM_SHOULD_NOT_APPEAR"), false);
+    assertThrowsMessage(() => app.log.info("bad", { "bad\0field": "value" }), /without NUL/);
     assertThrowsMessage(() => app.log.info("bad", { nested: {} }), /fields support/);
     assertThrowsMessage(() => app.log.info("bad", { tooMany: 1, a: 1, b: 1, c: 1, d: 1, e: 1, f: 1, g: 1, h: 1 }), /at most 8/);
 

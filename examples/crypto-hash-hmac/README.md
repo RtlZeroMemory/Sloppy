@@ -1,15 +1,15 @@
 # Crypto Hash And HMAC Example
 
 This example documents SHA-256 digest helpers,
-incremental hashing, HMAC signing, HMAC verification, and `Secret` ownership around a
+incremental hashing, SHA-512 HMAC signing, HMAC verification, and `Secret` ownership around a
 configuration-supplied key.
 
 ```js
 import { Hash, Hmac, Secret } from "sloppy/crypto";
 
 const digest = await Hash.sha256Hex(payload);
-const signature = await Hmac.sha256(signingKey, payload);
-const ok = await Hmac.verifySha256(signingKey, payload, signature);
+const signature = await Hmac.sha512(signingKey, payload);
+const ok = await Hmac.verifySha512(signingKey, payload, signature);
 ```
 
 HMAC verification uses the constant-time comparison path. The example keeps the

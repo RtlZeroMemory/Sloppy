@@ -181,7 +181,8 @@ static void sl_cli_doctor_emit_os_capabilities(const SlCliOptions* options, SlAr
     if (has_process_capability) {
         sl_cli_doctor_emit(
             options, arena, sl_cli_span_cstr("stdlib.os.process"), sl_cli_span_cstr("ok"),
-            sl_cli_span_cstr("process metadata is explicit-argv and exposes no native handles"),
+            sl_cli_span_cstr(
+                "process metadata includes current-process snapshots and explicit argv only"),
             emitted);
     }
     if (has_shell_capability) {
