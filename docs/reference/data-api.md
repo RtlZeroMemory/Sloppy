@@ -101,8 +101,8 @@ JS property semantics apply and the last duplicate column value wins.
 
 Query materialization is bounded. The default cap is 128 rows, and `maxRows`
 changes the cap for one `query` or `queryRaw` call. Exceeding the cap fails the
-operation instead of returning a partial row set. Cursor-style incremental row
-streaming is not exposed in the public data API yet.
+operation instead of returning a partial row set. The public data API returns
+materialized result sets rather than cursor-style incremental row streams.
 
 ## sqlite.open Options
 
@@ -149,5 +149,7 @@ provider integration checks.
 - No ORM API in this surface.
 - No prepared statement handle API in sqlite surface.
 - Automatic retry/pool tuning is limited to the exposed bounded options.
-- `deadline`, `signal`, and `timeoutMs` are checked before provider dispatch;
-  they are not yet a portable driver-level in-flight cancellation guarantee.
+- `deadline`, `signal`, and `timeoutMs` are checked before provider dispatch.
+  Native `query` and `queryRaw` bridge calls also pass finite timeout budgets
+  to driver-level interruption. Signals are a pre-dispatch cancellation
+  mechanism for data providers.

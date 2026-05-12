@@ -14,6 +14,7 @@
 #include "sloppy/data_sqlserver.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -21,6 +22,7 @@
 #include <memory>
 #include <new>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
@@ -217,6 +219,10 @@ struct SqlSrvV8Request
     bool affected_rows_known = false;
     std::string error;
     uint32_t max_rows = SL_SQLSERVER_DEFAULT_MAX_ROWS;
+    bool has_timeout_ms = false;
+    uint32_t timeout_ms = 0U;
+    std::atomic_bool terminal = false;
+    std::atomic_bool timeout_cancelled = false;
     bool transaction_terminal = false;
     bool connect_pending = false;
     bool execute_pending = false;
@@ -458,6 +464,7 @@ void sqlsrv_v8_finish_request(const std::shared_ptr<SqlSrvV8Request>& request, b
     if (connection == nullptr || request->resource == nullptr) {
         return;
     }
+    request->terminal.store(true);
     sqlsrv_v8_free_statement(request.get());
     if (!ok) {
         if (request->operation == SqlSrvV8Operation::Begin || request->transaction_terminal) {
@@ -478,6 +485,23 @@ void sqlsrv_v8_finish_request(const std::shared_ptr<SqlSrvV8Request>& request, b
         connection->state = SqlSrvV8ConnectionState::Idle;
     }
     connection->request.reset();
+}
+
+void sqlsrv_v8_start_timeout_watch(const std::shared_ptr<SqlSrvV8Request>& request)
+{
+    if (request == nullptr || !request->has_timeout_ms || request->timeout_ms == 0U) {
+        return;
+    }
+    std::thread([request]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(request->timeout_ms));
+        if (request->terminal.load()) {
+            return;
+        }
+        request->timeout_cancelled.store(true);
+        if (request->stmt != SQL_NULL_HSTMT) {
+            SQLCancelHandle(SQL_HANDLE_STMT, request->stmt);
+        }
+    }).detach();
 }
 
 bool sqlsrv_v8_local_string(v8::Isolate* isolate, const std::string& value,
@@ -850,7 +874,12 @@ void sqlsrv_v8_fail_request(const std::shared_ptr<SqlSrvV8Request>& request,
     if (request == nullptr) {
         return;
     }
-    request->error = message.empty() ? "sqlserver operation failed" : message;
+    if (request->timeout_cancelled.load()) {
+        request->error = "sqlserver provider operation deadline was exceeded";
+    }
+    else {
+        request->error = message.empty() ? "sqlserver operation failed" : message;
+    }
     sqlsrv_v8_settle_request(request, false);
 }
 
@@ -1006,6 +1035,16 @@ bool sqlsrv_v8_allocate_statement(SqlSrvV8Request* request)
             sqlsrv_v8_diag(SQL_HANDLE_STMT, request->stmt,
                            "sqlserver ODBC driver does not support asynchronous statements");
         return false;
+    }
+    if (request->has_timeout_ms && request->timeout_ms > 0U) {
+        SQLULEN timeout_seconds = (request->timeout_ms + 999U) / 1000U;
+        rc = SQLSetStmtAttr(request->stmt, SQL_ATTR_QUERY_TIMEOUT,
+                            (SQLPOINTER)(uintptr_t)timeout_seconds, 0);
+        if (!SQL_SUCCEEDED(rc)) {
+            request->error = sqlsrv_v8_diag(SQL_HANDLE_STMT, request->stmt,
+                                            "sqlserver ODBC driver does not support query timeout");
+            return false;
+        }
     }
     if (!sqlsrv_v8_bind_params(request)) {
         return false;
@@ -1561,7 +1600,11 @@ bool sqlsrv_v8_submit_request(const std::shared_ptr<SqlSrvV8Request>& request)
         request->sql = "ROLLBACK TRANSACTION";
         request->transaction_terminal = true;
     }
-    return sqlsrv_v8_attach_request_to_connection(resource, connection, request);
+    if (!sqlsrv_v8_attach_request_to_connection(resource, connection, request)) {
+        return false;
+    }
+    sqlsrv_v8_start_timeout_watch(request);
+    return true;
 }
 
 bool sqlsrv_v8_convert_db_value_param(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -1978,6 +2021,12 @@ void sqlsrv_v8_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
             !sl_v8_db_parse_max_rows_option(
                 isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
                 SL_SQLSERVER_DEFAULT_MAX_ROWS, &request->max_rows, "sqlserver query"))
+        {
+            return;
+        }
+        if (!sl_v8_db_parse_timeout_ms_option(
+                isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
+                &request->has_timeout_ms, &request->timeout_ms, "sqlserver operation"))
         {
             return;
         }

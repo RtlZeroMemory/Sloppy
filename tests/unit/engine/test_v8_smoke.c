@@ -6540,6 +6540,12 @@ static int test_sqlite_intrinsic_query_max_rows_option(void)
                     "order by id', [], { maxRows: 1 }); }"
                     "  catch (error) { rawRejected = String(error.message).includes('exceeded "
                     "max rows'); }"
+                    "  let timeoutRejected = false;"
+                    "  try { await __sloppy.data.sqlite.query(db, 'with recursive cnt(x) as "
+                    "(select 1 union all select x + 1 from cnt where x < 100000000) select "
+                    "count(*) as total from cnt', [], { timeoutMs: 1 }); }"
+                    "  catch (error) { timeoutRejected = String(error.message).includes("
+                    "'deadline was exceeded'); }"
                     "  await __sloppy.data.sqlite.transactionBegin(db);"
                     "  const txRaw = await __sloppy.data.sqlite.transactionQueryRaw(db, 'select "
                     "name from users order by id', [], { maxRows: 2 });"
@@ -6547,7 +6553,8 @@ static int test_sqlite_intrinsic_query_max_rows_option(void)
                     "  __sloppy.data.sqlite.close(db);"
                     "  return { __sloppyResult: true, kind: 'json', status: 200, contentType: "
                     "'application/json; charset=utf-8', body: { rowsLength: rows.length, "
-                    "queryRejected, rawRejected, txRowsLength: txRaw.rows.length } };"
+                    "queryRejected, rawRejected, timeoutRejected, txRowsLength: txRaw.rows.length "
+                    "} };"
                     "};"),
                 &diag),
             SL_STATUS_OK) != 0)
@@ -6567,7 +6574,7 @@ static int test_sqlite_intrinsic_query_max_rows_option(void)
     if (result.kind != SL_ENGINE_RESULT_JSON ||
         expect_bytes_equal(result.response.body,
                            "{\"rowsLength\":2,\"queryRejected\":true,\"rawRejected\":true,"
-                           "\"txRowsLength\":2}") != 0)
+                           "\"timeoutRejected\":true,\"txRowsLength\":2}") != 0)
     {
         sl_engine_destroy(engine);
         return 1365;

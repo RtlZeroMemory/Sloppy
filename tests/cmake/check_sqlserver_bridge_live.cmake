@@ -20,6 +20,6 @@ if(output MATCHES "driver async support is unavailable")
     return()
 endif()
 
-if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace")
-    message(FATAL_ERROR "SQL Server bridge live output did not include expected rows.\n${output}")
+if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace" OR NOT output MATCHES "sqlserverTimedOut.*true")
+    message(FATAL_ERROR "SQL Server bridge live output did not include expected rows and timeout cancellation evidence.\n${output}")
 endif()

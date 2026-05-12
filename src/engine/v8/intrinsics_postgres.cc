@@ -14,13 +14,16 @@
 
 #include <libpq-fe.h>
 
+#include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -222,6 +225,7 @@ struct PgV8Connection;
 struct PgV8Request;
 
 void pg_v8_clear_result(PgV8Request* request);
+bool pg_v8_operation_allows_max_rows(PgV8Operation operation);
 
 struct PgV8Param
 {
@@ -249,8 +253,13 @@ struct PgV8Request
     std::vector<int> param_lengths;
     std::vector<int> param_formats;
     PGresult* result = nullptr;
+    std::vector<PGresult*> row_results;
     std::string error;
     uint32_t max_rows = SL_POSTGRES_DEFAULT_MAX_ROWS;
+    bool has_timeout_ms = false;
+    uint32_t timeout_ms = 0U;
+    std::atomic_bool terminal = false;
+    std::atomic_bool timeout_cancelled = false;
     bool release_after = true;
     bool transaction_terminal = false;
 };
@@ -495,6 +504,9 @@ void pg_v8_connection_cleanup(void* ptr, void* user)
 
 bool pg_v8_result_status_ok(PgV8Operation operation, ExecStatusType status)
 {
+    if (status == PGRES_SINGLE_TUPLE && pg_v8_operation_allows_max_rows(operation)) {
+        return true;
+    }
     switch (operation) {
     case PgV8Operation::Exec:
     case PgV8Operation::Begin:
@@ -715,6 +727,68 @@ bool pg_v8_result_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context,
     return true;
 }
 
+PGresult* pg_v8_request_column_result(const PgV8Request* request)
+{
+    if (request == nullptr) {
+        return nullptr;
+    }
+    if (!request->row_results.empty()) {
+        return request->row_results.front();
+    }
+    return request->result;
+}
+
+bool pg_v8_request_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                            const PgV8Request* request, v8::Local<v8::Array>* out)
+{
+    if (request == nullptr || out == nullptr) {
+        return false;
+    }
+    if (request->row_results.empty()) {
+        return pg_v8_result_to_array(isolate, context, request->result, out);
+    }
+
+    PGresult* column_result = pg_v8_request_column_result(request);
+    const int columns = column_result == nullptr ? -1 : PQnfields(column_result);
+    v8::Local<v8::Array> rows =
+        v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
+    SlV8DbColumnSet column_set;
+    std::vector<v8::Local<v8::Value>> values;
+
+    if (columns < 0 || !pg_v8_prepare_columns(isolate, context, column_result, &column_set)) {
+        return false;
+    }
+    values.resize(static_cast<size_t>(columns));
+    for (size_t row_index = 0; row_index < request->row_results.size(); row_index += 1) {
+        PGresult* row_result = request->row_results[row_index];
+        v8::Local<v8::Object> row;
+        if (row_result == nullptr || PQntuples(row_result) != 1 || PQnfields(row_result) != columns)
+        {
+            return false;
+        }
+        for (int column_index = 0; column_index < columns; column_index += 1) {
+            if (!pg_v8_cell_to_value(isolate, context, row_result, 0, column_index,
+                                     &values[static_cast<size_t>(column_index)]))
+            {
+                return false;
+            }
+        }
+        if (!sl_v8_db_make_row_object(isolate, context, &column_set, values.data(), values.size(),
+                                      &row) ||
+            !rows->Set(context, static_cast<uint32_t>(row_index), row).FromMaybe(false))
+        {
+            return false;
+        }
+    }
+    if (!sl_v8_db_attach_result_metadata(isolate, context, rows, &column_set,
+                                         SL_V8_DB_STRING_OBJECT))
+    {
+        return false;
+    }
+    *out = rows;
+    return true;
+}
+
 bool pg_v8_result_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context, PGresult* result,
                          v8::Local<v8::Object>* out)
 {
@@ -735,6 +809,50 @@ bool pg_v8_result_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context, P
         v8::Local<v8::Array> row;
         for (int column_index = 0; column_index < columns; column_index += 1) {
             if (!pg_v8_cell_to_value(isolate, context, result, row_index, column_index,
+                                     &values[static_cast<size_t>(column_index)]))
+            {
+                return false;
+            }
+        }
+        if (!sl_v8_db_make_raw_row(isolate, context, values.data(), values.size(), &row) ||
+            !rows->Set(context, static_cast<uint32_t>(row_index), row).FromMaybe(false))
+        {
+            return false;
+        }
+    }
+    return sl_v8_db_make_raw_result(isolate, context, &column_set, rows, out);
+}
+
+bool pg_v8_request_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                          const PgV8Request* request, v8::Local<v8::Object>* out)
+{
+    if (request == nullptr || out == nullptr) {
+        return false;
+    }
+    if (request->row_results.empty()) {
+        return pg_v8_result_to_raw(isolate, context, request->result, out);
+    }
+
+    PGresult* column_result = pg_v8_request_column_result(request);
+    const int columns = column_result == nullptr ? -1 : PQnfields(column_result);
+    v8::Local<v8::Array> rows =
+        v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
+    SlV8DbColumnSet column_set;
+    std::vector<v8::Local<v8::Value>> values;
+
+    if (columns < 0 || !pg_v8_prepare_columns(isolate, context, column_result, &column_set)) {
+        return false;
+    }
+    values.resize(static_cast<size_t>(columns));
+    for (size_t row_index = 0; row_index < request->row_results.size(); row_index += 1) {
+        PGresult* row_result = request->row_results[row_index];
+        v8::Local<v8::Array> row;
+        if (row_result == nullptr || PQntuples(row_result) != 1 || PQnfields(row_result) != columns)
+        {
+            return false;
+        }
+        for (int column_index = 0; column_index < columns; column_index += 1) {
+            if (!pg_v8_cell_to_value(isolate, context, row_result, 0, column_index,
                                      &values[static_cast<size_t>(column_index)]))
             {
                 return false;
@@ -819,6 +937,7 @@ void pg_v8_finish_request(const std::shared_ptr<PgV8Request>& request, bool ok)
     if (connection == nullptr || request->resource == nullptr) {
         return;
     }
+    request->terminal.store(true);
     if (!ok) {
         if (request->operation == PgV8Operation::Begin || request->transaction_terminal) {
             request->resource->transaction_active = false;
@@ -838,6 +957,28 @@ void pg_v8_finish_request(const std::shared_ptr<PgV8Request>& request, bool ok)
         connection->state = PgV8ConnectionState::Idle;
     }
     connection->request.reset();
+}
+
+void pg_v8_start_timeout_watch(const std::shared_ptr<PgV8Request>& request)
+{
+    if (request == nullptr || !request->has_timeout_ms || request->timeout_ms == 0U) {
+        return;
+    }
+    std::thread([request]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(request->timeout_ms));
+        PgV8Connection* connection = request->connection;
+        if (request->terminal.load() || connection == nullptr || connection->conn == nullptr) {
+            return;
+        }
+        PGcancel* cancel = PQgetCancel(connection->conn);
+        if (cancel == nullptr) {
+            return;
+        }
+        char error[256] = {};
+        request->timeout_cancelled.store(true);
+        PQcancel(cancel, error, static_cast<int>(sizeof(error)));
+        PQfreeCancel(cancel);
+    }).detach();
 }
 
 void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)
@@ -869,14 +1010,14 @@ void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)
     case PgV8Operation::Query:
     case PgV8Operation::TransactionQuery: {
         v8::Local<v8::Array> rows;
-        converted = pg_v8_result_to_array(isolate, context, request->result, &rows);
+        converted = pg_v8_request_to_array(isolate, context, request.get(), &rows);
         value = rows;
         break;
     }
     case PgV8Operation::QueryRaw:
     case PgV8Operation::TransactionQueryRaw: {
         v8::Local<v8::Object> result;
-        converted = pg_v8_result_to_raw(isolate, context, request->result, &result);
+        converted = pg_v8_request_to_raw(isolate, context, request.get(), &result);
         value = result;
         break;
     }
@@ -908,6 +1049,14 @@ void pg_v8_clear_result(PgV8Request* request)
         PQclear(request->result);
         request->result = nullptr;
     }
+    if (request != nullptr) {
+        for (PGresult* result : request->row_results) {
+            if (result != nullptr) {
+                PQclear(result);
+            }
+        }
+        request->row_results.clear();
+    }
 }
 
 void pg_v8_fail_request(const std::shared_ptr<PgV8Request>& request, const char* fallback)
@@ -916,6 +1065,12 @@ void pg_v8_fail_request(const std::shared_ptr<PgV8Request>& request, const char*
         return;
     }
     const char* message = nullptr;
+    if (request->timeout_cancelled.load()) {
+        request->error = "postgres provider operation deadline was exceeded";
+        pg_v8_clear_result(request.get());
+        pg_v8_settle_request(request, false);
+        return;
+    }
     if (request->connection != nullptr && request->connection->conn != nullptr) {
         message = PQerrorMessage(request->connection->conn);
     }
@@ -1023,6 +1178,11 @@ bool pg_v8_send_query(PgV8Request* request)
                                  param_count == 0 ? nullptr : request->param_values.data(),
                                  param_count == 0 ? nullptr : request->param_lengths.data(),
                                  param_count == 0 ? nullptr : request->param_formats.data(), 0);
+    if (sent == 1 && pg_v8_operation_allows_max_rows(request->operation) &&
+        PQsetSingleRowMode(request->connection->conn) != 1)
+    {
+        return false;
+    }
     return sent == 1;
 }
 
@@ -1040,18 +1200,35 @@ void pg_v8_complete_read(PgV8Connection* connection)
         saw_result = true;
         ExecStatusType status = PQresultStatus(result);
         if (!pg_v8_result_status_ok(request->operation, status)) {
-            request->error = PQresultErrorMessage(result);
+            request->error = request->timeout_cancelled.load()
+                                 ? "postgres provider operation deadline was exceeded"
+                                 : PQresultErrorMessage(result);
             PQclear(result);
+            pg_v8_clear_result(request.get());
             pg_v8_settle_request(request, false);
             return;
+        }
+        if (status == PGRES_SINGLE_TUPLE) {
+            if (request->row_results.size() >= request->max_rows) {
+                request->error = "postgres provider query exceeded max rows";
+                PQclear(result);
+                pg_v8_clear_result(request.get());
+                pg_v8_settle_request(request, false);
+                return;
+            }
+            request->row_results.push_back(result);
+            continue;
         }
         if (pg_v8_result_exceeds_max_rows(request.get(), result)) {
             request->error = "postgres provider query exceeded max rows";
             PQclear(result);
+            pg_v8_clear_result(request.get());
             pg_v8_settle_request(request, false);
             return;
         }
-        pg_v8_clear_result(request.get());
+        if (request->result != nullptr) {
+            PQclear(request->result);
+        }
         request->result = result;
     }
     if (!saw_result && request->result == nullptr) {
@@ -1089,6 +1266,7 @@ void pg_v8_pump_connection(PgV8Connection* connection)
             pg_v8_fail_request(request, "postgres query submission failed");
             return;
         }
+        pg_v8_start_timeout_watch(request);
     }
 
     if (request->state == PgV8RequestState::Sending) {
@@ -1149,6 +1327,7 @@ bool pg_v8_attach_request_to_connection(PgV8ConnectionResource* resource,
             request->error = "postgres query submission failed";
             return false;
         }
+        pg_v8_start_timeout_watch(request);
     }
     pg_v8_pump_connection(connection);
     return true;
@@ -1692,6 +1871,12 @@ void pg_v8_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& args,
             !sl_v8_db_parse_max_rows_option(
                 isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
                 SL_POSTGRES_DEFAULT_MAX_ROWS, &request->max_rows, "postgres query"))
+        {
+            return;
+        }
+        if (!sl_v8_db_parse_timeout_ms_option(
+                isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
+                &request->has_timeout_ms, &request->timeout_ms, "postgres operation"))
         {
             return;
         }

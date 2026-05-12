@@ -23,7 +23,13 @@ globalThis.__sloppy_handler_1 = async () => {
         await tx.exec("insert into #sloppy_sqlserver_bridge (name, payload) values (?, convert(varbinary(16), ?))", ["Grace", null]);
       });
       const rows = await db.query("select name from #sloppy_sqlserver_bridge order by id", []);
-      return Results.json(rows);
+      let sqlserverTimedOut = false;
+      try {
+        await db.query("waitfor delay '00:00:02'; select 1 as value", [], { timeoutMs: 50 });
+      } catch (error) {
+        sqlserverTimedOut = String(error && error.message ? error.message : error).includes("deadline was exceeded");
+      }
+      return Results.json({ rows, sqlserverTimedOut });
     } finally {
       db.close();
     }

@@ -188,11 +188,12 @@ Redaction behavior includes:
   non-sqlite static provider handlers fail with
   `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
 - `deadline`, `signal`, and `timeoutMs` provider operation options are checked
-  before dispatch. Portable driver-level in-flight cancellation is not yet a
-  first-party data-provider guarantee.
+  before dispatch. Native `query` and `queryRaw` bridge calls pass finite
+  timeout budgets to driver-level interruption. Signals are a pre-dispatch
+  cancellation mechanism for data providers.
 - PostgreSQL and SQL Server pools are bounded and fail fast under full
   saturation. They do not expose a public wait queue, acquire timeout, idle
-  pruning, or max-lifetime policy yet.
+  pruning, or max-lifetime policy.
 - Fake provider APIs (`data.createFakeProvider`) validate shape and behavior
   contracts only. Live database behavior uses provider integration checks.
 - Missing optional provider dependencies are reported as provider-specific

@@ -51,6 +51,9 @@ bool sl_v8_db_copy_uint8_array(v8::Local<v8::Value> value, std::vector<unsigned 
 bool sl_v8_db_parse_max_rows_option(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                     v8::Local<v8::Value> options, uint32_t default_value,
                                     uint32_t* out, const char* operation_label);
+bool sl_v8_db_parse_timeout_ms_option(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                      v8::Local<v8::Value> options, bool* out_has_timeout,
+                                      uint32_t* out_timeout_ms, const char* operation_label);
 
 bool sl_v8_db_is_value_wrapper(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Value> value);

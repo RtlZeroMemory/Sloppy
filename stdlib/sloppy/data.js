@@ -856,12 +856,22 @@ function operationAllowsMaxRows(operation) {
         || operation.endsWith(".queryRaw");
 }
 
-function nativeQueryOptions(options) {
-    return options?.maxRows === undefined ? undefined : Object.freeze({ maxRows: options.maxRows });
+function nativeQueryOptions(options, includeTimeout = false) {
+    if (options?.maxRows === undefined && (!includeTimeout || options?.timeoutMs === undefined)) {
+        return undefined;
+    }
+    const native = {};
+    if (options.maxRows !== undefined) {
+        native.maxRows = options.maxRows;
+    }
+    if (includeTimeout && options.timeoutMs !== undefined) {
+        native.timeoutMs = options.timeoutMs;
+    }
+    return Object.freeze(native);
 }
 
-function invokeNativeQuery(method, handle, query) {
-    const nativeOptions = nativeQueryOptions(query.options);
+function invokeNativeQuery(method, handle, query, includeTimeout = false) {
+    const nativeOptions = nativeQueryOptions(query.options, includeTimeout);
     return nativeOptions === undefined
         ? method(handle, query.text, query.parameters)
         : method(handle, query.text, query.parameters, nativeOptions);
@@ -1220,14 +1230,14 @@ function createSqliteConnection(nativeBridge, handle) {
                     ? nativeBridge.transactionQueryRaw
                     : nativeBridge.transactionQuery;
                 return invokeProviderOperation("sqlite.transaction.query", query.options, () =>
-                    invokeNativeQuery(method, state.handle, query));
+                    invokeNativeQuery(method, state.handle, query, true));
             },
 
             queryRaw(...args) {
                 assertTransactionOpen("transaction.queryRaw");
                 const query = normalizeSqliteOperation("queryRaw", args);
                 return invokeProviderOperation("sqlite.transaction.queryRaw", query.options, () =>
-                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query));
+                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query, true));
             },
 
             queryOne(...args) {
@@ -1303,14 +1313,14 @@ function createSqliteConnection(nativeBridge, handle) {
             const query = normalizeSqliteOperation("query", args);
             const method = query.mode === "raw" ? nativeBridge.queryRaw : nativeBridge.query;
             return invokeProviderOperation("sqlite.query", query.options, () =>
-                invokeNativeQuery(method, state.handle, query));
+                invokeNativeQuery(method, state.handle, query, true));
         },
 
         queryRaw(...args) {
             assertOpen("queryRaw");
             const query = normalizeSqliteOperation("queryRaw", args);
             return invokeProviderOperation("sqlite.queryRaw", query.options, () =>
-                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query));
+                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query, true));
         },
 
         queryOne(...args) {
@@ -1722,13 +1732,13 @@ function createPostgresConnection(nativeBridge, handle) {
                     ? nativeBridge.transactionQueryRaw
                     : nativeBridge.transactionQuery;
                 return invokeProviderOperation("postgres.transaction.query", query.options, () =>
-                    invokeNativeQuery(method, state.handle, query));
+                    invokeNativeQuery(method, state.handle, query, true));
             },
             queryRaw(...args) {
                 assertTransactionOpen("transaction.queryRaw");
                 const query = normalizePostgresOperation("queryRaw", args);
                 return invokeProviderOperation("postgres.transaction.queryRaw", query.options, () =>
-                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query));
+                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query, true));
             },
             queryOne(...args) {
                 assertTransactionOpen("transaction.queryOne");
@@ -1797,13 +1807,13 @@ function createPostgresConnection(nativeBridge, handle) {
             const query = normalizePostgresOperation("query", args);
             const method = query.mode === "raw" ? nativeBridge.queryRaw : nativeBridge.query;
             return invokeProviderOperation("postgres.query", query.options, () =>
-                invokeNativeQuery(method, state.handle, query));
+                invokeNativeQuery(method, state.handle, query, true));
         },
         queryRaw(...args) {
             assertOpen("queryRaw");
             const query = normalizePostgresOperation("queryRaw", args);
             return invokeProviderOperation("postgres.queryRaw", query.options, () =>
-                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query));
+                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query, true));
         },
         queryOne(...args) {
             assertOpen("queryOne");
@@ -1994,13 +2004,13 @@ function createSqlServerConnection(nativeBridge, handle) {
                     ? nativeBridge.transactionQueryRaw
                     : nativeBridge.transactionQuery;
                 return invokeProviderOperation("sqlserver.transaction.query", query.options, () =>
-                    invokeNativeQuery(method, state.handle, query));
+                    invokeNativeQuery(method, state.handle, query, true));
             },
             queryRaw(...args) {
                 assertTransactionOpen("transaction.queryRaw");
                 const query = normalizeSqlServerOperation("queryRaw", args);
                 return invokeProviderOperation("sqlserver.transaction.queryRaw", query.options, () =>
-                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query));
+                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query, true));
             },
             queryOne(...args) {
                 assertTransactionOpen("transaction.queryOne");
@@ -2069,13 +2079,13 @@ function createSqlServerConnection(nativeBridge, handle) {
             const query = normalizeSqlServerOperation("query", args);
             const method = query.mode === "raw" ? nativeBridge.queryRaw : nativeBridge.query;
             return invokeProviderOperation("sqlserver.query", query.options, () =>
-                invokeNativeQuery(method, state.handle, query));
+                invokeNativeQuery(method, state.handle, query, true));
         },
         queryRaw(...args) {
             assertOpen("queryRaw");
             const query = normalizeSqlServerOperation("queryRaw", args);
             return invokeProviderOperation("sqlserver.queryRaw", query.options, () =>
-                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query));
+                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query, true));
         },
         queryOne(...args) {
             assertOpen("queryOne");

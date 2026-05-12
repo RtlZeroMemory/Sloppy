@@ -114,6 +114,7 @@ typedef struct SlSqliteRow
 typedef struct SlSqliteQueryOptions
 {
     size_t max_rows;
+    uint32_t timeout_ms;
 } SlSqliteQueryOptions;
 
 /*

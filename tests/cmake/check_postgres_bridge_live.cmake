@@ -15,6 +15,6 @@ if(NOT result EQUAL 0)
     message(FATAL_ERROR "PostgreSQL bridge live run failed without printing secrets.\n${error}")
 endif()
 
-if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace")
-    message(FATAL_ERROR "PostgreSQL bridge live output did not include expected rows.\n${output}")
+if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace" OR NOT output MATCHES "postgresTimedOut.*true")
+    message(FATAL_ERROR "PostgreSQL bridge live output did not include expected rows and timeout cancellation evidence.\n${output}")
 endif()

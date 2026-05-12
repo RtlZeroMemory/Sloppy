@@ -212,13 +212,16 @@ await db.query(sql`SELECT * FROM big_table`, {
 `mode` is rejected on `queryRaw`, `queryOne`, and `exec`; those methods have
 fixed result shapes. `maxRows` must be an integer from `1` to `4294967295`.
 The default native provider cap is `128` rows. Queries that exceed the cap fail
-instead of silently truncating rows. Cursor-style incremental result streaming is
-not yet part of the public data API.
+instead of silently truncating rows. The public data API returns materialized
+result sets; it does not include cursor-style incremental result streaming.
 
 The current JavaScript API checks `deadline`, `signal`, and `timeoutMs` before
-dispatching a provider call. Driver-level in-flight cancellation is not exposed
-as a portable data-provider guarantee yet; use `maxRows` and query-specific SQL
-limits for bounded result behavior.
+dispatching a provider call. For native `query` and `queryRaw` bridge calls,
+`timeoutMs` and finite `deadline` values are also passed to driver-level
+interruption: SQLite uses a progress handler, PostgreSQL calls `PQcancel`, and
+SQL Server uses ODBC timeout/cancel APIs. Signals are a pre-dispatch
+cancellation mechanism for data providers; use `timeoutMs`, finite deadlines,
+`maxRows`, and query-specific SQL limits for bounded in-flight behavior.
 
 ## PostgreSQL
 
@@ -226,8 +229,7 @@ limits for bounded result behavior.
 > runtime when the app uses PostgreSQL. Live evidence is opt-in.
 
 PostgreSQL client support is optional. Current alpha packages use system or
-build-provided libpq; package-local PostgreSQL provider packages are planned
-only after binary distribution and license contents are verified.
+build-provided libpq.
 
 `data.postgres.open(...)` requires an explicit `connectionString`. Set
 `maxConnections` from 1 to 256 to size the native pool for the deployment; the

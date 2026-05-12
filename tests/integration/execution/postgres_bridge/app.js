@@ -23,7 +23,13 @@ globalThis.__sloppy_handler_1 = async () => {
       await tx.exec("insert into sloppy_pg_bridge (name) values ($1)", ["Grace"]);
     });
     const users = await db.query("select id, name from sloppy_pg_bridge order by id", []);
-    return Results.json(users);
+    let postgresTimedOut = false;
+    try {
+      await db.query("select pg_sleep(2)", [], { timeoutMs: 50 });
+    } catch (error) {
+      postgresTimedOut = String(error && error.message ? error.message : error).includes("deadline was exceeded");
+    }
+    return Results.json({ users, postgresTimedOut });
   } finally {
     db.close();
   }

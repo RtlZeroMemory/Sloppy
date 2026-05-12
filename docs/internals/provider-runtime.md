@@ -67,7 +67,7 @@ provider-specific V8 bridges:
 
 SQLite is intentionally serialized in the V8 bridge because the provider
 instance is single-writer. PostgreSQL and SQL Server V8 bridges own their
-driver state machines directly; they do not yet share a generic database
+driver state machines directly rather than going through a generic database
 provider vtable.
 
 ## Connection management
@@ -103,14 +103,22 @@ representations.
 
 ## Cancellation, deadlines, late completion
 
-The JavaScript API accepts `{ deadline, signal, timeoutMs }` operation options
-and checks them before provider dispatch. A signal already aborted, an expired
-deadline, or a zero timeout rejects before native work starts.
+The JavaScript API accepts `{ deadline, signal, timeoutMs }` operation options.
+A signal already aborted, an expired deadline, or a zero timeout rejects before
+native work starts. A finite `deadline` is reduced to the remaining timeout
+budget before dispatch.
 
-The current portable data-provider contract does not cancel already in-flight
-driver work from those JavaScript options. SQL Server's V8 bridge has an
-internal async-progress watchdog and cleanup path, but `timeoutMs` is not yet a
-driver-level `SQLCancel`/`PQcancel` API across providers.
+Native row-returning bridge calls pass `timeoutMs` to driver interruption:
+
+- SQLite `query` and `queryRaw` install a progress handler and fail with a
+  deadline diagnostic when it interrupts execution.
+- PostgreSQL `query` and `queryRaw` start a timeout watcher that calls
+  `PQcancel`.
+- SQL Server `query` and `queryRaw` set the ODBC statement query timeout and
+  call `SQLCancelHandle` from the timeout watcher.
+
+Already-aborted signals are honored before dispatch. In-flight driver
+interruption is timeout/deadline based.
 
 ## Result Bounds
 
@@ -121,10 +129,11 @@ All providers expose a bounded materialization path for `query` and `queryRaw`:
 - Exceeding the cap fails the query rather than truncating results.
 - `queryOne` materializes at most one row.
 
-PostgreSQL V8 still receives a complete `PGresult` from libpq before enforcing
-the cap. SQL Server and SQLite enforce during row fetch/materialization. Cursor
-streams and incremental JSON row streaming are not part of the current public
-data-provider API.
+SQLite and SQL Server enforce bounds during row fetch/materialization.
+PostgreSQL V8 uses libpq single-row mode for bounded `query` and `queryRaw`
+operations, so exceeding `maxRows` fails while rows are still being received.
+The public data-provider API returns materialized result sets rather than cursor
+streams or incremental JSON row streams.
 
 ## Redaction
 

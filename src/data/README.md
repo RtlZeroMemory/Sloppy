@@ -24,9 +24,8 @@ Implemented now:
   through ODBC and cover exec/query/queryOne, transactions, invalid SQL diagnostics, and
   tiny pool acquire/release.
 
-Still deferred:
+Not part of this provider layer:
 
-- driver-level in-flight cancellation/deadline interruption across all providers;
 - cursor/incremental row streaming as a public provider API;
 - TLS option hardening, richer provider-specific value policy, prepared statement caches,
   PostgreSQL array mapping policy beyond the current JS bridge, and SQL Server TVP/bulk
@@ -35,6 +34,9 @@ Still deferred:
 Provider result materialization is bounded. The default query cap is 128 rows;
 JavaScript `query` and `queryRaw` calls can pass `maxRows` to lower or raise the
 per-call cap, and providers fail instead of truncating when the cap is exceeded.
+JavaScript `query` and `queryRaw` calls can also pass finite timeout budgets:
+SQLite interrupts through a progress handler, PostgreSQL uses `PQcancel`, and
+SQL Server uses ODBC timeout/cancel APIs.
 
 Future JavaScript-visible provider handles must use `SlResourceId` entries in the core
 resource table. Provider pointers and driver handles must not be exposed to JavaScript.

@@ -87,6 +87,8 @@ struct SqliteV8Request
     SlSqliteResult query_result = {};
     SlSqliteQueryOneResult one_result = {};
     uint32_t max_rows = SL_SQLITE_DEFAULT_MAX_ROWS;
+    bool has_timeout_ms = false;
+    uint32_t timeout_ms = 0U;
     SlDiag admission_diag = {};
     SlStatus status = sl_status_ok();
     std::string error;
@@ -613,9 +615,15 @@ bool sqlite_v8_prepare_query_options(v8::Isolate* isolate, v8::Local<v8::Context
     if (request == nullptr) {
         return false;
     }
-    return sl_v8_db_parse_max_rows_option(
+    if (!sl_v8_db_parse_max_rows_option(
+            isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
+            SL_SQLITE_DEFAULT_MAX_ROWS, &request->max_rows, operation_label))
+    {
+        return false;
+    }
+    return sl_v8_db_parse_timeout_ms_option(
         isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
-        SL_SQLITE_DEFAULT_MAX_ROWS, &request->max_rows, operation_label);
+        &request->has_timeout_ms, &request->timeout_ms, operation_label);
 }
 
 void sqlite_v8_refresh_param_views(SqliteV8Request* request)
@@ -911,6 +919,7 @@ SlStatus sqlite_v8_run_request_with_capacity(SqliteV8Request* request, size_t ca
     case SqliteV8Operation::QueryRaw: {
         SlSqliteQueryOptions options = {};
         options.max_rows = request->max_rows;
+        options.timeout_ms = request->has_timeout_ms ? request->timeout_ms : 0U;
         return sl_sqlite_query(&request->arena, &request->resource->connection, sql, params,
                                param_count, &options, &request->query_result, out_diag);
     }
@@ -939,6 +948,7 @@ SlStatus sqlite_v8_run_request_with_capacity(SqliteV8Request* request, size_t ca
     case SqliteV8Operation::TransactionQueryRaw: {
         SlSqliteQueryOptions options = {};
         options.max_rows = request->max_rows;
+        options.timeout_ms = request->has_timeout_ms ? request->timeout_ms : 0U;
         return sl_sqlite_transaction_query(&request->arena, &request->resource->transaction, sql,
                                            params, param_count, &options, &request->query_result,
                                            out_diag);

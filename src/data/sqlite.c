@@ -23,11 +23,19 @@
 
 #include "sloppy/checked_math.h"
 #include "sloppy/container.h"
+#include "sloppy/platform_time.h"
 
 #include <limits.h>
 #include <sqlite3.h>
 
 static const unsigned char sl_sqlite_empty_blob_sentinel = 0U;
+
+typedef struct SlSqliteTimeoutProgress
+{
+    uint64_t started_ns;
+    uint64_t timeout_ns;
+    bool expired;
+} SlSqliteTimeoutProgress;
 
 static SlStr sl_sqlite_literal(const char* ptr, size_t length)
 {
@@ -46,6 +54,51 @@ static sqlite3* sl_sqlite_db(SlSqliteConnection* connection)
     }
 
     return (sqlite3*)connection->handle;
+}
+
+static int sl_sqlite_timeout_progress_callback(void* user)
+{
+    SlSqliteTimeoutProgress* progress = (SlSqliteTimeoutProgress*)user;
+    uint64_t now_ns = 0U;
+
+    if (progress == NULL || progress->timeout_ns == 0U) {
+        return 0;
+    }
+    if (!sl_status_is_ok(sl_platform_monotonic_time_ns(&now_ns))) {
+        return 0;
+    }
+    if (now_ns >= progress->started_ns && now_ns - progress->started_ns >= progress->timeout_ns) {
+        progress->expired = true;
+        return 1;
+    }
+    return 0;
+}
+
+static bool sl_sqlite_install_timeout_progress(sqlite3* db, uint32_t timeout_ms,
+                                               SlSqliteTimeoutProgress* progress)
+{
+    uint64_t started_ns = 0U;
+
+    if (db == NULL || progress == NULL || timeout_ms == 0U) {
+        return false;
+    }
+    if (!sl_status_is_ok(sl_platform_monotonic_time_ns(&started_ns))) {
+        return false;
+    }
+    *progress = (SlSqliteTimeoutProgress){
+        .started_ns = started_ns,
+        .timeout_ns = (uint64_t)timeout_ms * 1000000ULL,
+        .expired = false,
+    };
+    sqlite3_progress_handler(db, 1000, sl_sqlite_timeout_progress_callback, progress);
+    return true;
+}
+
+static void sl_sqlite_clear_timeout_progress(sqlite3* db, bool installed)
+{
+    if (installed && db != NULL) {
+        sqlite3_progress_handler(db, 0, NULL, NULL);
+    }
 }
 
 static SlStatus sl_sqlite_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code, SlStr message,
@@ -690,10 +743,13 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
     SlArenaMark mark = {0};
     SlSqliteRow* rows = NULL;
     SlSqliteValue* cells = NULL;
+    SlSqliteTimeoutProgress timeout_progress = {0};
     size_t max_rows = SL_SQLITE_DEFAULT_MAX_ROWS;
+    uint32_t timeout_ms = 0U;
     size_t row_count = 0U;
     size_t column_count = 0U;
     int rc = SQLITE_OK;
+    bool timeout_installed = false;
     SlStatus status;
     SlStr operation = sl_sqlite_literal("operation: query", sizeof("operation: query") - 1U);
 
@@ -712,6 +768,9 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
     if (options != NULL && options->max_rows > 0U) {
         max_rows = options->max_rows;
     }
+    if (options != NULL) {
+        timeout_ms = options->timeout_ms;
+    }
 
     status = sl_sqlite_prepare(arena, connection, sql, operation, &stmt, out_diag);
     if (!sl_status_is_ok(status)) {
@@ -724,9 +783,12 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
         return status;
     }
 
+    timeout_installed = sl_sqlite_install_timeout_progress(db, timeout_ms, &timeout_progress);
+
     column_count = (size_t)sqlite3_column_count(stmt);
     status = sl_sqlite_copy_columns(arena, stmt, column_count, &out_result->column_names);
     if (!sl_status_is_ok(status)) {
+        sl_sqlite_clear_timeout_progress(db, timeout_installed);
         sqlite3_finalize(stmt);
         sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteResult){0};
@@ -735,12 +797,14 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
 
     status = sl_sqlite_allocate_rows(arena, max_rows, column_count, &rows, &cells);
     if (!sl_status_is_ok(status)) {
+        sl_sqlite_clear_timeout_progress(db, timeout_installed);
         sqlite3_finalize(stmt);
         sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteResult){0};
         return status;
     }
     if (rows == NULL || (column_count > 0U && cells == NULL)) {
+        sl_sqlite_clear_timeout_progress(db, timeout_installed);
         sqlite3_finalize(stmt);
         sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteResult){0};
@@ -751,6 +815,7 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
         size_t column = 0U;
 
         if (row_count >= max_rows) {
+            sl_sqlite_clear_timeout_progress(db, timeout_installed);
             sqlite3_finalize(stmt);
             sl_arena_reset_to(arena, mark);
             *out_result = (SlSqliteResult){0};
@@ -765,6 +830,7 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
         for (column = 0U; column < column_count; column += 1U) {
             status = sl_sqlite_copy_value(arena, stmt, column, &rows[row_count].values[column]);
             if (!sl_status_is_ok(status)) {
+                sl_sqlite_clear_timeout_progress(db, timeout_installed);
                 sqlite3_finalize(stmt);
                 sl_arena_reset_to(arena, mark);
                 *out_result = (SlSqliteResult){0};
@@ -776,9 +842,17 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
     }
 
     if (rc != SQLITE_DONE) {
+        sl_sqlite_clear_timeout_progress(db, timeout_installed);
         sqlite3_finalize(stmt);
         sl_arena_reset_to(arena, mark);
         *out_result = (SlSqliteResult){0};
+        if (rc == SQLITE_INTERRUPT && timeout_progress.expired) {
+            return sl_sqlite_diag(
+                arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
+                sl_sqlite_literal("sqlite provider operation deadline was exceeded",
+                                  sizeof("sqlite provider operation deadline was exceeded") - 1U),
+                operation, NULL, sql, sl_status_from_code(SL_STATUS_DEADLINE_EXCEEDED));
+        }
         return sl_sqlite_diag(arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
                               sl_sqlite_literal("sqlite provider query failed",
                                                 sizeof("sqlite provider query failed") - 1U),
@@ -786,6 +860,7 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
                               sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
 
+    sl_sqlite_clear_timeout_progress(db, timeout_installed);
     rc = sqlite3_finalize(stmt);
     if (rc != SQLITE_OK) {
         sl_arena_reset_to(arena, mark);

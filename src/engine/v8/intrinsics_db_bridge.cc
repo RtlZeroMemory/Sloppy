@@ -365,6 +365,55 @@ bool sl_v8_db_parse_max_rows_option(v8::Isolate* isolate, v8::Local<v8::Context>
     return true;
 }
 
+bool sl_v8_db_parse_timeout_ms_option(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                      v8::Local<v8::Value> options, bool* out_has_timeout,
+                                      uint32_t* out_timeout_ms, const char* operation_label)
+{
+    if (out_has_timeout == nullptr || out_timeout_ms == nullptr) {
+        return false;
+    }
+    *out_has_timeout = false;
+    *out_timeout_ms = 0U;
+    if (options->IsUndefined() || options->IsNull()) {
+        return true;
+    }
+    const std::string label =
+        operation_label == nullptr ? "database operation" : std::string(operation_label);
+    if (!options->IsObject() || options->IsArray()) {
+        sl_v8_db_throw_type_error(isolate,
+                                  (label + " options must be an object when supplied").c_str(),
+                                  "Sloppy database option type error");
+        return false;
+    }
+    v8::Local<v8::Value> timeout_value;
+    if (!sl_v8_db_get_object_property(isolate, context, options.As<v8::Object>(), "timeoutMs",
+                                      &timeout_value))
+    {
+        return false;
+    }
+    if (timeout_value->IsUndefined() || timeout_value->IsNull()) {
+        return true;
+    }
+    if (!timeout_value->IsNumber()) {
+        sl_v8_db_throw_type_error(
+            isolate, (label + " timeoutMs option must be an integer from 0 to 4294967295").c_str(),
+            "Sloppy database option type error");
+        return false;
+    }
+    double timeout_ms = timeout_value.As<v8::Number>()->Value();
+    if (!std::isfinite(timeout_ms) || std::floor(timeout_ms) != timeout_ms || timeout_ms < 0.0 ||
+        timeout_ms > static_cast<double>(UINT32_MAX))
+    {
+        sl_v8_db_throw_type_error(
+            isolate, (label + " timeoutMs option must be an integer from 0 to 4294967295").c_str(),
+            "Sloppy database option type error");
+        return false;
+    }
+    *out_has_timeout = true;
+    *out_timeout_ms = static_cast<uint32_t>(timeout_ms);
+    return true;
+}
+
 bool sl_v8_db_is_value_wrapper(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Value> value)
 {
