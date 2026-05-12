@@ -2157,6 +2157,62 @@ static int test_route_json_max_overrides_higher_backend_body_limit(void)
     return 0;
 }
 
+static int test_backend_body_limit_remains_stricter_than_route_json_max(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpBackendOptions options = {0};
+    SlHttpBackend backend = {0};
+    SlHttpConnection connection = {0};
+    SlHttpRequestLifecycle request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    options.parse.max_body_length = 4U;
+    route.json_request.max_body_bytes = 1024U;
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        expect_status(sl_http_backend_init(&backend, &options, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_start(&backend, NULL, NULL), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_backend_accept_connection(&backend, &connection, NULL),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_request_begin(&connection, &arena, &request, NULL), SL_STATUS_OK) !=
+            0 ||
+        parse_request(&arena,
+                      "POST /users HTTP/1.1\r\nHost: example\r\n"
+                      "Content-Type: application/json\r\nContent-Length: 5\r\n\r\n12345",
+                      &request.head) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 151;
+    }
+
+    if (expect_status(sl_http_dispatch_request_lifecycle(&arena, engine, &plan, &table.dispatch,
+                                                         &request, &result, &diag),
+                      SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_HTTP_BODY_LIMIT)
+    {
+        sl_engine_destroy(engine);
+        return 152;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_json_route_without_route_max_uses_backend_body_limit(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -3495,6 +3551,7 @@ int main(void)
         HTTP_DISPATCH_TEST(test_plan_backed_json_route_accepts_structured_json_content_type),
         HTTP_DISPATCH_TEST(test_native_json_body_exceeding_route_max_rejects_before_validation),
         HTTP_DISPATCH_TEST(test_route_json_max_overrides_higher_backend_body_limit),
+        HTTP_DISPATCH_TEST(test_backend_body_limit_remains_stricter_than_route_json_max),
         HTTP_DISPATCH_TEST(test_json_route_without_route_max_uses_backend_body_limit),
         HTTP_DISPATCH_TEST(test_generic_json_route_still_uses_json_media_and_size_policy),
         HTTP_DISPATCH_TEST(

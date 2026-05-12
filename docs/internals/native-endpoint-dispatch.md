@@ -29,6 +29,8 @@ kinds before building the arena-owned native dispatch table from
 - schema-backed JSON request bodies can be validated natively before the
   handler boundary when the route has a `jsonRequest` native schema plan;
 - static JSON response bodies use `jsonResponse` native static writer metadata;
+- supported schema-backed JSON response bodies use `jsonResponse` native schema
+  writer metadata;
 - dynamic route metadata can fall back to the current generated JavaScript
   runtime path when V8 is enabled.
 

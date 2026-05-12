@@ -948,11 +948,10 @@ static int test_route_json_request_response_metadata_and_max_constraints_parse(v
     {
         return 21;
     }
-    if (route->json_response.mode != SL_PLAN_JSON_RESPONSE_FALLBACK ||
-        route->json_response.writer != SL_PLAN_JSON_WRITER_NONE ||
+    if (route->json_response.mode != SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA ||
+        route->json_response.writer != SL_PLAN_JSON_WRITER_BOUNDED ||
         !sl_str_equal(route->json_response.schema, sl_str_from_cstr("UserCreate")) ||
-        !sl_str_equal(route->json_response.fallback_reason,
-                      sl_str_from_cstr("native-schema-response-writer-unsupported")) ||
+        !sl_str_is_empty(route->json_response.fallback_reason) ||
         !sl_str_equal(route->json_response.content_type, sl_str_from_cstr("application/json")))
     {
         return 22;
@@ -965,6 +964,35 @@ static int test_route_json_request_response_metadata_and_max_constraints_parse(v
         name->min_value != 1 || !name->has_max || name->max_value != 5)
     {
         return 24;
+    }
+    return 0;
+}
+
+static int test_legacy_route_without_json_metadata_normalizes_json_modes(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Home\"}],"
+        "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/health\",\"handlerId\":1}]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
+        return 25;
+    }
+    if (plan.route_count != 1U || plan.routes[0].json_request.mode != SL_PLAN_JSON_REQUEST_NONE ||
+        plan.routes[0].json_request.materialization != SL_PLAN_JSON_MATERIALIZATION_NONE ||
+        plan.routes[0].json_response.mode != SL_PLAN_JSON_RESPONSE_NONE ||
+        plan.routes[0].json_response.writer != SL_PLAN_JSON_WRITER_NONE)
+    {
+        return 26;
     }
     return 0;
 }
@@ -1447,6 +1475,14 @@ int main(void)
     if (result != 0) {
         fprintf(stderr,
                 "test_route_json_request_response_metadata_and_max_constraints_parse failed: %d\n",
+                result);
+        return result;
+    }
+
+    result = test_legacy_route_without_json_metadata_normalizes_json_modes();
+    if (result != 0) {
+        fprintf(stderr,
+                "test_legacy_route_without_json_metadata_normalizes_json_modes failed: %d\n",
                 result);
         return result;
     }

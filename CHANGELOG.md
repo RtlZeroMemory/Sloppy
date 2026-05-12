@@ -13,6 +13,9 @@ evidence and a completed readiness gate.
 
 - Prepare public alpha docs, GitHub Pages site scaffolding, issue templates,
   and V8-required npm/package proof for the next alpha package.
+- Added native JSON request/response dispatch metadata and validation work. This
+  pre-alpha slice changes internal C layout for Plan and HTTP request context
+  structs; native consumers must rebuild against matching headers.
 - Added alpha infrastructure release dry-run and no-statements guardrail skeletons.
 - Added RELEASE-DIST dry-run contracts, canonical archive naming, runtime dependency audit
   scaffolding, npm launcher/platform package skeletons, and post-merge verifier handoff.

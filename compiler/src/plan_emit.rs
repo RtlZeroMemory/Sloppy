@@ -124,7 +124,42 @@ fn route_json_request_plan(bindings: &[RequestBinding]) -> Value {
     })
 }
 
-fn route_json_response_plan(response: Option<&ResponseMetadata>) -> Value {
+fn schema_response_native_fallback_reason(schema: &Value) -> Option<&'static str> {
+    let Some(kind) = schema.get("kind").and_then(Value::as_str) else {
+        return Some("schema-kind-missing");
+    };
+
+    match kind {
+        "object" => {
+            let properties = schema.get("properties")?;
+            let Some(properties) = properties.as_object() else {
+                return Some("object-properties-invalid");
+            };
+            for property in properties.values() {
+                if let Some(reason) = schema_response_native_fallback_reason(property) {
+                    return Some(reason);
+                }
+            }
+            None
+        }
+        "array" => {
+            let Some(items) = schema.get("items") else {
+                return Some("array-items-missing");
+            };
+            schema_response_native_fallback_reason(items)
+        }
+        "string" | "number" | "int" | "boolean" | "null" => None,
+        "literal" => Some("literal-schema-unsupported"),
+        "literalUnion" => Some("literal-union-schema-unsupported"),
+        "ref" => Some("schema-reference-unresolved"),
+        _ => Some("schema-kind-unsupported"),
+    }
+}
+
+fn route_json_response_plan(
+    response: Option<&ResponseMetadata>,
+    resolved_schemas: &BTreeMap<String, Value>,
+) -> Value {
     let Some(response) = response else {
         return json!({
             "mode": "none",
@@ -145,11 +180,27 @@ fn route_json_response_plan(response: Option<&ResponseMetadata>) -> Value {
         });
     }
     if let Some(schema) = &response.body_schema {
+        if let Some(definition) = resolved_schemas.get(schema) {
+            if let Some(reason) = schema_response_native_fallback_reason(definition) {
+                return json!({
+                    "mode": "fallback",
+                    "writer": "none",
+                    "schema": schema,
+                    "fallbackReason": format!("native-schema-response-writer-unsupported:{reason}")
+                });
+            }
+            return json!({
+                "mode": "native-schema",
+                "writer": "bounded",
+                "schema": schema,
+                "contentType": "application/json"
+            });
+        }
         return json!({
             "mode": "fallback",
             "writer": "none",
             "schema": schema,
-            "fallbackReason": "handler-return-shape-dynamic"
+            "fallbackReason": "native-schema-response-writer-unsupported:schema-missing"
         });
     }
 
@@ -168,6 +219,7 @@ fn route_dispatch_json(
     app: &ExtractedApp,
     route_completeness_values: &[Completeness],
     route_artifact: Option<&RouteDispatchArtifactMetadata>,
+    resolved_schemas: &BTreeMap<String, Value>,
 ) -> Value {
     let static_routes = app
         .routes
@@ -243,23 +295,28 @@ fn route_dispatch_json(
         .routes
         .iter()
         .filter(|route| {
-            let plan = route_json_response_plan(route.handler.response.as_ref());
-            route_json_mode(&plan) == "native-static"
+            let plan = route_json_response_plan(route.handler.response.as_ref(), resolved_schemas);
+            route_json_mode(&plan) == "native-static" || route_json_mode(&plan) == "native-schema"
         })
         .count();
     let response_generic_json_routes = app
         .routes
         .iter()
         .filter(|route| {
-            route_json_mode(&route_json_response_plan(route.handler.response.as_ref())) == "generic"
+            route_json_mode(&route_json_response_plan(
+                route.handler.response.as_ref(),
+                resolved_schemas,
+            )) == "generic"
         })
         .count();
     let response_fallback_json_routes = app
         .routes
         .iter()
         .filter(|route| {
-            route_json_mode(&route_json_response_plan(route.handler.response.as_ref()))
-                == "fallback"
+            route_json_mode(&route_json_response_plan(
+                route.handler.response.as_ref(),
+                resolved_schemas,
+            )) == "fallback"
         })
         .count();
     let artifact = route_artifact.map_or_else(
@@ -585,6 +642,24 @@ pub(crate) fn emit_plan_with_route_artifact(
         })
         .collect::<Vec<_>>();
 
+    let schema_definitions = schema_definition_map(app);
+    let mut schema_reference_resolution = SchemaReferenceResolution::default();
+    let resolved_schema_definitions = app
+        .schemas
+        .iter()
+        .map(|schema| {
+            let mut stack = BTreeSet::from([schema.name.clone()]);
+            let definition = resolve_schema_references(
+                &schema.name,
+                &schema.definition,
+                &schema_definitions,
+                &mut stack,
+                &mut schema_reference_resolution,
+            );
+            (schema.name.clone(), definition)
+        })
+        .collect::<BTreeMap<_, _>>();
+
     let routes = app
         .routes
         .iter()
@@ -778,8 +853,10 @@ pub(crate) fn emit_plan_with_route_artifact(
                     route_json["response"] = response_json;
                 }
                 route_json["jsonRequest"] = route_json_request_plan(&route.handler.bindings);
-                route_json["jsonResponse"] =
-                    route_json_response_plan(route.handler.response.as_ref());
+                route_json["jsonResponse"] = route_json_response_plan(
+                    route.handler.response.as_ref(),
+                    &resolved_schema_definitions,
+                );
                 if route.handler.responses.len() > 1 || route.handler.runtime_deferred {
                     route_json["responses"] = json!(route
                         .handler
@@ -1064,21 +1141,15 @@ pub(crate) fn emit_plan_with_route_artifact(
         configuration_json
     });
 
-    let schema_definitions = schema_definition_map(app);
-    let mut schema_reference_resolution = SchemaReferenceResolution::default();
     let schemas = app
         .schemas
         .iter()
         .map(|schema| {
             let (line, column) = line_column(&schema.source, schema.span.start);
-            let mut stack = BTreeSet::from([schema.name.clone()]);
-            let definition = resolve_schema_references(
-                &schema.name,
-                &schema.definition,
-                &schema_definitions,
-                &mut stack,
-                &mut schema_reference_resolution,
-            );
+            let definition = resolved_schema_definitions
+                .get(&schema.name)
+                .cloned()
+                .unwrap_or_else(|| schema.definition.clone());
             json!({
                 "name": schema.name,
                 "definition": definition,
@@ -1308,8 +1379,12 @@ pub(crate) fn emit_plan_with_route_artifact(
         value["findings"] = json!(dynamic_findings);
     }
     if app.kind == ProjectKind::Web {
-        value["routeDispatch"] =
-            route_dispatch_json(app, &route_completeness_values, route_artifact);
+        value["routeDispatch"] = route_dispatch_json(
+            app,
+            &route_completeness_values,
+            route_artifact,
+            &resolved_schema_definitions,
+        );
         value["features"]["nativeEndpointDispatch"] = json!(true);
         value["features"]["nativeJsonDispatch"] = json!(true);
         value["strongPlan"]["evidence"]["routeDispatch"] = json!(true);

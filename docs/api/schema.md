@@ -131,11 +131,12 @@ string, and array limits. When the route is schema-known, invalid JSON fails
 before the handler runs and the problem response does not include raw body
 values.
 
-`.returns(schema)` remains response metadata for dynamic handler return values
-unless the compiler can prove a static JSON result. Static `Results.json(...)`
-and `Results.ok(...)` values can use the native preencoded JSON response writer;
-dynamic or unsupported response shapes carry a fallback reason instead of
-claiming native enforcement.
+`.returns(schema)` can use the bounded native JSON response writer when the
+schema shape is supported: objects, arrays, nested objects, strings, finite
+numbers, integers, booleans, nulls, nullable values, and optional object fields.
+Static `Results.json(...)` and `Results.ok(...)` values can use the native
+preencoded JSON response writer. Unsupported response schema shapes carry a
+fallback reason instead of claiming native enforcement.
 
 ## Limits
 

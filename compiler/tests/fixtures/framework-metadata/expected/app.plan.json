@@ -284,9 +284,9 @@
         "native": 2
       },
       "response": {
-        "fallback": 2,
+        "fallback": 0,
         "generic": 0,
-        "native": 0
+        "native": 2
       }
     },
     "mode": "native-compiled",
@@ -437,10 +437,10 @@
         "unknownFields": "ignore"
       },
       "jsonResponse": {
-        "fallbackReason": "handler-return-shape-dynamic",
-        "mode": "fallback",
+        "contentType": "application/json",
+        "mode": "native-schema",
         "schema": "UserDto",
-        "writer": "none"
+        "writer": "bounded"
       },
       "method": "POST",
       "name": null,
@@ -570,10 +570,10 @@
         "unknownFields": "ignore"
       },
       "jsonResponse": {
-        "fallbackReason": "handler-return-shape-dynamic",
-        "mode": "fallback",
+        "contentType": "application/json",
+        "mode": "native-schema",
         "schema": "UserDto",
-        "writer": "none"
+        "writer": "bounded"
       },
       "method": "GET",
       "name": null,

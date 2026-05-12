@@ -51,6 +51,9 @@ See `docs/release/KNOWN_LIMITATIONS.md`.
 
 - Dry-run output stays separate from GitHub release publishing.
 - Production readiness is tracked separately.
+- Pre-alpha internal C struct layouts are not ABI-frozen; native consumers must
+  rebuild against matching headers when Plan or HTTP request context layouts
+  change.
 - Benchmark and performance wording requires measured benchmark reports.
 - Node, Bun, and Deno compatibility are separate design tracks.
 - npm launcher packages install the runtime; app dependency support and

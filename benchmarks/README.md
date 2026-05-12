@@ -157,15 +157,33 @@ evaluate request-body copy and allocation changes without involving sockets.
 
 Native JSON benchmark rows are intentionally scoped:
 
+- `json.request.generic_parse.small_login` and
+  `json.request.generic_parse.medium_body` measure generic yyjson parsing
+  without schema validation or dispatch.
 - `json.request.native_schema.valid` parses and validates a small schema-backed
   JSON request body. It excludes route lookup, sockets, response writing, and
   JavaScript handler execution.
-- `json.request.native_schema.reject` measures the invalid-body path that builds
-  validation problem details without echoing request values.
+- `json.request.native_materialize_once.small_login` adds the
+  native-validated materialize-once handoff model.
+- `json.request.generic_parse.malformed` and `json.request.native_schema.reject`
+  split invalid request rejection into generic parser and native schema paths;
+  the native path builds validation problem details without echoing request
+  values.
+- `json.response.generic.serialize` is the generic dynamic response
+  serialization baseline.
 - `json.response.native_static.write` writes a preencoded native `Results.json`
   response through the common HTTP response writer.
+- `json.response.native_schema.write` models the supported schema-backed native
+  response writer subset in stable field order.
 - `json.response.native_static.head_write` writes response metadata with body
   suppression, modeling `HEAD` after normal dispatch.
+- `json.response.large_list.write` covers a larger preencoded JSON list
+  response.
+- `json.dispatch.full.generic_json` and `json.dispatch.full.native_json` route a
+  POST request, apply JSON request handling, and return a native JSON response.
+- `json.dispatch.routes_1k.native_json` and
+  `json.dispatch.routes_10k.native_json` add route table scale to the
+  route-plus-JSON path.
 - `json.dispatch.native_schema_static_response` combines native request
   validation with native static JSON response writing and still excludes sockets
   and user handler execution.

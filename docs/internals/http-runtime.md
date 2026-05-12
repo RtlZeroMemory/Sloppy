@@ -241,10 +241,12 @@ HTTP/1.1 chunked frames under `max-pending-write-bytes` and
 `max-response-bytes`.
 
 Native static JSON responses use the fixed-response path with preencoded JSON
-bytes. Current schema-backed/dynamic JSON response metadata remains explicit
-fallback unless the compiler can prove a static native response. Live
-incremental JSON writer state is future work; bounded response descriptors and
-Core streams are the current native output surfaces.
+bytes. Supported schema-backed dynamic JSON responses use the bounded native
+JSON response writer for objects, arrays, nested objects, strings, finite
+numbers, integers, booleans, nulls, nullable values, and optional object fields.
+Unsupported schema shapes remain explicit fallback. Live incremental JSON writer
+state is future work; bounded response descriptors and Core streams are the
+current native output surfaces.
 
 For HTTP/2, the dispatcher submits response HEADERS and DATA for the stream.
 HTTP/2 does not use HTTP/1.1 chunked framing or connection-specific headers.

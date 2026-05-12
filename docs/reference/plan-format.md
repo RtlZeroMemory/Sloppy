@@ -151,9 +151,7 @@ manually constructed dispatch tables.
 - `request.materialized` counts routes that still materialize a JavaScript body
   object after native validation.
 - `response.native` counts routes with native static JSON response writer
-  metadata. Schema-backed dynamic response writers are not emitted as native in
-  this slice; imported `native-schema` response metadata is normalized to
-  fallback with a reason.
+  metadata or supported schema-backed native response writer metadata.
 - `response.generic` and `response.fallback` count routes that require the
   generic result serializer or an explicit fallback reason.
 
@@ -183,8 +181,9 @@ Compiler-emitted web Plan routes include JSON request and response plans:
     "maxArrayLength": 1024
   },
   "jsonResponse": {
-    "mode": "native-static",
-    "writer": "preencoded",
+    "mode": "native-schema",
+    "writer": "bounded",
+    "schema": "UserResponse",
     "contentType": "application/json"
   }
 }
@@ -223,18 +222,19 @@ request values.
 - `none` means the route has no JSON response metadata.
 - `native-static` means a literal/static `Results.json` or `Results.ok` body is
   already represented as JSON bytes and can be written natively.
-- `native-schema` is reserved for schema-backed native response writing. Current
-  compiler output does not emit it for dynamic handler returns, and Plan loading
-  normalizes it to `fallback` with `native-schema-response-writer-unsupported`
-  when encountered.
+- `native-schema` means a schema-backed JSON response can use the bounded native
+  response writer. The supported subset is objects, arrays, nested objects,
+  strings, finite numbers, integers, booleans, nulls, nullable values, and
+  optional object fields in stable schema field order.
 - `generic` means the runtime must use the ordinary JSON result serializer.
 - `fallback` means response metadata is known but unsupported for native
   writing; `fallbackReason` explains why.
 
 `jsonResponse.writer` values are `none`, `preencoded`, `bounded`, and
-`streamable`. Current native static responses use `preencoded`; dynamic handler
-results with `.returns(...)` metadata are recorded as fallback instead of
-pretending to have native response enforcement.
+`streamable`. Native static responses use `preencoded`. Supported
+schema-backed dynamic JSON responses use `bounded`. Unsupported response schema
+shapes remain fallback and carry a `native-schema-response-writer-unsupported:*`
+reason.
 
 Typed handler metadata is compiler/Plan-first. For the current supported
 typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after

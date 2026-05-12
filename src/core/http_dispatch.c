@@ -3095,6 +3095,23 @@ static bool sl_http_dispatch_route_uses_native_json_validation(const SlPlanRoute
     return route != NULL && route->json_request.mode == SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA;
 }
 
+static const SlPlanSchema* sl_http_dispatch_find_schema(const SlPlan* plan, SlStr name)
+{
+    size_t index = 0U;
+
+    if (plan == NULL || sl_str_is_empty(name) ||
+        (plan->schema_count != 0U && plan->schemas == NULL))
+    {
+        return NULL;
+    }
+    for (index = 0U; index < plan->schema_count; index += 1U) {
+        if (sl_str_equal(plan->schemas[index].name, name)) {
+            return &plan->schemas[index];
+        }
+    }
+    return NULL;
+}
+
 static SlHttpDispatchJsonMode sl_http_dispatch_json_mode(void)
 {
     SlHttpDispatchJsonMode mode = SL_HTTP_DISPATCH_JSON_NATIVE;
@@ -3125,16 +3142,25 @@ static SlHttpDispatchJsonMode sl_http_dispatch_json_mode(void)
 static size_t sl_http_dispatch_effective_max_body_length(const SlPlanRoute* route,
                                                          const SlHttpDispatchContextSeed* seed)
 {
-    size_t max_body_length = seed == NULL || seed->max_body_length == 0U
-                                 ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH
-                                 : seed->max_body_length;
+    size_t seed_max_body_length = seed == NULL ? 0U : seed->max_body_length;
+    size_t route_max_body_length = 0U;
 
     if (route != NULL && sl_http_dispatch_route_expects_json_body(route) &&
         route->json_request.max_body_bytes != 0U)
     {
-        max_body_length = route->json_request.max_body_bytes;
+        route_max_body_length = route->json_request.max_body_bytes;
     }
-    return max_body_length == 0U ? SL_HTTP_DEFAULT_MAX_BODY_LENGTH : max_body_length;
+    if (seed_max_body_length != 0U && route_max_body_length != 0U) {
+        return route_max_body_length < seed_max_body_length ? route_max_body_length
+                                                            : seed_max_body_length;
+    }
+    if (seed_max_body_length != 0U) {
+        return seed_max_body_length;
+    }
+    if (route_max_body_length != 0U) {
+        return route_max_body_length;
+    }
+    return SL_HTTP_DEFAULT_MAX_BODY_LENGTH;
 }
 
 static SlStatus sl_http_dispatch_native_response(const SlPlanRoute* route,
@@ -3367,6 +3393,13 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
         binding->pattern == NULL ? sl_str_empty() : binding->pattern->source;
     request_context.route_name = validation_route == NULL ? sl_str_empty() : validation_route->name;
     request_context.native_json_validated = false;
+    if (validation_route != NULL &&
+        validation_route->json_response.mode == SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA &&
+        validation_route->json_response.writer == SL_PLAN_JSON_WRITER_BOUNDED)
+    {
+        request_context.response_schema =
+            sl_http_dispatch_find_schema(plan, validation_route->json_response.schema);
+    }
     if (validation_route != NULL) {
         status = sl_request_validation_validate(arena, plan, validation_route, &request_context,
                                                 out_result, out_diag);

@@ -240,6 +240,11 @@ typedef struct SlPlanSchemaProperty
     const SlPlanSchemaNode* schema;
 } SlPlanSchemaProperty;
 
+/*
+ * Parsed Plan schema metadata for Sloppy's current in-repo C runtime boundary.
+ *
+ * Alpha/internal ABI. Layout is not stable until Sloppy declares C ABI freeze.
+ */
 typedef struct SlPlanSchemaNode
 {
     int64_t min_value;

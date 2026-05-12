@@ -340,6 +340,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
 SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                            SlEngine* engine, SlArena* arena,
                                            v8::Local<v8::Value> js_result,
+                                           const SlHttpRequestContext* request_context,
                                            SlEngineResult* out_result, SlDiag* out_diag);
 
 #endif

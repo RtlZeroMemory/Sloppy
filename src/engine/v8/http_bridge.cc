@@ -8,6 +8,7 @@
 #include "engine_v8_internal.h"
 #include "string_interop.h"
 
+#include "sloppy/builder.h"
 #include "sloppy/container.h"
 #include "sloppy/fs.h"
 
@@ -21,6 +22,9 @@
 #include <vector>
 
 namespace {
+
+#define SL_V8_NATIVE_SCHEMA_JSON_INITIAL_CAPACITY 256U
+#define SL_V8_NATIVE_SCHEMA_JSON_MAX_CAPACITY 65536U
 
 struct HttpV8HeaderEntry
 {
@@ -3106,6 +3110,318 @@ bool http_v8_stringify_json(v8::Local<v8::Context> context, v8::Local<v8::Value>
     return true;
 }
 
+bool http_v8_schema_response_supported(const SlPlanSchemaNode* schema)
+{
+    size_t index = 0U;
+
+    if (schema == nullptr) {
+        return false;
+    }
+    switch (schema->kind) {
+    case SL_PLAN_SCHEMA_OBJECT:
+        if (schema->property_count != 0U && schema->properties == nullptr) {
+            return false;
+        }
+        for (index = 0U; index < schema->property_count; index += 1U) {
+            if (schema->properties[index].schema == nullptr ||
+                !http_v8_schema_response_supported(schema->properties[index].schema))
+            {
+                return false;
+            }
+        }
+        return true;
+    case SL_PLAN_SCHEMA_ARRAY:
+        return schema->items != nullptr && http_v8_schema_response_supported(schema->items);
+    case SL_PLAN_SCHEMA_STRING:
+    case SL_PLAN_SCHEMA_NUMBER:
+    case SL_PLAN_SCHEMA_INT:
+    case SL_PLAN_SCHEMA_BOOLEAN:
+    case SL_PLAN_SCHEMA_NULL:
+        return true;
+    case SL_PLAN_SCHEMA_UNKNOWN:
+    case SL_PLAN_SCHEMA_LITERAL_UNION:
+    case SL_PLAN_SCHEMA_LITERAL:
+    default:
+        return false;
+    }
+}
+
+SlStatus http_v8_append_json_string(SlStringBuilder* builder, SlStr text)
+{
+    static const char hex[] = "0123456789abcdef";
+    size_t index = 0U;
+    SlStatus status;
+
+    status = sl_string_builder_append_char(builder, '"');
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    for (index = 0U; index < text.length; index += 1U) {
+        unsigned char ch = (unsigned char)text.ptr[index];
+
+        if (ch == '"' || ch == '\\') {
+            status = sl_string_builder_append_char(builder, '\\');
+            if (sl_status_is_ok(status)) {
+                status = sl_string_builder_append_char(builder, (char)ch);
+            }
+        }
+        else if (ch == '\b') {
+            status = sl_string_builder_append_cstr(builder, "\\b");
+        }
+        else if (ch == '\f') {
+            status = sl_string_builder_append_cstr(builder, "\\f");
+        }
+        else if (ch == '\n') {
+            status = sl_string_builder_append_cstr(builder, "\\n");
+        }
+        else if (ch == '\r') {
+            status = sl_string_builder_append_cstr(builder, "\\r");
+        }
+        else if (ch == '\t') {
+            status = sl_string_builder_append_cstr(builder, "\\t");
+        }
+        else if (ch < 0x20U) {
+            status = sl_string_builder_append_cstr(builder, "\\u00");
+            if (sl_status_is_ok(status)) {
+                status = sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU]);
+            }
+            if (sl_status_is_ok(status)) {
+                status = sl_string_builder_append_char(builder, hex[ch & 0x0FU]);
+            }
+        }
+        else {
+            status = sl_string_builder_append_char(builder, (char)ch);
+        }
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    return sl_string_builder_append_char(builder, '"');
+}
+
+SlStatus http_v8_append_v8_json_string(v8::Isolate* isolate, SlStringBuilder* builder,
+                                       v8::Local<v8::Value> value)
+{
+    std::string text;
+
+    if (!value->IsString() || !sl_v8_std_string_from_value(isolate, value, &text)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return http_v8_append_json_string(builder, http_v8_str_from_string(text));
+}
+
+bool http_v8_schema_key(v8::Isolate* isolate, SlStr name, v8::Local<v8::String>* out)
+{
+    if (out == nullptr || sl_str_is_empty(name) ||
+        name.length > (size_t)std::numeric_limits<int>::max())
+    {
+        return false;
+    }
+    return v8::String::NewFromUtf8(isolate, name.ptr, v8::NewStringType::kNormal,
+                                   static_cast<int>(name.length))
+        .ToLocal(out);
+}
+
+SlStatus http_v8_native_schema_write_json_value(v8::Isolate* isolate,
+                                                v8::Local<v8::Context> context,
+                                                SlStringBuilder* builder,
+                                                const SlPlanSchemaNode* schema,
+                                                v8::Local<v8::Value> value);
+
+SlStatus http_v8_native_schema_write_object(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                            SlStringBuilder* builder,
+                                            const SlPlanSchemaNode* schema,
+                                            v8::Local<v8::Value> value)
+{
+    v8::Local<v8::Object> object;
+    size_t emitted = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (!value->IsObject() || value->IsArray()) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    object = value.As<v8::Object>();
+
+    status = sl_string_builder_append_char(builder, '{');
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    for (index = 0U; index < schema->property_count; index += 1U) {
+        const SlPlanSchemaProperty* property = &schema->properties[index];
+        v8::Local<v8::String> key;
+        v8::Local<v8::Value> child;
+
+        if (property->schema == nullptr || !http_v8_schema_key(isolate, property->name, &key) ||
+            !object->Get(context, key).ToLocal(&child))
+        {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        if (child->IsUndefined()) {
+            if (property->schema->optional) {
+                continue;
+            }
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        if (emitted != 0U) {
+            status = sl_string_builder_append_char(builder, ',');
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+        status = http_v8_append_json_string(builder, property->name);
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_char(builder, ':');
+        }
+        if (sl_status_is_ok(status)) {
+            status = http_v8_native_schema_write_json_value(isolate, context, builder,
+                                                            property->schema, child);
+        }
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        emitted += 1U;
+    }
+    return sl_string_builder_append_char(builder, '}');
+}
+
+SlStatus http_v8_native_schema_write_array(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                           SlStringBuilder* builder, const SlPlanSchemaNode* schema,
+                                           v8::Local<v8::Value> value)
+{
+    v8::Local<v8::Array> array;
+    uint32_t length = 0U;
+    uint32_t index = 0U;
+    SlStatus status;
+
+    if (schema->items == nullptr || !value->IsArray()) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    array = value.As<v8::Array>();
+    length = array->Length();
+    status = sl_string_builder_append_char(builder, '[');
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    for (index = 0U; index < length; index += 1U) {
+        v8::Local<v8::Value> item;
+
+        if (!array->Get(context, index).ToLocal(&item)) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        if (index != 0U) {
+            status = sl_string_builder_append_char(builder, ',');
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+        status =
+            http_v8_native_schema_write_json_value(isolate, context, builder, schema->items, item);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    return sl_string_builder_append_char(builder, ']');
+}
+
+SlStatus http_v8_native_schema_write_json_value(v8::Isolate* isolate,
+                                                v8::Local<v8::Context> context,
+                                                SlStringBuilder* builder,
+                                                const SlPlanSchemaNode* schema,
+                                                v8::Local<v8::Value> value)
+{
+    SlStatus status;
+
+    if (schema == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (value->IsNull()) {
+        if (schema->nullable || schema->kind == SL_PLAN_SCHEMA_NULL) {
+            return sl_string_builder_append_cstr(builder, "null");
+        }
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    switch (schema->kind) {
+    case SL_PLAN_SCHEMA_OBJECT:
+        return http_v8_native_schema_write_object(isolate, context, builder, schema, value);
+    case SL_PLAN_SCHEMA_ARRAY:
+        return http_v8_native_schema_write_array(isolate, context, builder, schema, value);
+    case SL_PLAN_SCHEMA_STRING:
+        return http_v8_append_v8_json_string(isolate, builder, value);
+    case SL_PLAN_SCHEMA_NUMBER: {
+        double number = 0.0;
+        if (!value->IsNumber() || !value->NumberValue(context).To(&number) ||
+            !std::isfinite(number))
+        {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        return sl_string_builder_append_f64(builder, number);
+    }
+    case SL_PLAN_SCHEMA_INT: {
+        double number = 0.0;
+        if (!value->IsNumber() || !value->NumberValue(context).To(&number) ||
+            !std::isfinite(number) || std::trunc(number) != number ||
+            number < (double)std::numeric_limits<int64_t>::min() ||
+            number > (double)std::numeric_limits<int64_t>::max())
+        {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        return sl_string_builder_append_i64(builder, (int64_t)number);
+    }
+    case SL_PLAN_SCHEMA_BOOLEAN:
+        if (!value->IsBoolean()) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        return sl_string_builder_append_cstr(builder,
+                                             value->BooleanValue(isolate) ? "true" : "false");
+    case SL_PLAN_SCHEMA_NULL:
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    case SL_PLAN_SCHEMA_UNKNOWN:
+    case SL_PLAN_SCHEMA_LITERAL_UNION:
+    case SL_PLAN_SCHEMA_LITERAL:
+    default:
+        status = sl_status_from_code(SL_STATUS_UNSUPPORTED);
+        return status;
+    }
+}
+
+SlStatus http_v8_try_native_schema_json(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                        SlArena* arena, const SlHttpRequestContext* request_context,
+                                        v8::Local<v8::Value> body, SlBytes* out, bool* out_handled)
+{
+    SlStringBuilder builder = {};
+    SlStr json = sl_str_empty();
+    SlStatus status;
+
+    if (out == nullptr || out_handled == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = {};
+    *out_handled = false;
+
+    if (request_context == nullptr || request_context->response_schema == nullptr ||
+        !http_v8_schema_response_supported(&request_context->response_schema->definition))
+    {
+        return sl_status_ok();
+    }
+    status =
+        sl_string_builder_init_arena(&builder, arena, SL_V8_NATIVE_SCHEMA_JSON_INITIAL_CAPACITY,
+                                     SL_V8_NATIVE_SCHEMA_JSON_MAX_CAPACITY);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = http_v8_native_schema_write_json_value(
+        isolate, context, &builder, &request_context->response_schema->definition, body);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    json = sl_string_builder_view(&builder);
+    *out = sl_bytes_from_parts((const unsigned char*)json.ptr, json.length);
+    *out_handled = true;
+    return sl_status_ok();
+}
+
 typedef enum HttpV8FastResultKind
 {
     HTTP_V8_FAST_RESULT_NONE = 0,
@@ -3677,6 +3993,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
 SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                            SlEngine* engine, SlArena* arena,
                                            v8::Local<v8::Value> js_result,
+                                           const SlHttpRequestContext* request_context,
                                            SlEngineResult* out_result, SlDiag* out_diag)
 {
     if (js_result->IsString()) {
@@ -3910,22 +4227,51 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         v8::Local<v8::String> json;
         SlBytes bytes = {nullptr, 0U};
         SlStatus status;
+        bool native_schema_handled = false;
 
         if (body->IsUndefined()) {
             body = v8::Null(isolate);
         }
 
-        if (!http_v8_stringify_json(context, body, &json)) {
-            return http_v8_write_diag(
-                engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
-                http_v8_literal("Results.json body could not be serialized",
-                                sizeof("Results.json body could not be serialized") - 1U),
-                sl_str_empty());
+        if (is_json) {
+            status = http_v8_try_native_schema_json(isolate, context, arena, request_context, body,
+                                                    &bytes, &native_schema_handled);
+            if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+                return http_v8_write_diag(
+                    engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_CAPACITY_EXCEEDED,
+                    http_v8_literal("native schema JSON response exceeded bounded writer capacity",
+                                    sizeof("native schema JSON response exceeded bounded writer "
+                                           "capacity") -
+                                        1U),
+                    sl_str_empty());
+            }
+            if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT) {
+                return http_v8_write_diag(
+                    engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
+                    http_v8_literal("Results.json body does not match native response schema",
+                                    sizeof("Results.json body does not match native response "
+                                           "schema") -
+                                        1U),
+                    sl_str_empty());
+            }
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
 
-        status = http_v8_copy_value_bytes(isolate, arena, json, &bytes);
-        if (!sl_status_is_ok(status)) {
-            return status;
+        if (!native_schema_handled) {
+            if (!http_v8_stringify_json(context, body, &json)) {
+                return http_v8_write_diag(
+                    engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
+                    http_v8_literal("Results.json body could not be serialized",
+                                    sizeof("Results.json body could not be serialized") - 1U),
+                    sl_str_empty());
+            }
+
+            status = http_v8_copy_value_bytes(isolate, arena, json, &bytes);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
         }
 
         out_result->kind = is_json ? SL_ENGINE_RESULT_JSON : SL_ENGINE_RESULT_ERROR;
