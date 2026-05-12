@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(Sloppy VERSION 0.0.0 LANGUAGES C)
+project(Sloppy VERSION 0.1.1 LANGUAGES C)
 
 include(cmake/SloppyOptions.cmake)
 find_package(yyjson CONFIG REQUIRED)

@@ -298,6 +298,21 @@ function Test-NpmPackagePolicy {
         Assert-True ($null -ne $property) "Root npm package missing optional dependency '$dependency'."
     }
     Assert-True (-not [string]::IsNullOrWhiteSpace($rootPackage.version)) "Root npm package version must not be empty."
+    Assert-True ($rootPackage.version -match '^\d+\.\d+\.\d+-alpha\.\d+$') "Root npm package version '$($rootPackage.version)' must be an alpha prerelease version."
+
+    $compilerHeader = Read-RequiredText -Relative "include/sloppy/compiler.h"
+    Assert-TextContains -Text $compilerHeader -Needle "#define SL_VERSION_STRING `"$($rootPackage.version)`"" -Message "Native runtime version must match root npm package version."
+
+    $nativeVersion = $rootPackage.version -replace '-.*$', ''
+    $cmakeLists = Read-RequiredText -Relative "CMakeLists.txt"
+    Assert-TextContains -Text $cmakeLists -Needle "project(Sloppy VERSION $nativeVersion LANGUAGES C)" -Message "CMake project version must match the numeric part of the root npm package version."
+
+    $cargoToml = Read-RequiredText -Relative "compiler/Cargo.toml"
+    Assert-TextContains -Text $cargoToml -Needle "version = `"$($rootPackage.version)`"" -Message "sloppyc Cargo version must match root npm package version."
+
+    $compilerVersion = Read-RequiredText -Relative "compiler/src/version.rs"
+    Assert-TextContains -Text $compilerVersion -Needle "sloppyc-$($rootPackage.version)" -Message "sloppyc --version metadata must match root npm package version."
+
     foreach ($package in @("sloppy-win32-x64", "sloppy-linux-x64", "sloppy-darwin-arm64", "sloppy-darwin-x64")) {
         $platformPackage = Get-Content -LiteralPath (Join-Path $packagesRoot "$package/package.json") -Raw | ConvertFrom-Json
         Assert-True ($platformPackage.version -eq $rootPackage.version) "npm package $package version '$($platformPackage.version)' must match root version '$($rootPackage.version)'."

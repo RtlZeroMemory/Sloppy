@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "contract": "sloppy.release-artifact",
   "contractVersion": "1.0.0",
-  "releaseVersionPolicy": "0.1.0-alpha.N until the release gate chooses a concrete N",
+  "releaseVersionPolicy": "single alpha prerelease version across npm packages, native runtime CLI, and sloppyc; current line starts at 0.1.1-alpha.1",
   "dryRunDefault": true,
   "canonicalDistribution": "github-release-archives",
   "npmDistributionRole": "convenience launcher for installing Sloppy itself only",

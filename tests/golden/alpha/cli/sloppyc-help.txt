@@ -1,4 +1,4 @@
-sloppyc 0.8.0
+sloppyc 0.1.1-alpha.1
 Supported app compiler: parses the documented Sloppy app shape and emits deterministic artifacts.
 
 Usage:

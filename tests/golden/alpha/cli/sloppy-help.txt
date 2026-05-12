@@ -1,4 +1,4 @@
-Sloppy 0.0.0-foundation
+Sloppy 0.1.1-alpha.1
 Pre-alpha runtime foundation with bounded run and metadata CLI introspection.
 
 Usage:

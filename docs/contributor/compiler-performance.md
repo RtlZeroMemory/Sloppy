@@ -101,7 +101,7 @@ Compiler benchmark reports use `schemaVersion: 1`.
     "logicalCores": 16
   },
   "compiler": {
-    "version": "sloppyc 0.8.0",
+    "version": "sloppyc 0.1.1-alpha.1",
     "path": "...",
     "profile": "release"
   },
