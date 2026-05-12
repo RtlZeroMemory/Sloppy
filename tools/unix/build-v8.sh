@@ -290,11 +290,13 @@ copy_required_file "$v8_checkout/buildtools/third_party/libc++/__assertion_handl
 copy_required_file "$v8_build_dir/v8_features.json" "$sdk_root/share/v8_features.json"
 copy_required_file "$v8_build_dir/v8_build_config.json" "$sdk_root/share/v8_build_config.json"
 
-python3 - "$sdk_root/share/v8_features.json" "$sdk_root/share/sloppy-v8-sdk.json" "$revision" "$cr_libcxx_revision" <<'PY'
+glibc_version="$(ldd --version | sed -n '1s/.* //p' | tr -d '\r')"
+
+python3 - "$sdk_root/share/v8_features.json" "$sdk_root/share/sloppy-v8-sdk.json" "$revision" "$cr_libcxx_revision" "$glibc_version" <<'PY'
 import json
 import sys
 
-features_path, manifest_path, revision, cr_libcxx_revision = sys.argv[1:5]
+features_path, manifest_path, revision, cr_libcxx_revision, glibc_version = sys.argv[1:6]
 with open(features_path, encoding="utf-8") as handle:
     features = json.load(handle)
 
@@ -305,6 +307,7 @@ manifest = {
     "v8Revision": revision,
     "buildType": "release",
     "crtCompatibility": "glibc clang-libc++ static-v8",
+    "glibcBaseline": glibc_version,
     "abi": {
         "crLibcxxRevision": cr_libcxx_revision,
         "v8TargetArch": "x64",

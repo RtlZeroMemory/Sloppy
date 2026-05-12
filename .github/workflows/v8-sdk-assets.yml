@@ -9,6 +9,7 @@ on:
         default: darwin-x64
         type: choice
         options:
+          - linux-x64
           - darwin-x64
       upload:
         description: "Upload assets to the sloppy-v8-sdk-cache GitHub release."
@@ -24,6 +25,83 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build-linux-x64:
+    name: build V8 SDK / linux-x64
+    if: inputs.target == 'linux-x64'
+    runs-on: ubuntu-latest
+    container:
+      image: node:22-bullseye
+    timeout-minutes: 720
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl file git python3 cmake ninja-build tar xz-utils pkg-config gnupg \
+            build-essential clang lld libglib2.0-dev
+          mkdir -p /etc/apt/keyrings
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
+          chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+          apt-get update
+          apt-get install -y --no-install-recommends gh
+          ldd --version | head -n 1
+
+      - name: Build and package Linux x64 V8 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/unix/build-v8.sh
+          grep -Eq '"glibcBaseline"[[:space:]]*:[[:space:]]*"2\.31"' .sdeps/v8/linux-x64/share/sloppy-v8-sdk.json
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sloppy-v8-sdk-linux-x64
+          if-no-files-found: error
+          path: artifacts/v8-sdk/*
+
+      - name: Ensure GitHub release exists
+        if: inputs.upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view sloppy-v8-sdk-cache --repo RtlZeroMemory/Slop >/dev/null 2>&1; then
+            gh release create sloppy-v8-sdk-cache \
+              --repo RtlZeroMemory/Slop \
+              --title "Sloppy V8 SDK cache" \
+              --notes "Durable V8 SDK cache assets for Sloppy release packaging. Not a Sloppy runtime release." \
+              --prerelease
+          fi
+
+      - name: Upload to GitHub release asset cache
+        if: inputs.upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload sloppy-v8-sdk-cache artifacts/v8-sdk/* \
+            --repo RtlZeroMemory/Slop \
+            --clobber
+
+      - name: Verify GitHub release assets
+        if: inputs.upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view sloppy-v8-sdk-cache --repo RtlZeroMemory/Slop --json tagName,name,isPrerelease,assets
+
   build-darwin-x64:
     name: build V8 SDK / darwin-x64
     if: inputs.target == 'darwin-x64'
