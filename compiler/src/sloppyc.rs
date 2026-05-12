@@ -3831,13 +3831,18 @@ fn program_reexport_require_expr(
         .with_path(path)
         .with_span(span)
         .with_hint("Use a pure-JavaScript package entry or remove the native addon dependency.")),
-        resolver::ImportKind::PackageExportUnsupported(package_name) => Err(Diagnostic::new(
+        resolver::ImportKind::PackageExportUnsupported(failure) => Err(Diagnostic::new(
             "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED",
-            format!("Package \"{package_name}\" has an exports shape Sloppy does not support yet."),
+            format!(
+                "Package \"{}\" {} entry at \"{}\" is not supported: {}.",
+                failure.subject, failure.field, failure.subpath, failure.reason
+            ),
         )
         .with_path(path)
         .with_span(span)
-        .with_hint("Use a supported exports condition or a package main/subpath entry.")),
+        .with_hint(
+            "Use a supported package.json exports/imports condition or fall back to a main entry.",
+        )),
         resolver::ImportKind::UnsupportedBare(specifier) => Err(Diagnostic::new(
             "SLOPPYC_E_PACKAGE_NOT_FOUND",
             format!(
