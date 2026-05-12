@@ -17,6 +17,18 @@ evidence and a completed readiness gate.
 - Added RELEASE-DIST dry-run contracts, canonical archive naming, runtime dependency audit
   scaffolding, npm launcher/platform package skeletons, and post-merge verifier handoff.
 
+## 0.1.1-alpha.1
+
+- Moves the next alpha package line to `0.1.1-alpha.1`; previously published
+  `0.1.0-alpha.*` versions remain immutable npm records and are not reused.
+- Pins Linux release packaging to a `node:22-bullseye` glibc 2.31 build
+  baseline and requires matching Linux V8 SDK metadata before package dry-run.
+- Adds a manual Linux Docker published-package validation script for multiple
+  glibc images, with Alpine/musl recorded as skipped until a separate musl
+  package lane exists.
+- Documents the Linux package as a glibc package rather than a universal Linux
+  binary. This remains a public alpha, not production-ready.
+
 ## 0.1.0-alpha.3
 
 - Propagated the Linux V8 SDK libc++ link contract through `sloppy_core` so V8-enabled

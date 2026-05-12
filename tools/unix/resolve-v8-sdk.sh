@@ -94,6 +94,7 @@ validate_sdk_root() {
       grep -Eq '"source"[[:space:]]*:[[:space:]]*"sloppy-built-v8"' "$root/share/sloppy-v8-sdk.json" || return 1
       grep -Eq "\"v8Revision\"[[:space:]]*:[[:space:]]*\"$expected_v8_revision\"" "$root/share/sloppy-v8-sdk.json" || return 1
       grep -Eq '"crtCompatibility"[[:space:]]*:[[:space:]]*"glibc clang-libc\+\+ static-v8"' "$root/share/sloppy-v8-sdk.json" || return 1
+      grep -Eq '"glibcBaseline"[[:space:]]*:[[:space:]]*"2\.31"' "$root/share/sloppy-v8-sdk.json" || return 1
       grep -Eq "\"crLibcxxRevision\"[[:space:]]*:[[:space:]]*\"$expected_cr_libcxx_revision\"" "$root/share/sloppy-v8-sdk.json" || return 1
       grep -Eq '"v8EnableSandbox"[[:space:]]*:[[:space:]]*true' "$root/share/sloppy-v8-sdk.json" || return 1
       ;;

@@ -55,6 +55,8 @@ Sloppy npm platform package is not published for this platform.
 ```
 
 The public alpha npm package targets Windows x64, Linux x64 glibc, and macOS.
+Alpine/musl Linux is not covered by the glibc package; use a source build until
+a separate musl package exists.
 Linux arm64 and Windows arm64 do not have alpha npm platform packages. Use a
 supported npm target or build from source.
 
