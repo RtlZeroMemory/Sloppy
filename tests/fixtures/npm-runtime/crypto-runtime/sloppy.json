@@ -3,5 +3,7 @@
     "entry": "src/main.ts",
     "outDir": ".sloppy",
     "environment": "Development",
-    "capabilities": ["crypto"]
+    "capabilities": {
+        "crypto": true
+    }
 }
