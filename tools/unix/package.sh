@@ -129,6 +129,8 @@ resolve_v8_linux_toolchain() {
   local llvm_root
   local cc
   local cxx
+  local resolved_cc
+  local resolved_cxx
 
   if llvm_root="$(resolve_v8_llvm_root)"; then
     printf '%s|%s|%s\n' "$llvm_root/bin/clang" "$llvm_root/bin/clang++" "$llvm_root"
@@ -142,6 +144,14 @@ resolve_v8_linux_toolchain() {
   fi
   if [[ -z "$cxx" ]]; then
     cxx="$(command -v clang++ || true)"
+  fi
+  if [[ -n "$cc" && "$cc" != */* ]]; then
+    resolved_cc="$(command -v "$cc" || true)"
+    [[ -n "$resolved_cc" ]] && cc="$resolved_cc"
+  fi
+  if [[ -n "$cxx" && "$cxx" != */* ]]; then
+    resolved_cxx="$(command -v "$cxx" || true)"
+    [[ -n "$resolved_cxx" ]] && cxx="$resolved_cxx"
   fi
 
   if [[ -n "$cc" && -n "$cxx" && -x "$cc" && -x "$cxx" ]]; then
@@ -203,6 +213,11 @@ if [[ "$skip_build" -eq 0 ]]; then
         "-DCMAKE_C_COMPILER=$resolved_v8_cc"
         "-DCMAKE_CXX_COMPILER=$resolved_v8_cxx"
         "-DCMAKE_CXX_FLAGS=-nostdinc++ -isystem$resolved_v8_root/support/libcxx/buildtools -isystem$resolved_v8_root/support/libcxx/include -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE"
+      )
+    elif [[ "$platform_triplet" == macos-* && -f "$resolved_v8_root/support/libcxx/buildtools/__config_site" ]]; then
+      cmake_args+=(
+        "-DCMAKE_CXX_FLAGS=-nostdinc++ -isystem$resolved_v8_root/support/libcxx/buildtools -isystem$resolved_v8_root/support/libcxx/include -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE"
+        "-DCMAKE_EXE_LINKER_FLAGS=-nostdlib++"
       )
     fi
   else

@@ -498,7 +498,7 @@ if(SLOPPY_ENABLE_V8)
                 INTERFACE
                     $<$<COMPILE_LANGUAGE:CXX>:/I${SLOPPY_V8_ROOT}/support/libcxx/buildtools>
                     $<$<COMPILE_LANGUAGE:CXX>:/I${SLOPPY_V8_ROOT}/support/libcxx/include>)
-        elseif(UNIX AND NOT APPLE)
+        elseif(UNIX)
             target_compile_definitions(
                 Sloppy::V8
                 INTERFACE
