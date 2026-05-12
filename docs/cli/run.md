@@ -9,7 +9,7 @@ sloppy run [source | artifacts-dir | package-dir | --artifacts <dir>] [--stdlib 
            [--kind web|program]
            [--once METHOD TARGET] [--header "Name: value"]
            [--body text | --body-file path | --json json]
-           [-- <program-args...>]
+           [--diagnostics-json] [-- <program-args...>]
 ```
 
 ## Modes
@@ -112,6 +112,13 @@ sloppy run .sloppy --header "content-type: application/x-www-form-urlencoded" --
 Header and body one-shot dispatch currently requires static route metadata.
 Dynamic fallback routes still support method-and-target one-shot requests only.
 
+## Diagnostics
+
+`--diagnostics-json` renders runtime diagnostics on stderr using the local
+diagnostic report shape. It is separate from `--json`, which is a one-shot
+request-body shorthand. The report output is local only and does not enable
+telemetry.
+
 ## Flags
 
 | Flag                   | Default         | Purpose                                              |
@@ -127,6 +134,7 @@ Dynamic fallback routes still support method-and-target one-shot requests only.
 | `--body <text>`        | empty           | Add a synthetic one-shot text body                   |
 | `--body-file <path>`   | empty           | Read a synthetic one-shot body from a file           |
 | `--json <json>`        | empty           | Add a JSON one-shot body and JSON content type       |
+| `--diagnostics-json`   | off             | Render local runtime diagnostics on stderr; no telemetry |
 | `-- <program-args...>` | empty           | Arguments passed to Program Mode `main(args, ctx)`   |
 
 `--artifacts` and a positional source or artifact path are mutually exclusive.

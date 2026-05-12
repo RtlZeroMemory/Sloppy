@@ -237,9 +237,25 @@ const Hmac = Object.freeze({
     sha256(secret, value) {
         return Promise.resolve(hmac("sha256", secret, value, "Hmac.sha256"));
     },
+    sha384(secret, value) {
+        return Promise.resolve(hmac("sha384", secret, value, "Hmac.sha384"));
+    },
+    sha512(secret, value) {
+        return Promise.resolve(hmac("sha512", secret, value, "Hmac.sha512"));
+    },
     async verifySha256(secret, value, signature) {
         const actual = hmac("sha256", secret, value, "Hmac.verifySha256");
         const expected = dataToBytes(signature, "Hmac.verifySha256");
+        return ConstantTime.equals(actual, expected);
+    },
+    async verifySha384(secret, value, signature) {
+        const actual = hmac("sha384", secret, value, "Hmac.verifySha384");
+        const expected = dataToBytes(signature, "Hmac.verifySha384");
+        return ConstantTime.equals(actual, expected);
+    },
+    async verifySha512(secret, value, signature) {
+        const actual = hmac("sha512", secret, value, "Hmac.verifySha512");
+        const expected = dataToBytes(signature, "Hmac.verifySha512");
         return ConstantTime.equals(actual, expected);
     },
 });

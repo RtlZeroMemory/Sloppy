@@ -95,7 +95,13 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     }
 
     severity = (SlDiagSeverity)(data[0] % 4U);
-    code = (SlDiagCode)(data[0] % ((uint8_t)SL_DIAG_WORKER_STALE_HANDLE + 1U));
+    {
+        uint32_t raw_code = (uint32_t)data[0];
+        if (size > 1U) {
+            raw_code = ((uint32_t)data[0] << 8U) | (uint32_t)data[1];
+        }
+        code = (SlDiagCode)(raw_code % ((uint32_t)SL_DIAG_RELEASE_ARTIFACT_MISMATCH + 1U));
+    }
     message = slice_to_str(data, size, 0U, size);
     path = slice_to_str(data, size, 1U, size > 1U ? size - 1U : 0U);
     hint = slice_to_str(data, size, 2U, size > 2U ? size - 2U : 0U);
@@ -135,6 +141,9 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
         assert_no_secret_marker(rendered);
     }
     if (sl_status_is_ok(sl_diag_render_json_with_source(&arena, &diag, &source, &rendered))) {
+        assert_no_secret_marker(rendered);
+    }
+    if (sl_status_is_ok(sl_diag_render_report_json(&arena, &diag, NULL, &rendered))) {
         assert_no_secret_marker(rendered);
     }
 

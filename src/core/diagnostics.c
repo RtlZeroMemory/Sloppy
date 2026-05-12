@@ -1431,6 +1431,59 @@ SlStr sl_diag_code_name(SlDiagCode code)
         return sl_diag_literal("SLOPPY_E_FFI_STRING_NUL", sizeof("SLOPPY_E_FFI_STRING_NUL") - 1U);
     case SL_DIAG_FFI_CALL_FAILED:
         return sl_diag_literal("SLOPPY_E_FFI_CALL_FAILED", sizeof("SLOPPY_E_FFI_CALL_FAILED") - 1U);
+    case SL_DIAG_NATIVE_INVARIANT_FAILED:
+        return sl_diag_literal("SLOPPY_E_NATIVE_INVARIANT_FAILED",
+                               sizeof("SLOPPY_E_NATIVE_INVARIANT_FAILED") - 1U);
+    case SL_DIAG_PLAN_INVALID:
+        return sl_diag_literal("SLOPPY_E_PLAN_INVALID", sizeof("SLOPPY_E_PLAN_INVALID") - 1U);
+    case SL_DIAG_PLAN_SCHEMA_UNSUPPORTED:
+        return sl_diag_literal("SLOPPY_E_PLAN_SCHEMA_UNSUPPORTED",
+                               sizeof("SLOPPY_E_PLAN_SCHEMA_UNSUPPORTED") - 1U);
+    case SL_DIAG_ARTIFACT_HASH_MISMATCH:
+        return sl_diag_literal("SLOPPY_E_ARTIFACT_HASH_MISMATCH",
+                               sizeof("SLOPPY_E_ARTIFACT_HASH_MISMATCH") - 1U);
+    case SL_DIAG_ROUTE_ARTIFACT_MISMATCH:
+        return sl_diag_literal("SLOPPY_E_ROUTE_ARTIFACT_MISMATCH",
+                               sizeof("SLOPPY_E_ROUTE_ARTIFACT_MISMATCH") - 1U);
+    case SL_DIAG_ROUTE_VALIDATE_MISMATCH:
+        return sl_diag_literal("SLOPPY_E_ROUTE_VALIDATE_MISMATCH",
+                               sizeof("SLOPPY_E_ROUTE_VALIDATE_MISMATCH") - 1U);
+    case SL_DIAG_HTTP_METHOD_NOT_ALLOWED:
+        return sl_diag_literal("SLOPPY_E_HTTP_METHOD_NOT_ALLOWED",
+                               sizeof("SLOPPY_E_HTTP_METHOD_NOT_ALLOWED") - 1U);
+    case SL_DIAG_JSON_MALFORMED:
+        return sl_diag_literal("SLOPPY_E_JSON_MALFORMED", sizeof("SLOPPY_E_JSON_MALFORMED") - 1U);
+    case SL_DIAG_JSON_SCHEMA_TYPE_MISMATCH:
+        return sl_diag_literal("SLOPPY_E_JSON_SCHEMA_TYPE_MISMATCH",
+                               sizeof("SLOPPY_E_JSON_SCHEMA_TYPE_MISMATCH") - 1U);
+    case SL_DIAG_STREAM_BACKPRESSURE_LIMIT:
+        return sl_diag_literal("SLOPPY_E_STREAM_BACKPRESSURE_LIMIT",
+                               sizeof("SLOPPY_E_STREAM_BACKPRESSURE_LIMIT") - 1U);
+    case SL_DIAG_STREAM_INVALID_STATE:
+        return sl_diag_literal("SLOPPY_E_STREAM_INVALID_STATE",
+                               sizeof("SLOPPY_E_STREAM_INVALID_STATE") - 1U);
+    case SL_DIAG_V8_HANDLER_EXCEPTION:
+        return sl_diag_literal("SLOPPY_E_V8_HANDLER_EXCEPTION",
+                               sizeof("SLOPPY_E_V8_HANDLER_EXCEPTION") - 1U);
+    case SL_DIAG_V8_UNHANDLED_REJECTION:
+        return sl_diag_literal("SLOPPY_E_V8_UNHANDLED_REJECTION",
+                               sizeof("SLOPPY_E_V8_UNHANDLED_REJECTION") - 1U);
+    case SL_DIAG_V8_FATAL:
+        return sl_diag_literal("SLOPPY_E_V8_FATAL", sizeof("SLOPPY_E_V8_FATAL") - 1U);
+    case SL_DIAG_WORKER_FAILED:
+        return sl_diag_literal("SLOPPY_E_WORKER_FAILED", sizeof("SLOPPY_E_WORKER_FAILED") - 1U);
+    case SL_DIAG_PROVIDER_UNAVAILABLE:
+        return sl_diag_literal("SLOPPY_E_PROVIDER_UNAVAILABLE",
+                               sizeof("SLOPPY_E_PROVIDER_UNAVAILABLE") - 1U);
+    case SL_DIAG_PROCESS_SPAWN_FAILED:
+        return sl_diag_literal("SLOPPY_E_PROCESS_SPAWN_FAILED",
+                               sizeof("SLOPPY_E_PROCESS_SPAWN_FAILED") - 1U);
+    case SL_DIAG_PACKAGE_ARTIFACT_MISSING:
+        return sl_diag_literal("SLOPPY_E_PACKAGE_ARTIFACT_MISSING",
+                               sizeof("SLOPPY_E_PACKAGE_ARTIFACT_MISSING") - 1U);
+    case SL_DIAG_RELEASE_ARTIFACT_MISMATCH:
+        return sl_diag_literal("SLOPPY_E_RELEASE_ARTIFACT_MISMATCH",
+                               sizeof("SLOPPY_E_RELEASE_ARTIFACT_MISMATCH") - 1U);
     default:
         return sl_diag_literal("SLOPPY_E_UNKNOWN", sizeof("SLOPPY_E_UNKNOWN") - 1U);
     }
@@ -1439,6 +1492,257 @@ SlStr sl_diag_code_name(SlDiagCode code)
 SlStr sl_diag_redacted(void)
 {
     return sl_diag_literal("<redacted>", sizeof("<redacted>") - 1U);
+}
+
+SlStr sl_diag_subsystem_name(SlDiagSubsystem subsystem)
+{
+    switch (subsystem) {
+    case SL_DIAG_SUBSYSTEM_CORE:
+        return sl_diag_literal("core", sizeof("core") - 1U);
+    case SL_DIAG_SUBSYSTEM_PLAN:
+        return sl_diag_literal("plan", sizeof("plan") - 1U);
+    case SL_DIAG_SUBSYSTEM_ARTIFACT:
+        return sl_diag_literal("artifact", sizeof("artifact") - 1U);
+    case SL_DIAG_SUBSYSTEM_HTTP:
+        return sl_diag_literal("http", sizeof("http") - 1U);
+    case SL_DIAG_SUBSYSTEM_STREAM:
+        return sl_diag_literal("stream", sizeof("stream") - 1U);
+    case SL_DIAG_SUBSYSTEM_V8:
+        return sl_diag_literal("v8", sizeof("v8") - 1U);
+    case SL_DIAG_SUBSYSTEM_WORKER:
+        return sl_diag_literal("worker", sizeof("worker") - 1U);
+    case SL_DIAG_SUBSYSTEM_PROVIDER:
+        return sl_diag_literal("provider", sizeof("provider") - 1U);
+    case SL_DIAG_SUBSYSTEM_CLI:
+        return sl_diag_literal("cli", sizeof("cli") - 1U);
+    case SL_DIAG_SUBSYSTEM_PACKAGE:
+        return sl_diag_literal("package", sizeof("package") - 1U);
+    case SL_DIAG_SUBSYSTEM_RELEASE:
+        return sl_diag_literal("release", sizeof("release") - 1U);
+    default:
+        return sl_diag_literal("unknown", sizeof("unknown") - 1U);
+    }
+}
+
+SlStr sl_diag_phase_name(SlDiagPhase phase)
+{
+    switch (phase) {
+    case SL_DIAG_PHASE_UNKNOWN:
+        return sl_diag_literal("unknown", sizeof("unknown") - 1U);
+    case SL_DIAG_PHASE_PARSE:
+        return sl_diag_literal("parse", sizeof("parse") - 1U);
+    case SL_DIAG_PHASE_VALIDATE:
+        return sl_diag_literal("validate", sizeof("validate") - 1U);
+    case SL_DIAG_PHASE_LOAD:
+        return sl_diag_literal("load", sizeof("load") - 1U);
+    case SL_DIAG_PHASE_STARTUP:
+        return sl_diag_literal("startup", sizeof("startup") - 1U);
+    case SL_DIAG_PHASE_DISPATCH:
+        return sl_diag_literal("dispatch", sizeof("dispatch") - 1U);
+    case SL_DIAG_PHASE_EXECUTE:
+        return sl_diag_literal("execute", sizeof("execute") - 1U);
+    case SL_DIAG_PHASE_SHUTDOWN:
+        return sl_diag_literal("shutdown", sizeof("shutdown") - 1U);
+    case SL_DIAG_PHASE_PACKAGE:
+        return sl_diag_literal("package", sizeof("package") - 1U);
+    case SL_DIAG_PHASE_RELEASE:
+        return sl_diag_literal("release", sizeof("release") - 1U);
+    default:
+        return sl_diag_literal("unknown", sizeof("unknown") - 1U);
+    }
+}
+
+SlStr sl_diag_redaction_policy_name(SlDiagRedactionPolicy policy)
+{
+    switch (policy) {
+    case SL_DIAG_REDACTION_DEFAULT:
+        return sl_diag_literal("default", sizeof("default") - 1U);
+    case SL_DIAG_REDACTION_STRICT:
+        return sl_diag_literal("strict", sizeof("strict") - 1U);
+    default:
+        return sl_diag_literal("unknown", sizeof("unknown") - 1U);
+    }
+}
+
+SlStr sl_diag_status_code_name(SlStatusCode status)
+{
+    switch (status) {
+    case SL_STATUS_OK:
+        return sl_diag_literal("OK", sizeof("OK") - 1U);
+    case SL_STATUS_INVALID_ARGUMENT:
+        return sl_diag_literal("INVALID_ARGUMENT", sizeof("INVALID_ARGUMENT") - 1U);
+    case SL_STATUS_OUT_OF_MEMORY:
+        return sl_diag_literal("OUT_OF_MEMORY", sizeof("OUT_OF_MEMORY") - 1U);
+    case SL_STATUS_OVERFLOW:
+        return sl_diag_literal("OVERFLOW", sizeof("OVERFLOW") - 1U);
+    case SL_STATUS_OUT_OF_RANGE:
+        return sl_diag_literal("OUT_OF_RANGE", sizeof("OUT_OF_RANGE") - 1U);
+    case SL_STATUS_ASSERTION_FAILED:
+        return sl_diag_literal("ASSERTION_FAILED", sizeof("ASSERTION_FAILED") - 1U);
+    case SL_STATUS_INTERNAL:
+        return sl_diag_literal("INTERNAL", sizeof("INTERNAL") - 1U);
+    case SL_STATUS_UNSUPPORTED:
+        return sl_diag_literal("UNSUPPORTED", sizeof("UNSUPPORTED") - 1U);
+    case SL_STATUS_INVALID_STATE:
+        return sl_diag_literal("INVALID_STATE", sizeof("INVALID_STATE") - 1U);
+    case SL_STATUS_CAPACITY_EXCEEDED:
+        return sl_diag_literal("CAPACITY_EXCEEDED", sizeof("CAPACITY_EXCEEDED") - 1U);
+    case SL_STATUS_STALE_RESOURCE:
+        return sl_diag_literal("STALE_RESOURCE", sizeof("STALE_RESOURCE") - 1U);
+    case SL_STATUS_WRONG_RESOURCE_KIND:
+        return sl_diag_literal("WRONG_RESOURCE_KIND", sizeof("WRONG_RESOURCE_KIND") - 1U);
+    case SL_STATUS_CANCELLED:
+        return sl_diag_literal("CANCELLED", sizeof("CANCELLED") - 1U);
+    case SL_STATUS_DEADLINE_EXCEEDED:
+        return sl_diag_literal("DEADLINE_EXCEEDED", sizeof("DEADLINE_EXCEEDED") - 1U);
+    default:
+        return sl_diag_literal("UNKNOWN", sizeof("UNKNOWN") - 1U);
+    }
+}
+
+static SlDiagSubsystem sl_diag_subsystem_for_code(SlDiagCode code)
+{
+    if (code == SL_DIAG_PLAN_INVALID || code == SL_DIAG_PLAN_SCHEMA_UNSUPPORTED ||
+        code == SL_DIAG_INVALID_PLAN_VERSION || code == SL_DIAG_INVALID_PLAN_FIELD)
+    {
+        return SL_DIAG_SUBSYSTEM_PLAN;
+    }
+    if (code == SL_DIAG_ARTIFACT_HASH_MISMATCH || code == SL_DIAG_ROUTE_ARTIFACT_MISMATCH ||
+        code == SL_DIAG_ROUTE_VALIDATE_MISMATCH)
+    {
+        return SL_DIAG_SUBSYSTEM_ARTIFACT;
+    }
+    if (sl_diag_is_http_code(code) || code == SL_DIAG_HTTP_METHOD_NOT_ALLOWED ||
+        code == SL_DIAG_JSON_MALFORMED || code == SL_DIAG_JSON_SCHEMA_TYPE_MISMATCH)
+    {
+        return SL_DIAG_SUBSYSTEM_HTTP;
+    }
+    if (code == SL_DIAG_STREAM_BACKPRESSURE_LIMIT || code == SL_DIAG_STREAM_INVALID_STATE) {
+        return SL_DIAG_SUBSYSTEM_STREAM;
+    }
+    if (code == SL_DIAG_V8_HANDLER_EXCEPTION || code == SL_DIAG_V8_UNHANDLED_REJECTION ||
+        code == SL_DIAG_V8_FATAL || code == SL_DIAG_ENGINE_EXCEPTION ||
+        code == SL_DIAG_ENGINE_PROMISE_REJECTION || code == SL_DIAG_ENGINE_COMPILE_ERROR ||
+        code == SL_DIAG_ENGINE_CALL_ERROR || code == SL_DIAG_ENGINE_PROMISE_PENDING)
+    {
+        return SL_DIAG_SUBSYSTEM_V8;
+    }
+    if (sl_diag_is_workers_code(code) || code == SL_DIAG_WORKER_FAILED) {
+        return SL_DIAG_SUBSYSTEM_WORKER;
+    }
+    if (code == SL_DIAG_PROVIDER_UNAVAILABLE || code == SL_DIAG_SQLITE_PROVIDER_ERROR ||
+        code == SL_DIAG_POSTGRES_PROVIDER_ERROR || code == SL_DIAG_SQLSERVER_PROVIDER_ERROR)
+    {
+        return SL_DIAG_SUBSYSTEM_PROVIDER;
+    }
+    if (code == SL_DIAG_PACKAGE_ARTIFACT_MISSING) {
+        return SL_DIAG_SUBSYSTEM_PACKAGE;
+    }
+    if (code == SL_DIAG_RELEASE_ARTIFACT_MISMATCH) {
+        return SL_DIAG_SUBSYSTEM_RELEASE;
+    }
+    return SL_DIAG_SUBSYSTEM_CORE;
+}
+
+static SlDiagPhase sl_diag_phase_for_code(SlDiagCode code)
+{
+    if (code == SL_DIAG_MALFORMED_JSON || code == SL_DIAG_JSON_MALFORMED ||
+        code == SL_DIAG_INVALID_PLAN_VERSION || code == SL_DIAG_INVALID_PLAN_FIELD)
+    {
+        return SL_DIAG_PHASE_PARSE;
+    }
+    if (code == SL_DIAG_PLAN_INVALID || code == SL_DIAG_PLAN_SCHEMA_UNSUPPORTED ||
+        code == SL_DIAG_ROUTE_VALIDATE_MISMATCH || code == SL_DIAG_REQUEST_VALIDATION_FAILED)
+    {
+        return SL_DIAG_PHASE_VALIDATE;
+    }
+    if (code == SL_DIAG_ARTIFACT_HASH_MISMATCH || code == SL_DIAG_ROUTE_ARTIFACT_MISMATCH) {
+        return SL_DIAG_PHASE_LOAD;
+    }
+    if (sl_diag_is_http_code(code) || code == SL_DIAG_HTTP_METHOD_NOT_ALLOWED ||
+        code == SL_DIAG_STREAM_BACKPRESSURE_LIMIT || code == SL_DIAG_STREAM_INVALID_STATE)
+    {
+        return SL_DIAG_PHASE_DISPATCH;
+    }
+    if (code == SL_DIAG_PACKAGE_ARTIFACT_MISSING) {
+        return SL_DIAG_PHASE_PACKAGE;
+    }
+    if (code == SL_DIAG_RELEASE_ARTIFACT_MISMATCH) {
+        return SL_DIAG_PHASE_RELEASE;
+    }
+    if (code == SL_DIAG_ENGINE_EXCEPTION || code == SL_DIAG_ENGINE_PROMISE_REJECTION ||
+        code == SL_DIAG_ENGINE_CALL_ERROR || code == SL_DIAG_V8_HANDLER_EXCEPTION ||
+        code == SL_DIAG_V8_UNHANDLED_REJECTION || code == SL_DIAG_WORKER_FAILED ||
+        code == SL_DIAG_PROCESS_SPAWN_FAILED)
+    {
+        return SL_DIAG_PHASE_EXECUTE;
+    }
+    if (code == SL_DIAG_LIFECYCLE_SHUTDOWN_FORCED || code == SL_DIAG_HTTP_SHUTDOWN) {
+        return SL_DIAG_PHASE_SHUTDOWN;
+    }
+    return SL_DIAG_PHASE_UNKNOWN;
+}
+
+static SlStatusCode sl_diag_status_for_code(SlDiagCode code)
+{
+    switch (code) {
+    case SL_DIAG_NONE:
+        return SL_STATUS_OK;
+    case SL_DIAG_INVALID_ARGUMENT:
+    case SL_DIAG_INVALID_PLAN_VERSION:
+    case SL_DIAG_INVALID_PLAN_FIELD:
+    case SL_DIAG_PLAN_INVALID:
+    case SL_DIAG_PLAN_SCHEMA_UNSUPPORTED:
+    case SL_DIAG_JSON_MALFORMED:
+    case SL_DIAG_JSON_SCHEMA_TYPE_MISMATCH:
+        return SL_STATUS_INVALID_ARGUMENT;
+    case SL_DIAG_OUT_OF_MEMORY:
+        return SL_STATUS_OUT_OF_MEMORY;
+    case SL_DIAG_OVERFLOW:
+        return SL_STATUS_OVERFLOW;
+    case SL_DIAG_HTTP_ROUTE_NOT_FOUND:
+        return SL_STATUS_OUT_OF_RANGE;
+    case SL_DIAG_NATIVE_INVARIANT_FAILED:
+        return SL_STATUS_ASSERTION_FAILED;
+    case SL_DIAG_ENGINE_PROMISE_PENDING:
+    case SL_DIAG_ENGINE_BACKPRESSURE:
+    case SL_DIAG_HTTP_RESPONSE_BACKPRESSURE:
+    case SL_DIAG_STREAM_BACKPRESSURE_LIMIT:
+        return SL_STATUS_CAPACITY_EXCEEDED;
+    case SL_DIAG_ENGINE_CANCELLED:
+    case SL_DIAG_WORK_JOB_CANCELLED:
+        return SL_STATUS_CANCELLED;
+    case SL_DIAG_TIME_TIMEOUT:
+    case SL_DIAG_HTTP_REQUEST_TIMEOUT:
+        return SL_STATUS_DEADLINE_EXCEEDED;
+    case SL_DIAG_UNSUPPORTED_ENGINE:
+    case SL_DIAG_HTTP_UNSUPPORTED_METHOD:
+    case SL_DIAG_HTTP_METHOD_NOT_ALLOWED:
+    case SL_DIAG_PROVIDER_UNAVAILABLE:
+        return SL_STATUS_UNSUPPORTED;
+    default:
+        return SL_STATUS_INTERNAL;
+    }
+}
+
+SlDiagMetadata sl_diag_metadata_for_code(SlDiagCode code)
+{
+    SlDiagMetadata metadata = {0};
+
+    metadata.subsystem = sl_diag_subsystem_for_code(code);
+    metadata.phase = sl_diag_phase_for_code(code);
+    metadata.status = sl_diag_status_for_code(code);
+    metadata.redaction_policy = metadata.subsystem == SL_DIAG_SUBSYSTEM_PROVIDER
+                                    ? SL_DIAG_REDACTION_STRICT
+                                    : SL_DIAG_REDACTION_DEFAULT;
+    metadata.safe_to_expose = metadata.subsystem == SL_DIAG_SUBSYSTEM_HTTP ||
+                              metadata.subsystem == SL_DIAG_SUBSYSTEM_PLAN;
+    if (metadata.subsystem == SL_DIAG_SUBSYSTEM_PROVIDER ||
+        metadata.subsystem == SL_DIAG_SUBSYSTEM_CORE || code == SL_DIAG_NATIVE_INVARIANT_FAILED)
+    {
+        metadata.safe_to_expose = false;
+    }
+    return metadata;
 }
 
 SlSourceSpan sl_source_span_unknown(void)
@@ -2708,6 +3012,252 @@ SlStatus sl_diag_render_json_with_source(SlArena* arena, const SlDiag* diag,
         return status;
     }
     status = sl_diag_builder_append_literal(&builder, "}\n", 2U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *out = sl_string_builder_view(&builder);
+    return sl_status_ok();
+}
+
+static SlStatus sl_diag_report_append_optional_string(SlStringBuilder* builder, const char* field,
+                                                      SlStr value)
+{
+    SlStatus status;
+
+    if (sl_str_is_empty(value)) {
+        return sl_status_ok();
+    }
+    status = sl_string_builder_append_cstr(builder, ",\"");
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(builder, field);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(builder, "\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_builder_append_json_escaped(builder, value);
+    }
+    return status;
+}
+
+static SlStatus sl_diag_report_append_context(SlStringBuilder* builder,
+                                              const SlDiagReportContext* context)
+{
+    bool opened = false;
+    SlStatus status = sl_status_ok();
+
+#define SL_APPEND_CONTEXT_FIELD(name, value)                                                       \
+    do {                                                                                           \
+        if (!sl_str_is_empty(value)) {                                                             \
+            if (!opened) {                                                                         \
+                status = sl_string_builder_append_cstr(builder, ",\"context\":{");                 \
+                opened = true;                                                                     \
+            }                                                                                      \
+            else {                                                                                 \
+                status = sl_string_builder_append_char(builder, ',');                              \
+            }                                                                                      \
+            if (sl_status_is_ok(status)) {                                                         \
+                status = sl_string_builder_append_cstr(builder, "\"" name "\":");                  \
+            }                                                                                      \
+            if (sl_status_is_ok(status)) {                                                         \
+                status = sl_diag_builder_append_json_escaped(builder, value);                      \
+            }                                                                                      \
+            if (!sl_status_is_ok(status)) {                                                        \
+                return status;                                                                     \
+            }                                                                                      \
+        }                                                                                          \
+    } while (0)
+
+    if (context == NULL) {
+        return sl_status_ok();
+    }
+
+    SL_APPEND_CONTEXT_FIELD("command", context->command);
+    SL_APPEND_CONTEXT_FIELD("planPath", context->plan_path);
+    SL_APPEND_CONTEXT_FIELD("planHash", context->plan_hash);
+    SL_APPEND_CONTEXT_FIELD("artifactPath", context->artifact_path);
+    SL_APPEND_CONTEXT_FIELD("packagePath", context->package_path);
+    SL_APPEND_CONTEXT_FIELD("routeId", context->route_id);
+    SL_APPEND_CONTEXT_FIELD("routePattern", context->route_pattern);
+    SL_APPEND_CONTEXT_FIELD("handlerId", context->handler_id);
+    SL_APPEND_CONTEXT_FIELD("requestId", context->request_id);
+    SL_APPEND_CONTEXT_FIELD("connectionId", context->connection_id);
+
+#undef SL_APPEND_CONTEXT_FIELD
+
+    if (opened) {
+        return sl_string_builder_append_char(builder, '}');
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_diag_report_append_hints(SlStringBuilder* builder, const SlDiag* diag)
+{
+    SlStatus status;
+
+    if (diag->hint_count == 0U) {
+        return sl_status_ok();
+    }
+    status = sl_string_builder_append_cstr(builder, ",\"hints\":[");
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    for (size_t index = 0U; index < diag->hint_count; index += 1U) {
+        if (index != 0U) {
+            status = sl_string_builder_append_char(builder, ',');
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+        }
+        status = sl_diag_builder_append_json_escaped(builder, diag->hints[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    return sl_string_builder_append_char(builder, ']');
+}
+
+SlStatus sl_diag_render_report_json(SlArena* arena, const SlDiag* diag,
+                                    const SlDiagReportContext* context, SlStr* out)
+{
+    SlStringBuilder builder = {0};
+    SlDiagMetadata metadata = {0};
+    SlStr rendered_message = {0};
+    SlStr rendered_cause = {0};
+    SlStatus status;
+
+    if (arena == NULL || diag == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_diag_validate_render_input(diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    metadata = sl_diag_metadata_for_code(diag->code);
+    rendered_message = sl_diag_redacted();
+    status = sl_diag_redact_secrets(arena, diag->message, &rendered_message);
+    if (!sl_status_is_ok(status)) {
+        rendered_message = sl_diag_redacted();
+    }
+    status = sl_status_ok();
+    if (context != NULL && !sl_str_is_empty(context->cause_message)) {
+        rendered_cause = sl_diag_redacted();
+        status = sl_diag_redact_secrets(arena, context->cause_message, &rendered_cause);
+        if (!sl_status_is_ok(status)) {
+            rendered_cause = sl_diag_redacted();
+        }
+        status = sl_status_ok();
+    }
+
+    status = sl_string_builder_init_arena(&builder, arena, 1024U, 65536U);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status =
+        sl_string_builder_append_cstr(&builder, "{\"schemaVersion\":1,\"kind\":\"diagnostic\"");
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_report_append_optional_string(
+            &builder, "timestampUtc", context != NULL ? context->timestamp_utc : sl_str_empty());
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, ",\"code\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_builder_append_json_escaped(&builder, sl_diag_code_name(diag->code));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, ",\"severity\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status =
+            sl_diag_builder_append_json_escaped(&builder, sl_diag_severity_name(diag->severity));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, ",\"subsystem\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_builder_append_json_escaped(&builder,
+                                                     sl_diag_subsystem_name(metadata.subsystem));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, ",\"phase\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_builder_append_json_escaped(&builder, sl_diag_phase_name(metadata.phase));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, ",\"status\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_builder_append_json_escaped(&builder,
+                                                     sl_diag_status_code_name(metadata.status));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, ",\"message\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_builder_append_json_escaped(&builder, rendered_message);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, ",\"safeToExpose\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status =
+            sl_string_builder_append_cstr(&builder, metadata.safe_to_expose ? "true" : "false");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, ",\"redaction\":{\"policy\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_builder_append_json_escaped(
+            &builder, sl_diag_redaction_policy_name(metadata.redaction_policy));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, ",\"applied\":true}");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_report_append_optional_string(&builder, "runtimeVersion",
+                                                       context != NULL ? context->runtime_version
+                                                                       : sl_str_empty());
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_report_append_optional_string(
+            &builder, "build", context != NULL ? context->build : sl_str_empty());
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_report_append_hints(&builder, diag);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_diag_report_append_context(&builder, context);
+    }
+    if (context != NULL &&
+        (!sl_str_is_empty(context->cause_code) || !sl_str_is_empty(context->cause_message)))
+    {
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_cstr(&builder, ",\"cause\":{");
+        }
+        if (sl_status_is_ok(status) && !sl_str_is_empty(context->cause_code)) {
+            status = sl_string_builder_append_cstr(&builder, "\"code\":");
+            if (sl_status_is_ok(status)) {
+                status = sl_diag_builder_append_json_escaped(&builder, context->cause_code);
+            }
+            if (sl_status_is_ok(status) && !sl_str_is_empty(context->cause_message)) {
+                status = sl_string_builder_append_char(&builder, ',');
+            }
+        }
+        if (sl_status_is_ok(status) && !sl_str_is_empty(context->cause_message)) {
+            status = sl_string_builder_append_cstr(&builder, "\"message\":");
+            if (sl_status_is_ok(status)) {
+                status = sl_diag_builder_append_json_escaped(&builder, rendered_cause);
+            }
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_char(&builder, '}');
+        }
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, "}\n");
+    }
     if (!sl_status_is_ok(status)) {
         return status;
     }

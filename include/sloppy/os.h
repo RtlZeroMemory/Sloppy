@@ -57,6 +57,22 @@ typedef struct SlOsEnvironmentList
     size_t count;
 } SlOsEnvironmentList;
 
+typedef struct SlOsProcessArg
+{
+    SlOwnedStr value;
+} SlOsProcessArg;
+
+typedef struct SlOsProcessInfo
+{
+    uint64_t pid;
+    uint64_t parent_pid;
+    SlOwnedStr executable_path;
+    SlOwnedStr current_working_directory;
+    SlOsProcessArg* args;
+    size_t arg_count;
+    bool args_available;
+} SlOsProcessInfo;
+
 typedef enum SlOsProcessCaptureMode
 {
     SL_OS_PROCESS_CAPTURE_NONE = 0,
@@ -145,6 +161,8 @@ SlStatus sl_os_environment_has(const SlOsPolicy* policy, SlStr key, bool* out_fo
                                SlDiag* out_diag);
 SlStatus sl_os_environment_list(SlArena* arena, const SlOsPolicy* policy, SlStr prefix,
                                 SlOsEnvironmentList* out, SlDiag* out_diag);
+SlStatus sl_os_process_info(SlArena* arena, const SlOsPolicy* policy, SlOsProcessInfo* out,
+                            SlDiag* out_diag);
 SlStatus sl_os_process_run(SlArena* arena, const SlOsPolicy* policy, SlStr command,
                            const SlStr* args, size_t arg_count,
                            const SlOsProcessRunOptions* options, SlOsProcessRunResult* out,

@@ -1713,6 +1713,7 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
                                  "  const digest = hex(c.hash('sha256', enc('abc')));"
                                  "  const key = new Uint8Array(20); key.fill(0x0b);"
                                  "  const sig = c.hmac('sha256', key, enc('Hi There'));"
+                                 "  const sig512 = c.hmac('sha512', key, enc('Hi There'));"
                                  "  const uuid = c.randomUuid();"
                                  "  const code = c.randomNumericCode(6);"
                                  "  const randomHexLength = c.randomHex(4).length;"
@@ -1739,6 +1740,7 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
                                  "  })();"
                                  "  const equal = c.constantTimeEquals(sig, sig);"
                                  "  return digest + ':' + hex(sig).slice(0, 8) + ':' + "
+                                 "hex(sig512).slice(0, 8) + ':' + "
                                  "uuid[14] + ':' + code.length + ':' + randomHexLength + ':' + "
                                  "emptyRandomText.length + ':' + passwordHash.startsWith("
                                  "'$argon2id$') + ':' + passwordOk + ':' + passwordRehash + ':' + "
@@ -1765,7 +1767,7 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
         !sl_str_equal(result.text, sl_str_from_cstr("ba7816bf8f01cfea414140de5dae2223"
                                                     "b00361a396177a9cb410ff61f20015ad:"
-                                                    "b0344c61:4:6:8:0:true:true:true:true:"
+                                                    "b0344c61:87aa7cde:4:6:8:0:true:true:true:true:"
                                                     "26c7827d889f6da3:true:true:true")))
     {
         sl_engine_destroy(engine);
@@ -2670,24 +2672,32 @@ static int test_os_intrinsic_system_and_environment(void)
         return 446;
     }
 
-    if (expect_status(sl_engine_eval_source(
-                          engine, sl_str_from_cstr("v8-os-active.js"),
-                          sl_str_from_cstr("globalThis.sloppy_os_active = function () {"
-                                           "  const os = globalThis.__sloppy.os;"
-                                           "  if (!os || typeof os.systemInfo !== 'function') {"
-                                           "    return 'os-missing';"
-                                           "  }"
-                                           "  const info = os.systemInfo();"
-                                           "  const env = os.environmentGet('SLOPPY_OS_V8_TEST');"
-                                           "  const has = os.environmentHas('SLOPPY_OS_V8_TEST');"
-                                           "  const listed = os.environmentList('SLOPPY_OS_V8_')"
-                                           "    .includes('SLOPPY_OS_V8_TEST');"
-                                           "  return info.platform + ':' + info.arch + ':' +"
-                                           "    (info.cpuCount > 0) + ':' + env + ':' + has + ':' +"
-                                           "    listed;"
-                                           "};"),
-                          &diag),
-                      SL_STATUS_OK) != 0)
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-os-active.js"),
+                sl_str_from_cstr("globalThis.sloppy_os_active = function () {"
+                                 "  const os = globalThis.__sloppy.os;"
+                                 "  if (!os || typeof os.systemInfo !== 'function') {"
+                                 "    return 'os-missing';"
+                                 "  }"
+                                 "  if (typeof os.processInfo !== 'function') {"
+                                 "    return 'process-info-missing';"
+                                 "  }"
+                                 "  const info = os.systemInfo();"
+                                 "  const process = os.processInfo();"
+                                 "  const env = os.environmentGet('SLOPPY_OS_V8_TEST');"
+                                 "  const has = os.environmentHas('SLOPPY_OS_V8_TEST');"
+                                 "  const listed = os.environmentList('SLOPPY_OS_V8_')"
+                                 "    .includes('SLOPPY_OS_V8_TEST');"
+                                 "  return info.platform + ':' + info.arch + ':' +"
+                                 "    (info.cpuCount > 0) + ':' + env + ':' + has + ':' +"
+                                 "    listed + ':' + (process.pid > 0) + ':' +"
+                                 "    (typeof process.cwd === 'string') + ':' +"
+                                 "    (typeof process.argsAvailable === 'boolean') + ':' +"
+                                 "    (!process.argsAvailable || Array.isArray(process.args));"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         return 447;
@@ -2703,10 +2713,80 @@ static int test_os_intrinsic_system_and_environment(void)
     }
 
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
-        expect_str_contains(result.text, sl_str_from_cstr(":true:v8-env-ok:true:true")) != 0)
+        expect_str_contains(result.text,
+                            sl_str_from_cstr(":true:v8-env-ok:true:true:true:true:true:true")) != 0)
     {
         sl_engine_destroy(engine);
         return 449;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_os_intrinsic_process_info_respects_policy(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    unsigned char feature_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlArena feature_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlanRequiredFeature required = {.id = sl_str_from_cstr("stdlib.os")};
+    SlPlan plan = {.required_features = &required, .required_feature_count = 1U};
+    SlRuntimeFeatureSet features = {0};
+    SlOsPolicy policy = sl_os_strict_policy(NULL, 0U, false, sl_str_empty());
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    options.os_policy = &policy;
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        init_arena(&feature_arena, feature_storage, sizeof(feature_storage)) != 0 ||
+        attach_runtime_features(&options, &plan, &feature_arena, &features) != 0)
+    {
+        return 450;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 451;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-os-process-info-denied.js"),
+                          sl_str_from_cstr("globalThis.sloppy_os_process_info_denied = function "
+                                           "() {"
+                                           "  try { globalThis.__sloppy.os.processInfo(); }"
+                                           "  catch (error) {"
+                                           "    return String(error.message).includes("
+                                           "'SLOPPY_E_OS_FEATURE_UNAVAILABLE')"
+                                           "      ? 'process-info-denied-ok' : 'wrong-error';"
+                                           "  }"
+                                           "  return 'process-info-unexpectedly-allowed';"
+                                           "};"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 452;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_os_process_info_denied"),
+                                               &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 453;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        expect_str_contains(result.text, sl_str_from_cstr("process-info-denied-ok")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 454;
     }
 
     sl_engine_destroy(engine);
@@ -2983,7 +3063,7 @@ static int test_promise_rejection_returns_diagnostic(void)
         return 68;
     }
 
-    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_PROMISE_REJECTION ||
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_V8_UNHANDLED_REJECTION ||
         expect_str_contains(diag.message, sl_str_from_cstr("async boom")) != 0)
     {
         sl_engine_destroy(engine);
@@ -2992,7 +3072,7 @@ static int test_promise_rejection_returns_diagnostic(void)
 
     if (expect_status(sl_diag_render_json(&json_arena, &diag, &json), SL_STATUS_OK) != 0 ||
         !sl_str_equal(json, sl_str_from_cstr(
-                                "{\"code\":\"SLOPPY_E_ENGINE_PROMISE_REJECTION\","
+                                "{\"code\":\"SLOPPY_E_V8_UNHANDLED_REJECTION\","
                                 "\"severity\":\"error\","
                                 "\"message\":\"JavaScript handler Promise rejected: Error: async "
                                 "boom\","
@@ -5712,7 +5792,7 @@ static int test_request_scope_cleanup_runs_for_async_outcomes(void)
 
     if (run_scope_cleanup_case(engine, &result_arena, sl_str_from_cstr("sloppy_scope_reject"),
                                &context, SL_STATUS_INVALID_STATE,
-                               SL_DIAG_ENGINE_PROMISE_REJECTION) != 0)
+                               SL_DIAG_V8_UNHANDLED_REJECTION) != 0)
     {
         sl_engine_destroy(engine);
         return 98;
@@ -6695,7 +6775,7 @@ static int test_sqlite_intrinsic_denied_capability_fails_before_read(void)
         return 184;
     }
 
-    if (diag.code != SL_DIAG_ENGINE_PROMISE_REJECTION ||
+    if (diag.code != SL_DIAG_V8_UNHANDLED_REJECTION ||
         expect_str_contains(diag.message,
                             sl_str_from_cstr("capability access denied: insufficient handle "
                                              "access")) != 0 ||
@@ -6949,7 +7029,7 @@ static int test_sqlite_intrinsic_explicit_write_capability_opens_write_only_hand
         return 204;
     }
 
-    if (diag.code != SL_DIAG_ENGINE_PROMISE_REJECTION ||
+    if (diag.code != SL_DIAG_V8_UNHANDLED_REJECTION ||
         expect_str_contains(diag.message, sl_str_from_cstr("insufficient handle access")) != 0 ||
         expect_str_contains(diag.message, sl_str_from_cstr("actual access: write")) != 0 ||
         expect_str_contains(diag.message, sl_str_from_cstr("operation: read")) != 0)
@@ -7501,6 +7581,11 @@ int main(int argc, char** argv)
     }
 
     result = test_os_intrinsic_system_and_environment();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_os_intrinsic_process_info_respects_policy();
     if (result != 0) {
         return result;
     }

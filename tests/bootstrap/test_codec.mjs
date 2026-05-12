@@ -26,6 +26,14 @@ function assertCodecErrorMessage(fn, code, messagePattern) {
     });
 }
 
+async function assertRejectsCodecError(fn, code) {
+    await assert.rejects(fn, (error) => {
+        assert.equal(error.code, code);
+        assert.match(error.message, new RegExp(code));
+        return true;
+    });
+}
+
 const base64Vectors = [
     ["", ""],
     ["f", "Zg=="],
@@ -248,7 +256,11 @@ try {
             },
             gunzip(bytes, maxOutputBytes) {
                 assert(maxOutputBytes >= 0);
-                assertBytes(bytes.slice(0, fakeGzipPrefix.length), fakeGzipPrefix);
+                try {
+                    assertBytes(bytes.slice(0, fakeGzipPrefix.length), fakeGzipPrefix);
+                } catch (_error) {
+                    throw new Error("SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT: fake corrupt gzip input");
+                }
                 if (bytes.length - fakeGzipPrefix.length > maxOutputBytes) {
                     throw new Error("SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED: fake output exceeded limit");
                 }
@@ -260,7 +272,13 @@ try {
     const compressed = await Compression.gzip(arbitraryBytes, { level: 9 });
     assertBytes(compressed.slice(0, 4), fakeGzipPrefix);
     assertBytes(await Compression.gunzip(compressed), arbitraryBytes);
-    await assert.rejects(() => Compression.gunzip(compressed, { maxOutputBytes: 1 }), /SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED/);
+    await assertRejectsCodecError(() => Compression.gunzip(compressed, { maxOutputBytes: 1 }), "SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED");
+    await assert.rejects(() => Compression.gunzip(new Uint8Array([1, 2, 3])), (error) => {
+        assert.equal(error.code, "SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT");
+        assert.match(error.message, /Compressed stream is corrupt\./);
+        assert.equal(error.cause?.message, "SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT: fake corrupt gzip input");
+        return true;
+    });
     await assert.rejects(() => Compression.gzip(new Uint8Array(2 ** 20 + 1)), TypeError);
     await assert.rejects(() => Compression.gzip(arbitraryBytes, { level: 10 }), TypeError);
     await assert.rejects(() => Compression.gunzip(compressed, { maxOutputBytes: 2 ** 40 }), TypeError);
@@ -278,6 +296,19 @@ try {
     await assert.rejects(
         async () => collectAsyncBytes(Compression.gunzipStream([streamingCompressed], { maxOutputBytes: 1 })),
         /SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED/,
+    );
+    const userSourceError = new Error("SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT: user source failure");
+    await assert.rejects(
+        async () => collectAsyncBytes(Compression.gzipStream({
+            [Symbol.iterator]() {
+                return {
+                    next() {
+                        throw userSourceError;
+                    },
+                };
+            },
+        })),
+        (error) => error === userSourceError,
     );
     await assert.rejects(
         async () => collectAsyncBytes(Compression.gzipStream([new Uint8Array([1]), new Uint8Array([2])], { maxInputBytes: 1 })),

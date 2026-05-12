@@ -232,6 +232,14 @@ function createForgedLoweredQuery() {
     assertThrowsMessage(() => data.sqlite.open(":memory:"), /options must be a plain object/);
     assertThrowsMessage(() => data.sqlite.open({}), /database must be a non-empty string/);
     assertThrowsMessage(() => data.sqlite.open({
+        database: "bad\0db",
+        capability: "data.main",
+    }), /without NUL/);
+    assertThrowsMessage(() => data.sqlite.open({
+        database: ":memory:",
+        capability: "data\0main",
+    }), /without NUL/);
+    assertThrowsMessage(() => data.sqlite.open({
         database: ":memory:",
         capability: "data.main",
         timeoutMs: 100,
@@ -257,6 +265,7 @@ function createForgedLoweredQuery() {
         path: ":memory:",
         capability: "data.main",
     }), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE[\s\S]*Feature:[\s\S]*provider\.sqlite[\s\S]*Operation:[\s\S]*open/);
+    assertThrowsMessage(() => data.sqlite("bad\0main"), /without NUL/);
     assertThrowsMessage(() => data.sqlite("main"), /SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE[\s\S]*Feature:[\s\S]*provider\.sqlite[\s\S]*Operation:[\s\S]*open/);
 }
 
@@ -572,6 +581,13 @@ function createForgedLoweredQuery() {
     );
     assertThrowsMessage(() => data.postgres.open({}), /connectionString must be a non-empty string/);
     assertThrowsMessage(() => data.postgres.open({
+        connectionString: "postgres://localhost/sloppy\0hidden",
+    }), /without NUL/);
+    assertThrowsMessage(() => data.postgres.open({
+        connectionString: "postgres://localhost/sloppy",
+        capability: "data\0postgres",
+    }), /without NUL/);
+    assertThrowsMessage(() => data.postgres.open({
         connectionString: "postgres://localhost/sloppy",
         access: "admin",
     }), /access must be read or readwrite/);
@@ -641,6 +657,13 @@ function createForgedLoweredQuery() {
     assert.equal(doctor.driver, "unchecked");
     assert.equal(doctor.connectionString.includes("secret"), false);
     assertThrowsMessage(() => data.sqlserver.open({}), /connectionString must be a non-empty string/);
+    assertThrowsMessage(() => data.sqlserver.open({
+        connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost\0hidden",
+    }), /without NUL/);
+    assertThrowsMessage(() => data.sqlserver.open({
+        connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost",
+        capability: "data\0sqlserver",
+    }), /without NUL/);
     assertThrowsMessage(() => data.sqlserver.open({
         connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost",
         access: "admin",

@@ -925,8 +925,8 @@ function validateSqliteOpenOptions(options) {
     }
 
     const database = options.database ?? options.path;
-    if (typeof database !== "string" || database.length === 0) {
-        throw new TypeError("Sloppy sqlite.open database must be a non-empty string.");
+    if (typeof database !== "string" || database.length === 0 || database.includes("\0")) {
+        throw new TypeError("Sloppy sqlite.open database must be a non-empty string without NUL.");
     }
 
     if (
@@ -937,8 +937,8 @@ function validateSqliteOpenOptions(options) {
         throw new TypeError("Sloppy sqlite.open database and path must match when both are supplied.");
     }
 
-    if (typeof options.capability !== "string" || options.capability.length === 0) {
-        throw new TypeError("Sloppy sqlite.open capability must be a non-empty string.");
+    if (typeof options.capability !== "string" || options.capability.length === 0 || options.capability.includes("\0")) {
+        throw new TypeError("Sloppy sqlite.open capability must be a non-empty string without NUL.");
     }
 
     const access = options.access ?? "readwrite";
@@ -957,8 +957,8 @@ function validateSqliteOpenOptions(options) {
 }
 
 function normalizeSqliteProviderToken(name) {
-    if (typeof name !== "string" || name.length === 0) {
-        throw new TypeError("Sloppy data.sqlite provider name must be a non-empty string.");
+    if (typeof name !== "string" || name.length === 0 || name.includes("\0")) {
+        throw new TypeError("Sloppy data.sqlite provider name must be a non-empty string without NUL.");
     }
 
     return name.includes(".") ? name : `data.${name}`;
@@ -1332,8 +1332,12 @@ function validatePostgresOpenOptions(options) {
         throw new TypeError("Sloppy postgres.open options must be a plain object.");
     }
 
-    if (typeof options.connectionString !== "string" || options.connectionString.length === 0) {
-        throw new TypeError("Sloppy postgres.open connectionString must be a non-empty string.");
+    if (typeof options.connectionString !== "string" || options.connectionString.length === 0 || options.connectionString.includes("\0")) {
+        throw new TypeError("Sloppy postgres.open connectionString must be a non-empty string without NUL.");
+    }
+    const capability = options.capability ?? "data.postgres";
+    if (typeof capability !== "string" || capability.length === 0 || capability.includes("\0")) {
+        throw new TypeError("Sloppy postgres.open capability must be a non-empty string without NUL.");
     }
 
     const access = options.access ?? "readwrite";
@@ -1356,7 +1360,7 @@ function validatePostgresOpenOptions(options) {
         redactedConnectionString: redactConnectionString(options.connectionString),
         access,
         maxConnections,
-        capability: options.capability ?? "data.postgres",
+        capability,
         placeholderStyle: "postgres",
     });
 }
@@ -1395,8 +1399,12 @@ function validateSqlServerOpenOptions(options) {
         throw new TypeError("Sloppy sqlserver.open options must be a plain object.");
     }
 
-    if (typeof options.connectionString !== "string" || options.connectionString.length === 0) {
-        throw new TypeError("Sloppy sqlserver.open connectionString must be a non-empty string.");
+    if (typeof options.connectionString !== "string" || options.connectionString.length === 0 || options.connectionString.includes("\0")) {
+        throw new TypeError("Sloppy sqlserver.open connectionString must be a non-empty string without NUL.");
+    }
+    const capability = options.capability ?? "data.sqlserver";
+    if (typeof capability !== "string" || capability.length === 0 || capability.includes("\0")) {
+        throw new TypeError("Sloppy sqlserver.open capability must be a non-empty string without NUL.");
     }
 
     const access = options.access ?? "readwrite";
@@ -1418,7 +1426,7 @@ function validateSqlServerOpenOptions(options) {
         connectionString: options.connectionString,
         redactedConnectionString: redactOdbcConnectionString(options.connectionString),
         driver: extractOdbcDriverName(options.connectionString),
-        capability: options.capability ?? "data.sqlserver",
+        capability,
         access,
         maxConnections,
         placeholderStyle: "question",
@@ -1512,6 +1520,7 @@ function openSqlite(options) {
 }
 
 function openSqliteProvider(name) {
+    const provider = normalizeSqliteProviderToken(name);
     const nativeBridge = sqliteNativeBridge();
 
     if (nativeBridge === null) {
@@ -1519,7 +1528,7 @@ function openSqliteProvider(name) {
     }
 
     return createSqliteConnection(nativeBridge, nativeBridge.open({
-        provider: normalizeSqliteProviderToken(name),
+        provider,
     }));
 }
 

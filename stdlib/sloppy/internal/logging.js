@@ -77,8 +77,8 @@ function copyLogFields(fields, redactionKeys) {
 
     const copied = {};
     for (const [key, value] of entries) {
-        if (key.length === 0) {
-            throw new TypeError("Sloppy log field keys must be non-empty strings.");
+        if (key.length === 0 || key.includes("\0")) {
+            throw new TypeError("Sloppy log field keys must be non-empty strings without NUL.");
         }
         if (isSensitiveKey(key, redactionKeys)) {
             copied[key] = "[REDACTED]";
@@ -137,8 +137,8 @@ function createLoggingBuilder(guard) {
 
         addRedactionKey(key) {
             guard.assertMutable();
-            if (typeof key !== "string" || key.length === 0) {
-                throw new TypeError("Sloppy log redaction key must be a non-empty string.");
+            if (typeof key !== "string" || key.length === 0 || key.includes("\0")) {
+                throw new TypeError("Sloppy log redaction key must be a non-empty string without NUL.");
             }
             redactionKeys.add(normalizeRedactionKey(key));
             return logging;
@@ -189,8 +189,8 @@ function createLoggingBuilder(guard) {
                 if (!isPlainObject(options)) {
                     throw new TypeError("Sloppy file log sink options must be a plain object.");
                 }
-                if (typeof options.path !== "string" || options.path.length === 0) {
-                    throw new TypeError("Sloppy file log sink path must be a non-empty string.");
+                if (typeof options.path !== "string" || options.path.length === 0 || options.path.includes("\0")) {
+                    throw new TypeError("Sloppy file log sink path must be a non-empty string without NUL.");
                 }
                 const format = options.format ?? "jsonl";
                 validateSinkFormat(format, ["jsonl"], "file");
@@ -249,8 +249,8 @@ function createLogger(snapshot) {
         return Object.freeze({
             isEnabled,
             forCategory(nextCategory) {
-                if (typeof nextCategory !== "string" || nextCategory.length === 0) {
-                    throw new TypeError("Sloppy log category must be a non-empty string.");
+                if (typeof nextCategory !== "string" || nextCategory.length === 0 || nextCategory.includes("\0")) {
+                    throw new TypeError("Sloppy log category must be a non-empty string without NUL.");
                 }
                 return createCategoryLogger(nextCategory);
             },

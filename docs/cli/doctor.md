@@ -4,7 +4,7 @@ Check the local runtime, packaged assets, optional provider dependencies, and
 optionally a compiled Plan.
 
 ```sh
-sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json] [--dispatch]
+sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json] [--dispatch] [--report]
 ```
 
 ## What it checks
@@ -66,6 +66,10 @@ Doctor also reports route JSON readiness when dispatch metadata is available:
 - per-route request and response fallback reasons, including route identity
 
 These warnings keep generic paths visible instead of silent.
+
+With `--report`, doctor writes `.sloppy/reports/doctor-report.json` and
+breadcrumb JSONL. The report is local evidence for the command invocation and
+is not uploaded.
 
 ## Exit codes
 

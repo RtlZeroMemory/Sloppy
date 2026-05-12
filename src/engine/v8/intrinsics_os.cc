@@ -76,6 +76,8 @@ struct SlV8OsRequest
     SlOsProcessPipeMode stdin_mode = SL_OS_PROCESS_PIPE_IGNORE;
     SlOsProcessPipeMode stdout_mode = SL_OS_PROCESS_PIPE_IGNORE;
     SlOsProcessPipeMode stderr_mode = SL_OS_PROCESS_PIPE_IGNORE;
+    SlOsPolicy fallback_policy = {};
+    const SlOsPolicy* os_policy = nullptr;
     std::shared_ptr<OsV8Process> process;
     SlResourceId resource_id = {};
     size_t max_bytes = 0U;
@@ -104,6 +106,29 @@ SlStatus os_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::St
     return sl_v8_string_from_native_view(backend, str, out);
 }
 
+const SlOsPolicy* os_v8_active_policy(SlV8Engine* backend, SlOsPolicy* fallback)
+{
+    if (backend != nullptr && backend->has_os_policy) {
+        return &backend->os_policy;
+    }
+    if (fallback == nullptr) {
+        return nullptr;
+    }
+    *fallback = sl_os_development_policy();
+    return fallback;
+}
+
+void os_v8_snapshot_active_policy(SlV8Engine* backend, SlV8OsRequest* request)
+{
+    if (request == nullptr) {
+        return;
+    }
+    SlOsPolicy fallback = {};
+    const SlOsPolicy* active = os_v8_active_policy(backend, &fallback);
+    request->fallback_policy = active == nullptr ? sl_os_development_policy() : *active;
+    request->os_policy = &request->fallback_policy;
+}
+
 SlStatus os_v8_key(v8::Isolate* isolate, const char* name, v8::Local<v8::String>* out)
 {
     SlStatus status = os_v8_to_local_string(isolate, sl_str_from_cstr(name), out);
@@ -129,6 +154,22 @@ bool os_v8_set_uint32(v8::Isolate* isolate, v8::Local<v8::Context> context,
     v8::Local<v8::String> key;
     return sl_status_is_ok(os_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) &&
            object->Set(context, key, v8::Integer::NewFromUnsigned(isolate, value)).FromMaybe(false);
+}
+
+bool os_v8_set_number(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                      v8::Local<v8::Object> object, const char* name, double value)
+{
+    v8::Local<v8::String> key;
+    return sl_status_is_ok(os_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) &&
+           object->Set(context, key, v8::Number::New(isolate, value)).FromMaybe(false);
+}
+
+bool os_v8_set_bool(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                    v8::Local<v8::Object> object, const char* name, bool value)
+{
+    v8::Local<v8::String> key;
+    return sl_status_is_ok(os_v8_to_local_string(isolate, sl_str_from_cstr(name), &key)) &&
+           object->Set(context, key, v8::Boolean::New(isolate, value)).FromMaybe(false);
 }
 
 bool os_v8_resource_private(v8::Isolate* isolate, const char* name, v8::Local<v8::Private>* out)
@@ -853,13 +894,14 @@ bool os_v8_post_completion(const std::shared_ptr<SlV8OsRequest>& request)
 
 void os_v8_execute_request(const std::shared_ptr<SlV8OsRequest>& request)
 {
-    SlOsPolicy policy = sl_os_development_policy();
     std::vector<SlStr> native_args;
     std::vector<SlOsEnvironmentOverride> native_env;
+    const SlOsPolicy* policy;
 
     if (request == nullptr || request->cancelled.load()) {
         return;
     }
+    policy = request->os_policy == nullptr ? &request->fallback_policy : request->os_policy;
 
     if (request->operation == OsV8Operation::Run || request->operation == OsV8Operation::Start) {
         native_args.reserve(request->args.size());
@@ -886,7 +928,7 @@ void os_v8_execute_request(const std::shared_ptr<SlV8OsRequest>& request)
             .max_stderr_bytes = request->max_stderr_bytes,
             .timeout_ms = request->timeout_ms};
         request->status =
-            sl_os_process_run(&request->arena, &policy,
+            sl_os_process_run(&request->arena, policy,
                               sl_str_from_parts(request->command.data(), request->command.size()),
                               native_args.empty() ? nullptr : native_args.data(),
                               native_args.size(), &options, &request->run_result, &request->diag);
@@ -911,7 +953,7 @@ void os_v8_execute_request(const std::shared_ptr<SlV8OsRequest>& request)
         }
         std::lock_guard<std::mutex> lock(request->process->mutex);
         request->status = sl_os_process_start(
-            &request->process->arena, &policy,
+            &request->process->arena, policy,
             sl_str_from_parts(request->command.data(), request->command.size()),
             native_args.empty() ? nullptr : native_args.data(), native_args.size(), &options,
             &request->process->handle, &request->diag);
@@ -1136,6 +1178,7 @@ void os_v8_process_run_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
     request->backend = backend;
+    os_v8_snapshot_active_policy(backend, request.get());
     request->operation = OsV8Operation::Run;
     request->resolver.Reset(isolate, resolver);
     os_v8_submit_request(isolate, context, resolver, request);
@@ -1174,6 +1217,7 @@ void os_v8_process_start_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
         return;
     }
     request->backend = backend;
+    os_v8_snapshot_active_policy(backend, request.get());
     request->operation = OsV8Operation::Start;
     request->resolver.Reset(isolate, resolver);
     os_v8_submit_request(isolate, context, resolver, request);
@@ -1348,12 +1392,14 @@ void os_v8_system_info_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     unsigned char storage[4096];
     SlArena arena = {};
     SlOsSystemInfo info = {};
-    SlOsPolicy policy = sl_os_development_policy();
+    SlOsPolicy policy = {};
+    const SlOsPolicy* active_policy =
+        os_v8_active_policy(static_cast<SlV8Engine*>(isolate->GetData(0)), &policy);
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
     v8::Local<v8::Object> result;
 
     if (!sl_status_is_ok(status) ||
-        !sl_status_is_ok(sl_os_system_info(&arena, &policy, &info, nullptr)))
+        !sl_status_is_ok(sl_os_system_info(&arena, active_policy, &info, nullptr)))
     {
         os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: System metadata unavailable");
         return;
@@ -1380,7 +1426,9 @@ void os_v8_env_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     SlOwnedStr key = {};
     SlOwnedStr value = {};
     bool found = false;
-    SlOsPolicy policy = sl_os_development_policy();
+    SlOsPolicy policy = {};
+    const SlOsPolicy* active_policy =
+        os_v8_active_policy(static_cast<SlV8Engine*>(isolate->GetData(0)), &policy);
 
     if (!sl_status_is_ok(sl_arena_init(&arena, storage, sizeof(storage))) || args.Length() != 1 ||
         !os_v8_value_to_string(isolate, args[0], &arena, &key))
@@ -1388,8 +1436,8 @@ void os_v8_env_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         os_v8_throw(isolate, "SLOPPY_E_INVALID_ARGUMENT: Environment.get requires a key string");
         return;
     }
-    if (!sl_status_is_ok(sl_os_environment_get(&arena, &policy, sl_owned_str_as_view(key), &value,
-                                               &found, nullptr)))
+    if (!sl_status_is_ok(sl_os_environment_get(&arena, active_policy, sl_owned_str_as_view(key),
+                                               &value, &found, nullptr)))
     {
         os_v8_throw(isolate, "SLOPPY_E_OS_ENV_ACCESS_DENIED: environment variable access denied");
         return;
@@ -1413,7 +1461,9 @@ void os_v8_env_has_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     SlArena arena = {};
     SlOwnedStr key = {};
     bool found = false;
-    SlOsPolicy policy = sl_os_development_policy();
+    SlOsPolicy policy = {};
+    const SlOsPolicy* active_policy =
+        os_v8_active_policy(static_cast<SlV8Engine*>(isolate->GetData(0)), &policy);
 
     if (!sl_status_is_ok(sl_arena_init(&arena, storage, sizeof(storage))) || args.Length() != 1 ||
         !os_v8_value_to_string(isolate, args[0], &arena, &key))
@@ -1422,7 +1472,7 @@ void os_v8_env_has_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
     if (!sl_status_is_ok(
-            sl_os_environment_has(&policy, sl_owned_str_as_view(key), &found, nullptr)))
+            sl_os_environment_has(active_policy, sl_owned_str_as_view(key), &found, nullptr)))
     {
         os_v8_throw(isolate, "SLOPPY_E_OS_ENV_ACCESS_DENIED: environment variable access denied");
         return;
@@ -1438,7 +1488,9 @@ void os_v8_env_list_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     SlArena arena = {};
     SlOwnedStr prefix = {};
     SlOsEnvironmentList list = {};
-    SlOsPolicy policy = sl_os_development_policy();
+    SlOsPolicy policy = {};
+    const SlOsPolicy* active_policy =
+        os_v8_active_policy(static_cast<SlV8Engine*>(isolate->GetData(0)), &policy);
 
     if (!sl_status_is_ok(sl_arena_init(&arena, storage, sizeof(storage)))) {
         os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: environment list unavailable");
@@ -1450,8 +1502,8 @@ void os_v8_env_list_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         os_v8_throw(isolate, "SLOPPY_E_INVALID_ARGUMENT: Environment.list prefix must be a string");
         return;
     }
-    if (!sl_status_is_ok(
-            sl_os_environment_list(&arena, &policy, sl_owned_str_as_view(prefix), &list, nullptr)))
+    if (!sl_status_is_ok(sl_os_environment_list(&arena, active_policy, sl_owned_str_as_view(prefix),
+                                                &list, nullptr)))
     {
         os_v8_throw(isolate, "SLOPPY_E_OS_ENV_ACCESS_DENIED: environment list denied");
         return;
@@ -1466,6 +1518,63 @@ void os_v8_env_list_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
             os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: environment list unavailable");
             return;
         }
+    }
+    args.GetReturnValue().Set(result);
+}
+
+void os_v8_process_info_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    std::vector<unsigned char> storage;
+    SlArena arena = {};
+    SlOsProcessInfo info = {};
+    SlOsPolicy policy = {};
+    const SlOsPolicy* active_policy =
+        os_v8_active_policy(static_cast<SlV8Engine*>(isolate->GetData(0)), &policy);
+    v8::Local<v8::Object> result;
+    v8::Local<v8::Array> argv;
+    v8::Local<v8::String> key;
+
+    try {
+        storage.resize(kOsV8DefaultArenaBytes);
+    } catch (...) {
+        os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: process info unavailable");
+        return;
+    }
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, storage.data(), storage.size())) ||
+        !sl_status_is_ok(sl_os_process_info(&arena, active_policy, &info, nullptr)))
+    {
+        os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: process info unavailable");
+        return;
+    }
+    result = v8::Object::New(isolate);
+    argv = v8::Array::New(isolate, static_cast<int>(info.arg_count));
+    for (size_t index = 0U; index < info.arg_count; index += 1U) {
+        v8::Local<v8::String> item;
+        if (!sl_status_is_ok(os_v8_to_local_string(
+                isolate, sl_owned_str_as_view(info.args[index].value), &item)) ||
+            !argv->Set(context, static_cast<uint32_t>(index), item).FromMaybe(false))
+        {
+            os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: process argv unavailable");
+            return;
+        }
+    }
+    if (!os_v8_set_number(isolate, context, result, "pid", static_cast<double>(info.pid)) ||
+        !os_v8_set_number(isolate, context, result, "parentPid",
+                          static_cast<double>(info.parent_pid)) ||
+        !os_v8_set_string(isolate, context, result, "executablePath", info.executable_path) ||
+        !os_v8_set_string(isolate, context, result, "cwd", info.current_working_directory) ||
+        !os_v8_set_bool(isolate, context, result, "argsAvailable", info.args_available) ||
+        !sl_status_is_ok(os_v8_key(isolate, "args", &key)) ||
+        !result->Set(context, key, argv).FromMaybe(false) ||
+        !argv->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false) ||
+        !result->SetIntegrityLevel(context, v8::IntegrityLevel::kFrozen).FromMaybe(false))
+    {
+        os_v8_throw(isolate, "SLOPPY_E_OS_FEATURE_UNAVAILABLE: process info unavailable");
+        return;
     }
     args.GetReturnValue().Set(result);
 }
@@ -1492,6 +1601,7 @@ void sl_v8_append_os_external_references(std::vector<intptr_t>* refs)
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_env_get_callback));
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_env_has_callback));
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_env_list_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_info_callback));
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_run_callback));
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_start_callback));
     refs->push_back(reinterpret_cast<intptr_t>(os_v8_process_wait_callback));
@@ -1530,6 +1640,7 @@ bool sl_v8_install_os_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> con
         !os_v8_set_function(isolate, context, os, "environmentGet", os_v8_env_get_callback) ||
         !os_v8_set_function(isolate, context, os, "environmentHas", os_v8_env_has_callback) ||
         !os_v8_set_function(isolate, context, os, "environmentList", os_v8_env_list_callback) ||
+        !os_v8_set_function(isolate, context, os, "processInfo", os_v8_process_info_callback) ||
         !os_v8_set_function(isolate, context, os, "processRun", os_v8_process_run_callback) ||
         !os_v8_set_function(isolate, context, os, "processStart", os_v8_process_start_callback) ||
         !os_v8_set_function(isolate, context, os, "processWait", os_v8_process_wait_callback) ||

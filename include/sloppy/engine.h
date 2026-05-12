@@ -11,6 +11,7 @@
 #include "sloppy/http_context.h"
 #include "sloppy/http_response.h"
 #include "sloppy/logging.h"
+#include "sloppy/os.h"
 #include "sloppy/plan.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
@@ -71,6 +72,12 @@ typedef struct SlEngineOptions
      * source-input shortcuts that do not yet provide configured filesystem roots.
      */
     const SlFsPolicy* filesystem_policy;
+    /*
+     * Optional borrowed OS policy used by the V8 `stdlib.os` bridge. When omitted,
+     * V8 keeps the current development fallback policy for low-level smoke tests and
+     * source-input shortcuts that do not yet provide configured OS policy.
+     */
+    const SlOsPolicy* os_policy;
     /*
      * Optional borrowed runtime feature activation set produced by Plan validation. When
      * supplied, V8 installs feature-owned intrinsics only when their runtime feature is

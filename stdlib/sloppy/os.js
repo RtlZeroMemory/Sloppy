@@ -261,6 +261,43 @@ function validateWaitOptions(options) {
     return normalized;
 }
 
+function normalizeProcessInfo(value) {
+    if (value === null || typeof value !== "object") {
+        throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process info bridge returned invalid data.");
+    }
+    const invalid = () => {
+        throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process info bridge returned invalid data.");
+    };
+    const isProcessId = (pid) => Number.isInteger(pid) && pid >= 0;
+    if (
+        !isProcessId(value.pid) ||
+        !isProcessId(value.parentPid) ||
+        typeof value.executablePath !== "string" ||
+        typeof value.cwd !== "string" ||
+        typeof value.argsAvailable !== "boolean" ||
+        !Array.isArray(value.args)
+    ) {
+        invalid();
+    }
+    if (!value.argsAvailable && value.args.length !== 0) {
+        invalid();
+    }
+    const args = value.argsAvailable ? value.args.map((arg) => {
+        if (typeof arg !== "string") {
+            invalid();
+        }
+        return arg;
+    }) : [];
+    return Object.freeze({
+        pid: value.pid,
+        parentPid: value.parentPid,
+        executablePath: value.executablePath,
+        cwd: value.cwd,
+        args: Object.freeze(args),
+        argsAvailable: value.argsAvailable,
+    });
+}
+
 function callProcessBridge(handle, directName, bridgeName, args, unavailableMessage) {
     if (handle !== null && typeof handle === "object" && typeof handle[directName] === "function") {
         return handle[directName](...args);
@@ -496,6 +533,13 @@ const Environment = Object.freeze({
 });
 
 const Process = Object.freeze({
+    info() {
+        const os = bridge();
+        if (typeof os.processInfo !== "function") {
+            throw osError("SLOPPY_E_OS_FEATURE_UNAVAILABLE", "OS process info bridge is unavailable.");
+        }
+        return normalizeProcessInfo(os.processInfo());
+    },
     async run(command, args = [], options = undefined) {
         const argv = requireArgv(command, args);
         const runOptions = validateRunOptions(options);

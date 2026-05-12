@@ -44,6 +44,8 @@ set(
     src/core/plan.c
     src/core/plan_parse.c
     src/core/runtime_contract.c
+    src/core/breadcrumbs.c
+    src/core/crash_report.c
     src/core/diagnostics.c)
 
 set(SLOPPY_FFI_SOURCES src/runtime/ffi/ffi_registry.c)
@@ -85,6 +87,7 @@ if(WIN32)
     set(
         SLOPPY_PLATFORM_SYSTEM_SOURCES
         src/platform/win32/time.c
+        src/platform/win32/crash_win32.c
         src/platform/win32/fs_win32.c
         src/platform/win32/net_local_win32.c
         src/platform/win32/crypto_win32.c
@@ -94,6 +97,7 @@ else()
     set(
         SLOPPY_PLATFORM_SYSTEM_SOURCES
         src/platform/posix/time.c
+        src/platform/posix/crash_posix.c
         src/platform/posix/fs_posix.c
         src/platform/posix/net_local_posix.c
         src/platform/posix/crypto_posix.c
@@ -181,6 +185,7 @@ set(
     tests/unit/core/test_runtime_contract.c
     tests/unit/core/test_engine.c
     tests/unit/core/test_diagnostics.c
+    tests/unit/core/test_runtime_diagnostics.c
     tests/unit/data/test_data_common.c
     tests/unit/data/test_postgres.c
     tests/unit/data/test_sqlserver.c
@@ -207,7 +212,8 @@ set(
     benchmarks/bench_json_dispatch.c
     benchmarks/bench_logging.c
     benchmarks/bench_memory.c
-    benchmarks/bench_stream.c)
+    benchmarks/bench_stream.c
+    benchmarks/bench_diagnostics.c)
 
 if(CMAKE_CXX_COMPILER)
     list(

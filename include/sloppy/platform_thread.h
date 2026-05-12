@@ -40,6 +40,9 @@ SlStatus sl_platform_thread_start(SlArena* arena, SlPlatformThreadMainFn main_fn
 void sl_platform_thread_join(SlPlatformThread* thread);
 void sl_platform_sleep_ms(uint64_t milliseconds);
 
+void sl_platform_global_mutex_lock(void);
+void sl_platform_global_mutex_unlock(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -11,9 +11,9 @@
     { "id": "stdlib.os.required", "status": "ok", "message": "OS runtime feature metadata is Plan-visible" },
     { "id": "stdlib.os.capabilities", "status": "ok", "message": "OS capability metadata is visible without values or native handles" },
     { "id": "stdlib.os.environment", "status": "ok", "message": "environment access metadata omits environment values" },
-    { "id": "stdlib.os.process", "status": "ok", "message": "process metadata is explicit-argv and exposes no native handles" },
+    { "id": "stdlib.os.process", "status": "ok", "message": "process metadata includes current-process snapshots and explicit argv only" },
     { "id": "stdlib.os.shell", "status": "warn", "message": "shell capability metadata is visible but shell execution is denied" },
     { "id": "stdlib.os.signals", "status": "ok", "message": "shutdown signal metadata is visible for the current platform" },
-    { "id": "stdlib.os.redaction", "status": "ok", "message": "OS doctor metadata omits environment values, secret args, captured output, raw PIDs, and native handles" }
+    { "id": "stdlib.os.redaction", "status": "ok", "message": "OS doctor metadata omits environment values, secret args, captured output, pid-as-handle capabilities, and native handles" }
   ]
 }

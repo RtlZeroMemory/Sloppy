@@ -23,6 +23,8 @@
 #include "engine_v8_internal.h"
 #include "string_interop.h"
 
+#include "sloppy/breadcrumbs.h"
+
 #include "sloppy/data_sqlite.h"
 
 #include <libplatform/libplatform.h>
@@ -1706,6 +1708,10 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     backend->plan = options == nullptr ? nullptr : options->plan;
     backend->capabilities = options == nullptr ? nullptr : options->capabilities;
     backend->filesystem_policy = options == nullptr ? nullptr : options->filesystem_policy;
+    backend->has_os_policy = options != nullptr && options->os_policy != nullptr;
+    if (backend->has_os_policy) {
+        backend->os_policy = *options->os_policy;
+    }
     backend->logging = options == nullptr ? nullptr : options->logging;
     backend->ffi_library_overrides = options == nullptr ? nullptr : options->ffi_library_overrides;
     backend->ffi_library_override_count =
@@ -2077,8 +2083,11 @@ static SlStatus sl_v8_write_promise_rejection_diag(SlEngine* engine, v8::Isolate
         message += reason_text;
     }
 
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
+                                SL_STATUS_INVALID_STATE, 0U, 0U, 0U, 0U,
+                                sl_v8_literal("promise rejected", sizeof("promise rejected") - 1U));
     return sl_v8_write_diag_string(
-        engine->arena, out_diag, SL_DIAG_ENGINE_PROMISE_REJECTION, SL_STATUS_INVALID_STATE, message,
+        engine->arena, out_diag, SL_DIAG_V8_UNHANDLED_REJECTION, SL_STATUS_INVALID_STATE, message,
         sl_str_empty(),
         sl_v8_literal("Rejected async handlers produce a safe error response.",
                       sizeof("Rejected async handlers produce a safe error response.") - 1U));
@@ -2086,6 +2095,9 @@ static SlStatus sl_v8_write_promise_rejection_diag(SlEngine* engine, v8::Isolate
 
 static SlStatus sl_v8_write_pending_promise_diag(SlEngine* engine, SlDiag* out_diag)
 {
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
+                                SL_STATUS_DEADLINE_EXCEEDED, 0U, 0U, 0U, 0U,
+                                sl_v8_literal("pending promise", sizeof("pending promise") - 1U));
     return sl_v8_write_diag(
         engine->arena, out_diag, SL_DIAG_ENGINE_PROMISE_PENDING, SL_STATUS_DEADLINE_EXCEEDED,
         sl_v8_literal("JavaScript handler Promise did not settle during bounded microtask drain",

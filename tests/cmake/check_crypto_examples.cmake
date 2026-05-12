@@ -63,8 +63,8 @@ foreach(required_pattern IN ITEMS
         "Hash.create(\"sha256\")"
         "hasher.update(\"event:\")"
         "await hasher.digest(\"hex\")"
-        "await Hmac.sha256(signingKey, payload)"
-        "await Hmac.verifySha256(signingKey, payload, signature)"
+        "await Hmac.sha512(signingKey, payload)"
+        "await Hmac.verifySha512(signingKey, payload, signature)"
         "signingKey.dispose()")
     require_substring("${hash_source}" "${required_pattern}"
                       "examples/crypto-hash-hmac/app.js is missing expected Hash/Hmac API shape")

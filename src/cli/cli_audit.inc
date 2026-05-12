@@ -420,7 +420,7 @@ static void sl_cli_audit_os_capabilities(const SlCliOptions* options, const SlCl
     if (has_os || has_env || has_process || has_signals) {
         sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_POLICY_VISIBLE",
                           "OS capabilities are policy-visible for sloppy/os; no OS sandbox, "
-                          "environment values, native handles, or raw PIDs are exposed",
+                          "environment values, native handles, or pid-as-handle capabilities are exposed",
                           "capabilities", findings, errors);
     }
     if (has_env) {
@@ -430,7 +430,7 @@ static void sl_cli_audit_os_capabilities(const SlCliOptions* options, const SlCl
     }
     if (has_process) {
         sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_PROCESS_EXPLICIT_ARGV",
-                          "process metadata is explicit-argv and does not imply shell execution",
+                          "process metadata includes current-process snapshots and explicit argv only",
                           "capabilities", findings, errors);
     }
     if (has_shell) {

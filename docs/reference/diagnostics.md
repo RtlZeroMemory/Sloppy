@@ -12,6 +12,7 @@ A diagnostic can include:
 
 - stable code;
 - severity;
+- subsystem, phase, status, and redaction metadata in diagnostic reports;
 - primary message;
 - optional primary source span;
 - related spans;
@@ -27,6 +28,8 @@ contract.
 Implemented diagnostic coverage includes:
 
 - core diagnostic builder and renderers;
+- diagnostic report JSON for local runtime, package, doctor, and crash evidence;
+- fixed-size native breadcrumbs rendered as local JSONL when a report requests them;
 - source-frame rendering when matching source text is supplied;
 - JSON diagnostic rendering with stable field order;
 - Plan parse and validation failures;
@@ -35,7 +38,11 @@ Implemented diagnostic coverage includes:
 - HTTP parser, backend, transport, request body, response writer, and timeout diagnostics;
 - capability denial and provider metadata diagnostics;
 - V8 exception mapping and source-map primary-span remapping in V8-enabled runs;
+- V8 handler entry/exit/rejection breadcrumbs in runtime paths;
 - app-host startup, feature activation, artifact loading, and selected CLI diagnostics;
+- `sloppy run --diagnostics-json` for structured runtime diagnostics on stderr;
+- unique local crash report directories under `.sloppy/reports/crashes/<counter>-<pid>/`;
+- local `.sloppy/reports/package-diagnostic.json` and `.sloppy/reports/doctor-report.json`;
 - safe `application/problem+json` responses for Plan-backed request validation and
   `ProblemDetails.defaults()` handler failures;
 - structured app-host and native request log entries through the logging engine;
@@ -88,6 +95,6 @@ contracts, not output dumps.
 
 ## Deferred Work
 
-Deferred diagnostics work includes localization, richer structured categories and fix-it
-metadata, IDE/protocol integration, broader CLI JSON output plumbing, and more complete
-coverage for V8, live providers, package verification, stress, and benchmark cases.
+Deferred diagnostics work includes localization, fix-it metadata, IDE/protocol integration,
+production crash dump integration beyond local JSON reports, broader CLI JSON output plumbing,
+and more complete coverage for live providers, package verification, stress, and benchmark cases.

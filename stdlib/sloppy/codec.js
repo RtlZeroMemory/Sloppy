@@ -780,6 +780,35 @@ function compressionBackendUnavailable(operation) {
     );
 }
 
+const COMPRESSION_BRIDGE_ERROR_CODES = new Set([
+    "SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE",
+    "SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED",
+    "SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT",
+]);
+
+const COMPRESSION_BRIDGE_ERROR_MESSAGES = Object.freeze({
+    SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE: "Compression backend unavailable.",
+    SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED: "Decompression output limit exceeded.",
+    SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT: "Compressed stream is corrupt.",
+});
+
+function normalizeCompressionError(error) {
+    if (error instanceof CodecError) {
+        return error;
+    }
+    const message = typeof error?.message === "string" ? error.message : String(error);
+    const match = /\b(SLOPPY_E_CODEC_[A-Z_]+)\b(?::\s*)?(.*)$/u.exec(message);
+    if (match !== null && COMPRESSION_BRIDGE_ERROR_CODES.has(match[1])) {
+        const normalized = codecError(
+            match[1],
+            COMPRESSION_BRIDGE_ERROR_MESSAGES[match[1]] ?? "Compression backend failed.",
+        );
+        normalized.cause = error;
+        return normalized;
+    }
+    return error;
+}
+
 function nativeCodec(operation) {
     const bridge = globalThis.__sloppy?.codec ?? null;
     if (bridge === null) {
@@ -989,12 +1018,13 @@ function runCompression(operation, bytes, options, invoke) {
         if (bytes.byteLength > MAX_COMPRESSION_INPUT_BYTES) {
             throw new TypeError(`${operation} input exceeds the ${MAX_COMPRESSION_INPUT_BYTES} byte inline compression limit.`);
         }
-        const promise = Promise.resolve(invoke(new Uint8Array(bytes))).then((result) =>
-            normalizeCompressionResult(result, operation),
+        const promise = Promise.resolve(invoke(new Uint8Array(bytes))).then(
+            (result) => normalizeCompressionResult(result, operation),
+            (error) => Promise.reject(normalizeCompressionError(error)),
         );
         return raceCompressionTerminal(promise, options ?? {}, operation);
     } catch (error) {
-        return Promise.reject(error);
+        return Promise.reject(normalizeCompressionError(error));
     }
 }
 
@@ -1034,7 +1064,10 @@ async function* compressionStream(input, options, operation, parseOptions, invok
             inputBytes.set(chunk, offset);
             offset += chunk.byteLength;
         }
-        const output = await raceCompressionTerminal(Promise.resolve(invoke(inputBytes, parsed.codecOptions)), parsed, operation);
+        const nativeOutput = Promise.resolve(invoke(inputBytes, parsed.codecOptions)).catch((error) =>
+            Promise.reject(normalizeCompressionError(error)),
+        );
+        const output = await raceCompressionTerminal(nativeOutput, parsed, operation);
         checkCompressionTerminalOptions(parsed, operation);
         terminal = true;
         yield output;
@@ -1110,7 +1143,6 @@ const CRC32_POLYNOMIAL_REFLECTED = 0xedb88320;
 const CRC32_INITIAL = 0xffffffff;
 const CRC32_FINAL_XOR = 0xffffffff;
 const CRC32_TABLE = makeCrc32Table();
-const CHECKSUM_UNSUPPORTED_ALGORITHM_DIAGNOSTIC = "SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM";
 
 function crc32(bytes) {
     bytes = requireBytes(bytes, "Checksums.crc32");

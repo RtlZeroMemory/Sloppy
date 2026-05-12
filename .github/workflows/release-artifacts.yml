@@ -36,6 +36,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: release-artifacts-${{ github.ref }}
@@ -43,7 +44,12 @@ concurrency:
 
 env:
   VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
-  CMAKE_BUILD_PARALLEL_LEVEL: 2
+  VCPKG_CACHE_VERSION: v3
+  VCPKG_BINARY_SOURCES: "clear;nuget,https://nuget.pkg.github.com/RtlZeroMemory/index.json,readwrite"
+  NUGET_FEED_URL: "https://nuget.pkg.github.com/RtlZeroMemory/index.json"
+  NUGET_USERNAME: "RtlZeroMemory"
+  NUGET_PAT: ${{ secrets.VCPKG_PAT }}
+  CMAKE_BUILD_PARALLEL_LEVEL: 4
 
 jobs:
   release-static:
@@ -134,6 +140,15 @@ jobs:
           }
           "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
           "VCPKG_DEFAULT_BINARY_CACHE=$vcpkgBinaryCache" | Out-File -FilePath $env:GITHUB_ENV -Append
+          if (-not [string]::IsNullOrWhiteSpace($env:NUGET_PAT)) {
+            $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
+            $nugetExe = & $vcpkgExe fetch nuget | Select-Object -Last 1
+            & $nugetExe sources add -Source $env:NUGET_FEED_URL -StorePasswordInClearText -Name GitHubPackages -UserName $env:NUGET_USERNAME -Password $env:NUGET_PAT 2>&1 | Out-Null
+            & $nugetExe setapikey $env:NUGET_PAT -Source $env:NUGET_FEED_URL 2>&1 | Out-Null
+          } else {
+            Write-Host "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            "VCPKG_BINARY_SOURCES=default,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
 
       - name: Release artifact dry-run
         shell: pwsh
@@ -197,30 +212,15 @@ jobs:
           workspaces: compiler -> target
           cache-on-failure: true
 
-      - name: Install Linux host dependencies
+      - name: Install Linux host dependencies (cached)
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache clang lld libglib2.0-dev clang-20 lld-20
+          version: release-linux-deps-2
+
+      - name: Verify clang-20
         shell: bash
-        run: |
-          set -euo pipefail
-          packages=(build-essential cmake ninja-build pkg-config curl zip unzip tar autoconf autoconf-archive automake libtool bison flex ccache clang lld libglib2.0-dev)
-          missing=()
-
-          for command in cmake ninja pkg-config curl zip unzip tar autoconf automake libtoolize bison flex ccache clang clang++ ld.lld; do
-            if ! command -v "$command" >/dev/null 2>&1; then
-              missing=("${packages[@]}")
-              break
-            fi
-          done
-          if ! dpkg-query -W -f='${Status}' autoconf-archive 2>/dev/null | grep -q "install ok installed"; then
-            missing=("${packages[@]}")
-          fi
-          if ! pkg-config --exists glib-2.0 gobject-2.0 gio-2.0; then
-            missing=("${packages[@]}")
-          fi
-
-          if [ "${#missing[@]}" -gt 0 ]; then
-            sudo apt-get update
-            sudo apt-get install -y "${missing[@]}"
-          fi
+        run: clang-20 --version
 
       - name: Cache ccache
         uses: actions/cache@v4
@@ -269,6 +269,21 @@ jobs:
             Linux-linux-clang-vcpkg-${{ env.VCPKG_COMMIT }}-
             Linux-linux-clang-vcpkg-
 
+      - name: Cache mono for vcpkg NuGet (Linux)
+        if: runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: mono-complete
+          version: vcpkg-nuget-1
+
+      - name: Install mono for vcpkg NuGet (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if ! brew list --formula mono >/dev/null 2>&1; then
+            brew install mono
+          fi
+
       - name: Bootstrap vcpkg
         shell: bash
         run: |
@@ -287,6 +302,18 @@ jobs:
           fi
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
+          if [ -n "${NUGET_PAT:-}" ] && command -v mono >/dev/null 2>&1; then
+            nuget_path="$("$vcpkg_root/vcpkg" fetch nuget | tail -n 1)"
+            mono "$nuget_path" sources add -Source "$NUGET_FEED_URL" -StorePasswordInClearText -Name GitHubPackages -UserName "$NUGET_USERNAME" -Password "$NUGET_PAT" >/dev/null 2>&1 || true
+            mono "$nuget_path" setapikey "$NUGET_PAT" -Source "$NUGET_FEED_URL" >/dev/null 2>&1 || true
+          else
+            if [ -z "${NUGET_PAT:-}" ]; then
+              echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            else
+              echo "::warning::mono not available; using local file binary cache only"
+            fi
+            echo "VCPKG_BINARY_SOURCES=default,readwrite" >> "$GITHUB_ENV"
+          fi
 
       - name: Restore Linux V8 SDK asset
         if: steps.linux-v8-sdk.outputs.cached != 'true'
@@ -344,8 +371,8 @@ jobs:
       - name: Release artifact dry-run
         shell: bash
         env:
-          CC: clang
-          CXX: clang++
+          CC: clang-20
+          CXX: clang++-20
         run: |
           set -euo pipefail
           args=(--preset linux-clang --require-v8-runtime)
@@ -442,6 +469,21 @@ jobs:
             macOS-macos-clang-arm64-vcpkg-${{ env.VCPKG_COMMIT }}-
             macOS-macos-clang-vcpkg-
 
+      - name: Cache mono for vcpkg NuGet (Linux)
+        if: runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: mono-complete
+          version: vcpkg-nuget-1
+
+      - name: Install mono for vcpkg NuGet (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if ! brew list --formula mono >/dev/null 2>&1; then
+            brew install mono
+          fi
+
       - name: Bootstrap vcpkg
         shell: bash
         run: |
@@ -460,6 +502,18 @@ jobs:
           fi
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
+          if [ -n "${NUGET_PAT:-}" ] && command -v mono >/dev/null 2>&1; then
+            nuget_path="$("$vcpkg_root/vcpkg" fetch nuget | tail -n 1)"
+            mono "$nuget_path" sources add -Source "$NUGET_FEED_URL" -StorePasswordInClearText -Name GitHubPackages -UserName "$NUGET_USERNAME" -Password "$NUGET_PAT" >/dev/null 2>&1 || true
+            mono "$nuget_path" setapikey "$NUGET_PAT" -Source "$NUGET_FEED_URL" >/dev/null 2>&1 || true
+          else
+            if [ -z "${NUGET_PAT:-}" ]; then
+              echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            else
+              echo "::warning::mono not available; using local file binary cache only"
+            fi
+            echo "VCPKG_BINARY_SOURCES=default,readwrite" >> "$GITHUB_ENV"
+          fi
 
       - name: Restore macOS arm64 V8 SDK asset
         shell: bash
@@ -611,6 +665,21 @@ jobs:
             macOS-macos-clang-x64-vcpkg-${{ env.VCPKG_COMMIT }}-
             macOS-macos-clang-vcpkg-
 
+      - name: Cache mono for vcpkg NuGet (Linux)
+        if: runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: mono-complete
+          version: vcpkg-nuget-1
+
+      - name: Install mono for vcpkg NuGet (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if ! brew list --formula mono >/dev/null 2>&1; then
+            brew install mono
+          fi
+
       - name: Bootstrap vcpkg
         shell: bash
         run: |
@@ -629,6 +698,18 @@ jobs:
           fi
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
+          if [ -n "${NUGET_PAT:-}" ] && command -v mono >/dev/null 2>&1; then
+            nuget_path="$("$vcpkg_root/vcpkg" fetch nuget | tail -n 1)"
+            mono "$nuget_path" sources add -Source "$NUGET_FEED_URL" -StorePasswordInClearText -Name GitHubPackages -UserName "$NUGET_USERNAME" -Password "$NUGET_PAT" >/dev/null 2>&1 || true
+            mono "$nuget_path" setapikey "$NUGET_PAT" -Source "$NUGET_FEED_URL" >/dev/null 2>&1 || true
+          else
+            if [ -z "${NUGET_PAT:-}" ]; then
+              echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            else
+              echo "::warning::mono not available; using local file binary cache only"
+            fi
+            echo "VCPKG_BINARY_SOURCES=default,readwrite" >> "$GITHUB_ENV"
+          fi
 
       - name: Restore macOS x64 V8 SDK asset
         shell: bash
