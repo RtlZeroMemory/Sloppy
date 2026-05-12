@@ -35,8 +35,11 @@ Provider result materialization is bounded. The default query cap is 128 rows;
 JavaScript `query` and `queryRaw` calls can pass `maxRows` to lower or raise the
 per-call cap, and providers fail instead of truncating when the cap is exceeded.
 JavaScript `query` and `queryRaw` calls can also pass finite timeout budgets:
-SQLite interrupts through a progress handler, PostgreSQL uses `PQcancel`, and
-SQL Server uses ODBC timeout/cancel APIs.
+SQLite interrupts through the `sqlite3_progress_handler` path in `src/data/sqlite.c`.
+PostgreSQL timeout/cancel is implemented in the V8 bridge through `PQcancel`
+in `src/engine/v8/intrinsics_postgres.cc`, and SQL Server timeout/cancel is
+implemented in the V8 bridge through ODBC APIs in
+`src/engine/v8/intrinsics_sqlserver.cc`.
 
 Future JavaScript-visible provider handles must use `SlResourceId` entries in the core
 resource table. Provider pointers and driver handles must not be exposed to JavaScript.

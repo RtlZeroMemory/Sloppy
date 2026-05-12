@@ -917,11 +917,11 @@ SlStatus sqlite_v8_run_request_with_capacity(SqliteV8Request* request, size_t ca
                               param_count, &request->exec_result, out_diag);
     case SqliteV8Operation::Query:
     case SqliteV8Operation::QueryRaw: {
-        SlSqliteQueryOptions options = {};
+        SlSqliteQueryOptionsV2 options = {};
         options.max_rows = request->max_rows;
         options.timeout_ms = request->has_timeout_ms ? request->timeout_ms : 0U;
-        return sl_sqlite_query(&request->arena, &request->resource->connection, sql, params,
-                               param_count, &options, &request->query_result, out_diag);
+        return sl_sqlite_query_v2(&request->arena, &request->resource->connection, sql, params,
+                                  param_count, &options, &request->query_result, out_diag);
     }
     case SqliteV8Operation::QueryOne:
         return sl_sqlite_query_one(&request->arena, &request->resource->connection, sql, params,
@@ -946,12 +946,12 @@ SlStatus sqlite_v8_run_request_with_capacity(SqliteV8Request* request, size_t ca
                                           params, param_count, &request->exec_result, out_diag);
     case SqliteV8Operation::TransactionQuery:
     case SqliteV8Operation::TransactionQueryRaw: {
-        SlSqliteQueryOptions options = {};
+        SlSqliteQueryOptionsV2 options = {};
         options.max_rows = request->max_rows;
         options.timeout_ms = request->has_timeout_ms ? request->timeout_ms : 0U;
-        return sl_sqlite_transaction_query(&request->arena, &request->resource->transaction, sql,
-                                           params, param_count, &options, &request->query_result,
-                                           out_diag);
+        return sl_sqlite_transaction_query_v2(&request->arena, &request->resource->transaction, sql,
+                                              params, param_count, &options, &request->query_result,
+                                              out_diag);
     }
     case SqliteV8Operation::TransactionQueryOne:
         return sl_sqlite_transaction_query_one(&request->arena, &request->resource->transaction,

@@ -18,10 +18,12 @@
 #include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -260,6 +262,11 @@ struct PgV8Request
     uint32_t timeout_ms = 0U;
     std::atomic_bool terminal = false;
     std::atomic_bool timeout_cancelled = false;
+    std::atomic_bool timeout_watch_started = false;
+    std::mutex timeout_mutex;
+    std::condition_variable timeout_cv;
+    std::thread timeout_thread;
+    bool timeout_stop_requested = false;
     bool release_after = true;
     bool transaction_terminal = false;
 };
@@ -270,6 +277,7 @@ struct PgV8Connection
     SlAsyncIoWatch* watch = nullptr;
     PgV8ConnectionState state = PgV8ConnectionState::Empty;
     std::shared_ptr<PgV8Request> request;
+    std::shared_ptr<std::mutex> conn_mutex = std::make_shared<std::mutex>();
     bool transaction_pinned = false;
 };
 
@@ -473,15 +481,39 @@ PgV8ConnectionResource* pg_v8_lookup_connection(v8::Isolate* isolate,
     return static_cast<PgV8ConnectionResource*>(ptr);
 }
 
+void pg_v8_stop_timeout_watch(const std::shared_ptr<PgV8Request>& request)
+{
+    if (request == nullptr) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> guard(request->timeout_mutex);
+        request->timeout_stop_requested = true;
+    }
+    request->timeout_cv.notify_all();
+    if (request->timeout_thread.joinable() &&
+        request->timeout_thread.get_id() != std::this_thread::get_id())
+    {
+        request->timeout_thread.join();
+    }
+}
+
 void pg_v8_close_connection(PgV8Connection& connection)
 {
+    if (connection.request != nullptr) {
+        connection.request->terminal.store(true);
+        pg_v8_stop_timeout_watch(connection.request);
+    }
     if (connection.watch != nullptr) {
         sl_async_io_watch_stop(connection.watch);
         connection.watch = nullptr;
     }
-    if (connection.conn != nullptr) {
-        PQfinish(connection.conn);
-        connection.conn = nullptr;
+    {
+        std::lock_guard<std::mutex> guard(*connection.conn_mutex);
+        if (connection.conn != nullptr) {
+            PQfinish(connection.conn);
+            connection.conn = nullptr;
+        }
     }
     connection.request.reset();
     connection.transaction_pinned = false;
@@ -938,6 +970,7 @@ void pg_v8_finish_request(const std::shared_ptr<PgV8Request>& request, bool ok)
         return;
     }
     request->terminal.store(true);
+    pg_v8_stop_timeout_watch(request);
     if (!ok) {
         if (request->operation == PgV8Operation::Begin || request->transaction_terminal) {
             request->resource->transaction_active = false;
@@ -964,10 +997,28 @@ void pg_v8_start_timeout_watch(const std::shared_ptr<PgV8Request>& request)
     if (request == nullptr || !request->has_timeout_ms || request->timeout_ms == 0U) {
         return;
     }
-    std::thread([request]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(request->timeout_ms));
+    bool expected = false;
+    if (!request->timeout_watch_started.compare_exchange_strong(expected, true)) {
+        return;
+    }
+    request->timeout_thread = std::thread([request]() {
+        {
+            std::unique_lock<std::mutex> lock(request->timeout_mutex);
+            if (request->timeout_cv.wait_for(lock, std::chrono::milliseconds(request->timeout_ms),
+                                             [&request]() {
+                                                 return request->timeout_stop_requested ||
+                                                        request->terminal.load();
+                                             }))
+            {
+                return;
+            }
+        }
         PgV8Connection* connection = request->connection;
-        if (request->terminal.load() || connection == nullptr || connection->conn == nullptr) {
+        if (request->terminal.load() || connection == nullptr) {
+            return;
+        }
+        std::lock_guard<std::mutex> guard(*connection->conn_mutex);
+        if (request->terminal.load() || connection->conn == nullptr) {
             return;
         }
         PGcancel* cancel = PQgetCancel(connection->conn);
@@ -978,7 +1029,7 @@ void pg_v8_start_timeout_watch(const std::shared_ptr<PgV8Request>& request)
         request->timeout_cancelled.store(true);
         PQcancel(cancel, error, static_cast<int>(sizeof(error)));
         PQfreeCancel(cancel);
-    }).detach();
+    });
 }
 
 void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)

@@ -570,8 +570,8 @@ static int test_live_query_exec_and_transactions(void)
         expect_str_equal(one.values[1].value.text, unicode_text) != 0 ||
         one.values[2].kind != SL_SQLSERVER_VALUE_BYTES ||
         one.values[2].value.bytes.length != sizeof(raw_bytes) ||
-        one.values[2].value.bytes.ptr[0] != 0U || one.values[2].value.bytes.ptr[1] != 0x27U ||
-        one.values[2].value.bytes.ptr[5] != 0xffU)
+        one.values[2].value.bytes.ptr == NULL ||
+        memcmp(one.values[2].value.bytes.ptr, raw_bytes, sizeof(raw_bytes)) != 0)
     {
         return close_and_return(&connection, 66);
     }

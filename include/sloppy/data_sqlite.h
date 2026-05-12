@@ -114,8 +114,13 @@ typedef struct SlSqliteRow
 typedef struct SlSqliteQueryOptions
 {
     size_t max_rows;
-    uint32_t timeout_ms;
 } SlSqliteQueryOptions;
+
+typedef struct SlSqliteQueryOptionsV2
+{
+    size_t max_rows;
+    uint32_t timeout_ms;
+} SlSqliteQueryOptionsV2;
 
 /*
  * Query results borrow no SQLite statement storage. Column names, rows, and cell values are
@@ -198,6 +203,10 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
                          const SlSqliteParam* params, size_t param_count,
                          const SlSqliteQueryOptions* options, SlSqliteResult* out_result,
                          SlDiag* out_diag);
+SlStatus sl_sqlite_query_v2(SlArena* arena, SlSqliteConnection* connection, SlStr sql,
+                            const SlSqliteParam* params, size_t param_count,
+                            const SlSqliteQueryOptionsV2* options, SlSqliteResult* out_result,
+                            SlDiag* out_diag);
 SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlStr sql,
                              const SlSqliteParam* params, size_t param_count,
                              SlSqliteQueryOneResult* out_result, SlDiag* out_diag);
@@ -213,6 +222,10 @@ SlStatus sl_sqlite_transaction_query(SlArena* arena, SlSqliteTransaction* tx, Sl
                                      const SlSqliteParam* params, size_t param_count,
                                      const SlSqliteQueryOptions* options,
                                      SlSqliteResult* out_result, SlDiag* out_diag);
+SlStatus sl_sqlite_transaction_query_v2(SlArena* arena, SlSqliteTransaction* tx, SlStr sql,
+                                        const SlSqliteParam* params, size_t param_count,
+                                        const SlSqliteQueryOptionsV2* options,
+                                        SlSqliteResult* out_result, SlDiag* out_diag);
 SlStatus sl_sqlite_transaction_query_one(SlArena* arena, SlSqliteTransaction* tx, SlStr sql,
                                          const SlSqliteParam* params, size_t param_count,
                                          SlSqliteQueryOneResult* out_result, SlDiag* out_diag);

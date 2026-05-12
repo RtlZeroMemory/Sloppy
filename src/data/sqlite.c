@@ -738,6 +738,19 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
                          const SlSqliteQueryOptions* options, SlSqliteResult* out_result,
                          SlDiag* out_diag)
 {
+    SlSqliteQueryOptionsV2 v2 = {0};
+    if (options != NULL) {
+        v2.max_rows = options->max_rows;
+    }
+    return sl_sqlite_query_v2(arena, connection, sql, params, param_count,
+                              options == NULL ? NULL : &v2, out_result, out_diag);
+}
+
+SlStatus sl_sqlite_query_v2(SlArena* arena, SlSqliteConnection* connection, SlStr sql,
+                            const SlSqliteParam* params, size_t param_count,
+                            const SlSqliteQueryOptionsV2* options, SlSqliteResult* out_result,
+                            SlDiag* out_diag)
+{
     sqlite3_stmt* stmt = NULL;
     sqlite3* db = sl_sqlite_db(connection);
     SlArenaMark mark = {0};
@@ -784,6 +797,16 @@ SlStatus sl_sqlite_query(SlArena* arena, SlSqliteConnection* connection, SlStr s
     }
 
     timeout_installed = sl_sqlite_install_timeout_progress(db, timeout_ms, &timeout_progress);
+    if (timeout_ms > 0U && !timeout_installed) {
+        sqlite3_finalize(stmt);
+        sl_arena_reset_to(arena, mark);
+        *out_result = (SlSqliteResult){0};
+        return sl_sqlite_diag(
+            arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
+            sl_sqlite_literal("sqlite provider timeout setup failed",
+                              sizeof("sqlite provider timeout setup failed") - 1U),
+            operation, sqlite3_errmsg(db), sql, sl_status_from_code(SL_STATUS_INTERNAL));
+    }
 
     column_count = (size_t)sqlite3_column_count(stmt);
     status = sl_sqlite_copy_columns(arena, stmt, column_count, &out_result->column_names);
@@ -1113,6 +1136,19 @@ SlStatus sl_sqlite_transaction_query(SlArena* arena, SlSqliteTransaction* tx, Sl
                                      const SlSqliteQueryOptions* options,
                                      SlSqliteResult* out_result, SlDiag* out_diag)
 {
+    SlSqliteQueryOptionsV2 v2 = {0};
+    if (options != NULL) {
+        v2.max_rows = options->max_rows;
+    }
+    return sl_sqlite_transaction_query_v2(arena, tx, sql, params, param_count,
+                                          options == NULL ? NULL : &v2, out_result, out_diag);
+}
+
+SlStatus sl_sqlite_transaction_query_v2(SlArena* arena, SlSqliteTransaction* tx, SlStr sql,
+                                        const SlSqliteParam* params, size_t param_count,
+                                        const SlSqliteQueryOptionsV2* options,
+                                        SlSqliteResult* out_result, SlDiag* out_diag)
+{
     SlStatus status;
 
     if (tx == NULL || tx->connection == NULL || !tx->active) {
@@ -1122,8 +1158,8 @@ SlStatus sl_sqlite_transaction_query(SlArena* arena, SlSqliteTransaction* tx, Sl
                               sizeof("operation: transaction.query") - 1U));
     }
 
-    status = sl_sqlite_query(arena, tx->connection, sql, params, param_count, options, out_result,
-                             out_diag);
+    status = sl_sqlite_query_v2(arena, tx->connection, sql, params, param_count, options,
+                                out_result, out_diag);
     if (sl_status_is_ok(status) && !tx->connection->transaction_active) {
         tx->active = false;
         tx->connection = NULL;

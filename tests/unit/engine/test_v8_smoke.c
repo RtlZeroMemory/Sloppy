@@ -6542,7 +6542,7 @@ static int test_sqlite_intrinsic_query_max_rows_option(void)
                     "max rows'); }"
                     "  let timeoutRejected = false;"
                     "  try { await __sloppy.data.sqlite.query(db, 'with recursive cnt(x) as "
-                    "(select 1 union all select x + 1 from cnt where x < 100000000) select "
+                    "(select 1 union all select x + 1 from cnt where x < 1000000) select "
                     "count(*) as total from cnt', [], { timeoutMs: 1 }); }"
                     "  catch (error) { timeoutRejected = String(error.message).includes("
                     "'deadline was exceeded'); }"

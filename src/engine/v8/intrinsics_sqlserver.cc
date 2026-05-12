@@ -16,10 +16,12 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cmath>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <string>
 #include <thread>
@@ -223,6 +225,12 @@ struct SqlSrvV8Request
     uint32_t timeout_ms = 0U;
     std::atomic_bool terminal = false;
     std::atomic_bool timeout_cancelled = false;
+    std::atomic_bool timeout_watch_started = false;
+    std::mutex stmt_mutex;
+    std::mutex timeout_mutex;
+    std::condition_variable timeout_cv;
+    std::thread timeout_thread;
+    bool timeout_stop_requested = false;
     bool transaction_terminal = false;
     bool connect_pending = false;
     bool execute_pending = false;
@@ -398,16 +406,50 @@ std::string sqlsrv_v8_diag(SQLSMALLINT handle_type, SQLHANDLE handle, const char
 
 void sqlsrv_v8_free_statement(SqlSrvV8Request* request)
 {
-    if (request != nullptr && request->stmt != SQL_NULL_HSTMT) {
+    if (request == nullptr) {
+        return;
+    }
+    std::lock_guard<std::mutex> guard(request->stmt_mutex);
+    if (request->stmt != SQL_NULL_HSTMT) {
         SQLFreeHandle(SQL_HANDLE_STMT, request->stmt);
         request->stmt = SQL_NULL_HSTMT;
     }
 }
 
+void sqlsrv_v8_cancel_statement(SqlSrvV8Request* request)
+{
+    if (request == nullptr) {
+        return;
+    }
+    std::lock_guard<std::mutex> guard(request->stmt_mutex);
+    if (request->stmt != SQL_NULL_HSTMT) {
+        SQLCancelHandle(SQL_HANDLE_STMT, request->stmt);
+    }
+}
+
+void sqlsrv_v8_stop_timeout_watch(const std::shared_ptr<SqlSrvV8Request>& request)
+{
+    if (request == nullptr) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> guard(request->timeout_mutex);
+        request->timeout_stop_requested = true;
+    }
+    request->timeout_cv.notify_all();
+    if (request->timeout_thread.joinable() &&
+        request->timeout_thread.get_id() != std::this_thread::get_id())
+    {
+        request->timeout_thread.join();
+    }
+}
+
 void sqlsrv_v8_close_connection(SqlSrvV8Connection& connection)
 {
-    if (connection.request != nullptr && connection.request->stmt != SQL_NULL_HSTMT) {
-        SQLCancelHandle(SQL_HANDLE_STMT, connection.request->stmt);
+    if (connection.request != nullptr) {
+        connection.request->terminal.store(true);
+        sqlsrv_v8_stop_timeout_watch(connection.request);
+        sqlsrv_v8_cancel_statement(connection.request.get());
         sqlsrv_v8_free_statement(connection.request.get());
     }
     if (connection.dbc != SQL_NULL_HDBC) {
@@ -465,6 +507,7 @@ void sqlsrv_v8_finish_request(const std::shared_ptr<SqlSrvV8Request>& request, b
         return;
     }
     request->terminal.store(true);
+    sqlsrv_v8_stop_timeout_watch(request);
     sqlsrv_v8_free_statement(request.get());
     if (!ok) {
         if (request->operation == SqlSrvV8Operation::Begin || request->transaction_terminal) {
@@ -492,16 +535,31 @@ void sqlsrv_v8_start_timeout_watch(const std::shared_ptr<SqlSrvV8Request>& reque
     if (request == nullptr || !request->has_timeout_ms || request->timeout_ms == 0U) {
         return;
     }
-    std::thread([request]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(request->timeout_ms));
+    bool expected = false;
+    if (!request->timeout_watch_started.compare_exchange_strong(expected, true)) {
+        return;
+    }
+    request->timeout_thread = std::thread([request]() {
+        {
+            std::unique_lock<std::mutex> lock(request->timeout_mutex);
+            if (request->timeout_cv.wait_for(lock, std::chrono::milliseconds(request->timeout_ms),
+                                             [&request]() {
+                                                 return request->timeout_stop_requested ||
+                                                        request->terminal.load();
+                                             }))
+            {
+                return;
+            }
+        }
         if (request->terminal.load()) {
             return;
         }
         request->timeout_cancelled.store(true);
-        if (request->stmt != SQL_NULL_HSTMT) {
+        std::lock_guard<std::mutex> guard(request->stmt_mutex);
+        if (!request->terminal.load() && request->stmt != SQL_NULL_HSTMT) {
             SQLCancelHandle(SQL_HANDLE_STMT, request->stmt);
         }
-    }).detach();
+    });
 }
 
 bool sqlsrv_v8_local_string(v8::Isolate* isolate, const std::string& value,
