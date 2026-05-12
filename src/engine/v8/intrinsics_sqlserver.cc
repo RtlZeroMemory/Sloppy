@@ -542,12 +542,11 @@ void sqlsrv_v8_start_timeout_watch(const std::shared_ptr<SqlSrvV8Request>& reque
     request->timeout_thread = std::thread([request]() {
         {
             std::unique_lock<std::mutex> lock(request->timeout_mutex);
-            if (request->timeout_cv.wait_for(lock, std::chrono::milliseconds(request->timeout_ms),
-                                             [&request]() {
-                                                 return request->timeout_stop_requested ||
-                                                        request->terminal.load();
-                                             }))
-            {
+            const auto timeout = std::chrono::milliseconds(request->timeout_ms);
+            auto should_stop = [&request]() {
+                return request->timeout_stop_requested || request->terminal.load();
+            };
+            if (request->timeout_cv.wait_for(lock, timeout, should_stop)) {
                 return;
             }
         }
