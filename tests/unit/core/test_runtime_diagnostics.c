@@ -267,9 +267,17 @@ static int test_crash_report_writer(void)
 static int fatal_disabled_child(void)
 {
     SlCrashReportOptions options = sl_crash_report_default_options();
+    SlStr marker_path = sl_str_from_cstr("test-runtime-diagnostics-disabled-child-ran.tmp");
 
     options.enabled = false;
     options.directory = sl_str_from_cstr(".sloppy/test-runtime-diagnostics-disabled");
+    if (expect_status(sl_fs_write_file(marker_path,
+                                       sl_bytes_from_parts((const unsigned char*)"ran", 3U), false,
+                                       NULL),
+                      SL_STATUS_OK) != 0)
+    {
+        return 98;
+    }
     sl_crash_report_set_default_context(&options, NULL, NULL);
     sl_fatal_invariant_failed("false", "disabled report test", "test_runtime_diagnostics.c", 1);
     return 99;
@@ -285,12 +293,15 @@ static int test_fatal_disabled_does_not_write_report(const char* self_path)
     SlOsProcessRunResult result = {0};
     SlDiag diag = {0};
     bool exists = false;
+    bool marker_exists = false;
     SlStr disabled_dir = sl_str_from_cstr(".sloppy/test-runtime-diagnostics-disabled");
+    SlStr marker_path = sl_str_from_cstr("test-runtime-diagnostics-disabled-child-ran.tmp");
     SlStatus run_status = {0};
 
     if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
         return 1;
     }
+    sl_fs_delete_file(marker_path, NULL);
     if (expect_status(sl_fs_exists(disabled_dir, &exists, NULL), SL_STATUS_OK) != 0) {
         return 2;
     }
@@ -308,7 +319,11 @@ static int test_fatal_disabled_does_not_write_report(const char* self_path)
                 diag.message.ptr != NULL ? diag.message.ptr : "");
         return 3;
     }
-    if (result.exit_code == 0 || result.timed_out) {
+    if (expect_status(sl_fs_exists(marker_path, &marker_exists, NULL), SL_STATUS_OK) != 0) {
+        return 4;
+    }
+    sl_fs_delete_file(marker_path, NULL);
+    if (result.timed_out || result.exit_code == 0 || result.exit_code == 99 || !marker_exists) {
         return 4;
     }
     if (expect_status(sl_fs_exists(disabled_dir, &exists, NULL), SL_STATUS_OK) != 0) {
