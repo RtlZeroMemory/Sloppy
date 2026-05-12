@@ -1,6 +1,8 @@
 # TestHost Internals
 
 `stdlib/sloppy/testing.js` owns the first-party JavaScript TestHost API.
+The API is experimental while Sloppy is pre-alpha; keep behavior under test and
+avoid treating helper shape as stable runtime surface.
 
 ## Modes
 
@@ -10,21 +12,23 @@ objects, opens a request service scope, invokes route middleware/handlers, and
 normalizes `Results.*` descriptors into immutable response objects.
 
 `TestHost.fromArtifacts(path)` and `TestHost.fromPackage(path)` use the runtime
-CLI as the process boundary. In in-process mode, each request becomes:
+CLI as the process boundary. In one-off CLI mode, each request becomes:
 
 ```text
-request builder
-  -> temporary body file when needed
+RequestBuilder.send()
+  -> withRequestBodyFile()
   -> sloppy run <path> --once METHOD TARGET
-  -> native runtime startup and dispatch
-  -> HTTP response parse
-  -> TestHost response assertions
+  -> parseHttpResponseBytes()
+  -> TestResponse assertion helpers
 ```
 
 Loopback mode starts:
 
 ```text
-sloppy run <path> --host 127.0.0.1 --port <reserved-port>
+reserveLoopbackPort()
+  -> sloppy run <path> --host 127.0.0.1 --port <reserved-port>
+  -> waitForLoopbackReady()
+  -> HttpClient.request()
 ```
 
 The host then sends HTTP/1.1 requests with Sloppy's `HttpClient` and stops the
@@ -46,7 +50,7 @@ App-host helpers are local to each host:
 ## Cleanup
 
 The app-host mode waits for active requests before disposing the root service
-provider. Native in-process mode deletes temporary body directories in a
+provider. Native one-off CLI mode deletes temporary body directories in a
 `finally` block. Loopback mode sends `SIGINT` to the child server and waits for
 exit.
 

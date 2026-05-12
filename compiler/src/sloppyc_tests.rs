@@ -7230,7 +7230,23 @@ export default app;
             "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
         ),
         (
-            r#"import { Sloppy, Results, TestHost, FakeClock, TestData } from "sloppy";
+            r#"import { Sloppy, Results, TestHost } from "sloppy";
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+        ),
+        (
+            r#"import { Sloppy, Results, FakeClock } from "sloppy";
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+        ),
+        (
+            r#"import { Sloppy, Results, TestData } from "sloppy";
 const app = Sloppy.create();
 app.get("/", () => Results.ok({ ok: true }));
 export default app;

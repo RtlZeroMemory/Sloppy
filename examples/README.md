@@ -101,6 +101,9 @@ sloppy create my-tool --template program
   Plan-backed CLI tools, but no positive handler execution is claimed.
 - `package graph fixture`: the example demonstrates package/dependency graph
   behavior. Local `file:` dependencies avoid internet access.
+- `documentation example`: the example is reader-facing documentation for an
+  API shape already covered by focused tests. It is not a standalone execution
+  lane.
 - `live-provider example`: the example needs an external database and matching
   optional provider dependency. Default Sloppy apps do not need PostgreSQL, SQL
   Server, libpq, or ODBC.

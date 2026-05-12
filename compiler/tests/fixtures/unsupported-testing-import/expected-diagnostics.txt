@@ -3,4 +3,4 @@
    |
 1 | import { Sloppy, Results, Testing } from "sloppy";
    |                           ^^^^^^^
-hint: Use TestHost and Testing from JavaScript tests around the generated app, not inside compiler input.
+hint: Use Sloppy testing helpers from JavaScript tests around the generated app, not inside compiler input.

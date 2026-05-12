@@ -1,8 +1,8 @@
 import { Base64Url, Text } from "./codec.js";
-import { Hmac, Secret } from "./crypto.js";
+import { Hmac, Random, Secret } from "./crypto.js";
 import { data, Migrations } from "./data.js";
 import { Directory, File } from "./fs.js";
-import { HttpClient } from "./net.js";
+import { HttpClient, TcpListener } from "./net.js";
 import { Process as SloppyProcess, System as SloppySystem } from "./os.js";
 import { RAW_JSON_BODY, serializeJson } from "./results.js";
 import { Schema, validationProblem } from "./schema.js";
@@ -43,7 +43,15 @@ function normalizeOverrideMap(value, subject) {
     return Object.freeze({ ...value });
 }
 
-function redactedValue(key, value) {
+function redactConfiguredSecrets(value, secretTexts) {
+    let text = String(value);
+    for (const secret of secretTexts) {
+        text = text.replaceAll(secret, SECRET_REDACTION);
+    }
+    return text;
+}
+
+function redactedValue(key, value, secretTexts = []) {
     if (SENSITIVE_KEY_PATTERN.test(String(key))) {
         return SECRET_REDACTION;
     }
@@ -51,19 +59,19 @@ function redactedValue(key, value) {
         return value;
     }
     if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-        return value;
+        return redactConfiguredSecrets(value, secretTexts);
     }
     if (Array.isArray(value)) {
-        return Object.freeze(value.map((entry) => redactedValue(key, entry)));
+        return Object.freeze(value.map((entry) => redactedValue(key, entry, secretTexts)));
     }
     if (isPlainObject(value)) {
         const copied = {};
         for (const [entryKey, entryValue] of Object.entries(value)) {
-            copied[entryKey] = redactedValue(entryKey, entryValue);
+            copied[entryKey] = redactedValue(entryKey, entryValue, secretTexts);
         }
         return Object.freeze(copied);
     }
-    return String(value);
+    return redactConfiguredSecrets(value, secretTexts);
 }
 
 function createDiagnosticsStore(secrets = []) {
@@ -75,13 +83,13 @@ function createDiagnosticsStore(secrets = []) {
     function sanitizeRecord(record) {
         const fields = {};
         for (const [key, value] of Object.entries(record.fields ?? {})) {
-            fields[key] = redactedValue(key, value);
+            fields[key] = redactedValue(key, value, secretTexts);
         }
         return Object.freeze({
             code: String(record.code),
             subsystem: record.subsystem ?? "testhost",
             severity: record.severity ?? "info",
-            message: String(record.message ?? record.code),
+            message: redactConfiguredSecrets(record.message ?? record.code, secretTexts),
             fields: Object.freeze(fields),
         });
     }
@@ -2018,12 +2026,6 @@ function createTestHost(app, options = {}) {
         metrics,
         jobs,
         openapi: createOpenApiHelpers(() => openApiFromRoutes(routes)),
-        async withTransaction(callback) {
-            if (typeof callback !== "function") {
-                throw new TypeError("Sloppy TestHost withTransaction callback must be a function.");
-            }
-            return callback(createFluentHost(host, "inProcess"));
-        },
     };
     return Object.freeze(host);
 }
@@ -2042,18 +2044,24 @@ function findBytes(bytes, pattern) {
 }
 
 function parseHttpResponseBytes(bytes) {
-    const crlf = Text.utf8.encode("\r\n\r\n");
-    const lf = Text.utf8.encode("\n\n");
-    let split = findBytes(bytes, crlf);
-    let separatorLength = crlf.byteLength;
-    if (split < 0) {
-        split = findBytes(bytes, lf);
-        separatorLength = lf.byteLength;
+    const separators = [
+        Text.utf8.encode("\r\n\r\n"),
+        Text.utf8.encode("\r\r\n\r\r\n"),
+        Text.utf8.encode("\n\n"),
+    ];
+    let split = -1;
+    let separatorLength = 0;
+    for (const separator of separators) {
+        split = findBytes(bytes, separator);
+        if (split >= 0) {
+            separatorLength = separator.byteLength;
+            break;
+        }
     }
     if (split < 0) {
         throw new Error("Sloppy TestHost could not parse the HTTP response emitted by sloppy run.");
     }
-    const head = Text.utf8.decode(bytes.slice(0, split)).replace(/\r\n/gu, "\n");
+    const head = Text.utf8.decode(bytes.slice(0, split)).replace(/\r+\n/gu, "\n");
     const body = bytes.slice(split + separatorLength);
     const lines = head.split("\n");
     const statusMatch = /^HTTP\/\d(?:\.\d)?\s+(\d{3})\b/u.exec(lines[0] ?? "");
@@ -2128,7 +2136,7 @@ async function openApiFromCli(kind, targetPath, options = {}) {
     const command = cliPath(options);
     const args = kind === "artifacts"
         ? ["openapi", "--artifacts", targetPath]
-        : ["openapi", targetPath];
+        : ["openapi", `${targetPath.replace(/[\\/]$/u, "")}/artifacts`];
     const result = await SloppyProcess.run(command, args, {
         cwd: options.cwd,
         env: options.env,
@@ -2156,7 +2164,11 @@ function createProcessHelpers(kind, targetPath, options) {
 function createProcessOnceHost(kind, targetPath, options = {}) {
     const command = cliPath(options);
     const helpers = createProcessHelpers(kind, targetPath, options);
+    let closed = false;
     async function request(method, target, requestOptions = undefined) {
+        if (closed) {
+            throw new Error("Sloppy TestHost one-off CLI host is closed.");
+        }
         const normalizedMethod = normalizeMethod(method);
         splitTarget(target);
         const normalizedOptions = normalizeOptions(requestOptions);
@@ -2183,12 +2195,14 @@ function createProcessOnceHost(kind, targetPath, options = {}) {
                 maxStderrBytes: options.maxStderrBytes ?? 1024 * 1024,
             });
             if (result.exitCode !== 0) {
+                const stdout = result.stdout instanceof Uint8Array ? Text.utf8.decode(result.stdout) : String(result.stdout ?? "");
                 const stderr = result.stderr instanceof Uint8Array ? Text.utf8.decode(result.stderr) : String(result.stderr ?? "");
                 helpers.diagnostics.record({
                     code: "SLOPPY_E_TESTHOST_PROCESS_REQUEST",
                     subsystem: "process",
                     severity: "error",
                     message: stderr.trimEnd(),
+                    fields: { exitCode: result.exitCode, stdout, stderr },
                 });
                 throw new Error(`Sloppy TestHost request failed with exit code ${result.exitCode}.${stderr.length === 0 ? "" : `\n${stderr.trimEnd()}`}`);
             }
@@ -2199,70 +2213,237 @@ function createProcessOnceHost(kind, targetPath, options = {}) {
     }
     return Object.freeze({
         request,
-        close() {},
+        close() {
+            closed = true;
+        },
         ...helpers,
     });
 }
 
-function loopbackPort(options = {}) {
-    if (options.port !== undefined) {
-        if (!Number.isInteger(options.port) || options.port < 1 || options.port > 65535) {
-            throw new TypeError("Sloppy TestHost loopback port must be an integer from 1 to 65535.");
-        }
-        return options.port;
+const LOOPBACK_PORT_MIN = 49152;
+const LOOPBACK_PORT_MAX = 65535;
+
+function validateLoopbackPort(port) {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new TypeError("Sloppy TestHost loopback port must be an integer from 1 to 65535.");
     }
-    return 49152 + (Date.now() % 1024);
+    return port;
 }
 
-async function waitForLoopbackReady(port, options = {}) {
+function randomLoopbackPort() {
+    const bytes = Random.bytes(2);
+    const value = (bytes[0] << 8) | bytes[1];
+    return LOOPBACK_PORT_MIN + (value % (LOOPBACK_PORT_MAX - LOOPBACK_PORT_MIN + 1));
+}
+
+async function reserveLoopbackPort(host, options = {}) {
+    if (options.port !== undefined) {
+        const port = validateLoopbackPort(options.port);
+        const listener = await TcpListener.listen({ host, port, backlog: 1 });
+        return { port, listener };
+    }
+    const attempts = options.portReservationAttempts ?? 64;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const port = randomLoopbackPort();
+        try {
+            const listener = await TcpListener.listen({ host, port, backlog: 1 });
+            return { port, listener };
+        } catch {
+            // A different process can own the sampled port; try another reserved candidate.
+        }
+    }
+    throw new Error("Sloppy TestHost could not reserve an available loopback port.");
+}
+
+async function releaseLoopbackReservation(reservation) {
+    if (reservation?.listener === undefined) {
+        return;
+    }
+    await reservation.listener.close().catch(async () => {
+        await reservation.listener.abort().catch(() => {});
+    });
+}
+
+function loopbackAuthority(host, port) {
+    return `${String(host).includes(":") ? `[${host}]` : host}:${port}`;
+}
+
+async function readProcessPipeText(pipe, maxBytes) {
+    if (pipe === undefined || typeof pipe.readText !== "function") {
+        return "";
+    }
+    try {
+        return await pipe.readText(maxBytes);
+    } catch {
+        return "";
+    }
+}
+
+async function processExitIfAvailable(child) {
+    try {
+        const result = await child.wait({ timeoutMs: 0 });
+        return result?.timedOut === true ? undefined : result;
+    } catch {
+        return undefined;
+    }
+}
+
+async function processOutputSnapshot(child, options = {}) {
+    const maxStdoutBytes = options.maxStdoutBytes ?? 64 * 1024;
+    const maxStderrBytes = options.maxStderrBytes ?? 64 * 1024;
+    const [stdout, stderr] = await Promise.all([
+        readProcessPipeText(child.stdout, maxStdoutBytes),
+        readProcessPipeText(child.stderr, maxStderrBytes),
+    ]);
+    return { stdout, stderr };
+}
+
+function recordLoopbackStartupFailure(helpers, details) {
+    helpers.diagnostics.record({
+        code: "SLOPPY_E_TESTHOST_LOOPBACK_STARTUP",
+        subsystem: "process",
+        severity: "error",
+        message: details.message,
+        fields: {
+            host: details.host,
+            port: details.port,
+            exitCode: details.exitCode,
+            stdout: details.stdout,
+            stderr: details.stderr,
+        },
+    });
+}
+
+function isRetryableLoopbackStartupFailure(error) {
+    return /listen|bind|address|port|in use|EADDRINUSE|denied/iu.test(String(error?.message ?? error));
+}
+
+async function waitForLoopbackReady(host, port, child, helpers, options = {}) {
     const timeoutMs = options.startTimeoutMs ?? 10000;
+    const stabilityMs = options.startStabilityMs ?? 250;
+    const authority = loopbackAuthority(host, port);
     const startedAt = Date.now();
     while (Date.now() - startedAt < timeoutMs) {
+        const exit = await processExitIfAvailable(child);
+        if (exit !== undefined) {
+            const output = await processOutputSnapshot(child, options);
+            const message = `Sloppy TestHost loopback server exited before startup with exit code ${exit.exitCode}.`;
+            recordLoopbackStartupFailure(helpers, {
+                message,
+                host,
+                port,
+                exitCode: exit.exitCode,
+                ...output,
+            });
+            throw new Error(`${message}${output.stderr.length === 0 ? "" : `\n${output.stderr.trimEnd()}`}`);
+        }
         try {
-            const probe = await HttpClient.head(`http://127.0.0.1:${port}/`, {
+            const probe = await HttpClient.get(`http://${authority}/__sloppy_testhost_ready__`, {
                 timeoutMs: 100,
             });
-            if (probe.status >= 100) {
-                return;
+            if (probe.status < 100) {
+                await new Promise((resolve) => setTimeout(resolve, 25));
+                continue;
             }
         } catch {
             await new Promise((resolve) => setTimeout(resolve, 25));
+            continue;
         }
+        await new Promise((resolve) => setTimeout(resolve, stabilityMs));
+        const stableExit = await processExitIfAvailable(child);
+        if (stableExit !== undefined) {
+            const output = await processOutputSnapshot(child, options);
+            const message = `Sloppy TestHost loopback server exited during startup with exit code ${stableExit.exitCode}.`;
+            recordLoopbackStartupFailure(helpers, {
+                message,
+                host,
+                port,
+                exitCode: stableExit.exitCode,
+                ...output,
+            });
+            throw new Error(`${message}${output.stderr.length === 0 ? "" : `\n${output.stderr.trimEnd()}`}`);
+        }
+        return;
     }
-    throw new Error("Sloppy TestHost loopback server did not start before timeout.");
+    const output = await processOutputSnapshot(child, options);
+    const message = "Sloppy TestHost loopback server did not start before timeout.";
+    recordLoopbackStartupFailure(helpers, { message, host, port, ...output });
+    throw new Error(`${message}${output.stderr.length === 0 ? "" : `\n${output.stderr.trimEnd()}`}`);
 }
 
 async function createProcessLoopbackHost(kind, targetPath, options = {}) {
     const command = cliPath(options);
     const helpers = createProcessHelpers(kind, targetPath, options);
-    const port = loopbackPort(options);
     const host = options.host ?? "127.0.0.1";
-    const child = await SloppyProcess.start(command, [
-        ...pathRunArgs(kind, targetPath, "loopback"),
-        "--host",
-        host,
-        "--port",
-        String(port),
-    ], {
-        cwd: options.cwd,
-        env: options.env,
-        stdout: "ignore",
-        stderr: "ignore",
-    });
-    let closed = false;
-    try {
-        await waitForLoopbackReady(port, options);
-    } catch (error) {
-        await child.terminate().catch(() => {});
-        await child.dispose().catch(() => {});
-        throw error;
+    const startupAttempts = options.port === undefined ? (options.portReservationAttempts ?? 64) : 1;
+    let port;
+    let child;
+    for (let attempt = 0; attempt < startupAttempts; attempt += 1) {
+        let reservation;
+        try {
+            reservation = await reserveLoopbackPort(host, options);
+        } catch (error) {
+            const failedPort = options.port === undefined ? undefined : validateLoopbackPort(options.port);
+            recordLoopbackStartupFailure(helpers, {
+                message: `Sloppy TestHost loopback port reservation failed.${error?.message === undefined ? "" : ` ${error.message}`}`,
+                host,
+                port: failedPort,
+            });
+            throw error;
+        }
+        port = reservation.port;
+        await releaseLoopbackReservation(reservation);
+        child = await SloppyProcess.start(command, [
+            ...pathRunArgs(kind, targetPath, "loopback"),
+            "--host",
+            host,
+            "--port",
+            String(port),
+        ], {
+            cwd: options.cwd,
+            env: options.env,
+            stdout: "pipe",
+            stderr: "pipe",
+        });
+        try {
+            await waitForLoopbackReady(host, port, child, helpers, options);
+            break;
+        } catch (error) {
+            await child.terminate().catch(() => {});
+            await child.wait({ timeoutMs: options.stopTimeoutMs ?? 5000 }).catch(() => {});
+            await child.dispose().catch(() => {});
+            child = undefined;
+            if (options.port === undefined && attempt + 1 < startupAttempts && isRetryableLoopbackStartupFailure(error)) {
+                continue;
+            }
+            throw error;
+        }
     }
+    if (child === undefined || port === undefined) {
+        throw new Error("Sloppy TestHost loopback server did not start.");
+    }
+    let closed = false;
 
-    const baseUrl = `http://${host}:${port}`;
+    const baseUrl = `http://${loopbackAuthority(host, port)}`;
     return Object.freeze({
         baseUrl,
         port,
         async request(method, target, requestOptions = undefined) {
+            if (closed) {
+                throw new Error("Sloppy TestHost loopback host is closed.");
+            }
+            const exit = await processExitIfAvailable(child);
+            if (exit !== undefined) {
+                const output = await processOutputSnapshot(child, options);
+                helpers.diagnostics.record({
+                    code: "SLOPPY_E_TESTHOST_LOOPBACK_EXITED",
+                    subsystem: "process",
+                    severity: "error",
+                    message: `Sloppy TestHost loopback server exited with code ${exit.exitCode}.`,
+                    fields: { exitCode: exit.exitCode, stdout: output.stdout, stderr: output.stderr },
+                });
+                throw new Error(`Sloppy TestHost loopback server exited with code ${exit.exitCode}.`);
+            }
             const normalizedMethod = normalizeMethod(method);
             const normalizedOptions = normalizeOptions(requestOptions);
             const headerEntries = headerEntriesFromObject(normalizedOptions.headers, "request");
@@ -2386,6 +2567,9 @@ const FakeClock = Object.freeze({
                 current += ms;
             },
             delay(ms) {
+                if (!Number.isFinite(ms)) {
+                    throw new TypeError("Sloppy FakeClock.delay expects a finite millisecond value.");
+                }
                 current += ms;
                 return Promise.resolve();
             },

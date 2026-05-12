@@ -1972,14 +1972,15 @@ async function flushMicrotasks(count = 6) {
             return { messages: this.messages };
         },
     };
-    const host = await TestHost.create(app, {
-        config: { "Feature:Enabled": true },
-        secrets: { JWT_SECRET: "super-secret-value" },
-        services: { mail },
-        providers: { main: { kind: "sqlite-test" } },
-        clock,
-    });
+    let host;
     try {
+        host = await TestHost.create(app, {
+            config: { "Feature:Enabled": true },
+            secrets: { JWT_SECRET: "super-secret-value" },
+            services: { mail },
+            providers: { main: { kind: "sqlite-test" } },
+            clock,
+        });
         assert.equal(host.mode, "inProcess");
         assert.equal(await (await host.get("/hello").expectStatus(200)).text(), "hello");
         await host.head("/hello").expectNoBody();
@@ -2035,16 +2036,20 @@ async function flushMicrotasks(count = 6) {
         host.diagnostics.expectCode("SLOPPY_E_JSON_INVALID");
         host.diagnostics.record({
             code: "SLOPPY_TESTHOST_SECRET_REDACTION",
+            message: "super-secret-value should not leak from diagnostic messages",
             fields: { password: "super-secret-value" },
         });
+        assert.equal(host.diagnostics.latest().message.includes("super-secret-value"), false);
         host.diagnostics.expectNoSecretLeaks();
         host.jobs.enqueue("send-welcome-email", { email: "ada@example.com" });
         host.jobs.expectEnqueued("send-welcome-email", { email: "ada@example.com" });
         await host.jobs.runNext();
         host.jobs.expectSucceeded("send-welcome-email");
-        await host.close();
-        await host.dispose();
     } finally {
+        if (host !== undefined) {
+            await host.close();
+            await host.dispose();
+        }
         if (previousSloppy === undefined) {
             delete globalThis.__sloppy;
         } else {
@@ -2055,6 +2060,10 @@ async function flushMicrotasks(count = 6) {
     assert.equal(clock.now().toISOString(), "2026-01-01T00:00:00.000Z");
     clock.advanceBy({ minutes: 5 });
     assert.equal(clock.now().toISOString(), "2026-01-01T00:05:00.000Z");
+    await clock.delay(1000);
+    assert.equal(clock.now().toISOString(), "2026-01-01T00:05:01.000Z");
+    assert.throws(() => clock.delay(Number.NaN), /finite millisecond/);
+    assert.throws(() => clock.delay("10"), /finite millisecond/);
     assert.equal(TestData.sqliteMemory().__debug?.(), undefined);
 }
 

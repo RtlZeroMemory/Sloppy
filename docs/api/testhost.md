@@ -45,8 +45,8 @@ initialize the runtime, enter V8 when available, use native dispatch, apply
 native request validation, and serialize responses through the runtime writer.
 
 `mode: "loopback"` is available for artifacts and packages. It starts
-`sloppy run` on a random localhost port and sends real HTTP/1.1 requests to the
-listener. `host.baseUrl` and `host.port` expose the selected endpoint.
+`sloppy run` on a reserved localhost port and sends real HTTP/1.1 requests to
+the listener. `host.baseUrl` and `host.port` expose the selected endpoint.
 
 Pass `cliPath`, `cwd`, `env`, `timeoutMs`, or `port` when the test needs a
 specific Sloppy executable or process environment.
@@ -175,17 +175,21 @@ Artifact and package hosts call `sloppy openapi` through Sloppy's process API.
 Call `host.close()` or `host.dispose()`. `await using` calls async disposal when
 the JavaScript runtime supports it. Cleanup is idempotent.
 
-Loopback hosts stop their child server process. Artifact/package in-process
+Loopback hosts stop their child server process. Artifact/package one-off CLI
 requests create per-request temporary body files only when needed and delete
 them after dispatch.
 
 ## Hard Limits
 
 - `TestHost.create(app)` is an app-host test lane, not a native runtime lane.
-- Artifact and package in-process mode starts `sloppy run --once` per request.
+- Artifact and package one-off CLI mode starts `sloppy run --once` per request.
 - Loopback mode requires an artifact or package path.
-- Multipart request builder sugar is not exposed; pass explicit multipart
-  bytes and headers when a test needs that format.
+- Multipart request builder sugar is not exposed yet.
+- Explicit multipart bytes plus a `Content-Type: multipart/form-data; boundary=...`
+  header are supported through `.bytes(...)` or request `body` options.
+- App-host multipart parsing is a bounded helper for form fields and file
+  descriptors; it is not binary-fidelity upload testing unless the native
+  app-host upload lane implements that behavior.
 - Docker-backed PostgreSQL and SQL Server helpers are not bundled into the
   JavaScript API. Use the existing live-provider lanes and report them
   separately.
