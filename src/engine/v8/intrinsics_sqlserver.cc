@@ -532,11 +532,17 @@ void sqlsrv_v8_finish_request(const std::shared_ptr<SqlSrvV8Request>& request, b
 
 void sqlsrv_v8_start_timeout_watch(const std::shared_ptr<SqlSrvV8Request>& request)
 {
-    if (request == nullptr || !request->has_timeout_ms || request->timeout_ms == 0U) {
+    if (request == nullptr || !request->has_timeout_ms || request->timeout_ms == 0U ||
+        request->terminal.load())
+    {
         return;
     }
     bool expected = false;
     if (!request->timeout_watch_started.compare_exchange_strong(expected, true)) {
+        return;
+    }
+    if (request->terminal.load()) {
+        request->timeout_watch_started.store(false);
         return;
     }
     request->timeout_thread = std::thread([request]() {
@@ -559,6 +565,9 @@ void sqlsrv_v8_start_timeout_watch(const std::shared_ptr<SqlSrvV8Request>& reque
             SQLCancelHandle(SQL_HANDLE_STMT, request->stmt);
         }
     });
+    if (request->terminal.load()) {
+        sqlsrv_v8_stop_timeout_watch(request);
+    }
 }
 
 bool sqlsrv_v8_local_string(v8::Isolate* isolate, const std::string& value,
@@ -1094,7 +1103,12 @@ bool sqlsrv_v8_allocate_statement(SqlSrvV8Request* request)
         return false;
     }
     if (request->has_timeout_ms && request->timeout_ms > 0U) {
-        SQLULEN timeout_seconds = (request->timeout_ms + 999U) / 1000U;
+        const uint64_t rounded_seconds =
+            (static_cast<uint64_t>(request->timeout_ms) + 999ULL) / 1000ULL;
+        const uint64_t max_timeout_seconds =
+            static_cast<uint64_t>(std::numeric_limits<SQLULEN>::max());
+        SQLULEN timeout_seconds =
+            static_cast<SQLULEN>(std::min(rounded_seconds, max_timeout_seconds));
         rc = SQLSetStmtAttr(request->stmt, SQL_ATTR_QUERY_TIMEOUT,
                             (SQLPOINTER)(uintptr_t)timeout_seconds, 0);
         if (!SQL_SUCCEEDED(rc)) {
