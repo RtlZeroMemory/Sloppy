@@ -315,7 +315,13 @@ jobs:
           (cd "$download_dir" && sha256sum -c "$(basename "${checksums[0]}")")
           rm -rf "$PWD/.sdeps/v8/linux-x64" "$PWD/.sdeps/v8/v8"
           tar -xzf "${archives[0]}" -C "$PWD/.sdeps/v8"
-          mv "$PWD/.sdeps/v8/v8" "$PWD/.sdeps/v8/linux-x64"
+          if [ -d "$PWD/.sdeps/v8/v8" ]; then
+            mv "$PWD/.sdeps/v8/v8" "$PWD/.sdeps/v8/linux-x64"
+          elif [ ! -d "$PWD/.sdeps/v8/linux-x64" ]; then
+            echo "Linux x64 V8 SDK archive did not contain v8/ or linux-x64/." >&2
+            find "$PWD/.sdeps/v8" -maxdepth 2 -type d -print >&2
+            exit 1
+          fi
           test -f "$PWD/.sdeps/v8/linux-x64/share/sloppy-v8-sdk.json"
 
       - name: Save Linux V8 SDK cache
