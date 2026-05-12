@@ -211,7 +211,11 @@ static int test_zero_capacity_writer_rejects_non_empty_writes(void)
         return 72;
     }
     status = sl_json_writer_write_char(&writer, 'x');
-    return expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ? 73 : 0;
+    if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0) {
+        return 73;
+    }
+    view = sl_json_writer_view(&writer);
+    return view.ptr != NULL || view.length != 0U ? 74 : 0;
 }
 
 int main(void)

@@ -6,6 +6,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define JSON_PROFILE_ENV_GUARD_CAPACITY 256U
+
+typedef struct JsonProfileEnvGuard
+{
+    bool had_value;
+    bool value_truncated;
+    char value[JSON_PROFILE_ENV_GUARD_CAPACITY];
+} JsonProfileEnvGuard;
+
 static int expect_true(bool condition)
 {
     return condition ? 0 : 1;
@@ -82,6 +91,61 @@ static void enable_json_profile_for_process(void)
 #endif
 }
 
+static JsonProfileEnvGuard capture_json_profile_env(void)
+{
+    JsonProfileEnvGuard guard = {0};
+#if defined(_WIN32)
+    char* value = NULL;
+    size_t value_length = 0U;
+
+    if (_dupenv_s(&value, &value_length, "SLOPPY_JSON_PROFILE") != 0 || value == NULL) {
+        return guard;
+    }
+    guard.had_value = true;
+    if (value_length == 0U || value_length > JSON_PROFILE_ENV_GUARD_CAPACITY) {
+        guard.value_truncated = true;
+        free(value);
+        return guard;
+    }
+    memcpy(guard.value, value, value_length);
+    free(value);
+    return guard;
+#else
+    const char* value = getenv("SLOPPY_JSON_PROFILE");
+    size_t value_length = 0U;
+
+    if (value == NULL) {
+        return guard;
+    }
+
+    value_length = strlen(value);
+    guard.had_value = true;
+    if (value_length >= JSON_PROFILE_ENV_GUARD_CAPACITY) {
+        guard.value_truncated = true;
+        return guard;
+    }
+    memcpy(guard.value, value, value_length + 1U);
+    return guard;
+#endif
+}
+
+static void restore_json_profile_env(const JsonProfileEnvGuard* guard)
+{
+    if (guard == NULL || guard->value_truncated) {
+        return;
+    }
+#if defined(_WIN32)
+    _putenv_s("SLOPPY_JSON_PROFILE", guard->had_value ? guard->value : "");
+#else
+    if (guard->had_value) {
+        setenv("SLOPPY_JSON_PROFILE", guard->value, 1);
+    }
+    else {
+        unsetenv("SLOPPY_JSON_PROFILE");
+    }
+#endif
+}
+
 static int test_valid_native_body_profile_does_not_render_paths(void)
 {
     unsigned char arena_storage[8192];
@@ -105,7 +169,12 @@ static int test_valid_native_body_profile_does_not_render_paths(void)
     SlEngineResult result = {0};
     SlDiag diag = {0};
     SlJsonProfileSnapshot snapshot = {0};
+    JsonProfileEnvGuard profile_env = capture_json_profile_env();
+    int rc = 0;
 
+    if (profile_env.value_truncated) {
+        return 4;
+    }
     enable_json_profile_for_process();
     properties[0] =
         (SlPlanSchemaProperty){.name = sl_str_from_cstr("name"), .schema = &name_schema};
@@ -118,7 +187,8 @@ static int test_valid_native_body_profile_does_not_render_paths(void)
     if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
         0)
     {
-        return 1;
+        rc = 1;
+        goto cleanup;
     }
 
     sl_json_profile_reset("valid_native_body_profile", 1U);
@@ -127,17 +197,21 @@ static int test_valid_native_body_profile_does_not_render_paths(void)
             SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_NONE)
     {
-        return 2;
+        rc = 2;
+        goto cleanup;
     }
     sl_json_profile_snapshot(&snapshot);
     if (!sl_json_profile_snapshot_has_data(&snapshot) ||
         snapshot.counters[SL_JSON_PROFILE_COUNTER_PATHS_RENDERED] != 0U ||
         snapshot.counters[SL_JSON_PROFILE_COUNTER_ISSUES_EMITTED] != 0U)
     {
-        return 3;
+        rc = 3;
+        goto cleanup;
     }
 
-    return 0;
+cleanup:
+    restore_json_profile_env(&profile_env);
+    return rc;
 }
 
 static int test_no_bindings_and_invalid_arguments_are_output_atomic(void)
