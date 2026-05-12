@@ -94,6 +94,21 @@ jobs:
             Linux-linux-clang-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
             Linux-linux-clang-vcpkg-${{ env.VCPKG_COMMIT }}-
 
+      - name: Cache mono for vcpkg NuGet (Linux)
+        if: runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
+        with:
+          packages: mono-complete
+          version: vcpkg-nuget-1
+
+      - name: Install mono for vcpkg NuGet (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if ! brew list --formula mono >/dev/null 2>&1; then
+            brew install mono
+          fi
+
       - name: Bootstrap vcpkg
         shell: bash
         run: |
@@ -112,20 +127,16 @@ jobs:
           fi
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
-          if [ -n "${NUGET_PAT:-}" ]; then
-            if ! command -v mono >/dev/null 2>&1; then
-              if command -v apt-get >/dev/null 2>&1; then
-                sudo apt-get update -y >/dev/null
-                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mono-complete >/dev/null
-              elif command -v brew >/dev/null 2>&1; then
-                brew install mono >/dev/null
-              fi
-            fi
+          if [ -n "${NUGET_PAT:-}" ] && command -v mono >/dev/null 2>&1; then
             nuget_path="$("$vcpkg_root/vcpkg" fetch nuget | tail -n 1)"
             mono "$nuget_path" sources add -Source "$NUGET_FEED_URL" -StorePasswordInClearText -Name GitHubPackages -UserName "$NUGET_USERNAME" -Password "$NUGET_PAT" >/dev/null 2>&1 || true
             mono "$nuget_path" setapikey "$NUGET_PAT" -Source "$NUGET_FEED_URL" >/dev/null 2>&1 || true
           else
-            echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            if [ -z "${NUGET_PAT:-}" ]; then
+              echo "::warning::NUGET_PAT secret not set; using local file binary cache only"
+            else
+              echo "::warning::mono not available; using local file binary cache only"
+            fi
             echo "VCPKG_BINARY_SOURCES=default,readwrite" >> "$GITHUB_ENV"
           fi
 
