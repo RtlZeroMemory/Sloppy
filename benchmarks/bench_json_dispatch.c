@@ -7,6 +7,7 @@
 #include "sloppy/http_context.h"
 #include "sloppy/http_dispatch.h"
 #include "sloppy/http_response.h"
+#include "sloppy/json_writer.h"
 #include "sloppy/request_validation.h"
 
 #include <yyjson.h>
@@ -14,6 +15,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define BENCH_JSON_LITERAL(value) sl_str_from_parts((value), sizeof(value) - 1U)
+#define BENCH_JSON_NATIVE_SCHEMA_BODY                                                              \
+    "{\"name\":\"Ada\",\"escaped\":\"line\\nquote\\\"slash\\\\\",\"count\":7,\"score\":1.5,"       \
+    "\"ok\":true,\"note\":null,\"nested\":{\"label\":\"inner\"},\"tags\":[\"a\",\"b\"]}"
 
 static uint64_t sl_bench_json_checksum(SlBytes bytes)
 {
@@ -147,6 +153,7 @@ static SlStatus bench_json_request_native_schema_valid(const SlBenchContext* con
     plan = sl_bench_json_plan(&schema, 1U);
     request.body = sl_bytes_from_parts(body, sizeof(body) - 1U);
     request_context = sl_bench_json_context(&request);
+    request_context.request_schema = &schema;
     status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
     if (!sl_status_is_ok(status)) {
         return status;
@@ -206,6 +213,7 @@ static SlStatus bench_json_request_native_schema_reject(const SlBenchContext* co
     plan = sl_bench_json_plan(&schema, 1U);
     request.body = sl_bytes_from_parts(body, sizeof(body) - 1U);
     request_context = sl_bench_json_context(&request);
+    request_context.request_schema = &schema;
     status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
     if (!sl_status_is_ok(status)) {
         return status;
@@ -320,6 +328,7 @@ static SlStatus bench_json_request_native_materialize_once(const SlBenchContext*
     plan = sl_bench_json_plan(&schema, 1U);
     request.body = sl_bytes_from_parts(body, sizeof(body) - 1U);
     request_context = sl_bench_json_context(&request);
+    request_context.request_schema = &schema;
     request_context.native_json_validated = true;
     status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
     if (!sl_status_is_ok(status)) {
@@ -339,9 +348,19 @@ static SlStatus bench_json_request_native_materialize_once(const SlBenchContext*
         {
             return sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
+        if (sl_json_profile_enabled()) {
+            sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_DUPLICATE_VALIDATION_SKIPPED, 1U);
+        }
         doc = yyjson_read((char*)body, sizeof(body) - 1U, 0U);
         if (doc == NULL) {
             return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
+        if (sl_json_profile_enabled()) {
+            uint64_t materialize_start =
+                sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_MATERIALIZE_ONCE_HANDOFF);
+            sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_MATERIALIZATIONS, 1U);
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_MATERIALIZE_ONCE_HANDOFF,
+                                      materialize_start);
         }
         checksum += sl_bench_json_checksum(sl_bytes_from_parts(body, sizeof(body) - 1U));
         yyjson_doc_free(doc);
@@ -394,123 +413,85 @@ static SlStatus bench_json_request_generic_parse_medium_body(const SlBenchContex
     return sl_status_ok();
 }
 
-static SlStatus bench_json_append_escaped_string(SlStringBuilder* builder, SlStr value)
+static SlStatus bench_json_response_native_schema_payload_writer(SlJsonWriter* writer)
 {
-    static const char hex[] = "0123456789abcdef";
-    size_t index = 0U;
-    bool needs_escape = false;
-    SlStatus status;
+    bool profile_enabled = sl_json_profile_enabled();
+    uint64_t fields_start =
+        profile_enabled
+            ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_ITERATION)
+            : 0U;
+    uint64_t literal_start =
+        profile_enabled ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_LITERAL_FRAGMENT_WRITE)
+                        : 0U;
+    SlStatus status = sl_json_writer_write_str(writer, BENCH_JSON_LITERAL("{\"name\":"));
 
-    for (index = 0U; index < value.length; index += 1U) {
-        unsigned char ch = (unsigned char)value.ptr[index];
-        if (ch < 0x20U || ch == '"' || ch == '\\') {
-            needs_escape = true;
-            break;
+    if (profile_enabled) {
+        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_LITERAL_FRAGMENT_WRITE, literal_start);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_json_writer_write_string(writer, BENCH_JSON_LITERAL("Ada"));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_json_writer_write_str(writer, BENCH_JSON_LITERAL(",\"escaped\":"));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_json_writer_write_string(writer, BENCH_JSON_LITERAL("line\nquote\"slash\\"));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_json_writer_write_str(writer, BENCH_JSON_LITERAL(",\"count\":"));
+    }
+    if (sl_status_is_ok(status)) {
+        uint64_t scalar_start =
+            profile_enabled ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_SCALAR_FORMAT) : 0U;
+        if (profile_enabled) {
+            sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_SCALAR_FORMAT_CALLS, 1U);
+        }
+        status = sl_json_writer_write_i64(writer, 7);
+        if (profile_enabled) {
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_SCALAR_FORMAT, scalar_start);
         }
     }
-
-    status = sl_string_builder_append_char(builder, '"');
-    if (!sl_status_is_ok(status)) {
-        return status;
+    if (sl_status_is_ok(status)) {
+        status = sl_json_writer_write_str(writer, BENCH_JSON_LITERAL(",\"score\":"));
     }
-    if (!needs_escape) {
-        status = sl_string_builder_append_str(builder, value);
-        if (!sl_status_is_ok(status)) {
-            return status;
+    if (sl_status_is_ok(status)) {
+        uint64_t scalar_start =
+            profile_enabled ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_SCALAR_FORMAT) : 0U;
+        if (profile_enabled) {
+            sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_SCALAR_FORMAT_CALLS, 1U);
         }
-        return sl_string_builder_append_char(builder, '"');
-    }
-    for (index = 0U; index < value.length; index += 1U) {
-        unsigned char ch = (unsigned char)value.ptr[index];
-        char escaped[7] = {'\\', 'u', '0', '0', '0', '0', '\0'};
-
-        switch (ch) {
-        case '"':
-            status = sl_string_builder_append_cstr(builder, "\\\"");
-            break;
-        case '\\':
-            status = sl_string_builder_append_cstr(builder, "\\\\");
-            break;
-        case '\b':
-            status = sl_string_builder_append_cstr(builder, "\\b");
-            break;
-        case '\f':
-            status = sl_string_builder_append_cstr(builder, "\\f");
-            break;
-        case '\n':
-            status = sl_string_builder_append_cstr(builder, "\\n");
-            break;
-        case '\r':
-            status = sl_string_builder_append_cstr(builder, "\\r");
-            break;
-        case '\t':
-            status = sl_string_builder_append_cstr(builder, "\\t");
-            break;
-        default:
-            if (ch < 0x20U) {
-                escaped[4] = hex[(ch >> 4U) & 0x0FU];
-                escaped[5] = hex[ch & 0x0FU];
-                status = sl_string_builder_append_cstr(builder, escaped);
-            }
-            else {
-                status = sl_string_builder_append_char(builder, (char)ch);
-            }
-            break;
-        }
-        if (!sl_status_is_ok(status)) {
-            return status;
+        status = sl_json_writer_write_f64(writer, 1.5);
+        if (profile_enabled) {
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_SCALAR_FORMAT, scalar_start);
         }
     }
-    return sl_string_builder_append_char(builder, '"');
-}
-
-static SlStatus bench_json_response_native_schema_payload(SlStringBuilder* builder)
-{
-    SlStatus status = sl_string_builder_append_cstr(builder, "{\"name\":");
-
     if (sl_status_is_ok(status)) {
-        status = bench_json_append_escaped_string(builder, sl_str_from_cstr("Ada"));
+        status = sl_json_writer_write_str(
+            writer, BENCH_JSON_LITERAL(",\"ok\":true,\"note\":null,\"nested\":{\"label\":"));
     }
     if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_cstr(builder, ",\"escaped\":");
+        status = sl_json_writer_write_string(writer, BENCH_JSON_LITERAL("inner"));
     }
     if (sl_status_is_ok(status)) {
-        status =
-            bench_json_append_escaped_string(builder, sl_str_from_cstr("line\nquote\"slash\\"));
+        status = sl_json_writer_write_str(writer, BENCH_JSON_LITERAL("},\"tags\":["));
     }
     if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_cstr(builder, ",\"count\":");
+        status = sl_json_writer_write_string(writer, BENCH_JSON_LITERAL("a"));
     }
     if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_i64(builder, 7);
+        status = sl_json_writer_write_char(writer, ',');
     }
     if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_cstr(builder, ",\"score\":");
+        status = sl_json_writer_write_string(writer, BENCH_JSON_LITERAL("b"));
     }
     if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_f64(builder, 1.5);
+        status = sl_json_writer_write_str(writer, BENCH_JSON_LITERAL("]}"));
     }
-    if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_cstr(builder,
-                                               ",\"ok\":true,\"note\":null,\"nested\":{\"label\":");
+    if (sl_status_is_ok(status) && profile_enabled) {
+        sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_RESPONSE_FIELDS_WRITTEN, 9U);
     }
-    if (sl_status_is_ok(status)) {
-        status = bench_json_append_escaped_string(builder, sl_str_from_cstr("inner"));
-    }
-    if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_cstr(builder, "},\"tags\":[");
-    }
-    if (sl_status_is_ok(status)) {
-        status = bench_json_append_escaped_string(builder, sl_str_from_cstr("a"));
-    }
-    if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_char(builder, ',');
-    }
-    if (sl_status_is_ok(status)) {
-        status = bench_json_append_escaped_string(builder, sl_str_from_cstr("b"));
-    }
-    if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_cstr(builder, "]}");
+    if (profile_enabled) {
+        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_ITERATION, fields_start);
     }
     return status;
 }
@@ -621,20 +602,22 @@ static SlStatus bench_json_response_native_schema_serialize_payload_only(
     }
 
     for (index = 0U; index < iterations; index += 1U) {
-        char output[512];
-        SlStringBuilder builder = {0};
-        SlStr json = sl_str_empty();
-        SlStatus status = sl_string_builder_init_fixed(&builder, output, sizeof(output));
+        unsigned char output[512];
+        SlJsonWriter writer = {0};
+        SlBytes json = {0};
+        SlStatus status = sl_json_writer_init_fixed(&writer, output, sizeof(output));
 
         if (sl_status_is_ok(status)) {
-            status = bench_json_response_native_schema_payload(&builder);
+            status = bench_json_response_native_schema_payload_writer(&writer);
         }
         if (!sl_status_is_ok(status)) {
             return status;
         }
-        json = sl_string_builder_view(&builder);
-        checksum += sl_bench_json_checksum(
-            sl_bytes_from_parts((const unsigned char*)json.ptr, json.length));
+        if (sl_json_profile_enabled()) {
+            sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_NATIVE_RESPONSE_HITS, 1U);
+        }
+        json = sl_json_writer_view(&writer);
+        checksum += sl_bench_json_checksum(json);
     }
 
     *out_checksum = checksum;
@@ -646,6 +629,7 @@ static SlStatus bench_json_response_native_schema_http_response_write(const SlBe
                                                                       uint64_t* out_checksum)
 {
     unsigned char output[1024];
+    size_t body_length = sizeof(BENCH_JSON_NATIVE_SCHEMA_BODY) - 1U;
     uint64_t checksum = 0U;
     uint64_t index = 0U;
 
@@ -656,27 +640,57 @@ static SlStatus bench_json_response_native_schema_http_response_write(const SlBe
     }
 
     for (index = 0U; index < iterations; index += 1U) {
-        char body_storage[512];
-        SlStringBuilder builder = {0};
-        SlStr json = sl_str_empty();
+        bool profile_enabled = sl_json_profile_enabled();
+        uint64_t header_start = 0U;
+        uint64_t estimate_start = 0U;
+        SlJsonWriter writer = {0};
         SlBytes bytes = {0};
-        SlHttpResponse response;
-        SlStatus status =
-            sl_string_builder_init_fixed(&builder, body_storage, sizeof(body_storage));
+        SlStatus status = sl_json_writer_init_fixed(&writer, output, sizeof(output));
 
+        estimate_start =
+            profile_enabled
+                ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_OUTPUT_SIZE_ESTIMATION)
+                : 0U;
+        if (profile_enabled) {
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_OUTPUT_SIZE_ESTIMATION, estimate_start);
+        }
+
+        header_start =
+            profile_enabled
+                ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_HTTP_RESPONSE_HEADER_WRITE)
+                : 0U;
         if (sl_status_is_ok(status)) {
-            status = bench_json_response_native_schema_payload(&builder);
+            status = sl_json_writer_write_str(
+                &writer,
+                BENCH_JSON_LITERAL(
+                    "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: application/json; "
+                    "charset=utf-8\r\nContent-Length: "));
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_json_writer_write_i64(&writer, (int64_t)body_length);
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_json_writer_write_str(&writer, BENCH_JSON_LITERAL("\r\n\r\n"));
+        }
+        if (profile_enabled) {
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_HTTP_RESPONSE_HEADER_WRITE,
+                                      header_start);
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_response_native_schema_payload_writer(&writer);
         }
         if (!sl_status_is_ok(status)) {
+            if (profile_enabled && sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+                uint64_t failure_start =
+                    sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_CAPACITY_FAILURE);
+                sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_CAPACITY_FAILURE, failure_start);
+            }
             return status;
         }
-        json = sl_string_builder_view(&builder);
-        response = sl_http_response_json(
-            200U, sl_bytes_from_parts((const unsigned char*)json.ptr, json.length));
-        status = sl_http_response_write(&response, output, sizeof(output), &bytes);
-        if (!sl_status_is_ok(status)) {
-            return status;
+        if (profile_enabled) {
+            sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_NATIVE_RESPONSE_HITS, 1U);
         }
+        bytes = sl_json_writer_view(&writer);
         checksum += sl_bench_json_checksum(bytes);
         checksum += (uint64_t)bytes.length;
     }
@@ -1201,6 +1215,7 @@ static SlStatus bench_json_dispatch_validate_then_static_response(const SlBenchC
     plan = sl_bench_json_plan(&schema, 1U);
     request.body = sl_bytes_from_parts(request_body, sizeof(request_body) - 1U);
     request_context = sl_bench_json_context(&request);
+    request_context.request_schema = &schema;
     status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
     if (!sl_status_is_ok(status)) {
         return status;

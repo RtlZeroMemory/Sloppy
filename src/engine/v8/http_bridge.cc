@@ -11,6 +11,7 @@
 #include "sloppy/builder.h"
 #include "sloppy/container.h"
 #include "sloppy/fs.h"
+#include "sloppy/json_profile.h"
 
 #include <algorithm>
 #include <cmath>
@@ -3150,10 +3151,51 @@ SlStatus http_v8_append_json_string(SlStringBuilder* builder, SlStr text)
 {
     static const char hex[] = "0123456789abcdef";
     size_t index = 0U;
+    bool profile_enabled = sl_json_profile_enabled();
+    uint64_t scan_start =
+        profile_enabled ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_SCAN)
+                        : 0U;
+    uint64_t write_start = 0U;
+    bool needs_escape = false;
     SlStatus status;
+
+    for (index = 0U; index < text.length; index += 1U) {
+        unsigned char ch = (unsigned char)text.ptr[index];
+        if (ch == '"' || ch == '\\' || ch < 0x20U) {
+            needs_escape = true;
+            break;
+        }
+    }
+    if (profile_enabled) {
+        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_SCAN, scan_start);
+        sl_json_profile_counter_add(needs_escape
+                                        ? SL_JSON_PROFILE_COUNTER_STRINGS_ESCAPED
+                                        : SL_JSON_PROFILE_COUNTER_STRINGS_FAST_PATH_NO_ESCAPE,
+                                    1U);
+    }
+
+    write_start = profile_enabled
+                      ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE)
+                      : 0U;
+    if (!needs_escape) {
+        status = sl_string_builder_append_char(builder, '"');
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_str(builder, text);
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_char(builder, '"');
+        }
+        if (profile_enabled) {
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
+        }
+        return status;
+    }
 
     status = sl_string_builder_append_char(builder, '"');
     if (!sl_status_is_ok(status)) {
+        if (profile_enabled) {
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
+        }
         return status;
     }
     for (index = 0U; index < text.length; index += 1U) {
@@ -3193,10 +3235,17 @@ SlStatus http_v8_append_json_string(SlStringBuilder* builder, SlStr text)
             status = sl_string_builder_append_char(builder, (char)ch);
         }
         if (!sl_status_is_ok(status)) {
+            if (profile_enabled) {
+                sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
+            }
             return status;
         }
     }
-    return sl_string_builder_append_char(builder, '"');
+    status = sl_string_builder_append_char(builder, '"');
+    if (profile_enabled) {
+        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
+    }
+    return status;
 }
 
 SlStatus http_v8_append_v8_json_string(v8::Isolate* isolate, SlStringBuilder* builder,
@@ -3236,6 +3285,8 @@ SlStatus http_v8_native_schema_write_object(v8::Isolate* isolate, v8::Local<v8::
     v8::Local<v8::Object> object;
     size_t emitted = 0U;
     size_t index = 0U;
+    uint64_t iteration_start =
+        sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_ITERATION);
     SlStatus status;
 
     if (!value->IsObject() || value->IsArray()) {
@@ -3251,16 +3302,28 @@ SlStatus http_v8_native_schema_write_object(v8::Isolate* isolate, v8::Local<v8::
         const SlPlanSchemaProperty* property = &schema->properties[index];
         v8::Local<v8::String> key;
         v8::Local<v8::Value> child;
+        uint64_t lookup_start =
+            sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_LOOKUP_VALUE_ACCESS);
 
         if (property->schema == nullptr || !http_v8_schema_key(isolate, property->name, &key) ||
             !object->Get(context, key).ToLocal(&child))
         {
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_LOOKUP_VALUE_ACCESS,
+                                      lookup_start);
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_ITERATION,
+                                      iteration_start);
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
+        sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_SCHEMA_FIELD_LOOKUPS, 1U);
+        sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_SCHEMA_FIELD_LOOKUP_LINEAR, 1U);
+        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_LOOKUP_VALUE_ACCESS,
+                                  lookup_start);
         if (child->IsUndefined()) {
             if (property->schema->optional) {
                 continue;
             }
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_ITERATION,
+                                      iteration_start);
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
         if (emitted != 0U) {
@@ -3278,11 +3341,16 @@ SlStatus http_v8_native_schema_write_object(v8::Isolate* isolate, v8::Local<v8::
                                                             property->schema, child);
         }
         if (!sl_status_is_ok(status)) {
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_ITERATION,
+                                      iteration_start);
             return status;
         }
         emitted += 1U;
+        sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_RESPONSE_FIELDS_WRITTEN, 1U);
     }
-    return sl_string_builder_append_char(builder, '}');
+    status = sl_string_builder_append_char(builder, '}');
+    sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_RESPONSE_FIELD_ITERATION, iteration_start);
+    return status;
 }
 
 SlStatus http_v8_native_schema_write_array(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -3299,6 +3367,7 @@ SlStatus http_v8_native_schema_write_array(v8::Isolate* isolate, v8::Local<v8::C
     }
     array = value.As<v8::Array>();
     length = array->Length();
+    sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_OBJECT_FIELDS_SEEN, (uint64_t)length);
     status = sl_string_builder_append_char(builder, '[');
     if (!sl_status_is_ok(status)) {
         return status;
@@ -3351,23 +3420,33 @@ SlStatus http_v8_native_schema_write_json_value(v8::Isolate* isolate,
         return http_v8_append_v8_json_string(isolate, builder, value);
     case SL_PLAN_SCHEMA_NUMBER: {
         double number = 0.0;
+        uint64_t scalar_start = sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_SCALAR_FORMAT);
+        sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_SCALAR_FORMAT_CALLS, 1U);
         if (!value->IsNumber() || !value->NumberValue(context).To(&number) ||
             !std::isfinite(number))
         {
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_SCALAR_FORMAT, scalar_start);
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
-        return sl_string_builder_append_f64(builder, number);
+        status = sl_string_builder_append_f64(builder, number);
+        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_SCALAR_FORMAT, scalar_start);
+        return status;
     }
     case SL_PLAN_SCHEMA_INT: {
         double number = 0.0;
+        uint64_t scalar_start = sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_SCALAR_FORMAT);
+        sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_SCALAR_FORMAT_CALLS, 1U);
         if (!value->IsNumber() || !value->NumberValue(context).To(&number) ||
             !std::isfinite(number) || std::trunc(number) != number ||
             number < (double)std::numeric_limits<int64_t>::min() ||
             number > (double)std::numeric_limits<int64_t>::max())
         {
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_SCALAR_FORMAT, scalar_start);
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
-        return sl_string_builder_append_i64(builder, (int64_t)number);
+        status = sl_string_builder_append_i64(builder, (int64_t)number);
+        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_SCALAR_FORMAT, scalar_start);
+        return status;
     }
     case SL_PLAN_SCHEMA_BOOLEAN:
         if (!value->IsBoolean()) {
@@ -3403,8 +3482,10 @@ SlStatus http_v8_try_native_schema_json(v8::Isolate* isolate, v8::Local<v8::Cont
     if (request_context == nullptr || request_context->response_schema == nullptr ||
         !http_v8_schema_response_supported(&request_context->response_schema->definition))
     {
+        sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_GENERIC_FALLBACKS, 1U);
         return sl_status_ok();
     }
+    sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_NATIVE_RESPONSE_HITS, 1U);
     status =
         sl_string_builder_init_arena(&builder, arena, SL_V8_NATIVE_SCHEMA_JSON_INITIAL_CAPACITY,
                                      SL_V8_NATIVE_SCHEMA_JSON_MAX_CAPACITY);
@@ -3414,7 +3495,19 @@ SlStatus http_v8_try_native_schema_json(v8::Isolate* isolate, v8::Local<v8::Cont
     status = http_v8_native_schema_write_json_value(
         isolate, context, &builder, &request_context->response_schema->definition, body);
     if (!sl_status_is_ok(status)) {
+        if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+            uint64_t failure_start =
+                sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_CAPACITY_FAILURE);
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_CAPACITY_FAILURE, failure_start);
+        }
         return status;
+    }
+    {
+        SlByteBuilderStats stats = sl_string_builder_stats(&builder);
+        sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_BUILDER_GROWS,
+                                    (uint64_t)stats.grow_count);
+        sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_BUFFER_COPIES,
+                                    (uint64_t)stats.copied_bytes);
     }
     json = sl_string_builder_view(&builder);
     *out = sl_bytes_from_parts((const unsigned char*)json.ptr, json.length);

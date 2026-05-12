@@ -190,6 +190,7 @@
         conformance.http.default_dispatch PROPERTIES LABELS "conformance;http")
     sloppy_add_c_unit_test(
         core_http_response core.http.response tests/unit/core/test_http_response.c)
+    sloppy_add_c_unit_test(core_json_writer core.json_writer tests/unit/core/test_json_writer.c)
     sloppy_add_c_unit_test(core_route_pattern core.route.pattern tests/unit/core/test_route.c)
     sloppy_add_c_unit_test(
         core_route_artifact core.route.artifact tests/unit/core/test_route_artifact.c)
@@ -419,6 +420,16 @@
     set_tests_properties(
         benchmarks.sloppy_bench.smoke_json
         PROPERTIES PASS_REGULAR_EXPRESSION "\"sloppyBenchmarkVersion\": 1")
+
+    add_test(
+        NAME benchmarks.sloppy_bench.json_profile_smoke
+        COMMAND
+            sloppy_bench --smoke --format json --bench
+            json.request.native_schema.valid.payload_validate_only)
+    set_tests_properties(
+        benchmarks.sloppy_bench.json_profile_smoke
+        PROPERTIES ENVIRONMENT "SLOPPY_JSON_PROFILE=1"
+                   PASS_REGULAR_EXPRESSION "\"jsonProfile\"")
 
     add_test(
         NAME benchmarks.sloppy_bench.logging_smoke_json

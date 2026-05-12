@@ -59,6 +59,7 @@ typedef struct SlHttpRequestContext
     size_t query_param_count;
     SlHttpRequestBodyKind body_kind;
     bool native_json_validated;
+    const SlPlanSchema* request_schema;
     const SlPlanSchema* response_schema;
     /*
      * Optional borrowed request cancellation token. A cancelled token means the handler
