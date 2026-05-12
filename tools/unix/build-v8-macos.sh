@@ -206,6 +206,25 @@ copy_archive_from_ninja_inputs() {
   create_static_archive "$destination" "/" "${objects[@]}"
 }
 
+archive_objects() {
+  local object_root="$1"
+  local destination="$2"
+  local description="$3"
+  local objects=()
+  local object
+
+  if [[ ! -d "$object_root" ]] || ! find "$object_root" -name '*.o' -type f -print -quit | grep -q .; then
+    echo "build-v8-macos: no $description object files found under $object_root." >&2
+    exit 1
+  fi
+
+  while IFS= read -r object; do
+    objects+=("$object")
+  done < <(find "$object_root" -name '*.o' -type f | sort)
+
+  create_static_archive "$destination" "/" "${objects[@]}"
+}
+
 write_gn_args() {
   local args_path="$1"
   cat > "$args_path" <<GNARGS
@@ -291,6 +310,8 @@ copy_static_archive_as_full "$v8_build_dir/obj/libv8_libbase.a" "$sdk_root/lib/l
 if [[ -f "$v8_build_dir/obj/libv8_libsampler.a" ]]; then
   copy_static_archive_as_full "$v8_build_dir/obj/libv8_libsampler.a" "$sdk_root/lib/libv8_libsampler.a" "$v8_build_dir/obj"
 fi
+archive_objects "$v8_build_dir/obj/buildtools/third_party/libc++/libc++" "$sdk_root/lib/libc++.a" "libc++"
+archive_objects "$v8_build_dir/obj/buildtools/third_party/libc++abi/libc++abi" "$sdk_root/lib/libc++abi.a" "libc++abi"
 copy_required_file "$v8_build_dir/v8_features.json" "$sdk_root/share/v8_features.json"
 copy_required_file "$v8_build_dir/v8_build_config.json" "$sdk_root/share/v8_build_config.json"
 if [[ -d "$v8_checkout/third_party/libc++/src/include" && -f "$v8_checkout/buildtools/third_party/libc++/__config_site" ]]; then
