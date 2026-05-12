@@ -1432,23 +1432,30 @@ static SlStatus sl_log_console_format_pretty(const SlLogEvent* event, char* buff
             status = sl_string_builder_append_char(&builder, '=');
         }
         if (sl_status_is_ok(status)) {
-            if (field->redacted || field->kind == SL_LOG_FIELD_STRING ||
-                field->kind == SL_LOG_FIELD_JSON)
-            {
+            if (field->redacted) {
                 status = sl_string_builder_append_str(&builder, sl_log_field_text_value(field));
             }
-            else if (field->kind == SL_LOG_FIELD_BOOL) {
-                status =
-                    sl_string_builder_append_cstr(&builder, field->bool_value ? "true" : "false");
-            }
-            else if (field->kind == SL_LOG_FIELD_I64) {
-                status = sl_string_builder_append_i64(&builder, field->i64_value);
-            }
-            else if (field->kind == SL_LOG_FIELD_F64) {
-                status = sl_string_builder_append_f64(&builder, field->f64_value);
-            }
             else {
-                status = sl_string_builder_append_cstr(&builder, "null");
+                switch (field->kind) {
+                case SL_LOG_FIELD_STRING:
+                case SL_LOG_FIELD_JSON:
+                    status = sl_string_builder_append_str(&builder, sl_log_field_text_value(field));
+                    break;
+                case SL_LOG_FIELD_BOOL:
+                    status = sl_string_builder_append_cstr(&builder,
+                                                           field->bool_value ? "true" : "false");
+                    break;
+                case SL_LOG_FIELD_I64:
+                    status = sl_string_builder_append_i64(&builder, field->i64_value);
+                    break;
+                case SL_LOG_FIELD_F64:
+                    status = sl_string_builder_append_f64(&builder, field->f64_value);
+                    break;
+                case SL_LOG_FIELD_NULL:
+                default:
+                    status = sl_string_builder_append_cstr(&builder, "null");
+                    break;
+                }
             }
         }
     }

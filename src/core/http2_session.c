@@ -921,33 +921,39 @@ static int sl_http2_on_frame_recv(nghttp2_session* ng_session, const nghttp2_fra
         return NGHTTP2_ERR_CALLBACK_FAILURE;
     }
 
-    if (frame->hd.type == NGHTTP2_HEADERS) {
+    switch (frame->hd.type) {
+    case NGHTTP2_HEADERS:
         status = sl_http2_session_finish_headers(session, frame);
-    }
-    else if (frame->hd.type == NGHTTP2_DATA && (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) != 0U) {
-        sl_http2_session_record_remote_closed_stream(session, frame->hd.stream_id);
-        status =
-            sl_http2_session_push_event(session, (SlHttp2Event){.type = SL_HTTP2_EVENT_STREAM_END,
+        break;
+    case NGHTTP2_DATA:
+        if ((frame->hd.flags & NGHTTP2_FLAG_END_STREAM) != 0U) {
+            sl_http2_session_record_remote_closed_stream(session, frame->hd.stream_id);
+            status = sl_http2_session_push_event(session,
+                                                 (SlHttp2Event){.type = SL_HTTP2_EVENT_STREAM_END,
                                                                 .stream_id = frame->hd.stream_id});
-    }
-    else if (frame->hd.type == NGHTTP2_RST_STREAM) {
+        }
+        break;
+    case NGHTTP2_RST_STREAM:
         sl_http2_session_record_closed_stream(session, frame->hd.stream_id, true);
         status = sl_http2_session_push_event(
             session, (SlHttp2Event){.type = SL_HTTP2_EVENT_RST_STREAM,
                                     .stream_id = frame->hd.stream_id,
                                     .payload.control.error_code = frame->rst_stream.error_code});
-    }
-    else if (frame->hd.type == NGHTTP2_GOAWAY) {
+        break;
+    case NGHTTP2_GOAWAY:
         session->received_goaway = true;
         status = sl_http2_session_push_event(
             session, (SlHttp2Event){.type = SL_HTTP2_EVENT_GOAWAY,
                                     .payload.control.last_stream_id = frame->goaway.last_stream_id,
                                     .payload.control.error_code = frame->goaway.error_code});
-    }
-    else if (frame->hd.type == NGHTTP2_SETTINGS) {
+        break;
+    case NGHTTP2_SETTINGS:
         status = sl_http2_session_push_event(
             session, (SlHttp2Event){.type = SL_HTTP2_EVENT_SETTINGS,
                                     .end_stream = (frame->hd.flags & NGHTTP2_FLAG_ACK) != 0U});
+        break;
+    default:
+        break;
     }
 
     if (frame->hd.type == NGHTTP2_HEADERS && (frame->hd.flags & NGHTTP2_FLAG_END_STREAM) != 0U) {

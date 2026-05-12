@@ -3198,7 +3198,8 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         return sl_status_ok();
     }
 
-    if (fast_kind == HTTP_V8_FAST_RESULT_TEXT_OK) {
+    switch (fast_kind) {
+    case HTTP_V8_FAST_RESULT_TEXT_OK:
         if (status_code != 200U ||
             !http_v8_string_property_equals(isolate, context, object, SL_V8_HTTP_STRING_KIND,
                                             "text") ||
@@ -3214,9 +3215,8 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         out_result->response = sl_http_response_text(200U, sl_str_from_cstr("ok"));
         *out_handled = true;
         return sl_status_ok();
-    }
 
-    if (fast_kind == HTTP_V8_FAST_RESULT_NO_CONTENT) {
+    case HTTP_V8_FAST_RESULT_NO_CONTENT:
         if (status_code != 204U ||
             !http_v8_string_property_equals(isolate, context, object, SL_V8_HTTP_STRING_KIND,
                                             "empty") ||
@@ -3231,9 +3231,9 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         out_result->response = sl_http_response_empty(204U);
         *out_handled = true;
         return sl_status_ok();
-    }
 
-    if (fast_kind == HTTP_V8_FAST_RESULT_JSON || fast_kind == HTTP_V8_FAST_RESULT_CREATED) {
+    case HTTP_V8_FAST_RESULT_JSON:
+    case HTTP_V8_FAST_RESULT_CREATED: {
         SlBytes bytes = {nullptr, 0U};
 
         if ((fast_kind == HTTP_V8_FAST_RESULT_JSON && status_code != 200U) ||
@@ -3282,6 +3282,9 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
             out_result->response.header_count = 1U;
         }
         *out_handled = true;
+        return sl_status_ok();
+    }
+    default:
         return sl_status_ok();
     }
 

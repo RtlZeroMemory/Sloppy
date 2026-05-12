@@ -20,11 +20,19 @@ the request side.
 The V8 bridge is narrow — most calls cross it once per request, not
 thousands of times.
 
-Native layout work is allowed when it follows the C standards representation
-rules: prefer field reordering, tagged unions, flag masks, `_Alignof`, and
-layout tests for hot repeated structs. Avoid packed runtime structs, NaN
-boxing, and tagged pointers unless a future design document proves the need and
-the portability/debugging cost.
+Native layout work is one of the few performance optimizations that is allowed
+before broad benchmarking, because it can reduce the amount of memory the
+runtime has to touch in repeated structures. The rule is conservative: use
+normal C layouts that are easy to inspect, such as field reordering, tagged
+unions, flag masks, `_Alignof`, and layout tests. Do not use packed runtime
+structs, NaN boxing, or tagged pointers as shortcuts. Those techniques need a
+separate design with measurements and a clear portability/debugging story.
+
+The same standard applies to branch shape. Hot dispatch over frame types, event
+kinds, field kinds, or async operation kinds should use direct `switch`
+dispatch when there are several cases. Predicate-heavy code, string matching,
+and V8 type probes should stay as ordinary `if` checks unless measurements show
+otherwise.
 
 Generated static HTTP routes are indexed by method and path. Parameterized
 routes are bucketed by method and first static segment, with an indexed bucket
