@@ -607,147 +607,246 @@ static SlStatus bench_json_response_large_list_write(const SlBenchContext* conte
     return sl_status_ok();
 }
 
-static SlStatus bench_json_dispatch_route_count(size_t route_count, SlPlanJsonRequestMode mode,
-                                                uint64_t iterations, uint64_t* out_checksum)
+typedef enum SlBenchJsonRouteScenario
+{
+    SL_BENCH_JSON_ROUTE_TABLE_BUILD = 0,
+    SL_BENCH_JSON_ROUTE_DISPATCH_ONLY = 1,
+    SL_BENCH_JSON_ROUTE_FULL_INPROCESS = 2
+} SlBenchJsonRouteScenario;
+
+typedef struct SlBenchJsonRouteCache
+{
+    bool initialized;
+    size_t route_count;
+    SlPlanJsonRequestMode mode;
+    SlBenchJsonRouteScenario scenario;
+    SlArena setup_arena;
+    SlArena table_arena;
+    SlArena engine_arena;
+    SlArena dispatch_arena;
+    SlPlanRoute* routes;
+    SlPlanHandler* handlers;
+    char* path_storage;
+    SlPlanSchemaProperty properties[3U];
+    SlPlanSchemaNode name_schema;
+    SlPlanSchemaNode age_schema;
+    SlPlanSchemaNode active_schema;
+    SlPlanSchema schema;
+    SlPlanRequestBinding binding;
+    SlPlan plan;
+    SlHttpRouteTable table;
+    SlEngine* engine;
+    SlHttpRequestHead request;
+    SlHttpHeader headers[2];
+} SlBenchJsonRouteCache;
+
+static bool bench_json_dispatch_route_cache_matches(const SlBenchJsonRouteCache* cache,
+                                                    size_t route_count, SlPlanJsonRequestMode mode,
+                                                    SlBenchJsonRouteScenario scenario)
+{
+    return cache != NULL && cache->initialized && cache->route_count == route_count &&
+           cache->mode == mode && cache->scenario == scenario;
+}
+
+static SlStatus bench_json_dispatch_prepare_route_cache(size_t route_count,
+                                                        SlPlanJsonRequestMode mode,
+                                                        SlBenchJsonRouteScenario scenario,
+                                                        SlBenchJsonRouteCache** out_cache)
 {
     static unsigned char setup_storage[16U * 1024U * 1024U];
-    unsigned char engine_storage[1024];
-    unsigned char dispatch_storage[65536];
-    SlArena setup_arena = {0};
-    SlArena engine_arena = {0};
-    SlArena dispatch_arena = {0};
-    SlPlanRoute* routes = NULL;
-    SlPlanHandler* handlers = NULL;
-    char* path_storage = NULL;
-    SlPlanSchemaProperty properties[3];
-    SlPlanSchemaNode name_schema = {0};
-    SlPlanSchemaNode age_schema = {0};
-    SlPlanSchemaNode active_schema = {0};
-    SlPlanSchema schema = {0};
-    SlPlanRequestBinding binding = {.kind = SL_PLAN_REQUEST_BINDING_BODY_JSON,
-                                    .schema = sl_str_from_cstr("CreateUser")};
-    SlPlan plan;
-    SlHttpRouteTable table = {0};
-    SlEngine* engine = NULL;
-    SlHttpRequestHead request = {0};
-    SlHttpHeader headers[2] = {
-        {.name = sl_str_from_cstr("content-type"), .value = sl_str_from_cstr("application/json")},
-        {.name = sl_str_from_cstr("content-length"), .value = sl_str_from_cstr("37")}};
+    static unsigned char table_storage[16U * 1024U * 1024U];
+    static unsigned char engine_storage[1024];
+    static unsigned char dispatch_storage[65536];
     static const unsigned char request_body[] = "{\"name\":\"Ada\",\"age\":42,\"active\":true}";
     static const char response_body[] = "{\"ok\":true}";
-    uint64_t checksum = 0U;
-    uint64_t index = 0U;
+    static SlBenchJsonRouteCache cache;
     size_t route_index = 0U;
+    size_t target_route_index = 0U;
     SlStatus status;
 
-    if (out_checksum == NULL || route_count == 0U) {
+    if (out_cache == NULL || route_count == 0U) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_arena_init(&setup_arena, setup_storage, sizeof(setup_storage));
+    *out_cache = NULL;
+    if (bench_json_dispatch_route_cache_matches(&cache, route_count, mode, scenario)) {
+        *out_cache = &cache;
+        return sl_status_ok();
+    }
+
+    if (cache.engine != NULL) {
+        sl_engine_destroy(cache.engine);
+    }
+    cache = (SlBenchJsonRouteCache){0};
+    cache.route_count = route_count;
+    cache.mode = mode;
+    cache.scenario = scenario;
+
+    status = sl_arena_init(&cache.setup_arena, setup_storage, sizeof(setup_storage));
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage));
+    status = sl_arena_init(&cache.table_arena, table_storage, sizeof(table_storage));
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_init(&dispatch_arena, dispatch_storage, sizeof(dispatch_storage));
+    status = sl_arena_init(&cache.engine_arena, engine_storage, sizeof(engine_storage));
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(&setup_arena, sizeof(SlPlanRoute) * route_count, _Alignof(SlPlanRoute),
-                            (void**)&routes);
+    status = sl_arena_init(&cache.dispatch_arena, dispatch_storage, sizeof(dispatch_storage));
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(&setup_arena, sizeof(SlPlanHandler) * route_count,
-                            _Alignof(SlPlanHandler), (void**)&handlers);
+    status = sl_arena_alloc(&cache.setup_arena, sizeof(SlPlanRoute) * route_count,
+                            _Alignof(SlPlanRoute), (void**)&cache.routes);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_arena_alloc(&setup_arena, 32U * route_count, _Alignof(char), (void**)&path_storage);
+    status = sl_arena_alloc(&cache.setup_arena, sizeof(SlPlanHandler) * route_count,
+                            _Alignof(SlPlanHandler), (void**)&cache.handlers);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_alloc(&cache.setup_arena, 32U * route_count, _Alignof(char),
+                            (void**)&cache.path_storage);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
-    memset(routes, 0, sizeof(SlPlanRoute) * route_count);
-    memset(handlers, 0, sizeof(SlPlanHandler) * route_count);
+    memset(cache.routes, 0, sizeof(SlPlanRoute) * route_count);
+    memset(cache.handlers, 0, sizeof(SlPlanHandler) * route_count);
     for (route_index = 0U; route_index < route_count; route_index += 1U) {
-        char* path = &path_storage[route_index * 32U];
+        char* path = &cache.path_storage[route_index * 32U];
         int written = snprintf(path, 32U, "/json/%zu", route_index);
 
         if (written < 0 || written >= 32) {
             return sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
-        handlers[route_index] =
+        cache.handlers[route_index] =
             (SlPlanHandler){(SlHandlerId)(route_index + 1U), sl_str_from_cstr("handler"),
                             sl_str_from_cstr("json dispatch handler")};
-        routes[route_index].method = sl_str_from_cstr("POST");
-        routes[route_index].pattern = sl_str_from_cstr(path);
-        routes[route_index].handler_id = (SlHandlerId)(route_index + 1U);
+        cache.routes[route_index].method = sl_str_from_cstr("POST");
+        cache.routes[route_index].pattern = sl_str_from_cstr(path);
+        cache.routes[route_index].handler_id = (SlHandlerId)(route_index + 1U);
     }
 
-    sl_bench_json_schema_fixture(properties, &name_schema, &age_schema, &active_schema, &schema);
-    routes[route_count - 1U].bindings = &binding;
-    routes[route_count - 1U].binding_count = 1U;
-    routes[route_count - 1U].json_request.mode = mode;
-    routes[route_count - 1U].json_request.materialization =
+    sl_bench_json_schema_fixture(cache.properties, &cache.name_schema, &cache.age_schema,
+                                 &cache.active_schema, &cache.schema);
+    cache.binding = (SlPlanRequestBinding){.kind = SL_PLAN_REQUEST_BINDING_BODY_JSON,
+                                           .schema = sl_str_from_cstr("CreateUser")};
+    cache.routes[target_route_index].json_request.mode = mode;
+    cache.routes[target_route_index].json_request.materialization =
         mode == SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA ? SL_PLAN_JSON_MATERIALIZATION_MATERIALIZE_ONCE
                                                    : SL_PLAN_JSON_MATERIALIZATION_NONE;
-    routes[route_count - 1U].json_request.unknown_fields = SL_PLAN_JSON_UNKNOWN_FIELDS_REJECT;
-    routes[route_count - 1U].json_request.schema = sl_str_from_cstr("CreateUser");
-    routes[route_count - 1U].json_request.max_body_bytes = SL_HTTP_DEFAULT_MAX_BODY_LENGTH;
-    routes[route_count - 1U].json_request.max_depth = 50U;
-    routes[route_count - 1U].json_request.max_string_bytes = 4096U;
-    routes[route_count - 1U].json_request.max_array_length = 1024U;
-    routes[route_count - 1U].native_response_kind = sl_str_from_cstr("json");
-    routes[route_count - 1U].native_response_status = 200U;
-    routes[route_count - 1U].native_response_body = sl_str_from_cstr(response_body);
-    routes[route_count - 1U].native_response_content_type = sl_str_from_cstr("application/json");
-
-    plan = sl_bench_json_plan(&schema, 1U);
-    plan.target.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
-    plan.target.engine = sl_str_from_cstr("none");
-    plan.handlers = handlers;
-    plan.handler_count = route_count;
-    plan.routes = routes;
-    plan.route_count = route_count;
-
-    status = sl_bench_json_create_noop_engine(&engine_arena, &engine);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_http_route_table_build(&setup_arena, &plan, &table, NULL);
-    if (!sl_status_is_ok(status)) {
-        sl_engine_destroy(engine);
-        return status;
+    cache.routes[target_route_index].json_request.unknown_fields =
+        SL_PLAN_JSON_UNKNOWN_FIELDS_REJECT;
+    cache.routes[target_route_index].json_request.schema = sl_str_from_cstr("CreateUser");
+    cache.routes[target_route_index].json_request.max_body_bytes = SL_HTTP_DEFAULT_MAX_BODY_LENGTH;
+    cache.routes[target_route_index].json_request.max_depth = 50U;
+    cache.routes[target_route_index].json_request.max_string_bytes = 4096U;
+    cache.routes[target_route_index].json_request.max_array_length = 1024U;
+    cache.routes[target_route_index].native_response_kind = sl_str_from_cstr("json");
+    cache.routes[target_route_index].native_response_status = 200U;
+    cache.routes[target_route_index].native_response_body = sl_str_from_cstr(response_body);
+    cache.routes[target_route_index].native_response_content_type =
+        sl_str_from_cstr("application/json");
+    if (scenario == SL_BENCH_JSON_ROUTE_FULL_INPROCESS) {
+        cache.routes[target_route_index].bindings = &cache.binding;
+        cache.routes[target_route_index].binding_count = 1U;
     }
 
-    request.method = SL_HTTP_METHOD_POST;
-    request.path = routes[route_count - 1U].pattern;
-    request.raw_target = request.path;
-    request.headers = headers;
-    request.header_count = sizeof(headers) / sizeof(headers[0]);
-    request.body = sl_bytes_from_parts(request_body, sizeof(request_body) - 1U);
+    cache.plan = sl_bench_json_plan(&cache.schema, 1U);
+    cache.plan.target.platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
+    cache.plan.target.engine = sl_str_from_cstr("none");
+    cache.plan.handlers = cache.handlers;
+    cache.plan.handler_count = route_count;
+    cache.plan.routes = cache.routes;
+    cache.plan.route_count = route_count;
+
+    cache.headers[0] = (SlHttpHeader){.name = sl_str_from_cstr("content-type"),
+                                      .value = sl_str_from_cstr("application/json")};
+    cache.headers[1] =
+        (SlHttpHeader){.name = sl_str_from_cstr("content-length"), .value = sl_str_from_cstr("37")};
+    cache.request.method = SL_HTTP_METHOD_POST;
+    cache.request.path = cache.routes[target_route_index].pattern;
+    cache.request.raw_target = cache.request.path;
+    cache.request.headers = cache.headers;
+    cache.request.header_count = sizeof(cache.headers) / sizeof(cache.headers[0]);
+    cache.request.body = sl_bytes_from_parts(request_body, sizeof(request_body) - 1U);
+
+    if (scenario != SL_BENCH_JSON_ROUTE_TABLE_BUILD) {
+        status = sl_bench_json_create_noop_engine(&cache.engine_arena, &cache.engine);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_route_table_build(&cache.table_arena, &cache.plan, &cache.table, NULL);
+        if (!sl_status_is_ok(status)) {
+            sl_engine_destroy(cache.engine);
+            cache.engine = NULL;
+            return status;
+        }
+    }
+
+    cache.initialized = true;
+    *out_cache = &cache;
+    return sl_status_ok();
+}
+
+static SlStatus bench_json_dispatch_route_count(size_t route_count, SlPlanJsonRequestMode mode,
+                                                SlBenchJsonRouteScenario scenario,
+                                                uint64_t iterations, uint64_t* out_checksum)
+{
+    SlBenchJsonRouteCache* cache = NULL;
+    uint64_t checksum = 0U;
+    uint64_t index = 0U;
+    SlStatus status;
+
+    if (out_checksum == NULL || route_count == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = bench_json_dispatch_prepare_route_cache(route_count, mode, scenario, &cache);
+    if (!sl_status_is_ok(status) || cache == NULL) {
+        return sl_status_is_ok(status) ? sl_status_from_code(SL_STATUS_INVALID_STATE) : status;
+    }
+
+    if (scenario == SL_BENCH_JSON_ROUTE_TABLE_BUILD) {
+        for (index = 0U; index < iterations; index += 1U) {
+            SlHttpRouteTable table = {0};
+
+            sl_arena_reset(&cache->table_arena);
+            status = sl_http_route_table_build(&cache->table_arena, &cache->plan, &table, NULL);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            checksum += (uint64_t)table.route_count;
+            checksum += (uint64_t)table.dispatch.route_count;
+            checksum += (uint64_t)table.dispatch.exact_route_bucket_count;
+            checksum += (uint64_t)table.dispatch.param_route_count;
+            checksum += (uint64_t)table.dispatch.dispatch_mode;
+        }
+
+        *out_checksum = checksum;
+        return sl_status_ok();
+    }
 
     for (index = 0U; index < iterations; index += 1U) {
         SlEngineResult result = {0};
         SlDiag diag = {0};
 
-        sl_arena_reset(&dispatch_arena);
-        status = sl_http_dispatch_request_head(&dispatch_arena, engine, &plan, &table.dispatch,
-                                               &request, &result, &diag);
+        sl_arena_reset(&cache->dispatch_arena);
+        status =
+            sl_http_dispatch_request_head(&cache->dispatch_arena, cache->engine, &cache->plan,
+                                          &cache->table.dispatch, &cache->request, &result, &diag);
         if (!sl_status_is_ok(status) || result.kind != SL_ENGINE_RESULT_JSON ||
             result.response.status != 200U)
         {
-            sl_engine_destroy(engine);
             return sl_status_is_ok(status) ? sl_status_from_code(SL_STATUS_INVALID_STATE) : status;
         }
         checksum += (uint64_t)result.response.status;
         checksum += sl_bench_json_checksum(result.response.body);
     }
 
-    sl_engine_destroy(engine);
     *out_checksum = checksum;
     return sl_status_ok();
 }
@@ -756,7 +855,8 @@ static SlStatus bench_json_dispatch_generic_json(const SlBenchContext* context, 
                                                  uint64_t* out_checksum)
 {
     (void)context;
-    return bench_json_dispatch_route_count(1U, SL_PLAN_JSON_REQUEST_GENERIC, iterations,
+    return bench_json_dispatch_route_count(1U, SL_PLAN_JSON_REQUEST_GENERIC,
+                                           SL_BENCH_JSON_ROUTE_FULL_INPROCESS, iterations,
                                            out_checksum);
 }
 
@@ -764,25 +864,104 @@ static SlStatus bench_json_dispatch_native_json(const SlBenchContext* context, u
                                                 uint64_t* out_checksum)
 {
     (void)context;
-    return bench_json_dispatch_route_count(1U, SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA, iterations,
+    return bench_json_dispatch_route_count(1U, SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                                           SL_BENCH_JSON_ROUTE_FULL_INPROCESS, iterations,
                                            out_checksum);
 }
 
-static SlStatus bench_json_dispatch_1k_route_native_json(const SlBenchContext* context,
+static SlStatus bench_json_dispatch_1k_route_table_build(const SlBenchContext* context,
                                                          uint64_t iterations,
                                                          uint64_t* out_checksum)
 {
     (void)context;
-    return bench_json_dispatch_route_count(1000U, SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA, iterations,
+    return bench_json_dispatch_route_count(1000U, SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                                           SL_BENCH_JSON_ROUTE_TABLE_BUILD, iterations,
                                            out_checksum);
 }
 
-static SlStatus bench_json_dispatch_10k_route_native_json(const SlBenchContext* context,
+static SlStatus bench_json_dispatch_10k_route_table_build(const SlBenchContext* context,
                                                           uint64_t iterations,
                                                           uint64_t* out_checksum)
 {
     (void)context;
-    return bench_json_dispatch_route_count(10000U, SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA, iterations,
+    return bench_json_dispatch_route_count(10000U, SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                                           SL_BENCH_JSON_ROUTE_TABLE_BUILD, iterations,
+                                           out_checksum);
+}
+
+static SlStatus
+bench_json_dispatch_1k_route_native_json_dispatch_only(const SlBenchContext* context,
+                                                       uint64_t iterations, uint64_t* out_checksum)
+{
+    (void)context;
+    return bench_json_dispatch_route_count(1000U, SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                                           SL_BENCH_JSON_ROUTE_DISPATCH_ONLY, iterations,
+                                           out_checksum);
+}
+
+static SlStatus
+bench_json_dispatch_10k_route_native_json_dispatch_only(const SlBenchContext* context,
+                                                        uint64_t iterations, uint64_t* out_checksum)
+{
+    (void)context;
+    return bench_json_dispatch_route_count(10000U, SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                                           SL_BENCH_JSON_ROUTE_DISPATCH_ONLY, iterations,
+                                           out_checksum);
+}
+
+static SlStatus
+bench_json_dispatch_1k_route_generic_json_dispatch_only(const SlBenchContext* context,
+                                                        uint64_t iterations, uint64_t* out_checksum)
+{
+    (void)context;
+    return bench_json_dispatch_route_count(1000U, SL_PLAN_JSON_REQUEST_GENERIC,
+                                           SL_BENCH_JSON_ROUTE_DISPATCH_ONLY, iterations,
+                                           out_checksum);
+}
+
+static SlStatus bench_json_dispatch_10k_route_generic_json_dispatch_only(
+    const SlBenchContext* context, uint64_t iterations, uint64_t* out_checksum)
+{
+    (void)context;
+    return bench_json_dispatch_route_count(10000U, SL_PLAN_JSON_REQUEST_GENERIC,
+                                           SL_BENCH_JSON_ROUTE_DISPATCH_ONLY, iterations,
+                                           out_checksum);
+}
+
+static SlStatus
+bench_json_dispatch_1k_route_native_json_full_inprocess(const SlBenchContext* context,
+                                                        uint64_t iterations, uint64_t* out_checksum)
+{
+    (void)context;
+    return bench_json_dispatch_route_count(1000U, SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                                           SL_BENCH_JSON_ROUTE_FULL_INPROCESS, iterations,
+                                           out_checksum);
+}
+
+static SlStatus bench_json_dispatch_10k_route_native_json_full_inprocess(
+    const SlBenchContext* context, uint64_t iterations, uint64_t* out_checksum)
+{
+    (void)context;
+    return bench_json_dispatch_route_count(10000U, SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                                           SL_BENCH_JSON_ROUTE_FULL_INPROCESS, iterations,
+                                           out_checksum);
+}
+
+static SlStatus bench_json_dispatch_1k_route_generic_json_full_inprocess(
+    const SlBenchContext* context, uint64_t iterations, uint64_t* out_checksum)
+{
+    (void)context;
+    return bench_json_dispatch_route_count(1000U, SL_PLAN_JSON_REQUEST_GENERIC,
+                                           SL_BENCH_JSON_ROUTE_FULL_INPROCESS, iterations,
+                                           out_checksum);
+}
+
+static SlStatus bench_json_dispatch_10k_route_generic_json_full_inprocess(
+    const SlBenchContext* context, uint64_t iterations, uint64_t* out_checksum)
+{
+    (void)context;
+    return bench_json_dispatch_route_count(10000U, SL_PLAN_JSON_REQUEST_GENERIC,
+                                           SL_BENCH_JSON_ROUTE_FULL_INPROCESS, iterations,
                                            out_checksum);
 }
 
@@ -925,17 +1104,85 @@ static const SlBenchDefinition json_dispatch_definitions[] = {
      (sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U) +
          (sizeof("{\"ok\":true}") - 1U),
      2U, 0U},
-    {"json.dispatch.routes_1k.native_json", "json",
-     "route through a 1000-route table with schema-backed JSON validation", 100U, 10000U,
-     bench_json_dispatch_1k_route_native_json,
-     "route table is built before timing; no sockets or JavaScript handler", false,
+    {"json.dispatch.routes_1k.table_build", "json", "build a 1000-route dispatch table", 10U, 1000U,
+     bench_json_dispatch_1k_route_table_build,
+     "setup/build row only; no request dispatch, JSON parsing, validation, response, or sockets",
+     false, 1000U, 1000U, 0U},
+    {"json.dispatch.routes_10k.table_build", "json", "build a 10000-route dispatch table", 1U, 100U,
+     bench_json_dispatch_10k_route_table_build,
+     "setup/build row only; no request dispatch, JSON parsing, validation, response, or sockets",
+     false, 10000U, 10000U, 0U},
+    {"json.dispatch.routes_1k.native_json.dispatch_only", "json",
+     "route a POST request through a 1000-route table with native JSON dispatch selected", 100U,
+     10000U, bench_json_dispatch_1k_route_native_json_dispatch_only,
+     "route table is built once before timing; excludes schema validation, handler execution, "
+     "response writing, and sockets",
+     false,
      (sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U) +
          (sizeof("{\"ok\":true}") - 1U),
      2U, 0U},
-    {"json.dispatch.routes_10k.native_json", "json",
+    {"json.dispatch.routes_10k.native_json.dispatch_only", "json",
+     "route a POST request through a 10000-route table with native JSON dispatch selected", 10U,
+     1000U, bench_json_dispatch_10k_route_native_json_dispatch_only,
+     "route table is built once before timing; excludes schema validation, handler execution, "
+     "response writing, and sockets",
+     false,
+     (sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U) +
+         (sizeof("{\"ok\":true}") - 1U),
+     2U, 0U},
+    {"json.dispatch.routes_1k.generic_json.dispatch_only", "json",
+     "route a POST request through a 1000-route table with generic JSON dispatch selected", 100U,
+     10000U, bench_json_dispatch_1k_route_generic_json_dispatch_only,
+     "route table is built once before timing; excludes schema validation, handler execution, "
+     "response writing, and sockets",
+     false,
+     (sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U) +
+         (sizeof("{\"ok\":true}") - 1U),
+     2U, 0U},
+    {"json.dispatch.routes_10k.generic_json.dispatch_only", "json",
+     "route a POST request through a 10000-route table with generic JSON dispatch selected", 10U,
+     1000U, bench_json_dispatch_10k_route_generic_json_dispatch_only,
+     "route table is built once before timing; excludes schema validation, handler execution, "
+     "response writing, and sockets",
+     false,
+     (sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U) +
+         (sizeof("{\"ok\":true}") - 1U),
+     2U, 0U},
+    {"json.dispatch.routes_1k.native_json.full_inprocess", "json",
+     "route through a 1000-route table with schema-backed JSON validation", 100U, 10000U,
+     bench_json_dispatch_1k_route_native_json_full_inprocess,
+     "route table is built once before timing; includes body policy, native schema validation, "
+     "and native response materialization; no sockets or JavaScript handler",
+     false,
+     (sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U) +
+         (sizeof("{\"ok\":true}") - 1U),
+     2U, 0U},
+    {"json.dispatch.routes_10k.native_json.full_inprocess", "json",
      "route through a 10000-route table with schema-backed JSON validation", 10U, 1000U,
-     bench_json_dispatch_10k_route_native_json,
-     "route table is built before timing; no sockets or JavaScript handler", false,
+     bench_json_dispatch_10k_route_native_json_full_inprocess,
+     "route table is built once before timing; includes body policy, native schema validation, "
+     "and native response materialization; no sockets or JavaScript handler",
+     false,
+     (sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U) +
+         (sizeof("{\"ok\":true}") - 1U),
+     2U, 0U},
+    {"json.dispatch.routes_1k.generic_json.full_inprocess", "json",
+     "route through a 1000-route table with generic JSON parsing", 100U, 10000U,
+     bench_json_dispatch_1k_route_generic_json_full_inprocess,
+     "route table is built once before timing; includes body policy, generic JSON parse, "
+     "request validation metadata walk, and native response materialization; no sockets or "
+     "JavaScript handler",
+     false,
+     (sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U) +
+         (sizeof("{\"ok\":true}") - 1U),
+     2U, 0U},
+    {"json.dispatch.routes_10k.generic_json.full_inprocess", "json",
+     "route through a 10000-route table with generic JSON parsing", 10U, 1000U,
+     bench_json_dispatch_10k_route_generic_json_full_inprocess,
+     "route table is built once before timing; includes body policy, generic JSON parse, "
+     "request validation metadata walk, and native response materialization; no sockets or "
+     "JavaScript handler",
+     false,
      (sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U) +
          (sizeof("{\"ok\":true}") - 1U),
      2U, 0U},

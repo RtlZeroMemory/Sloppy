@@ -152,9 +152,13 @@ static SlStatus sl_http_dispatch_write_diag(SlArena* arena, SlDiag* out_diag, Sl
 static bool sl_http_dispatch_power_of_two(size_t value);
 static bool sl_http_dispatch_binding_valid(const SlHttpRouteBinding* binding);
 
+#define SL_HTTP_DISPATCH_TABLE_METHOD_MASK 0x3fU
+#define SL_HTTP_DISPATCH_TABLE_VALIDATED_FLAG (1U << 31U)
+
 static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispatch_table)
 {
     size_t index = 0U;
+    bool table_validated = false;
 
     if (dispatch_table == NULL ||
         (dispatch_table->route_count != 0U && dispatch_table->routes == NULL) ||
@@ -177,6 +181,12 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
+    if ((dispatch_table->runtime_reserved0 &
+         ~(SL_HTTP_DISPATCH_TABLE_METHOD_MASK | SL_HTTP_DISPATCH_TABLE_VALIDATED_FLAG)) != 0U)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
     if (dispatch_table->dispatch_mode != SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED &&
         dispatch_table->dispatch_mode != SL_HTTP_ROUTE_DISPATCH_MODE_CLASSIC &&
         dispatch_table->dispatch_mode != SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE)
@@ -184,7 +194,10 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (dispatch_table->handler_cache_trusted) {
+    table_validated =
+        (dispatch_table->runtime_reserved0 & SL_HTTP_DISPATCH_TABLE_VALIDATED_FLAG) != 0U;
+
+    if (!table_validated && dispatch_table->handler_cache_trusted) {
         if (dispatch_table->plan == NULL) {
             return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
         }
@@ -196,10 +209,12 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
         }
     }
 
-    for (index = 0U; index < dispatch_table->param_route_bucket_count; index += 1U) {
-        const SlHttpRouteCandidateBucket* bucket = &dispatch_table->param_route_buckets[index];
-        if (bucket->route_count != 0U && bucket->routes == NULL) {
-            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    if (!table_validated) {
+        for (index = 0U; index < dispatch_table->param_route_bucket_count; index += 1U) {
+            const SlHttpRouteCandidateBucket* bucket = &dispatch_table->param_route_buckets[index];
+            if (bucket->route_count != 0U && bucket->routes == NULL) {
+                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
         }
     }
 
@@ -2056,6 +2071,7 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
     if (!sl_status_is_ok(status)) {
         goto failure;
     }
+    out_table->dispatch.runtime_reserved0 |= SL_HTTP_DISPATCH_TABLE_VALIDATED_FLAG;
     out_table->route_count = runnable_route_count;
     return sl_status_ok();
 
@@ -2106,10 +2122,10 @@ static bool sl_http_dispatch_exact_path_has_other_method(const SlHttpDispatchTab
                                            SL_HTTP_METHOD_DELETE, SL_HTTP_METHOD_OPTIONS};
     size_t index = 0U;
     unsigned int request_bit = sl_http_dispatch_method_bit(request_method);
+    unsigned int method_bits =
+        dispatch_table->runtime_reserved0 & SL_HTTP_DISPATCH_TABLE_METHOD_MASK;
 
-    if (dispatch_table->runtime_reserved0 != 0U &&
-        (dispatch_table->runtime_reserved0 & ~request_bit) == 0U)
-    {
+    if (method_bits != 0U && (method_bits & ~request_bit) == 0U) {
         return false;
     }
 
@@ -2752,14 +2768,14 @@ static SlStatus sl_http_dispatch_param_path_has_other_method(
                                            SL_HTTP_METHOD_PUT,    SL_HTTP_METHOD_PATCH,
                                            SL_HTTP_METHOD_DELETE, SL_HTTP_METHOD_OPTIONS};
     size_t index = 0U;
+    unsigned int method_bits =
+        dispatch_table->runtime_reserved0 & SL_HTTP_DISPATCH_TABLE_METHOD_MASK;
 
     if (out_has_other_method == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out_has_other_method = false;
-    if (dispatch_table->runtime_reserved0 != 0U &&
-        (dispatch_table->runtime_reserved0 & ~sl_http_dispatch_method_bit(request_method)) == 0U)
-    {
+    if (method_bits != 0U && (method_bits & ~sl_http_dispatch_method_bit(request_method)) == 0U) {
         return sl_status_ok();
     }
     for (index = 0U; index < sizeof(methods) / sizeof(methods[0]); index += 1U) {

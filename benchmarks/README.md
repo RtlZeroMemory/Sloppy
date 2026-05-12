@@ -37,6 +37,7 @@ Run a measured local benchmark from a Release build:
 .\tools\windows\bench.ps1 -Configuration Release
 .\tools\windows\bench.ps1 -Configuration Release -Json > .\benchmarks-local.json
 .\tools\windows\bench-json-dispatch.ps1 -Smoke
+.\tools\windows\bench-json-dispatch.ps1 -Configuration RelWithDebInfo -JsonMode native -Repeat 3
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100
 ```
 
@@ -181,9 +182,24 @@ Native JSON benchmark rows are intentionally scoped:
   response.
 - `json.dispatch.full.generic_json` and `json.dispatch.full.native_json` route a
   POST request, apply JSON request handling, and return a native JSON response.
-- `json.dispatch.routes_1k.native_json` and
-  `json.dispatch.routes_10k.native_json` add route table scale to the
-  route-plus-JSON path.
+- `json.dispatch.routes_1k.table_build` and
+  `json.dispatch.routes_10k.table_build` measure only Plan-backed route-table
+  construction. They do not dispatch a request, parse JSON, validate schemas,
+  write responses, or touch sockets.
+- `json.dispatch.routes_1k.native_json.dispatch_only`,
+  `json.dispatch.routes_10k.native_json.dispatch_only`,
+  `json.dispatch.routes_1k.generic_json.dispatch_only`, and
+  `json.dispatch.routes_10k.generic_json.dispatch_only` build the route table
+  once before timing, then route an in-memory POST request through the selected
+  JSON dispatch mode. They exclude schema validation, handler execution,
+  response writing, and sockets.
+- `json.dispatch.routes_1k.native_json.full_inprocess`,
+  `json.dispatch.routes_10k.native_json.full_inprocess`,
+  `json.dispatch.routes_1k.generic_json.full_inprocess`, and
+  `json.dispatch.routes_10k.generic_json.full_inprocess` build the route table
+  once before timing, then include in-process routing, body policy, JSON
+  request handling, request validation metadata, and native response
+  materialization. They still exclude sockets and JavaScript handler execution.
 - `json.dispatch.native_schema_static_response` combines native request
   validation with native static JSON response writing and still excludes sockets
   and user handler execution.
