@@ -77,11 +77,29 @@ function resolveSloppyBinary() {
     return null;
 }
 
-async function runProcess(command, args, options) {
+async function runProcess(command, args, options, timeoutMs = 180_000) {
     return new Promise((resolveResult) => {
         const child = spawn(command, args, { ...options, shell: false });
         let stdout = "";
         let stderr = "";
+        let settled = false;
+        const finish = (result) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timeoutHandle);
+            resolveResult(result);
+        };
+        const timeoutHandle = setTimeout(() => {
+            child.kill("SIGKILL");
+            finish({
+                exitCode: -2,
+                stdout,
+                stderr: `${stderr}\nprocess timed out after ${timeoutMs}ms`.trim()
+            });
+        }, timeoutMs);
+
         child.stdout.on("data", (chunk) => {
             stdout += chunk.toString();
         });
@@ -89,10 +107,10 @@ async function runProcess(command, args, options) {
             stderr += chunk.toString();
         });
         child.on("error", (error) => {
-            resolveResult({ exitCode: -1, stdout, stderr: stderr + String(error) });
+            finish({ exitCode: -1, stdout, stderr: stderr + String(error) });
         });
         child.on("close", (exitCode) => {
-            resolveResult({ exitCode, stdout, stderr });
+            finish({ exitCode, stdout, stderr });
         });
     });
 }

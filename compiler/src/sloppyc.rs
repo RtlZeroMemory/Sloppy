@@ -2423,18 +2423,9 @@ fn analyze_program_import(
             .with_span(import.source.span)
             .with_hint("Use a pure-JavaScript package entry or remove the native addon dependency."))
         }
-        resolver::ImportKind::PackageExportUnsupported(failure) => Err(Diagnostic::new(
-            "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED",
-            format!(
-                "Package \"{}\" {} entry at \"{}\" is not supported: {}.",
-                failure.subject, failure.field, failure.subpath, failure.reason
-            ),
-        )
-        .with_path(path)
-        .with_span(import.source.span)
-        .with_hint(
-            "Use a supported package.json exports/imports condition or fall back to a main entry.",
-        )),
+        resolver::ImportKind::PackageExportUnsupported(failure) => Err(
+            package_export_unsupported_diagnostic(path, import.source.span, &failure),
+        ),
         resolver::ImportKind::UnsupportedBare(specifier) => Err(Diagnostic::new(
             "SLOPPYC_E_PACKAGE_NOT_FOUND",
             format!(
@@ -2874,6 +2865,25 @@ struct ProgramDependencyRequest<'a> {
     span: Span,
 }
 
+fn package_export_unsupported_diagnostic(
+    path: &Path,
+    span: Span,
+    failure: &resolver::PackageExportFailure,
+) -> Diagnostic {
+    Diagnostic::new(
+        "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED",
+        format!(
+            "Package \"{}\" {} entry at \"{}\" is not supported: {}.",
+            failure.subject, failure.field, failure.subpath, failure.reason
+        ),
+    )
+    .with_path(path)
+    .with_span(span)
+    .with_hint(
+        "Use a supported package.json exports/imports condition or fall back to a main entry.",
+    )
+}
+
 fn resolve_program_dependency(
     request: ProgramDependencyRequest<'_>,
     graph: &mut ModuleGraph,
@@ -2970,18 +2980,9 @@ fn resolve_program_dependency(
         .with_path(path)
         .with_span(span)
         .with_hint("Use a pure-JavaScript package entry or remove the native addon dependency.")),
-        resolver::ImportKind::PackageExportUnsupported(failure) => Err(Diagnostic::new(
-            "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED",
-            format!(
-                "Package \"{}\" {} entry at \"{}\" is not supported: {}.",
-                failure.subject, failure.field, failure.subpath, failure.reason
-            ),
-        )
-        .with_path(path)
-        .with_span(span)
-        .with_hint(
-            "Use a supported package.json exports/imports condition or fall back to a main entry.",
-        )),
+        resolver::ImportKind::PackageExportUnsupported(failure) => {
+            Err(package_export_unsupported_diagnostic(path, span, &failure))
+        }
         resolver::ImportKind::UnsupportedBare(specifier) => Err(Diagnostic::new(
             "SLOPPYC_E_PACKAGE_NOT_FOUND",
             format!("Package \"{specifier}\" was not found from {}.", source_map_source_name(path)),
@@ -3561,17 +3562,10 @@ fn program_import_replacement(
             .with_hint("Use a pure-JavaScript package entry or remove the native addon dependency."));
         }
         resolver::ImportKind::PackageExportUnsupported(failure) => {
-            return Err(Diagnostic::new(
-                "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED",
-                format!(
-                    "Package \"{}\" {} entry at \"{}\" is not supported: {}.",
-                    failure.subject, failure.field, failure.subpath, failure.reason
-                ),
-            )
-            .with_path(path)
-            .with_span(import.source.span)
-            .with_hint(
-                "Use a supported package.json exports/imports condition or fall back to a main entry.",
+            return Err(package_export_unsupported_diagnostic(
+                path,
+                import.source.span,
+                &failure,
             ));
         }
         resolver::ImportKind::UnsupportedBare(specifier) => {
@@ -3831,18 +3825,9 @@ fn program_reexport_require_expr(
         .with_path(path)
         .with_span(span)
         .with_hint("Use a pure-JavaScript package entry or remove the native addon dependency.")),
-        resolver::ImportKind::PackageExportUnsupported(failure) => Err(Diagnostic::new(
-            "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED",
-            format!(
-                "Package \"{}\" {} entry at \"{}\" is not supported: {}.",
-                failure.subject, failure.field, failure.subpath, failure.reason
-            ),
-        )
-        .with_path(path)
-        .with_span(span)
-        .with_hint(
-            "Use a supported package.json exports/imports condition or fall back to a main entry.",
-        )),
+        resolver::ImportKind::PackageExportUnsupported(failure) => {
+            Err(package_export_unsupported_diagnostic(path, span, &failure))
+        }
         resolver::ImportKind::UnsupportedBare(specifier) => Err(Diagnostic::new(
             "SLOPPYC_E_PACKAGE_NOT_FOUND",
             format!(
