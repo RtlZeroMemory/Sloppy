@@ -97,8 +97,9 @@
   "modules": [],
   "routeDispatch": {
     "artifact": {
-      "kind": "none",
-      "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
+      "hash": "sha256:d176b947738f8f86d29e5b6e50469edd5f780fe3b9be2dd063dd691ba8d6d019",
+      "kind": "slrt",
+      "path": "routes.slrt"
     },
     "catchAllRoutes": 0,
     "dispatchStats": {
@@ -118,12 +119,13 @@
       "dynamicRoutes": 0,
       "partialRoutes": 0
     },
-    "mode": "native-compiled-in-memory",
-    "nativeNoJsEndpoints": 0,
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 1,
     "parameterRoutes": 0,
     "routeCount": 1,
     "staticRoutes": 1,
-    "urlGeneration": false,
+    "urlGeneration": true,
+    "urlWriters": 0,
     "version": 1
   },
   "routes": [
@@ -135,18 +137,25 @@
       },
       "dispatch": {
         "endpointId": 1,
-        "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "executionKind": "native-static-json",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
       "handlerId": 1,
       "method": "GET",
       "name": null,
+      "nativeResponse": {
+        "body": "{\"ok\":true}",
+        "contentType": "application/json",
+        "kind": "json",
+        "status": 200
+      },
       "pattern": "/async",
       "response": {
         "helper": "json",
         "kind": "json",
+        "nativeBody": "{\"ok\":true}",
         "status": 200
       },
       "source": {

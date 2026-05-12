@@ -1616,6 +1616,164 @@ cleanup: {
     return sl_http_dispatch_format_allow_header(arena, &methods, out_allow);
 }
 
+static bool sl_http_dispatch_url_unreserved(char ch)
+{
+    return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+           ch == '-' || ch == '.' || ch == '_' || ch == '~';
+}
+
+static SlStatus sl_http_dispatch_url_append_encoded(SlStringBuilder* builder, SlStr value)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    size_t index = 0U;
+    SlStatus status;
+
+    if (builder == NULL || (value.length != 0U && value.ptr == NULL)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (index = 0U; index < value.length; index += 1U) {
+        unsigned char ch = (unsigned char)value.ptr[index];
+        if (sl_http_dispatch_url_unreserved((char)ch)) {
+            status = sl_string_builder_append_char(builder, (char)ch);
+        }
+        else {
+            status = sl_string_builder_append_char(builder, '%');
+            if (sl_status_is_ok(status)) {
+                status = sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU]);
+            }
+            if (sl_status_is_ok(status)) {
+                status = sl_string_builder_append_char(builder, hex[ch & 0x0FU]);
+            }
+        }
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    return sl_status_ok();
+}
+
+static const SlRouteParam* sl_http_dispatch_find_url_param(const SlRouteParam* params,
+                                                           size_t param_count, SlStr name)
+{
+    size_t index = 0U;
+
+    if (params == NULL) {
+        return NULL;
+    }
+    for (index = 0U; index < param_count; index += 1U) {
+        if (sl_str_equal(params[index].name, name)) {
+            return &params[index];
+        }
+    }
+    return NULL;
+}
+
+static const SlHttpRouteBinding*
+sl_http_dispatch_find_named_binding(const SlHttpDispatchTable* dispatch_table, SlStr route_name)
+{
+    size_t index = 0U;
+
+    if (dispatch_table == NULL || dispatch_table->plan == NULL || sl_str_is_empty(route_name)) {
+        return NULL;
+    }
+    for (index = 0U; index < dispatch_table->route_count; index += 1U) {
+        const SlHttpRouteBinding* binding = &dispatch_table->routes[index];
+        if (binding->route_index < dispatch_table->plan->route_count &&
+            sl_str_equal(dispatch_table->plan->routes[binding->route_index].name, route_name))
+        {
+            return binding;
+        }
+    }
+    return NULL;
+}
+
+SlStatus sl_http_dispatch_generate_url(SlArena* arena, const SlHttpDispatchTable* dispatch_table,
+                                       SlStr route_name, const SlRouteParam* params,
+                                       size_t param_count, SlStr* out_url)
+{
+    SlArenaMark mark = {0};
+    SlStringBuilder builder = {0};
+    const SlHttpRouteBinding* binding = NULL;
+    SlRouteMatch match = {0};
+    SlStr url = {0};
+    size_t index = 0U;
+    SlStatus status;
+
+    if (out_url != NULL) {
+        *out_url = sl_str_empty();
+    }
+    if (arena == NULL || dispatch_table == NULL || out_url == NULL ||
+        (param_count != 0U && params == NULL))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_http_dispatch_validate_table(dispatch_table);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    binding = sl_http_dispatch_find_named_binding(dispatch_table, route_name);
+    if (binding == NULL || binding->pattern == NULL) {
+        return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
+    }
+
+    mark = sl_arena_mark(arena);
+    status = sl_string_builder_init_arena(&builder, arena, binding->pattern->source.length + 16U,
+                                          SL_HTTP_DEFAULT_MAX_TARGET_LENGTH);
+    if (!sl_status_is_ok(status)) {
+        goto cleanup;
+    }
+    if (binding->pattern->segment_count == 0U) {
+        status = sl_string_builder_append_char(&builder, '/');
+        if (!sl_status_is_ok(status)) {
+            goto cleanup;
+        }
+    }
+    for (index = 0U; index < binding->pattern->segment_count; index += 1U) {
+        const SlRouteSegment* segment = &binding->pattern->segments[index];
+        status = sl_string_builder_append_char(&builder, '/');
+        if (!sl_status_is_ok(status)) {
+            goto cleanup;
+        }
+        if (segment->kind == SL_ROUTE_SEGMENT_STATIC) {
+            status = sl_string_builder_append_str(&builder, segment->text);
+        }
+        else {
+            const SlRouteParam* param =
+                sl_http_dispatch_find_url_param(params, param_count, segment->param_name);
+            if (param == NULL || sl_str_is_empty(param->value)) {
+                status = sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
+            else {
+                status = sl_http_dispatch_url_append_encoded(&builder, param->value);
+            }
+        }
+        if (!sl_status_is_ok(status)) {
+            goto cleanup;
+        }
+    }
+
+    url = sl_string_builder_view(&builder);
+    status = sl_route_pattern_match(arena, binding->pattern, url, &match);
+    if (!sl_status_is_ok(status)) {
+        goto cleanup;
+    }
+    if (!match.matched) {
+        status = sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        goto cleanup;
+    }
+
+    *out_url = url;
+    return sl_status_ok();
+
+cleanup: {
+    SlStatus reset_status = sl_arena_reset_to(arena, mark);
+    if (!sl_status_is_ok(reset_status)) {
+        return reset_status;
+    }
+}
+    return status;
+}
+
 SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRouteTable* out_table,
                                    SlDiag* out_diag)
 {
@@ -2708,6 +2866,40 @@ static SlStatus sl_http_dispatch_capture_route_params(SlArena* arena,
     return sl_route_pattern_match(arena, binding->pattern, request->path, out_match);
 }
 
+static bool sl_http_dispatch_route_has_native_response(const SlPlanRoute* route)
+{
+    return route != NULL && !sl_str_is_empty(route->native_response_kind) &&
+           route->native_response_status >= 100U && route->native_response_status <= 599U;
+}
+
+static SlStatus sl_http_dispatch_native_response(const SlPlanRoute* route,
+                                                 SlEngineResult* out_result)
+{
+    SlBytes body = {0};
+
+    if (route == NULL || out_result == NULL || !sl_http_dispatch_route_has_native_response(route)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    body = sl_bytes_from_parts((const unsigned char*)route->native_response_body.ptr,
+                               route->native_response_body.length);
+    *out_result = (SlEngineResult){0};
+    if (sl_str_equal(route->native_response_kind, sl_str_from_cstr("text"))) {
+        out_result->kind = SL_ENGINE_RESULT_TEXT;
+        out_result->text = route->native_response_body;
+        out_result->response =
+            sl_http_response_text(route->native_response_status, route->native_response_body);
+        return sl_status_ok();
+    }
+    if (sl_str_equal(route->native_response_kind, sl_str_from_cstr("json"))) {
+        out_result->kind = SL_ENGINE_RESULT_JSON;
+        out_result->response = sl_http_response_json(route->native_response_status, body);
+        return sl_status_ok();
+    }
+
+    return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+}
+
 static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, const SlPlan* plan,
                                               const SlHttpDispatchTable* dispatch_table,
                                               const SlHttpRequestHead* request,
@@ -2843,6 +3035,9 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
                                                 out_result, out_diag);
         if (!sl_status_is_ok(status) || out_result->kind != SL_ENGINE_RESULT_NONE) {
             return status;
+        }
+        if (sl_http_dispatch_route_has_native_response(validation_route)) {
+            return sl_http_dispatch_native_response(validation_route, out_result);
         }
     }
 

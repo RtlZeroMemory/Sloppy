@@ -476,8 +476,7 @@ static void sl_cli_doctor_emit_route_dispatch(const SlCliOptions* options, SlAre
     if (!dispatch->present) {
         sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.dispatch.metadata"),
                            sl_cli_span_cstr("warn"),
-                           sl_cli_span_cstr("routeDispatch Plan metadata is not present"),
-                           emitted);
+                           sl_cli_span_cstr("routeDispatch Plan metadata is not present"), emitted);
         return;
     }
 
@@ -487,32 +486,30 @@ static void sl_cli_doctor_emit_route_dispatch(const SlCliOptions* options, SlAre
                        sl_cli_span_equal_cstr(dispatch->artifact_kind, "none")
                            ? sl_cli_span_cstr("warn")
                            : sl_cli_span_cstr("ok"),
-                       sl_cli_span_empty(dispatch->artifact_reason)
-                           ? dispatch->artifact_kind
-                           : dispatch->artifact_reason,
+                       !sl_cli_span_empty(dispatch->artifact_hash)    ? dispatch->artifact_hash
+                       : sl_cli_span_empty(dispatch->artifact_reason) ? dispatch->artifact_kind
+                                                                      : dispatch->artifact_reason,
                        emitted);
-    sl_cli_doctor_emit(
-        options, arena, sl_cli_span_cstr("route.dispatch.fallback"),
-        dispatch->classic_fallback_available ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
-        dispatch->classic_fallback_available
-            ? sl_cli_span_cstr("classic dispatch fallback is available")
-            : sl_cli_span_cstr("classic dispatch fallback is not advertised"),
-        emitted);
+    sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.dispatch.fallback"),
+                       dispatch->classic_fallback_available ? sl_cli_span_cstr("ok")
+                                                            : sl_cli_span_cstr("warn"),
+                       dispatch->classic_fallback_available
+                           ? sl_cli_span_cstr("classic dispatch fallback is available")
+                           : sl_cli_span_cstr("classic dispatch fallback is not advertised"),
+                       emitted);
     if (dispatch->parameter_routes > 0U) {
         sl_cli_doctor_emit(
             options, arena, sl_cli_span_cstr("route.dispatch.segment-trie"),
-            dispatch->segment_trie_nodes == 0U ? sl_cli_span_cstr("warn")
-                                                : sl_cli_span_cstr("ok"),
+            dispatch->segment_trie_nodes == 0U ? sl_cli_span_cstr("warn") : sl_cli_span_cstr("ok"),
             dispatch->segment_trie_nodes == 0U
                 ? sl_cli_span_cstr("parameter routes do not advertise segment-trie nodes")
                 : sl_cli_span_cstr("parameter routes advertise native segment-trie nodes"),
             emitted);
     }
     if (dispatch->native_no_js_endpoints == 0U) {
-        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.dispatch.no-js"),
-                           sl_cli_span_cstr("warn"),
-                           sl_cli_span_cstr("native no-JS endpoint execution is not advertised"),
-                           emitted);
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("route.dispatch.no-js"), sl_cli_span_cstr("warn"),
+            sl_cli_span_cstr("native no-JS endpoint execution is not advertised"), emitted);
     }
 }
 

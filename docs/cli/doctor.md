@@ -50,11 +50,10 @@ The exact rows depend on the current platform, build, package, and provider
 environment.
 
 With `--dispatch`, doctor also reports the Plan route dispatch mode, artifact
-status, classic fallback availability, and current deferred optimization
-surfaces. In this alpha, `native-compiled-in-memory` means the runtime builds
-the route dispatch table from Plan metadata at startup; `routes.slrt`, segment
-trie dispatch, native no-JS endpoint execution, and native URL writers are not
-claimed unless their counters are nonzero.
+status/hash, classic fallback availability, segment-trie metadata, native
+no-JS endpoint count, and native URL writer count. In this alpha,
+`native-compiled` means the compiler emitted `routes.slrt` and the runtime
+validated it before building the native dispatch table.
 
 ## Exit codes
 

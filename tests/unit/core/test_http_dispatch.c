@@ -2551,6 +2551,95 @@ static int test_plan_route_with_middleware_keeps_query_conservative(void)
     return 0;
 }
 
+static int test_native_static_text_response_skips_engine(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    route.method = sl_str_from_cstr("GET");
+    route.pattern = sl_str_from_cstr("/healthz");
+    route.handler_id = 1U;
+    route.native_response_kind = sl_str_from_cstr("text");
+    route.native_response_status = 200U;
+    route.native_response_body = sl_str_from_cstr("ok");
+    route.native_response_content_type = sl_str_from_cstr("text/plain; charset=utf-8");
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /healthz HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 176;
+    }
+
+    sl_engine_destroy(engine);
+    return expect_true(result.kind == SL_ENGINE_RESULT_TEXT && result.response.status == 200U &&
+                       expect_str_equal(result.text, "ok") == 0);
+}
+
+static int test_named_route_url_generation_encodes_and_roundtrips(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlRouteParam params[2];
+    SlRouteMatch match = {0};
+    SlStr url = {0};
+    SlDiag diag = {0};
+
+    route.method = sl_str_from_cstr("GET");
+    route.pattern = sl_str_from_cstr("/users/{id:int}/files/{file}");
+    route.handler_id = 1U;
+    route.name = sl_str_from_cstr("user.file");
+    plan.routes = &route;
+    plan.route_count = 1U;
+    params[0] = (SlRouteParam){sl_str_from_cstr("id"), sl_str_from_cstr("42"), SL_ROUTE_PARAM_INT};
+    params[1] =
+        (SlRouteParam){sl_str_from_cstr("file"), sl_str_from_cstr("a b/c"), SL_ROUTE_PARAM_STRING};
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_dispatch_generate_url(
+                          &arena, &table.dispatch, sl_str_from_cstr("user.file"), params, 2U, &url),
+                      SL_STATUS_OK) != 0 ||
+        expect_str_equal(url, "/users/42/files/a%20b%2Fc") != 0 ||
+        expect_status(sl_route_pattern_match(&arena, table.dispatch.routes[0].pattern, url, &match),
+                      SL_STATUS_OK) != 0 ||
+        !match.matched)
+    {
+        return 177;
+    }
+
+    params[0].value = sl_str_from_cstr("abc");
+    if (expect_status(sl_http_dispatch_generate_url(
+                          &arena, &table.dispatch, sl_str_from_cstr("user.file"), params, 2U, &url),
+                      SL_STATUS_INVALID_ARGUMENT) != 0)
+    {
+        return 178;
+    }
+    return 0;
+}
+
 typedef int (*HttpDispatchTestFn)(void);
 
 typedef struct HttpDispatchTestCase
@@ -2607,6 +2696,8 @@ int main(void)
         HTTP_DISPATCH_TEST(test_plan_route_without_query_binding_skips_malformed_query),
         HTTP_DISPATCH_TEST(test_plan_route_with_query_binding_rejects_malformed_query),
         HTTP_DISPATCH_TEST(test_plan_route_with_middleware_keeps_query_conservative),
+        HTTP_DISPATCH_TEST(test_native_static_text_response_skips_engine),
+        HTTP_DISPATCH_TEST(test_named_route_url_generation_encodes_and_roundtrips),
     };
     size_t index = 0U;
 

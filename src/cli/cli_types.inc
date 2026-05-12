@@ -188,6 +188,8 @@ typedef struct SlCliRouteDispatch
     bool present;
     SlCliSpan mode;
     SlCliSpan artifact_kind;
+    SlCliSpan artifact_path;
+    SlCliSpan artifact_hash;
     SlCliSpan artifact_reason;
     uint64_t route_count;
     uint64_t endpoint_count;
@@ -195,6 +197,7 @@ typedef struct SlCliRouteDispatch
     uint64_t parameter_routes;
     uint64_t catch_all_routes;
     uint64_t native_no_js_endpoints;
+    uint64_t url_writers;
     uint64_t exact_static_paths;
     uint64_t parameter_candidate_buckets;
     uint64_t segment_trie_nodes;

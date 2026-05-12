@@ -398,6 +398,7 @@ pub(crate) struct ResponseMetadata {
     pub(crate) status: u16,
     pub(crate) kind: String,
     pub(crate) body_schema: Option<String>,
+    pub(crate) native_body: Option<String>,
     pub(crate) source_name: Option<String>,
     pub(crate) source_text: Option<String>,
     pub(crate) span: Option<Span>,

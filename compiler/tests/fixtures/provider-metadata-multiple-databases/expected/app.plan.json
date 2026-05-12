@@ -188,8 +188,9 @@
   "modules": [],
   "routeDispatch": {
     "artifact": {
-      "kind": "none",
-      "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
+      "hash": "sha256:0bda08be103dc9c0ac3fcaa02dc90d6200f046e4fbcb97dfab86f4b9dd22020c",
+      "kind": "slrt",
+      "path": "routes.slrt"
     },
     "catchAllRoutes": 0,
     "dispatchStats": {
@@ -209,12 +210,13 @@
       "dynamicRoutes": 0,
       "partialRoutes": 0
     },
-    "mode": "native-compiled-in-memory",
-    "nativeNoJsEndpoints": 0,
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 1,
     "parameterRoutes": 0,
     "routeCount": 1,
     "staticRoutes": 1,
-    "urlGeneration": false,
+    "urlGeneration": true,
+    "urlWriters": 0,
     "version": 1
   },
   "routes": [
@@ -226,18 +228,25 @@
       },
       "dispatch": {
         "endpointId": 1,
-        "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "executionKind": "native-static-json",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
       "handlerId": 1,
       "method": "GET",
       "name": null,
+      "nativeResponse": {
+        "body": "{\"analytics\":\"postgres\",\"reporting\":\"sqlserver\"}",
+        "contentType": "application/json",
+        "kind": "json",
+        "status": 200
+      },
       "pattern": "/metadata",
       "response": {
         "helper": "json",
         "kind": "json",
+        "nativeBody": "{\"analytics\":\"postgres\",\"reporting\":\"sqlserver\"}",
         "status": 200
       },
       "source": {

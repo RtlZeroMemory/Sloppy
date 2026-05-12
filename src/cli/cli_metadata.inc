@@ -155,14 +155,12 @@ static int sl_cli_parse_route_auth(yyjson_val* value, SlCliRoute* route)
     route->auth_required = required == NULL || yyjson_get_bool(required);
     route->auth_policy = sl_cli_json_span(auth, "policy");
     if (sl_cli_parse_route_auth_array(yyjson_obj_get(auth, "roles"), route->auth_roles,
-                                      &route->auth_role_count,
-                                      SL_CLI_MAX_ROUTE_AUTH_ROLES) != 0)
+                                      &route->auth_role_count, SL_CLI_MAX_ROUTE_AUTH_ROLES) != 0)
     {
         return 1;
     }
     return sl_cli_parse_route_auth_array(yyjson_obj_get(auth, "claims"), route->auth_claims,
-                                         &route->auth_claim_count,
-                                         SL_CLI_MAX_ROUTE_AUTH_CLAIMS);
+                                         &route->auth_claim_count, SL_CLI_MAX_ROUTE_AUTH_CLAIMS);
 }
 
 static int sl_cli_parse_route_response_entry(yyjson_val* value, SlCliRoute* route)
@@ -776,7 +774,8 @@ static int sl_cli_parse_auth_metadata(yyjson_val* root, SlCliMetadata* metadata)
     schemes = yyjson_obj_get(auth, "schemes");
     if (schemes != NULL) {
         if (!yyjson_is_arr(schemes)) {
-            sl_cli_write_cstr(stderr, "sloppy: malformed metadata: auth.schemes must be an array\n");
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: auth.schemes must be an array\n");
             return 1;
         }
         yyjson_arr_iter_init(schemes, &iter);
@@ -800,7 +799,8 @@ static int sl_cli_parse_auth_metadata(yyjson_val* root, SlCliMetadata* metadata)
     policies = yyjson_obj_get(auth, "policies");
     if (policies != NULL) {
         if (!yyjson_is_arr(policies)) {
-            sl_cli_write_cstr(stderr, "sloppy: malformed metadata: auth.policies must be an array\n");
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: auth.policies must be an array\n");
             return 1;
         }
         yyjson_arr_iter_init(policies, &iter);
@@ -1029,6 +1029,7 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
         sl_cli_json_uint_or_zero(dispatch, "catchAllRoutes");
     metadata->route_dispatch.native_no_js_endpoints =
         sl_cli_json_uint_or_zero(dispatch, "nativeNoJsEndpoints");
+    metadata->route_dispatch.url_writers = sl_cli_json_uint_or_zero(dispatch, "urlWriters");
 
     url_generation = yyjson_obj_get(dispatch, "urlGeneration");
     metadata->route_dispatch.url_generation =
@@ -1037,6 +1038,8 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
     artifact = yyjson_obj_get(dispatch, "artifact");
     if (artifact != NULL && yyjson_is_obj(artifact)) {
         metadata->route_dispatch.artifact_kind = sl_cli_json_span(artifact, "kind");
+        metadata->route_dispatch.artifact_path = sl_cli_json_span(artifact, "path");
+        metadata->route_dispatch.artifact_hash = sl_cli_json_span(artifact, "hash");
         metadata->route_dispatch.artifact_reason = sl_cli_json_span(artifact, "reason");
     }
 
@@ -1053,9 +1056,9 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
     fallback = yyjson_obj_get(dispatch, "fallback");
     if (fallback != NULL && yyjson_is_obj(fallback)) {
         classic_available = yyjson_obj_get(fallback, "classicAvailable");
-        metadata->route_dispatch.classic_fallback_available =
-            classic_available != NULL && yyjson_is_bool(classic_available) &&
-            yyjson_get_bool(classic_available);
+        metadata->route_dispatch.classic_fallback_available = classic_available != NULL &&
+                                                              yyjson_is_bool(classic_available) &&
+                                                              yyjson_get_bool(classic_available);
         metadata->route_dispatch.dynamic_fallback_routes =
             sl_cli_json_uint_or_zero(fallback, "dynamicRoutes");
         metadata->route_dispatch.partial_fallback_routes =

@@ -64,11 +64,11 @@ array. Text output says no route metadata is expected for a program Plan.
 ## Dispatch Details
 
 Pass `--dispatch` to include the compiler/runtime dispatch contract. Current
-alpha builds emit `native-compiled-in-memory`: the runtime compiles Plan routes
-into an exact static-path hash table plus a method-specific segment trie for
-parameter routes at startup. Candidate buckets remain an internal fallback for
-partial or manually constructed dispatch tables. No `routes.slrt` binary
-artifact is emitted yet.
+alpha builds emit `native-compiled`: the compiler writes `routes.slrt`, the
+Plan records its hash, and the runtime validates the artifact before building
+an exact static-path hash table plus a method-specific segment trie for
+parameter routes. Candidate buckets remain an internal fallback for partial or
+manually constructed dispatch tables.
 
 ```sh
 sloppy routes .sloppy --dispatch

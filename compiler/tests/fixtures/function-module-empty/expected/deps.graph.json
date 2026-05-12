@@ -1,0 +1,51 @@
+{
+  "assets": [],
+  "compatibilityFindings": [],
+  "modules": [
+    {
+      "dynamicImports": [],
+      "format": "esm",
+      "id": "input.js",
+      "imports": [
+        "./modules/empty.js"
+      ],
+      "resolvedImports": [
+        {
+          "kind": "relative",
+          "resolvedId": "modules/empty.js",
+          "specifier": "./modules/empty.js"
+        }
+      ],
+      "source": "input.js"
+    },
+    {
+      "dynamicImports": [],
+      "format": "esm",
+      "id": "modules/empty.js",
+      "imports": [],
+      "includedBy": "input.js",
+      "resolvedImports": [],
+      "source": "modules/empty.js"
+    }
+  ],
+  "nodeBuiltins": [],
+  "packages": [],
+  "resolver": {
+    "conditions": [
+      "sloppy",
+      "import",
+      "require",
+      "node",
+      "development",
+      "production",
+      "default"
+    ],
+    "profiles": [
+      "sloppy-stdlib",
+      "relative-source",
+      "installed-packages",
+      "node-compat-shims"
+    ]
+  },
+  "schemaVersion": 1
+}

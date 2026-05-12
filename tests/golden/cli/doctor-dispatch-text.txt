@@ -8,10 +8,9 @@ Sloppy Doctor
 [ok] app.plan.routes: route metadata present
 [warn] app.plan.providers: provider metadata not present
 [warn] app.plan.capabilities: capability metadata not present
-[ok] route.dispatch.mode: native-compiled-in-memory
-[warn] route.dispatch.artifact: SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup.
+[ok] route.dispatch.mode: native-compiled
+[ok] route.dispatch.artifact: sha256:62872c50f3f70c34bcdc8a9a04a2c6f50539e91e6b5b750c58c1ecc2bfba62cf
 [ok] route.dispatch.fallback: classic dispatch fallback is available
 [ok] route.dispatch.segment-trie: parameter routes advertise native segment-trie nodes
-[warn] route.dispatch.no-js: native no-JS endpoint execution is not advertised
 [ok] app.plan.completeness: Plan completeness is complete
 [ok] optimization.native-json-candidate: route has response metadata for future native JSON analysis

@@ -7699,8 +7699,13 @@ export default app;
 
     assert_eq!(value["features"]["nativeEndpointDispatch"], true);
     assert_eq!(value["strongPlan"]["evidence"]["routeDispatch"], true);
-    assert_eq!(value["routeDispatch"]["mode"], "native-compiled-in-memory");
-    assert_eq!(value["routeDispatch"]["artifact"]["kind"], "none");
+    assert_eq!(value["routeDispatch"]["mode"], "native-compiled");
+    assert_eq!(value["routeDispatch"]["artifact"]["kind"], "slrt");
+    assert_eq!(value["routeDispatch"]["artifact"]["path"], "routes.slrt");
+    assert!(value["routeDispatch"]["artifact"]["hash"]
+        .as_str()
+        .expect("route artifact hash should be a string")
+        .starts_with("sha256:"));
     assert_eq!(value["routeDispatch"]["routeCount"], 2);
     assert_eq!(value["routeDispatch"]["staticRoutes"], 1);
     assert_eq!(value["routeDispatch"]["parameterRoutes"], 1);

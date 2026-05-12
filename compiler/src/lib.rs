@@ -13,6 +13,7 @@ pub mod parser;
 mod plan_emit;
 pub mod resolver;
 pub mod result_inference;
+mod route_artifact;
 pub mod schema_inference;
 pub mod slop_dsl;
 pub mod source;

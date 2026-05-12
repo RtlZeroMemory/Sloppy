@@ -11,6 +11,9 @@ use crate::graph::{
     ExtractedApp, ProjectKind,
 };
 use crate::hash::sha256_hex;
+use crate::route_artifact::{
+    route_execution_kind, RouteDispatchArtifactMetadata, RouteExecutionKind,
+};
 use crate::source::line_column;
 use crate::validation::{
     plan_completeness, route_completeness, Completeness, CompletenessReason, RouteCompletenessInput,
@@ -95,7 +98,11 @@ fn route_dispatch_segment_trie_nodes(app: &ExtractedApp) -> usize {
     prefixes.len()
 }
 
-fn route_dispatch_json(app: &ExtractedApp, route_completeness_values: &[Completeness]) -> Value {
+fn route_dispatch_json(
+    app: &ExtractedApp,
+    route_completeness_values: &[Completeness],
+    route_artifact: Option<&RouteDispatchArtifactMetadata>,
+) -> Value {
     let static_routes = app
         .routes
         .iter()
@@ -128,21 +135,51 @@ fn route_dispatch_json(app: &ExtractedApp, route_completeness_values: &[Complete
         .collect::<BTreeSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
+    let native_no_js_endpoints = app
+        .routes
+        .iter()
+        .filter(|route| {
+            let response_kind = route
+                .handler
+                .response
+                .as_ref()
+                .map(|response| response.kind.as_str());
+            let native_body = route
+                .handler
+                .response
+                .as_ref()
+                .and_then(|response| response.native_body.as_deref());
+            route_execution_kind(response_kind, native_body) != RouteExecutionKind::V8Handler
+        })
+        .count();
+    let artifact = route_artifact.map_or_else(
+        || {
+            json!({
+                "kind": "none",
+                "reason": "route dispatch artifact metadata was not supplied by this Plan emission call"
+            })
+        },
+        |artifact| {
+            json!({
+                "kind": "slrt",
+                "path": artifact.path,
+                "hash": artifact.hash
+            })
+        },
+    );
 
     json!({
         "version": 1,
-        "mode": "native-compiled-in-memory",
-        "artifact": {
-            "kind": "none",
-            "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
-        },
+        "mode": if route_artifact.is_some() { "native-compiled" } else { "native-compiled-in-memory" },
+        "artifact": artifact,
         "routeCount": app.routes.len(),
         "endpointCount": app.routes.len(),
         "staticRoutes": static_routes,
         "parameterRoutes": parameter_routes,
         "catchAllRoutes": 0,
-        "nativeNoJsEndpoints": 0,
-        "urlGeneration": false,
+        "nativeNoJsEndpoints": native_no_js_endpoints,
+        "urlGeneration": true,
+        "urlWriters": app.routes.iter().filter(|route| route.name.is_some()).count(),
         "dispatchStats": {
             "exactStaticPaths": static_routes,
             "parameterCandidateBuckets": parameter_candidate_buckets,
@@ -303,10 +340,33 @@ fn resolve_schema_references(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn emit_plan(
     app: &ExtractedApp,
     bundle_hash: &str,
     source_map_hash: &str,
+) -> Result<String, Diagnostic> {
+    let route_artifact = crate::route_artifact::emit_route_artifact(app)?;
+    let route_artifact_metadata =
+        route_artifact
+            .as_ref()
+            .map(|bytes| RouteDispatchArtifactMetadata {
+                path: crate::route_artifact::ROUTE_ARTIFACT_PATH.to_string(),
+                hash: crate::hash::sha256_bytes_hex(bytes),
+            });
+    emit_plan_with_route_artifact(
+        app,
+        bundle_hash,
+        source_map_hash,
+        route_artifact_metadata.as_ref(),
+    )
+}
+
+pub(crate) fn emit_plan_with_route_artifact(
+    app: &ExtractedApp,
+    bundle_hash: &str,
+    source_map_hash: &str,
+    route_artifact: Option<&RouteDispatchArtifactMetadata>,
 ) -> Result<String, Diagnostic> {
     if app.kind == ProjectKind::Program && !app.routes.is_empty() {
         return Err(Diagnostic::new(
@@ -579,6 +639,19 @@ pub(crate) fn emit_plan(
                     if response.partial {
                         response_json["partial"] = json!(true);
                     }
+                    if let Some(native_body) = &response.native_body {
+                        response_json["nativeBody"] = json!(native_body);
+                        route_json["nativeResponse"] = json!({
+                            "kind": response.kind,
+                            "status": response.status,
+                            "body": native_body,
+                            "contentType": if response.kind == "json" {
+                                "application/json"
+                            } else {
+                                "text/plain; charset=utf-8"
+                            }
+                        });
+                    }
                     route_json["response"] = response_json;
                 }
                 if route.handler.responses.len() > 1 || route.handler.runtime_deferred {
@@ -592,6 +665,7 @@ pub(crate) fn emit_plan(
                                 "status": response.status,
                                 "kind": response.kind,
                                 "bodySchema": response.body_schema,
+                                "nativeBody": response.native_body,
                                 "partial": response.partial
                             });
                             if let (Some(source_name), Some(source_text), Some(span)) =
@@ -627,16 +701,23 @@ pub(crate) fn emit_plan(
                     })
                     .collect::<Vec<_>>());
             }
+            let response_kind = route.handler.response.as_ref().map(|response| response.kind.as_str());
+            let native_body = route
+                .handler
+                .response
+                .as_ref()
+                .and_then(|response| response.native_body.as_deref());
+            let execution_kind = route_execution_kind(response_kind, native_body);
             route_json["dispatch"] = json!({
                 "endpointId": id,
-                "mode": "native-compiled-in-memory",
+                "mode": if route_artifact.is_some() { "native-compiled" } else { "native-compiled-in-memory" },
                 "strategy": if route_pattern_has_params(&route.pattern) {
                     "segment-trie"
                 } else {
                     "exact-static-hash"
                 },
                 "specializable": true,
-                "executionKind": "v8-handler"
+                "executionKind": execution_kind.as_plan_str()
             });
             route_json["completeness"] = completeness_json(completeness);
             route_json
@@ -1101,7 +1182,8 @@ pub(crate) fn emit_plan(
         value["findings"] = json!(dynamic_findings);
     }
     if app.kind == ProjectKind::Web {
-        value["routeDispatch"] = route_dispatch_json(app, &route_completeness_values);
+        value["routeDispatch"] =
+            route_dispatch_json(app, &route_completeness_values, route_artifact);
         value["features"]["nativeEndpointDispatch"] = json!(true);
         value["strongPlan"]["evidence"]["routeDispatch"] = json!(true);
     }

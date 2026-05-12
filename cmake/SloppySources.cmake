@@ -39,6 +39,7 @@ set(
     src/core/http_response.c
     src/core/request_validation.c
     src/core/route.c
+    src/core/route_artifact.c
     src/core/plan.c
     src/core/plan_parse.c
     src/core/runtime_contract.c
@@ -171,6 +172,7 @@ set(
     tests/unit/core/test_http_dispatch.c
     tests/unit/core/test_http_response.c
     tests/unit/core/test_route.c
+    tests/unit/core/test_route_artifact.c
     tests/unit/core/test_plan.c
     tests/unit/core/test_plan_parse.c
     tests/unit/core/test_runtime_contract.c

@@ -635,6 +635,21 @@ static SlStatus sl_plan_intern_routes(SlArena* arena, SlInternTable* table, SlPl
         if (!sl_status_is_ok(status)) {
             return status;
         }
+        status = sl_plan_intern_required(table, routes[index].native_response_kind,
+                                         &routes[index].native_response_kind);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_required(table, routes[index].native_response_body,
+                                         &routes[index].native_response_body);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_required(table, routes[index].native_response_content_type,
+                                         &routes[index].native_response_content_type);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
         status = sl_plan_intern_bindings(arena, table, &routes[index]);
         if (!sl_status_is_ok(status)) {
             return status;
@@ -642,6 +657,28 @@ static SlStatus sl_plan_intern_routes(SlArena* arena, SlInternTable* table, SlPl
     }
     staged->routes = routes;
     return sl_status_ok();
+}
+
+static SlStatus sl_plan_intern_route_dispatch(SlInternTable* table, SlPlan* staged)
+{
+    SlStatus status;
+
+    if (staged == NULL || !staged->has_route_dispatch_artifact) {
+        return sl_status_ok();
+    }
+
+    status = sl_plan_intern_required(table, staged->route_dispatch_artifact.kind,
+                                     &staged->route_dispatch_artifact.kind);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_intern_required(table, staged->route_dispatch_artifact.path,
+                                     &staged->route_dispatch_artifact.path);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_plan_intern_required(table, staged->route_dispatch_artifact.hash,
+                                   &staged->route_dispatch_artifact.hash);
 }
 
 typedef struct SlPlanSchemaNodeInternEntry
@@ -1244,6 +1281,10 @@ SlStatus sl_plan_intern_metadata(SlArena* arena, const SlPlan* plan, size_t capa
         goto failure;
     }
     status = sl_plan_intern_routes(arena, &table, &staged);
+    if (!sl_status_is_ok(status)) {
+        goto failure;
+    }
+    status = sl_plan_intern_route_dispatch(&table, &staged);
     if (!sl_status_is_ok(status)) {
         goto failure;
     }

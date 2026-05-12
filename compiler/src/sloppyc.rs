@@ -27,8 +27,13 @@ use crate::diagnostic::Diagnostic;
 pub(crate) use crate::graph::*;
 use crate::hash::{sha256_bytes_hex, sha256_hex};
 use crate::parser::{source_type_for_path, ParseContext};
-use crate::plan_emit::{dependency_graph_json, emit_dependency_graph, emit_plan};
+#[cfg(test)]
+use crate::plan_emit::emit_plan;
+use crate::plan_emit::{
+    dependency_graph_json, emit_dependency_graph, emit_plan_with_route_artifact,
+};
 use crate::resolver;
+use crate::route_artifact::{emit_route_artifact, ROUTE_ARTIFACT_PATH};
 use crate::source::{line_column, source_map_source_name};
 use crate::static_eval::{eval_string_argument, eval_string_expression, StaticStringEnv};
 use crate::version::COMPILER_VERSION;
@@ -8656,6 +8661,7 @@ fn static_asset_route(
                 status: 200,
                 kind: "bytes".to_string(),
                 body_schema: None,
+                native_body: None,
                 source_name: Some(context.source_name.to_string()),
                 source_text: Some(context.source.to_string()),
                 span: Some(context.span),
@@ -10299,6 +10305,7 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
                     status: 204,
                     kind: "empty".to_string(),
                     body_schema: None,
+                    native_body: None,
                     source_name: None,
                     source_text: None,
                     span: None,
@@ -10309,6 +10316,7 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
                     status: 204,
                     kind: "empty".to_string(),
                     body_schema: None,
+                    native_body: None,
                     source_name: None,
                     source_text: None,
                     span: None,
@@ -11024,6 +11032,7 @@ fn health_response_metadata(
         status,
         kind: "json".to_string(),
         body_schema: None,
+        native_body: None,
         source_name: Some(source_name.to_string()),
         source_text: Some(source.to_string()),
         span: Some(span),
@@ -11087,6 +11096,7 @@ fn apply_problem_details_to_routes(
             status: 500,
             kind: "problem".to_string(),
             body_schema: None,
+            native_body: None,
             source_name: None,
             source_text: None,
             span: None,
@@ -13263,6 +13273,7 @@ fn apply_route_schema_metadata(
                 status: 200,
                 kind: "json".to_string(),
                 body_schema: Some(schema.clone()),
+                native_body: None,
                 source_name: None,
                 source_text: None,
                 span: Some(span),
@@ -15900,11 +15911,12 @@ fn dedupe_response_metadata(responses: Vec<ResponseMetadata>) -> Vec<ResponseMet
     let mut deduped = Vec::new();
     for response in responses {
         let key = format!(
-            "{}:{}:{}:{}:{}",
+            "{}:{}:{}:{}:{}:{}",
             response.helper,
             response.status,
             response.kind,
             response.body_schema.as_deref().unwrap_or(""),
+            response.native_body.as_deref().unwrap_or(""),
             response.partial
         );
         if seen.insert(key) {
@@ -15946,11 +15958,130 @@ fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMeta
         status,
         kind: kind.to_string(),
         body_schema: None,
+        native_body: native_response_body_from_call(helper, call),
         source_name: None,
         source_text: None,
         span: Some(call.span),
         partial: false,
     })
+}
+
+fn native_response_body_from_call(helper: &str, call: &CallExpression<'_>) -> Option<String> {
+    match helper {
+        "text" => {
+            let Argument::StringLiteral(literal) = call.arguments.first()? else {
+                return None;
+            };
+            Some(literal.value.to_string())
+        }
+        "json" | "ok" => {
+            let value = json_value_from_argument(call.arguments.first()?)?;
+            serde_json::to_string(&value).ok()
+        }
+        _ => None,
+    }
+}
+
+fn json_value_from_argument(argument: &Argument<'_>) -> Option<Value> {
+    match argument {
+        Argument::StringLiteral(literal) => Some(Value::String(literal.value.to_string())),
+        Argument::NumericLiteral(literal) => {
+            serde_json::Number::from_f64(literal.value).map(Value::Number)
+        }
+        Argument::BooleanLiteral(literal) => Some(Value::Bool(literal.value)),
+        Argument::NullLiteral(_) => Some(Value::Null),
+        Argument::ArrayExpression(array) => {
+            let mut values = Vec::with_capacity(array.elements.len());
+            for element in &array.elements {
+                values.push(json_value_from_array_element(element)?);
+            }
+            Some(Value::Array(values))
+        }
+        Argument::ObjectExpression(object) => json_value_from_object(object),
+        Argument::ParenthesizedExpression(parenthesized) => {
+            json_value_from_expression(&parenthesized.expression)
+        }
+        _ => None,
+    }
+}
+
+fn json_value_from_expression(expression: &Expression<'_>) -> Option<Value> {
+    match expression {
+        Expression::StringLiteral(literal) => Some(Value::String(literal.value.to_string())),
+        Expression::NumericLiteral(literal) => {
+            serde_json::Number::from_f64(literal.value).map(Value::Number)
+        }
+        Expression::BooleanLiteral(literal) => Some(Value::Bool(literal.value)),
+        Expression::NullLiteral(_) => Some(Value::Null),
+        Expression::ArrayExpression(array) => {
+            let mut values = Vec::with_capacity(array.elements.len());
+            for element in &array.elements {
+                values.push(json_value_from_array_element(element)?);
+            }
+            Some(Value::Array(values))
+        }
+        Expression::ObjectExpression(object) => json_value_from_object(object),
+        Expression::ParenthesizedExpression(parenthesized) => {
+            json_value_from_expression(&parenthesized.expression)
+        }
+        _ => None,
+    }
+}
+
+fn json_value_from_array_element(element: &ArrayExpressionElement<'_>) -> Option<Value> {
+    match element {
+        ArrayExpressionElement::StringLiteral(literal) => {
+            Some(Value::String(literal.value.to_string()))
+        }
+        ArrayExpressionElement::NumericLiteral(literal) => {
+            serde_json::Number::from_f64(literal.value).map(Value::Number)
+        }
+        ArrayExpressionElement::BooleanLiteral(literal) => Some(Value::Bool(literal.value)),
+        ArrayExpressionElement::NullLiteral(_) => Some(Value::Null),
+        ArrayExpressionElement::ArrayExpression(array) => {
+            let mut values = Vec::with_capacity(array.elements.len());
+            for element in &array.elements {
+                values.push(json_value_from_array_element(element)?);
+            }
+            Some(Value::Array(values))
+        }
+        ArrayExpressionElement::ObjectExpression(object) => json_value_from_object(object),
+        _ => None,
+    }
+}
+
+fn json_value_from_object(object: &oxc_ast::ast::ObjectExpression<'_>) -> Option<Value> {
+    let mut map = serde_json::Map::new();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return None;
+        };
+        if property.kind != PropertyKind::Init
+            || property.method
+            || property.shorthand
+            || property.computed
+        {
+            return None;
+        }
+        let key = json_property_key_name(&property.key)?;
+        map.insert(key, json_value_from_expression(&property.value)?);
+    }
+    Some(Value::Object(map))
+}
+
+fn json_property_key_name(key: &PropertyKey<'_>) -> Option<String> {
+    match key {
+        PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.to_string()),
+        PropertyKey::StringLiteral(literal) => Some(literal.value.to_string()),
+        PropertyKey::NumericLiteral(literal) => {
+            if literal.value.fract() == 0.0 {
+                Some(format!("{}", literal.value as i64))
+            } else {
+                Some(literal.value.to_string())
+            }
+        }
+        _ => None,
+    }
 }
 
 fn status_result_code(call: &CallExpression<'_>) -> Option<u16> {
@@ -17716,8 +17847,28 @@ fn write_artifacts(
         metrics.add_phase("sourceMapMs", source_map_start.elapsed());
         metrics.set_artifact_bytes("sourceMapBytes", source_map.len());
     }
+    let route_artifact_start = Instant::now();
+    let route_artifact = emit_route_artifact(app)?;
+    let route_artifact_metadata =
+        route_artifact.as_ref().map(
+            |bytes| crate::route_artifact::RouteDispatchArtifactMetadata {
+                path: ROUTE_ARTIFACT_PATH.to_string(),
+                hash: sha256_bytes_hex(bytes),
+            },
+        );
+    if let Some(metrics) = metrics.as_mut() {
+        metrics.add_phase("routeArtifactEmitMs", route_artifact_start.elapsed());
+        if let Some(route_artifact) = &route_artifact {
+            metrics.set_artifact_bytes("routeArtifactBytes", route_artifact.len());
+        }
+    }
     let plan_start = Instant::now();
-    let plan = emit_plan(app, &sha256_hex(&app_js.source), &sha256_hex(&source_map))?;
+    let plan = emit_plan_with_route_artifact(
+        app,
+        &sha256_hex(&app_js.source),
+        &sha256_hex(&source_map),
+        route_artifact_metadata.as_ref(),
+    )?;
     if let Some(metrics) = metrics.as_mut() {
         metrics.add_phase("planEmitMs", plan_start.elapsed());
         metrics.set_artifact_bytes("planBytes", plan.len());
@@ -17735,6 +17886,9 @@ fn write_artifacts(
     let write_start = Instant::now();
     write_artifact(out_dir, "app.js", &app_js.source)?;
     write_artifact(out_dir, "app.js.map", &source_map)?;
+    if let Some(route_artifact) = &route_artifact {
+        write_binary_artifact(out_dir, ROUTE_ARTIFACT_PATH, route_artifact)?;
+    }
     write_artifact(out_dir, "app.plan.json", &plan)?;
     if let Some(dependency_graph) = &dependency_graph {
         write_artifact(out_dir, "deps.graph.json", dependency_graph)?;
@@ -17746,6 +17900,35 @@ fn write_artifacts(
 }
 
 fn write_artifact(out_dir: &Path, name: &str, contents: &str) -> Result<(), Diagnostic> {
+    let temp_name = format!("{name}.tmp");
+    let temp_path = out_dir.join(&temp_name);
+    let final_path = out_dir.join(name);
+    fs::write(&temp_path, contents).map_err(|error| {
+        Diagnostic::new(
+            "SLOPPYC_E_OUTPUT",
+            format!("failed to write {temp_name}: {error}"),
+        )
+        .with_path(out_dir)
+    })?;
+    if final_path.exists() {
+        fs::remove_file(&final_path).map_err(|error| {
+            Diagnostic::new(
+                "SLOPPYC_E_OUTPUT",
+                format!("failed to replace {name}: {error}"),
+            )
+            .with_path(out_dir)
+        })?;
+    }
+    fs::rename(&temp_path, &final_path).map_err(|error| {
+        Diagnostic::new(
+            "SLOPPYC_E_OUTPUT",
+            format!("failed to finalize {name}: {error}"),
+        )
+        .with_path(out_dir)
+    })
+}
+
+fn write_binary_artifact(out_dir: &Path, name: &str, contents: &[u8]) -> Result<(), Diagnostic> {
     let temp_name = format!("{name}.tmp");
     let temp_path = out_dir.join(&temp_name);
     let final_path = out_dir.join(name);

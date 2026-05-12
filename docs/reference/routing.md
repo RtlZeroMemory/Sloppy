@@ -81,10 +81,12 @@ Compiler extraction currently enforces:
 ## Runtime Dispatch Notes
 
 - `sloppy run --once` method parser accepts `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, and `HEAD`.
-- Static Plan routes use the native in-memory endpoint dispatch table. Exact
-  static paths are indexed by method and full path. Parameter routes are grouped
-  into a method-specific segment trie that enforces the supported native route
-  constraints during lookup.
+- Static Plan routes use the native endpoint dispatch table. Compiler-emitted
+  web artifacts include `routes.slrt`, and `sloppy run` validates that artifact
+  before materializing the runtime table. Exact static paths are indexed by
+  method and full path. Parameter routes are grouped into a method-specific
+  segment trie that enforces the supported native route constraints during
+  lookup.
 - Incoming `HEAD` matches the corresponding `GET` route and suppresses response
   body bytes at the transport boundary.
 - Plan-backed `405 Method Not Allowed` responses include an `Allow` header when
@@ -101,6 +103,11 @@ Compiler extraction currently enforces:
 - Dynamic or partial route metadata does not block known static routes from
   using native dispatch metadata. The Plan `routeDispatch.fallback` section
   records dynamic and partial fallback counts.
+- Literal `Results.text`, `Results.json`, and `Results.ok` responses can run as
+  native no-JS static responses when the compiler proves the body is a literal.
+- Named static Plan routes have native URL writers that validate required path
+  params, percent-encode inserted path values, and roundtrip through the native
+  matcher.
 - `SLOPPY_ROUTE_DISPATCH=classic` forces the linear matcher for diagnostics.
   `SLOPPY_ROUTE_DISPATCH=validate` compares the compiled and linear matchers and
   fails if they disagree.

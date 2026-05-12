@@ -114,6 +114,18 @@ SlStatus sl_http_dispatch_allow_header_for_path(SlArena* arena,
                                                 SlStr path, SlStr* out_allow);
 
 /*
+ * Generates a path for a named Plan route from native dispatch metadata.
+ *
+ * `params` supplies path parameter values by name. Values are percent-encoded for path
+ * segments before insertion. The generated path is arena-owned. Unknown route names,
+ * missing parameters, constraint mismatches, and unnamed routes fail without falling back to
+ * JavaScript.
+ */
+SlStatus sl_http_dispatch_generate_url(SlArena* arena, const SlHttpDispatchTable* dispatch_table,
+                                       SlStr route_name, const SlRouteParam* params,
+                                       size_t param_count, SlStr* out_url);
+
+/*
  * Dispatches one parsed in-memory HTTP request head to a Sloppy Plan handler ID.
  *
  * This is synthetic dispatch only: no sockets, no middleware, no streaming body state, and

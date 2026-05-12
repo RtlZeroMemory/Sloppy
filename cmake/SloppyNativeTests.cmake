@@ -184,6 +184,8 @@
     sloppy_add_c_unit_test(
         core_http_response core.http.response tests/unit/core/test_http_response.c)
     sloppy_add_c_unit_test(core_route_pattern core.route.pattern tests/unit/core/test_route.c)
+    sloppy_add_c_unit_test(
+        core_route_artifact core.route.artifact tests/unit/core/test_route_artifact.c)
     sloppy_add_c_unit_test(core_plan_contract core.plan.contract tests/unit/core/test_plan.c)
     set_tests_properties(core.plan.contract PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     sloppy_add_c_unit_test(

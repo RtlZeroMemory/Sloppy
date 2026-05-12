@@ -99,6 +99,8 @@
         tests/golden/cli/doctor-codec-checksum-text.txt)
     set(SLOPPY_DOCTOR_CODEC_CHECKSUM_JSON_GOLDEN
         tests/golden/cli/doctor-codec-checksum-json.json)
+    set(SLOPPY_DOCTOR_DISPATCH_TEXT_GOLDEN tests/golden/cli/doctor-dispatch-text.txt)
+    set(SLOPPY_DOCTOR_DISPATCH_JSON_GOLDEN tests/golden/cli/doctor-dispatch-json.json)
     if(SLOPPY_ENABLE_V8)
         set(SLOPPY_DOCTOR_TEXT_GOLDEN tests/golden/cli/doctor-text-v8.txt)
         set(SLOPPY_DOCTOR_JSON_GOLDEN tests/golden/cli/doctor-json-v8.json)
@@ -128,6 +130,8 @@
             tests/golden/cli/doctor-codec-checksum-text-v8.txt)
         set(SLOPPY_DOCTOR_CODEC_CHECKSUM_JSON_GOLDEN
             tests/golden/cli/doctor-codec-checksum-json-v8.json)
+        set(SLOPPY_DOCTOR_DISPATCH_TEXT_GOLDEN tests/golden/cli/doctor-dispatch-text-v8.txt)
+        set(SLOPPY_DOCTOR_DISPATCH_JSON_GOLDEN tests/golden/cli/doctor-dispatch-json-v8.json)
     endif()
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_text ${SLOPPY_DOCTOR_TEXT_GOLDEN} doctor --plan
@@ -136,10 +140,10 @@
         sloppy.cli.doctor_json ${SLOPPY_DOCTOR_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/doctor.plan.json --format json)
     sloppy_add_cli_golden_test(
-        sloppy.cli.doctor_dispatch_text tests/golden/cli/doctor-dispatch-text.txt doctor --plan
+        sloppy.cli.doctor_dispatch_text ${SLOPPY_DOCTOR_DISPATCH_TEXT_GOLDEN} doctor --plan
         compiler/tests/fixtures/grouped-route/expected/app.plan.json --format text --dispatch)
     sloppy_add_cli_golden_test(
-        sloppy.cli.doctor_dispatch_json tests/golden/cli/doctor-dispatch-json.json doctor --plan
+        sloppy.cli.doctor_dispatch_json ${SLOPPY_DOCTOR_DISPATCH_JSON_GOLDEN} doctor --plan
         compiler/tests/fixtures/grouped-route/expected/app.plan.json --format json --dispatch)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_ffi_text ${SLOPPY_DOCTOR_FFI_TEXT_GOLDEN} doctor --plan

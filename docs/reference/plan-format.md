@@ -81,18 +81,20 @@ Web Plans emit a top-level `routeDispatch` object:
 {
   "routeDispatch": {
     "version": 1,
-    "mode": "native-compiled-in-memory",
+    "mode": "native-compiled",
     "artifact": {
-      "kind": "none",
-      "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
+      "kind": "slrt",
+      "path": "routes.slrt",
+      "hash": "sha256:..."
     },
     "routeCount": 2,
     "endpointCount": 2,
     "staticRoutes": 1,
     "parameterRoutes": 1,
     "catchAllRoutes": 0,
-    "nativeNoJsEndpoints": 0,
-    "urlGeneration": false,
+    "nativeNoJsEndpoints": 1,
+    "urlGeneration": true,
+    "urlWriters": 1,
     "dispatchStats": {
       "exactStaticPaths": 1,
       "parameterCandidateBuckets": 1,
@@ -113,16 +115,17 @@ Web Plans emit a top-level `routeDispatch` object:
 }
 ```
 
-`native-compiled-in-memory` is a runtime optimization path, not a public route
-API. The native runtime still validates Plan routes, builds an exact-path hash
-index plus a method-specific segment trie for parameter routes, preserves
-`HEAD` and `405` behavior, and dispatches handlers through the current V8
-handler path. Candidate buckets remain as an internal fallback for partial or
-manually constructed dispatch tables.
+`native-compiled` is a runtime optimization path, not a public route API. The
+native runtime validates `routes.slrt`, builds an exact-path hash index plus a
+method-specific segment trie for parameter routes, preserves `HEAD` and `405`
+behavior, dispatches dynamic handlers through the current V8 handler path, and
+executes provably static literal `Results.text`, `Results.json`, and
+`Results.ok` handlers as native responses. Candidate buckets remain as an
+internal fallback for partial or manually constructed dispatch tables.
 
-`routes.slrt`, native no-JS endpoint execution, and native URL writers are not
-emitted by this Plan version. Their counters stay zero so tooling can
-distinguish implemented behavior from future optimization work.
+Named routes contribute native URL writers. The writer count is reported as
+`urlWriters`; generated URLs percent-encode path parameter values and validate
+the generated path through the native matcher.
 
 Typed handler metadata is compiler/Plan-first. For the current supported
 typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after

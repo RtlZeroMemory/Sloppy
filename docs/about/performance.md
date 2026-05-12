@@ -26,10 +26,11 @@ segment buckets retained as an internal fallback shape. Valid HTTP/1.1 error
 responses, including 404 route misses, remain eligible for keep-alive instead
 of forcing a reconnect per miss.
 
-The compiler exposes this as `routeDispatch.mode:
-native-compiled-in-memory` in Plan metadata. It is current runtime structure
-evidence, not a benchmark result. The binary `routes.slrt` artifact, native
-no-JS endpoints, and native URL writers are not claimed by the current counters.
+The compiler exposes this as `routeDispatch.mode: native-compiled` in Plan
+metadata and emits a `routes.slrt` binary route artifact. `sloppy run` validates
+the artifact before materializing the runtime table. Native no-JS static
+responses and native URL writers are reported by their Plan counters; those are
+structure evidence, not benchmark results.
 
 The V8 path has opt-in startup experiments through `SLOPPY_V8_CODE_CACHE_DIR`
 and `SLOPPY_V8_SNAPSHOT_DIR`. They are engineering knobs for startup

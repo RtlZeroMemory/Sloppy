@@ -411,8 +411,9 @@
   ],
   "routeDispatch": {
     "artifact": {
-      "kind": "none",
-      "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
+      "hash": "sha256:e51f156132cc916e88fa88316f1fc09380766f2817c3847ae44a1aa88dbdb311",
+      "kind": "slrt",
+      "path": "routes.slrt"
     },
     "catchAllRoutes": 0,
     "dispatchStats": {
@@ -434,12 +435,13 @@
       "dynamicRoutes": 0,
       "partialRoutes": 1
     },
-    "mode": "native-compiled-in-memory",
-    "nativeNoJsEndpoints": 0,
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 1,
     "parameterRoutes": 2,
     "routeCount": 14,
     "staticRoutes": 12,
-    "urlGeneration": false,
+    "urlGeneration": true,
+    "urlWriters": 8,
     "version": 1
   },
   "routes": [
@@ -474,7 +476,7 @@
       "dispatch": {
         "endpointId": 1,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -536,6 +538,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 71,
@@ -548,6 +551,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -669,7 +673,7 @@
       "dispatch": {
         "endpointId": 2,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -732,6 +736,7 @@
           "bodySchema": null,
           "helper": "created",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 6,
@@ -744,6 +749,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -838,7 +844,7 @@
       "dispatch": {
         "endpointId": 3,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "segment-trie"
       },
@@ -894,6 +900,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 20,
@@ -906,6 +913,7 @@
           "bodySchema": null,
           "helper": "notFound",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 42,
@@ -918,6 +926,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -958,7 +967,7 @@
       "dispatch": {
         "endpointId": 4,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -1012,6 +1021,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1024,6 +1034,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1036,6 +1047,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1071,7 +1083,7 @@
       "dispatch": {
         "endpointId": 5,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -1124,6 +1136,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1136,6 +1149,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1148,6 +1162,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1183,7 +1198,7 @@
       "dispatch": {
         "endpointId": 6,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -1236,6 +1251,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1248,6 +1264,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1260,6 +1277,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1299,7 +1317,7 @@
       "dispatch": {
         "endpointId": 7,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -1359,8 +1377,8 @@
       },
       "dispatch": {
         "endpointId": 8,
-        "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "executionKind": "native-static-text",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -1368,10 +1386,17 @@
       "method": "GET",
       "module": "healthModule",
       "name": "Status.Ping",
+      "nativeResponse": {
+        "body": "pong",
+        "contentType": "text/plain; charset=utf-8",
+        "kind": "text",
+        "status": 200
+      },
       "pattern": "/status/ping",
       "response": {
         "helper": "text",
         "kind": "text",
+        "nativeBody": "pong",
         "status": 200
       },
       "responses": [
@@ -1379,6 +1404,7 @@
           "bodySchema": null,
           "helper": "text",
           "kind": "text",
+          "nativeBody": "pong",
           "partial": false,
           "source": {
             "column": 29,
@@ -1391,6 +1417,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1429,7 +1456,7 @@
       "dispatch": {
         "endpointId": 9,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -1476,6 +1503,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1483,6 +1511,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1518,7 +1547,7 @@
       "dispatch": {
         "endpointId": 10,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -1565,6 +1594,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1572,6 +1602,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1607,7 +1638,7 @@
       "dispatch": {
         "endpointId": 11,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "segment-trie"
       },
@@ -1654,6 +1685,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1661,6 +1693,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1696,7 +1729,7 @@
       "dispatch": {
         "endpointId": 12,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -1743,6 +1776,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1750,6 +1784,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1785,7 +1820,7 @@
       "dispatch": {
         "endpointId": 13,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -1832,6 +1867,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1839,6 +1875,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1874,7 +1911,7 @@
       "dispatch": {
         "endpointId": 14,
         "executionKind": "v8-handler",
-        "mode": "native-compiled-in-memory",
+        "mode": "native-compiled",
         "specializable": true,
         "strategy": "exact-static-hash"
       },
@@ -1921,6 +1958,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1928,6 +1966,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
