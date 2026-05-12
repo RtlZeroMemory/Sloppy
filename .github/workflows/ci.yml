@@ -6,7 +6,7 @@ on:
   schedule:
     - cron: "17 3 * * *"
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       enable_v8:
@@ -48,6 +48,7 @@ concurrency:
 env:
   VCPKG_COMMIT: 031f4afe03be385aee354f15be6e6b1fe57497c7
   VCPKG_CACHE_VERSION: v2
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
 jobs:
   changes:
@@ -347,6 +348,13 @@ jobs:
             choco install ninja -y --no-progress
           }
 
+      - name: Export GHA cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
       - name: Restore vcpkg cache
         id: vcpkg-cache
         uses: actions/cache/restore@v4
@@ -430,6 +438,13 @@ jobs:
           if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
             choco install ninja -y --no-progress
           }
+
+      - name: Export GHA cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Restore vcpkg cache
         id: vcpkg-cache
@@ -522,6 +537,13 @@ jobs:
           if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
             choco install ninja -y --no-progress
           }
+
+      - name: Export GHA cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Restore vcpkg cache
         id: vcpkg-cache
@@ -619,6 +641,13 @@ jobs:
           if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
             choco install ninja -y --no-progress
           }
+
+      - name: Export GHA cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Restore vcpkg cache
         id: vcpkg-cache
@@ -727,6 +756,13 @@ jobs:
             sudo apt-get install -y "${missing[@]}"
           fi
 
+      - name: Export GHA cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
       - name: Restore vcpkg cache
         id: vcpkg-cache
         uses: actions/cache/restore@v4
@@ -831,6 +867,13 @@ jobs:
             choco install ninja -y --no-progress
           }
 
+      - name: Export GHA cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
       - name: Restore vcpkg cache
         id: vcpkg-cache
         uses: actions/cache/restore@v4
@@ -921,6 +964,13 @@ jobs:
           if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
             choco install ninja -y --no-progress
           }
+
+      - name: Export GHA cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Restore vcpkg cache
         id: vcpkg-cache
@@ -1042,6 +1092,13 @@ jobs:
           if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
             choco install ninja -y --no-progress
           }
+
+      - name: Export GHA cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Restore vcpkg cache
         id: vcpkg-cache
@@ -1199,6 +1256,13 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.preset }}-ccache-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.preset }}-ccache-
+
+      - name: Export GHA cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Restore vcpkg cache
         id: vcpkg-cache
@@ -1441,6 +1505,13 @@ jobs:
             sudo apt-get install -y "${missing[@]}"
           fi
 
+      - name: Export GHA cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
       - name: Restore vcpkg cache
         id: vcpkg-cache
         uses: actions/cache/restore@v4
@@ -1563,6 +1634,13 @@ jobs:
           if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
             choco install ninja -y --no-progress
           }
+
+      - name: Export GHA cache env for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Restore vcpkg cache
         id: vcpkg-cache
