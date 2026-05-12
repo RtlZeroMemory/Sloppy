@@ -100,8 +100,17 @@ validate_sdk_root() {
       ;;
     macos-arm64|macos-x64)
       [[ -f "$root/lib/libv8_monolith.a" || -f "$root/lib/libv8_monolith.dylib" ]] || return 1
+      [[ -f "$root/lib/libv8_libplatform.a" || -f "$root/lib/libv8_libplatform.dylib" ]] || return 1
+      [[ -f "$root/lib/libv8_libbase.a" || -f "$root/lib/libv8_libbase.dylib" ]] || return 1
+      [[ -f "$root/lib/libc++.a" || -f "$root/lib/libc++.dylib" ]] || return 1
+      [[ -f "$root/lib/libc++abi.a" || -f "$root/lib/libc++abi.dylib" ]] || return 1
+      [[ -f "$root/support/libcxx/include/memory" ]] || return 1
+      [[ -f "$root/support/libcxx/buildtools/__config_site" ]] || return 1
       [[ -f "$root/support/libcxx/buildtools/__assertion_handler" ]] || return 1
       grep -Eq "\"platform\"[[:space:]]*:[[:space:]]*\"$platform\"" "$root/share/sloppy-v8-sdk.json" || return 1
+      grep -Eq '"source"[[:space:]]*:[[:space:]]*"sloppy-built-v8"' "$root/share/sloppy-v8-sdk.json" || return 1
+      grep -Eq "\"v8Revision\"[[:space:]]*:[[:space:]]*\"$expected_v8_revision\"" "$root/share/sloppy-v8-sdk.json" || return 1
+      grep -Eq '"crtCompatibility"[[:space:]]*:[[:space:]]*"macos clang-libc\+\+ static-v8"' "$root/share/sloppy-v8-sdk.json" || return 1
       ;;
     *)
       return 1
