@@ -288,10 +288,35 @@ jobs:
           echo "VCPKG_ROOT=$vcpkg_root" >> "$GITHUB_ENV"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$vcpkg_binary_cache" >> "$GITHUB_ENV"
 
-      - name: Build Linux V8 SDK
+      - name: Restore Linux V8 SDK asset
         if: steps.linux-v8-sdk.outputs.cached != 'true'
         shell: bash
-        run: tools/unix/dev.sh build-v8
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          download_dir="$PWD/artifacts/v8-sdk-cache/linux-x64"
+          mkdir -p "$download_dir" "$PWD/.sdeps/v8"
+          gh release download sloppy-v8-sdk-cache \
+            --repo RtlZeroMemory/Slop \
+            --pattern 'sloppy-v8-sdk-linux-x64-*.tar.gz' \
+            --pattern 'sloppy-v8-sdk-linux-x64-*.tar.gz.sha256' \
+            --dir "$download_dir" \
+            --clobber
+          archives=()
+          while IFS= read -r item; do archives+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz' | sort)
+          checksums=()
+          while IFS= read -r item; do checksums+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz.sha256' | sort)
+          if [ "${#archives[@]}" -ne 1 ] || [ "${#checksums[@]}" -ne 1 ]; then
+            echo "Expected exactly one Linux x64 V8 SDK archive and checksum in $download_dir." >&2
+            find "$download_dir" -maxdepth 1 -type f -print >&2
+            exit 1
+          fi
+          (cd "$download_dir" && sha256sum -c "$(basename "${checksums[0]}")")
+          rm -rf "$PWD/.sdeps/v8/linux-x64" "$PWD/.sdeps/v8/v8"
+          tar -xzf "${archives[0]}" -C "$PWD/.sdeps/v8"
+          mv "$PWD/.sdeps/v8/v8" "$PWD/.sdeps/v8/linux-x64"
+          test -f "$PWD/.sdeps/v8/linux-x64/share/sloppy-v8-sdk.json"
 
       - name: Save Linux V8 SDK cache
         if: steps.linux-v8-sdk.outputs.cached != 'true'
@@ -437,8 +462,10 @@ jobs:
             --pattern 'sloppy-v8-sdk-darwin-arm64-*.tar.gz.sha256' \
             --dir "$download_dir" \
             --clobber
-          mapfile -t archives < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz' | sort)
-          mapfile -t checksums < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz.sha256' | sort)
+          archives=()
+          while IFS= read -r item; do archives+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz' | sort)
+          checksums=()
+          while IFS= read -r item; do checksums+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz.sha256' | sort)
           if [ "${#archives[@]}" -ne 1 ] || [ "${#checksums[@]}" -ne 1 ]; then
             echo "Expected exactly one macOS arm64 V8 SDK archive and checksum in $download_dir." >&2
             find "$download_dir" -maxdepth 1 -type f -print >&2
@@ -450,7 +477,9 @@ jobs:
             (cd "$download_dir" && shasum -a 256 -c "$(basename "${checksums[0]}")")
           fi
           archive="${archives[0]}"
+          rm -rf "$PWD/.sdeps/v8/macos-arm64" "$PWD/.sdeps/v8/v8"
           tar -xzf "$archive" -C "$PWD/.sdeps/v8"
+          mv "$PWD/.sdeps/v8/v8" "$PWD/.sdeps/v8/macos-arm64"
           test -f "$PWD/.sdeps/v8/macos-arm64/share/sloppy-v8-sdk.json"
           echo "SLOPPY_V8_ROOT=$PWD/.sdeps/v8/macos-arm64" >> "$GITHUB_ENV"
 
@@ -588,8 +617,10 @@ jobs:
             --pattern 'sloppy-v8-sdk-darwin-x64-*.tar.gz.sha256' \
             --dir "$download_dir" \
             --clobber
-          mapfile -t archives < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz' | sort)
-          mapfile -t checksums < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz.sha256' | sort)
+          archives=()
+          while IFS= read -r item; do archives+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz' | sort)
+          checksums=()
+          while IFS= read -r item; do checksums+=("$item"); done < <(find "$download_dir" -maxdepth 1 -type f -name '*.tar.gz.sha256' | sort)
           if [ "${#archives[@]}" -ne 1 ] || [ "${#checksums[@]}" -ne 1 ]; then
             echo "Expected exactly one macOS x64 V8 SDK archive and checksum in $download_dir." >&2
             find "$download_dir" -maxdepth 1 -type f -print >&2
@@ -601,7 +632,9 @@ jobs:
             (cd "$download_dir" && shasum -a 256 -c "$(basename "${checksums[0]}")")
           fi
           archive="${archives[0]}"
+          rm -rf "$PWD/.sdeps/v8/macos-x64" "$PWD/.sdeps/v8/v8"
           tar -xzf "$archive" -C "$PWD/.sdeps/v8"
+          mv "$PWD/.sdeps/v8/v8" "$PWD/.sdeps/v8/macos-x64"
           test -f "$PWD/.sdeps/v8/macos-x64/share/sloppy-v8-sdk.json"
           echo "SLOPPY_V8_ROOT=$PWD/.sdeps/v8/macos-x64" >> "$GITHUB_ENV"
 
