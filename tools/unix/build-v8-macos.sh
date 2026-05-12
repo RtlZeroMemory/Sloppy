@@ -239,7 +239,7 @@ if [[ "$revision" != "$v8_revision" ]]; then
 fi
 
 rm -rf "$sdk_root"
-mkdir -p "$sdk_root/include" "$sdk_root/lib" "$sdk_root/share"
+mkdir -p "$sdk_root/include" "$sdk_root/lib" "$sdk_root/share" "$sdk_root/support/libcxx/include" "$sdk_root/support/libcxx/buildtools"
 cp -R "$v8_checkout/include/." "$sdk_root/include/"
 copy_static_archive_as_full "$v8_build_dir/obj/libv8_monolith.a" "$sdk_root/lib/libv8_monolith.a" "$v8_build_dir/obj"
 copy_static_archive_as_full "$v8_build_dir/obj/libv8_libplatform.a" "$sdk_root/lib/libv8_libplatform.a" "$v8_build_dir/obj"
@@ -249,6 +249,10 @@ if [[ -f "$v8_build_dir/obj/libv8_libsampler.a" ]]; then
 fi
 copy_required_file "$v8_build_dir/v8_features.json" "$sdk_root/share/v8_features.json"
 copy_required_file "$v8_build_dir/v8_build_config.json" "$sdk_root/share/v8_build_config.json"
+if [[ -d "$v8_checkout/third_party/libc++/src/include" && -f "$v8_checkout/buildtools/third_party/libc++/__config_site" ]]; then
+  cp -R "$v8_checkout/third_party/libc++/src/include/." "$sdk_root/support/libcxx/include/"
+  copy_required_file "$v8_checkout/buildtools/third_party/libc++/__config_site" "$sdk_root/support/libcxx/buildtools/__config_site"
+fi
 
 python3 - "$sdk_root/share/v8_features.json" "$sdk_root/share/sloppy-v8-sdk.json" "$revision" "$platform" "$target_arch" <<'PY'
 import json
