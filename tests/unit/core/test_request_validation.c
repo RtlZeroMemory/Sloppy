@@ -675,6 +675,147 @@ static int test_large_object_required_field_fallback_handles_more_than_64_proper
     return 0;
 }
 
+static int test_deep_configured_depth_over_path_frame_limit_remains_valid(void)
+{
+    unsigned char arena_storage[65536];
+    char body[1024];
+    size_t cursor = 0U;
+    SlArena arena = {0};
+    SlPlanSchemaProperty property = {0};
+    SlPlanSchemaNode recursive = {.kind = SL_PLAN_SCHEMA_OBJECT, .optional = true};
+    SlPlanSchema schema = {.name = sl_str_from_cstr("Recursive"), .definition = recursive};
+    SlPlan plan = empty_plan();
+    SlPlanRequestBinding binding = {.kind = SL_PLAN_REQUEST_BINDING_BODY_JSON,
+                                    .schema = sl_str_from_cstr("Recursive")};
+    SlPlanRoute route = {.bindings = &binding,
+                         .binding_count = 1U,
+                         .json_request = {
+                             .mode = SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                             .max_depth = 80U,
+                             .schema = sl_str_from_cstr("Recursive"),
+                         }};
+    SlHttpRequestHead request = {0};
+    SlHttpRequestContext context = request_context(&request);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    property = (SlPlanSchemaProperty){.name = sl_str_from_cstr("x"), .schema = &recursive};
+    recursive.properties = &property;
+    recursive.property_count = 1U;
+    schema.definition = recursive;
+    plan.schemas = &schema;
+    plan.schema_count = 1U;
+
+    for (size_t depth = 0U; depth < 70U; depth += 1U) {
+        body[cursor] = '{';
+        cursor += 1U;
+        body[cursor] = '"';
+        cursor += 1U;
+        body[cursor] = 'x';
+        cursor += 1U;
+        body[cursor] = '"';
+        cursor += 1U;
+        body[cursor] = ':';
+        cursor += 1U;
+    }
+    body[cursor] = '{';
+    cursor += 1U;
+    body[cursor] = '}';
+    cursor += 1U;
+    for (size_t depth = 0U; depth < 70U; depth += 1U) {
+        body[cursor] = '}';
+        cursor += 1U;
+    }
+    request.body = sl_bytes_from_parts((const unsigned char*)body, cursor);
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 90;
+    }
+
+    if (expect_status(
+            sl_request_validation_validate(&arena, &plan, &route, &context, &result, &diag),
+            SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_NONE)
+    {
+        return 91;
+    }
+
+    return 0;
+}
+
+static int test_long_unknown_field_path_degrades_to_validation_problem(void)
+{
+    unsigned char arena_storage[65536];
+    char body[8192];
+    size_t cursor = 0U;
+    SlArena arena = {0};
+    SlPlanSchemaNode body_schema = {.kind = SL_PLAN_SCHEMA_OBJECT};
+    SlPlanSchema schema = {.name = sl_str_from_cstr("Empty"), .definition = body_schema};
+    SlPlan plan = empty_plan();
+    SlPlanRequestBinding binding = {.kind = SL_PLAN_REQUEST_BINDING_BODY_JSON,
+                                    .schema = sl_str_from_cstr("Empty")};
+    SlPlanRoute route = {.bindings = &binding,
+                         .binding_count = 1U,
+                         .json_request = {
+                             .mode = SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA,
+                             .unknown_fields = SL_PLAN_JSON_UNKNOWN_FIELDS_REJECT,
+                             .schema = sl_str_from_cstr("Empty"),
+                         }};
+    SlHttpRequestHead request = {0};
+    SlHttpRequestContext context = request_context(&request);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    plan.schemas = &schema;
+    plan.schema_count = 1U;
+    body[cursor] = '{';
+    cursor += 1U;
+    body[cursor] = '"';
+    cursor += 1U;
+    for (size_t index = 0U; index < 5000U; index += 1U) {
+        body[cursor] = 'a';
+        cursor += 1U;
+    }
+    body[cursor] = '"';
+    cursor += 1U;
+    body[cursor] = ':';
+    cursor += 1U;
+    body[cursor] = 't';
+    cursor += 1U;
+    body[cursor] = 'r';
+    cursor += 1U;
+    body[cursor] = 'u';
+    cursor += 1U;
+    body[cursor] = 'e';
+    cursor += 1U;
+    body[cursor] = '}';
+    cursor += 1U;
+    request.body = sl_bytes_from_parts((const unsigned char*)body, cursor);
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+        0)
+    {
+        return 100;
+    }
+
+    if (expect_status(
+            sl_request_validation_validate(&arena, &plan, &route, &context, &result, &diag),
+            SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR || result.response.status != 400U ||
+        diag.code != SL_DIAG_REQUEST_VALIDATION_FAILED ||
+        !validation_problem_has_issue_shape(result.response.body) ||
+        !bytes_contains(result.response.body, "\"body.<truncated>\"") ||
+        !bytes_contains(result.response.body, "\"unknown\"") ||
+        bytes_contains(result.response.body, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+    {
+        return 101;
+    }
+
+    return 0;
+}
+
 static int test_malformed_json_body_fails_closed(void)
 {
     unsigned char arena_storage[8192];
@@ -806,6 +947,8 @@ int main(void)
         test_nested_optional_and_nullable_shapes_validate_precisely,
         test_nested_unknown_and_array_item_paths_are_precise,
         test_large_object_required_field_fallback_handles_more_than_64_properties,
+        test_deep_configured_depth_over_path_frame_limit_remains_valid,
+        test_long_unknown_field_path_degrades_to_validation_problem,
         test_malformed_json_body_fails_closed,
         test_native_json_constraints_apply_max_bounds_and_unknown_field_policy};
     size_t index = 0U;

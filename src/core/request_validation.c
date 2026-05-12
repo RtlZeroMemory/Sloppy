@@ -53,6 +53,7 @@ typedef struct SlRequestValidationState
     size_t max_array_length;
     SlRequestValidationPathFrame path_frames[SL_REQUEST_VALIDATION_MAX_PATH_FRAMES];
     size_t path_frame_count;
+    size_t path_suppressed_count;
     bool profile_enabled;
 } SlRequestValidationState;
 
@@ -127,7 +128,8 @@ static SlStatus sl_request_validation_path_push_field(SlRequestValidationState* 
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     if (state->path_frame_count >= SL_REQUEST_VALIDATION_MAX_PATH_FRAMES) {
-        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        state->path_suppressed_count += 1U;
+        return sl_status_ok();
     }
     frame = &state->path_frames[state->path_frame_count];
     *frame =
@@ -144,7 +146,8 @@ static SlStatus sl_request_validation_path_push_index(SlRequestValidationState* 
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     if (state->path_frame_count >= SL_REQUEST_VALIDATION_MAX_PATH_FRAMES) {
-        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        state->path_suppressed_count += 1U;
+        return sl_status_ok();
     }
     frame = &state->path_frames[state->path_frame_count];
     *frame =
@@ -155,9 +158,33 @@ static SlStatus sl_request_validation_path_push_index(SlRequestValidationState* 
 
 static void sl_request_validation_path_pop(SlRequestValidationState* state)
 {
-    if (state != NULL && state->path_frame_count != 0U) {
+    if (state == NULL) {
+        return;
+    }
+    if (state->path_suppressed_count != 0U) {
+        state->path_suppressed_count -= 1U;
+        return;
+    }
+    if (state->path_frame_count != 0U) {
         state->path_frame_count -= 1U;
     }
+}
+
+static SlStatus sl_request_validation_render_fallback_path(SlRequestValidationState* state,
+                                                           SlStr* out)
+{
+    SlStr fallback = sl_str_from_cstr("$");
+
+    if (state == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (state->path_frame_count != 0U &&
+        state->path_frames[0U].kind == SL_REQUEST_VALIDATION_PATH_FIELD &&
+        sl_str_equal(state->path_frames[0U].field, sl_str_from_cstr("body")))
+    {
+        fallback = sl_str_from_cstr("body.<truncated>");
+    }
+    return sl_request_validation_copy_str(state->arena, fallback, out);
 }
 
 static SlStatus sl_request_validation_render_current_path(SlRequestValidationState* state,
@@ -174,7 +201,8 @@ static SlStatus sl_request_validation_render_current_path(SlRequestValidationSta
 
     profile_start =
         sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_PATH_CONSTRUCTION);
-    status = sl_string_builder_init_arena(&builder, state->arena, 64U, 1024U);
+    status = sl_string_builder_init_arena(&builder, state->arena, 64U,
+                                          SL_REQUEST_VALIDATION_PROBLEM_MAX);
     if (!sl_status_is_ok(status)) {
         sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PATH_CONSTRUCTION,
                                           profile_start);
@@ -214,6 +242,24 @@ static SlStatus sl_request_validation_render_current_path(SlRequestValidationSta
             }
         }
         if (!sl_status_is_ok(status)) {
+            status = sl_request_validation_render_fallback_path(state, out);
+            if (sl_status_is_ok(status)) {
+                sl_request_validation_profile_counter_add(
+                    state, SL_JSON_PROFILE_COUNTER_PATHS_RENDERED, 1U);
+            }
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PATH_CONSTRUCTION,
+                                              profile_start);
+            return status;
+        }
+    }
+    if (state->path_suppressed_count != 0U) {
+        status = sl_string_builder_append_cstr(&builder, ".<truncated>");
+        if (!sl_status_is_ok(status)) {
+            status = sl_request_validation_render_fallback_path(state, out);
+            if (sl_status_is_ok(status)) {
+                sl_request_validation_profile_counter_add(
+                    state, SL_JSON_PROFILE_COUNTER_PATHS_RENDERED, 1U);
+            }
             sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PATH_CONSTRUCTION,
                                               profile_start);
             return status;
