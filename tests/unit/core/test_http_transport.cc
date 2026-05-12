@@ -71,8 +71,8 @@ static bool h2_event_header_equals(const SlHttp2Event* event, const char* name, 
     if (event == nullptr) {
         return false;
     }
-    for (size_t index = 0U; index < event->headers.count; index += 1U) {
-        const SlHttp2HeaderField* field = &event->headers.fields[index];
+    for (size_t index = 0U; index < event->payload.headers.count; index += 1U) {
+        const SlHttp2HeaderField* field = &event->payload.headers.fields[index];
         if (sl_str_equal(field->name, sl_str_from_cstr(name)) &&
             sl_str_equal(field->value, sl_str_from_cstr(value)))
         {
@@ -102,7 +102,7 @@ static bool saw_h2_response_with_body(const SlHttp2EventList* events, int32_t st
             saw_headers = true;
         }
         if (event->type == SL_HTTP2_EVENT_DATA &&
-            sl_bytes_equal(event->data, bytes_from_cstr(body)))
+            sl_bytes_equal(event->payload.data, bytes_from_cstr(body)))
         {
             saw_body = true;
         }

@@ -45,21 +45,30 @@ typedef enum SlHttp2EventType
     SL_HTTP2_EVENT_INVALID_FRAME = 10
 } SlHttp2EventType;
 
-typedef struct SlHttp2Event
+typedef struct SlHttp2ControlEventPayload
 {
-    SlHttp2EventType type;
-    int32_t stream_id;
     int32_t last_stream_id;
     uint32_t error_code;
-    bool end_stream;
+} SlHttp2ControlEventPayload;
+
+typedef union SlHttp2EventPayload {
     /*
      * Borrowed session-owned views. `headers.fields`, every header name/value view, and
      * `data` bytes remain valid until sl_http2_session_clear_events(),
      * sl_http2_session_dispose(), or the owning arena is reset/disposed. Copy any value that
      * must outlive the current event batch.
      */
+    SlHttp2ControlEventPayload control;
     SlHttp2HeaderList headers;
     SlBytes data;
+} SlHttp2EventPayload;
+
+typedef struct SlHttp2Event
+{
+    SlHttp2EventType type;
+    int32_t stream_id;
+    bool end_stream;
+    SlHttp2EventPayload payload;
 } SlHttp2Event;
 
 typedef struct SlHttp2EventList
@@ -75,12 +84,9 @@ typedef struct SlHttp2EventList
 
 typedef struct SlHttp2ClosedStream
 {
-    int32_t stream_id;
     int64_t outbound_window;
-    bool active;
-    bool remote_closed;
-    bool reset_by_peer;
-    bool outbound_window_known;
+    int32_t stream_id;
+    uint32_t flags;
 } SlHttp2ClosedStream;
 
 typedef struct SlHttp2SessionConfig

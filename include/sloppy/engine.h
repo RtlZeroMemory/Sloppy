@@ -36,6 +36,13 @@ typedef enum SlEngineResultKind
     SL_ENGINE_RESULT_BYTES = 4
 } SlEngineResultKind;
 
+typedef enum SlEngineResultPayloadKind
+{
+    SL_ENGINE_RESULT_PAYLOAD_NONE = 0,
+    SL_ENGINE_RESULT_PAYLOAD_TEXT = 1,
+    SL_ENGINE_RESULT_PAYLOAD_RESPONSE = 2
+} SlEngineResultPayloadKind;
+
 /*
  * Engine-neutral creation options.
  *
@@ -115,11 +122,19 @@ typedef struct SlEngineHandlerCall
     SlHandlerId handler_id;
 } SlEngineHandlerCall;
 
+/*
+ * Engine results keep mutually exclusive payloads in a tagged union. Callers must check
+ * `payload_kind` before reading `text` or `response`; `kind` describes the semantic result
+ * category, not the active storage member.
+ */
 typedef struct SlEngineResult
 {
     SlEngineResultKind kind;
-    SlStr text;
-    SlHttpResponse response;
+    SlEngineResultPayloadKind payload_kind;
+    union {
+        SlStr text;
+        SlHttpResponse response;
+    };
 } SlEngineResult;
 
 /*
@@ -197,8 +212,10 @@ SlStatus sl_engine_call_function0(SlEngine* engine, SlArena* arena, SlStr functi
  * plain JS object with `route`, `query`, `request`, `signal`, and `deadline` fields and
  * never exposes native pointers or handles. If `request_context->cancellation` is already
  * cancelled, the bridge fails before entering JavaScript. On success, supported
- * `Results.*` descriptors and the plain-string compatibility fallback are converted into
- * `out_result->response`.
+ * `Results.*` descriptors are converted into `out_result->response` with
+ * `payload_kind == SL_ENGINE_RESULT_PAYLOAD_RESPONSE`. The plain-string compatibility fallback
+ * is returned through `out_result->text` with `payload_kind == SL_ENGINE_RESULT_PAYLOAD_TEXT`;
+ * HTTP dispatch materializes that fallback into a normal text response at the dispatch boundary.
  */
 SlStatus sl_engine_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr function_name,
                                               const SlHttpRequestContext* request_context,

@@ -236,6 +236,12 @@ static int dispatch_single_route_expect(
         return 4;
     }
 
+    if (expected_response_body != NULL && result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE)
+    {
+        sl_engine_destroy(engine);
+        return 4;
+    }
+
     if (expected_response_body != NULL &&
         expect_bytes_equal(result.response.body, expected_response_body) != 0)
     {
@@ -310,7 +316,7 @@ static int test_get_hello_dispatches_to_handler_id(void)
 {
     if (dispatch_single_route_expect("GET /hello HTTP/1.1\r\nHost: example\r\n\r\n",
                                      SL_HTTP_METHOD_GET, "/hello", 1U, SL_STATUS_OK,
-                                     SL_ENGINE_RESULT_TEXT, "sloppy-ok", NULL, SL_DIAG_NONE) != 0)
+                                     SL_ENGINE_RESULT_TEXT, NULL, "sloppy-ok", SL_DIAG_NONE) != 0)
     {
         return 1;
     }

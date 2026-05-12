@@ -245,6 +245,7 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
 
     body = sl_string_builder_view(&builder);
     out_result->kind = SL_ENGINE_RESULT_ERROR;
+    out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
     out_result->response = sl_http_response_problem(
         400U, sl_bytes_from_parts((const unsigned char*)body.ptr, body.length));
     return sl_status_ok();

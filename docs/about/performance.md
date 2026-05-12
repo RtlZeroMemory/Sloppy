@@ -20,6 +20,12 @@ the request side.
 The V8 bridge is narrow — most calls cross it once per request, not
 thousands of times.
 
+Native layout work is allowed when it follows the C standards representation
+rules: prefer field reordering, tagged unions, flag masks, `_Alignof`, and
+layout tests for hot repeated structs. Avoid packed runtime structs, NaN
+boxing, and tagged pointers unless a future design document proves the need and
+the portability/debugging cost.
+
 Generated static HTTP routes are indexed by method and path. Parameterized
 routes are bucketed by method and first static segment, with an indexed bucket
 lookup so misses do not scale with the total number of parameter buckets before

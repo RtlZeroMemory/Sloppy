@@ -246,8 +246,8 @@ static bool event_header_equals(const SlHttp2Event* event, const char* name, con
     if (event == NULL) {
         return false;
     }
-    for (size_t index = 0U; index < event->headers.count; index += 1U) {
-        const SlHttp2HeaderField* field = &event->headers.fields[index];
+    for (size_t index = 0U; index < event->payload.headers.count; index += 1U) {
+        const SlHttp2HeaderField* field = &event->payload.headers.fields[index];
         if (sl_str_equal(field->name, sl_str_from_cstr(name)) &&
             sl_str_equal(field->value, sl_str_from_cstr(value)))
         {
@@ -277,7 +277,7 @@ static bool saw_response_with_body(const SlHttp2EventList* events, int32_t strea
             saw_headers = true;
         }
         if (event->type == SL_HTTP2_EVENT_DATA &&
-            sl_bytes_equal(event->data, bytes_from_cstr(body)))
+            sl_bytes_equal(event->payload.data, bytes_from_cstr(body)))
         {
             saw_body = true;
         }
@@ -293,7 +293,7 @@ static bool saw_rst_stream(const SlHttp2EventList* events, int32_t stream_id, ui
     for (size_t index = 0U; index < events->count; index += 1U) {
         const SlHttp2Event* event = &events->events[index];
         if (event->type == SL_HTTP2_EVENT_RST_STREAM && event->stream_id == stream_id &&
-            event->error_code == error_code)
+            event->payload.control.error_code == error_code)
         {
             return true;
         }

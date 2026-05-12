@@ -225,8 +225,8 @@ static int test_client_server_request_response_round_trip(void)
     events = sl_http2_session_events(&server);
     request_event = find_event(&events, SL_HTTP2_EVENT_REQUEST_HEADERS, 1);
     if (request_event == NULL || !request_event->end_stream ||
-        !header_list_has(&request_event->headers, ":method", "GET") ||
-        !header_list_has(&request_event->headers, ":path", "/hello"))
+        !header_list_has(&request_event->payload.headers, ":method", "GET") ||
+        !header_list_has(&request_event->payload.headers, ":path", "/hello"))
     {
         sl_http2_session_dispose(&client);
         sl_http2_session_dispose(&server);
@@ -247,8 +247,8 @@ static int test_client_server_request_response_round_trip(void)
     response_event = find_event(&events, SL_HTTP2_EVENT_RESPONSE_HEADERS, 1);
     data_event = find_event(&events, SL_HTTP2_EVENT_DATA, 1);
     if (response_event == NULL || data_event == NULL ||
-        !sl_bytes_equal(data_event->data, bytes_from_cstr("ok")) ||
-        !header_list_has(&response_event->headers, ":status", "200"))
+        !sl_bytes_equal(data_event->payload.data, bytes_from_cstr("ok")) ||
+        !header_list_has(&response_event->payload.headers, ":status", "200"))
     {
         sl_http2_session_dispose(&client);
         sl_http2_session_dispose(&server);
@@ -301,7 +301,8 @@ static int test_rst_stream_and_goaway_surface_as_events(void)
 
     events = sl_http2_session_events(&client);
     if (events.count < 2U || events.events[0].type != SL_HTTP2_EVENT_RST_STREAM ||
-        events.events[0].stream_id != stream_id || events.events[0].error_code != 8U ||
+        events.events[0].stream_id != stream_id ||
+        events.events[0].payload.control.error_code != 8U ||
         events.events[1].type != SL_HTTP2_EVENT_STREAM_CLOSE ||
         events.events[1].stream_id != stream_id)
     {
@@ -360,7 +361,7 @@ static int test_unknown_rst_stream_error_code_does_not_send_goaway(void)
 
     events = sl_http2_session_events(&server);
     rst_event = find_event(&events, SL_HTTP2_EVENT_RST_STREAM, stream_id);
-    if (rst_event == NULL || rst_event->error_code != UINT32_MAX) {
+    if (rst_event == NULL || rst_event->payload.control.error_code != UINT32_MAX) {
         sl_http2_session_dispose(&client);
         sl_http2_session_dispose(&server);
         return 93;
@@ -449,8 +450,8 @@ static int test_data_after_closed_stream_surfaces_invalid_frame_and_goaway(void)
 
     events = sl_http2_session_events(&client);
     goaway_event = find_event(&events, SL_HTTP2_EVENT_GOAWAY, 0);
-    if (goaway_event == NULL || goaway_event->last_stream_id != stream_id ||
-        goaway_event->error_code != SL_HTTP2_ERROR_STREAM_CLOSED)
+    if (goaway_event == NULL || goaway_event->payload.control.last_stream_id != stream_id ||
+        goaway_event->payload.control.error_code != SL_HTTP2_ERROR_STREAM_CLOSED)
     {
         sl_http2_session_dispose(&client);
         sl_http2_session_dispose(&server);
@@ -507,7 +508,9 @@ static int test_settings_ack_payload_surfaces_invalid_frame_and_goaway(void)
 
     events = sl_http2_session_events(&client);
     goaway_event = find_event(&events, SL_HTTP2_EVENT_GOAWAY, 0);
-    if (goaway_event == NULL || goaway_event->error_code != SL_HTTP2_ERROR_PROTOCOL_ERROR) {
+    if (goaway_event == NULL ||
+        goaway_event->payload.control.error_code != SL_HTTP2_ERROR_PROTOCOL_ERROR)
+    {
         sl_http2_session_dispose(&client);
         sl_http2_session_dispose(&server);
         return 17;
@@ -563,7 +566,9 @@ static int test_continuation_without_header_block_surfaces_invalid_frame_and_goa
 
     events = sl_http2_session_events(&client);
     goaway_event = find_event(&events, SL_HTTP2_EVENT_GOAWAY, 0);
-    if (goaway_event == NULL || goaway_event->error_code != SL_HTTP2_ERROR_PROTOCOL_ERROR) {
+    if (goaway_event == NULL ||
+        goaway_event->payload.control.error_code != SL_HTTP2_ERROR_PROTOCOL_ERROR)
+    {
         sl_http2_session_dispose(&client);
         sl_http2_session_dispose(&server);
         return 22;
@@ -619,7 +624,9 @@ static int test_zero_window_update_surfaces_invalid_frame_and_goaway(void)
 
     events = sl_http2_session_events(&client);
     goaway_event = find_event(&events, SL_HTTP2_EVENT_GOAWAY, 0);
-    if (goaway_event == NULL || goaway_event->error_code != SL_HTTP2_ERROR_PROTOCOL_ERROR) {
+    if (goaway_event == NULL ||
+        goaway_event->payload.control.error_code != SL_HTTP2_ERROR_PROTOCOL_ERROR)
+    {
         sl_http2_session_dispose(&client);
         sl_http2_session_dispose(&server);
         return 27;
@@ -739,8 +746,8 @@ static int test_multiple_streams_may_complete_out_of_order(void)
     first_request = find_event(&events, SL_HTTP2_EVENT_REQUEST_HEADERS, first_stream_id);
     second_request = find_event(&events, SL_HTTP2_EVENT_REQUEST_HEADERS, second_stream_id);
     if (first_request == NULL || second_request == NULL ||
-        !header_list_has(&first_request->headers, ":path", "/one") ||
-        !header_list_has(&second_request->headers, ":path", "/two"))
+        !header_list_has(&first_request->payload.headers, ":path", "/one") ||
+        !header_list_has(&second_request->payload.headers, ":path", "/two"))
     {
         sl_http2_session_dispose(&client);
         sl_http2_session_dispose(&server);
@@ -765,8 +772,8 @@ static int test_multiple_streams_may_complete_out_of_order(void)
     first_data = find_event(&events, SL_HTTP2_EVENT_DATA, first_stream_id);
     second_data = find_event(&events, SL_HTTP2_EVENT_DATA, second_stream_id);
     if (first_data == NULL || second_data == NULL ||
-        !sl_bytes_equal(first_data->data, bytes_from_cstr("one")) ||
-        !sl_bytes_equal(second_data->data, bytes_from_cstr("two")) ||
+        !sl_bytes_equal(first_data->payload.data, bytes_from_cstr("one")) ||
+        !sl_bytes_equal(second_data->payload.data, bytes_from_cstr("two")) ||
         find_event(&events, SL_HTTP2_EVENT_RESPONSE_HEADERS, first_stream_id) == NULL ||
         find_event(&events, SL_HTTP2_EVENT_RESPONSE_HEADERS, second_stream_id) == NULL)
     {

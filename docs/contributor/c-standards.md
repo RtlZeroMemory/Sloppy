@@ -19,6 +19,43 @@ Use C17 as the baseline. C23 is allowed only when isolated, guarded, documented,
 supported by active toolchains. `clang-cl` is first on Windows; clang/gcc follow later. Do
 not depend on compiler-specific behavior in core unless it is abstracted.
 
+## Representation and Layout Optimization
+
+Sloppy can optimize native representation when the win is visible in a hot or repeated
+structure and the implementation stays boring C17. Acceptable tools are:
+
+- field reordering to remove padding;
+- tagged unions for mutually exclusive payloads;
+- integer flag masks or bit-fields for dense private boolean state;
+- `_Alignof(T)` when allocating typed storage;
+- `_Static_assert` layout contracts in focused tests for hot structs;
+- C++ standard-library representation helpers, such as `std::variant`, inside
+  `src/engine/v8/*` when they avoid constructing inactive payloads.
+
+Tagged unions must carry an explicit tag or use an existing adjacent tag whose contract is
+documented at the type definition. If the semantic result kind is not enough to identify the
+active storage member, add a separate payload tag and keep that tag covered by tests.
+
+Every such change needs a concrete reason: name the hot path or repeated storage, state the
+expected size/cache effect, preserve ownership/lifetime comments, and cover behavior with
+normal tests. If a byte-size contract matters, add a layout test guarded to the platform
+model being claimed, usually 64-bit. Do not add clever representation changes just because
+they are possible.
+
+Forbidden for normal runtime hot paths:
+
+- packed structs, `#pragma pack`, and compiler-specific packed attributes;
+- NaN boxing;
+- low-bit tagged pointers;
+- pointer/integer punning that depends on allocator alignment;
+- public ABI changes whose layout is not documented and tested.
+
+Packed layouts are only acceptable at an external wire/disk/FFI boundary with an explicit
+parser or copier that avoids unaligned direct access. If a future proposal needs NaN
+packing or tagged pointers, it must start as a design document with benchmark evidence,
+sanitizer/debugging implications, portability limits, and a simpler fallback path. Do not
+land those techniques opportunistically.
+
 ## Naming
 
 - Functions use the `sl_` prefix.
@@ -628,6 +665,8 @@ when it is enabled, assertions must remain active even if a toolchain or build m
 
 - Raw `malloc`/`free` outside allocator modules.
 - `strcpy`, `strcat`, `sprintf`, `vsprintf`, `gets`.
+- Packed structs or `#pragma pack` in runtime representation.
+- NaN boxing or low-bit tagged pointers without an accepted design document.
 - `(void)` casts around ignored function calls.
 - Unchecked `memcpy`, `memmove`, `snprintf`.
 - `strlen` on untrusted/non-boundary strings.

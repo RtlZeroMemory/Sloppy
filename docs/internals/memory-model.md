@@ -92,6 +92,12 @@ General rules:
 - Size arithmetic and buffer writes should use checked helpers and bounded
   builders.
 
+Native structs may use compact representation only when it preserves the same ownership
+model. Field reordering, tagged unions, private flag masks, and `_Alignof`-based typed
+allocation are normal tools for repeated hot structures. Packed runtime structs, NaN-boxed
+values, and tagged native pointers are not part of the current memory model; future work
+must design, measure, and document those tradeoffs before using them.
+
 ## Plan and artifact lifetime
 
 The compiler writes the Plan, bundle, source map, and optional dependency graph
