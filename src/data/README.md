@@ -26,9 +26,15 @@ Implemented now:
 
 Still deferred:
 
-- broader JavaScript PostgreSQL and SQL Server provider intrinsics;
-- migrations, cancellation/deadline hardening, TLS option hardening, provider array
-  mapping, richer provider-specific value policy, and SQL Server TVP/bulk support.
+- driver-level in-flight cancellation/deadline interruption across all providers;
+- cursor/incremental row streaming as a public provider API;
+- TLS option hardening, richer provider-specific value policy, prepared statement caches,
+  PostgreSQL array mapping policy beyond the current JS bridge, and SQL Server TVP/bulk
+  support.
+
+Provider result materialization is bounded. The default query cap is 128 rows;
+JavaScript `query` and `queryRaw` calls can pass `maxRows` to lower or raise the
+per-call cap, and providers fail instead of truncating when the cap is exceeded.
 
 Future JavaScript-visible provider handles must use `SlResourceId` entries in the core
 resource table. Provider pointers and driver handles must not be exposed to JavaScript.

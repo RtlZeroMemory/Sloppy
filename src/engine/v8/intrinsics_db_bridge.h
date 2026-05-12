@@ -9,6 +9,7 @@
 
 #include "engine_v8_internal.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -47,6 +48,9 @@ bool sl_v8_db_get_optional_object_string(v8::Isolate* isolate, v8::Local<v8::Con
                                          v8::Local<v8::Object> object, const char* key,
                                          std::string* out, bool* present);
 bool sl_v8_db_copy_uint8_array(v8::Local<v8::Value> value, std::vector<unsigned char>* out);
+bool sl_v8_db_parse_max_rows_option(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                    v8::Local<v8::Value> options, uint32_t default_value,
+                                    uint32_t* out, const char* operation_label);
 
 bool sl_v8_db_is_value_wrapper(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                v8::Local<v8::Value> value);

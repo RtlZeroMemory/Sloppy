@@ -289,12 +289,20 @@ function createForgedLoweredQuery() {
                     calls.push(["exec", handle.slot, text, params]);
                     return { affectedRows: 1 };
                 },
-                query(handle, text, params) {
-                    calls.push(["query", handle.generation, text, params]);
+                query(handle, text, params, options) {
+                    const call = ["query", handle.generation, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
                     return [{ name: "Ada" }];
                 },
-                queryRaw(handle, text, params) {
-                    calls.push(["queryRaw", handle.generation, text, params]);
+                queryRaw(handle, text, params, options) {
+                    const call = ["queryRaw", handle.generation, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
                     return { mode: "raw", columnNames: ["name"], rows: [["Ada"]] };
                 },
                 queryOne(handle, text, params) {
@@ -317,12 +325,20 @@ function createForgedLoweredQuery() {
                     calls.push(["txExec", handle.slot, text, params]);
                     return { affectedRows: 1 };
                 },
-                transactionQuery(handle, text, params) {
-                    calls.push(["txQuery", handle.slot, text, params]);
+                transactionQuery(handle, text, params, options) {
+                    const call = ["txQuery", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
                     return [{ tx: true, text }];
                 },
-                transactionQueryRaw(handle, text, params) {
-                    calls.push(["txQueryRaw", handle.slot, text, params]);
+                transactionQueryRaw(handle, text, params, options) {
+                    const call = ["txQueryRaw", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
                     return { mode: "raw", columnNames: ["tx"], rows: [[true]] };
                 },
                 transactionQueryOne(handle, text, params) {
@@ -335,12 +351,20 @@ function createForgedLoweredQuery() {
                     calls.push(["pgOpen", options.connectionString]);
                     return { slot: 2, kind: "postgres.connection" };
                 },
-                query(handle, text, params) {
-                    calls.push(["pgQuery", handle.slot, text, params]);
+                query(handle, text, params, options) {
+                    const call = ["pgQuery", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
                     return [{ pg: true }];
                 },
-                queryRaw(handle, text, params) {
-                    calls.push(["pgQueryRaw", handle.slot, text, params]);
+                queryRaw(handle, text, params, options) {
+                    const call = ["pgQueryRaw", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
                     return { mode: "raw", rows: [[true]] };
                 },
                 close(handle) {
@@ -352,12 +376,20 @@ function createForgedLoweredQuery() {
                     calls.push(["mssqlOpen", options.connectionString]);
                     return { slot: 3, kind: "sqlserver.connection" };
                 },
-                query(handle, text, params) {
-                    calls.push(["mssqlQuery", handle.slot, text, params]);
+                query(handle, text, params, options) {
+                    const call = ["mssqlQuery", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
                     return [{ mssql: true }];
                 },
-                queryRaw(handle, text, params) {
-                    calls.push(["mssqlQueryRaw", handle.slot, text, params]);
+                queryRaw(handle, text, params, options) {
+                    const call = ["mssqlQueryRaw", handle.slot, text, params];
+                    if (options !== undefined) {
+                        call.push(options);
+                    }
+                    calls.push(call);
                     return { mode: "raw", rows: [[true]] };
                 },
                 close(handle) {
@@ -391,12 +423,13 @@ function createForgedLoweredQuery() {
         );
         assert.deepEqual(db.query("select name from users", []), [{ name: "Ada" }]);
         assert.deepEqual(db.query("select name from users", { timeoutMs: 500 }), [{ name: "Ada" }]);
+        assert.deepEqual(db.query("select name from users", [], { maxRows: 2 }), [{ name: "Ada" }]);
         assert.deepEqual(db.query("select name from users", { mode: "raw" }), {
             mode: "raw",
             columnNames: ["name"],
             rows: [["Ada"]],
         });
-        assert.deepEqual(db.queryRaw("select name from users", []), {
+        assert.deepEqual(db.queryRaw("select name from users", [], { maxRows: 3 }), {
             mode: "raw",
             columnNames: ["name"],
             rows: [["Ada"]],
@@ -408,6 +441,14 @@ function createForgedLoweredQuery() {
         assertThrowsMessage(
             () => db.exec("select 1", [], { mode: "raw" }),
             /option 'mode' is not supported/,
+        );
+        assertThrowsMessage(
+            () => db.exec("select 1", [], { maxRows: 1 }),
+            /option 'maxRows' is not supported/,
+        );
+        assertThrowsMessage(
+            () => db.query("select name from users", [], { maxRows: 0 }),
+            /maxRows option must be an integer from 1 to 4294967295/,
         );
         assert.deepEqual(db.queryOne(sql`select name from users where id = ${1}`), { name: "Ada" });
         assert.deepEqual(
@@ -440,14 +481,15 @@ function createForgedLoweredQuery() {
         );
         const pgDb = data.postgres.open({ connectionString: "postgres://localhost/sloppy" });
         assert.deepEqual(pgDb.query("select id from users", { timeoutMs: 250 }), [{ pg: true }]);
-        assert.deepEqual(pgDb.query("select id from users", { mode: "raw" }), {
+        assert.deepEqual(pgDb.query("select id from users", [], { maxRows: 4 }), [{ pg: true }]);
+        assert.deepEqual(pgDb.query("select id from users", { mode: "raw", maxRows: 5 }), {
             mode: "raw",
             rows: [[true]],
         });
         pgDb.close();
         const sqlServerDb = data.sqlserver.open({ connectionString: "Driver={ODBC Driver 18 for SQL Server};Server=localhost;" });
         assert.deepEqual(sqlServerDb.query("select id from users", { timeoutMs: 250 }), [{ mssql: true }]);
-        assert.deepEqual(sqlServerDb.queryRaw("select id from users", []), {
+        assert.deepEqual(sqlServerDb.queryRaw("select id from users", [], { maxRows: 6 }), {
             mode: "raw",
             rows: [[true]],
         });
@@ -463,6 +505,11 @@ function createForgedLoweredQuery() {
                 text: "select name from users",
             }]);
             assert.deepEqual(tx.query("select name from users", [], { mode: "raw" }), {
+                mode: "raw",
+                columnNames: ["tx"],
+                rows: [[true]],
+            });
+            assert.deepEqual(tx.queryRaw("select name from users", [], { maxRows: 7 }), {
                 mode: "raw",
                 columnNames: ["tx"],
                 rows: [[true]],
@@ -498,22 +545,25 @@ function createForgedLoweredQuery() {
             ["exec", 1, "insert into blobs (raw) values (?)", [new Uint8Array([0, 1, 255])]],
             ["query", 1, "select name from users", []],
             ["query", 1, "select name from users", []],
+            ["query", 1, "select name from users", [], { maxRows: 2 }],
             ["queryRaw", 1, "select name from users", []],
-            ["queryRaw", 1, "select name from users", []],
+            ["queryRaw", 1, "select name from users", [], { maxRows: 3 }],
             ["queryOne", "sqlite.connection", "select name from users where id = ?", [1]],
             ["query", 1, "select name from users", []],
             ["pgOpen", "postgres://localhost/sloppy"],
             ["pgQuery", 2, "select id from users", []],
-            ["pgQueryRaw", 2, "select id from users", []],
+            ["pgQuery", 2, "select id from users", [], { maxRows: 4 }],
+            ["pgQueryRaw", 2, "select id from users", [], { maxRows: 5 }],
             ["pgClose", 2],
             ["mssqlOpen", "Driver={ODBC Driver 18 for SQL Server};Server=localhost;"],
             ["mssqlQuery", 3, "select id from users", []],
-            ["mssqlQueryRaw", 3, "select id from users", []],
+            ["mssqlQueryRaw", 3, "select id from users", [], { maxRows: 6 }],
             ["mssqlClose", 3],
             ["begin", 1],
             ["txExec", 1, "insert into users (name) values (?)", ["Grace"]],
             ["txQuery", 1, "select name from users", []],
             ["txQueryRaw", 1, "select name from users", []],
+            ["txQueryRaw", 1, "select name from users", [], { maxRows: 7 }],
             ["txQueryOne", 1, "select name from users where id = ?", [2]],
             ["commit", 1],
             ["begin", 1],
@@ -706,10 +756,12 @@ function createForgedLoweredQuery() {
     const lowered = sql`select id from users where id = ${3}`;
     assert.deepEqual(await fakeDb.query(lowered, {
         deadline: { remainingMs: () => 1000 },
+        maxRows: 10,
         signal: { aborted: false },
         timeoutMs: 50,
     }), [{ id: 3, name: "Ada" }]);
     assert.equal(received[1][2].timeoutMs, 50);
+    assert.equal(received[1][2].maxRows, 10);
     assert.equal(received[1][2].signal.aborted, false);
     assertThrowsMessage(() => fakeDb.query(lowered, {
         deadline: { expired: true },

@@ -86,6 +86,7 @@ struct SqliteV8Request
     SlSqliteExecResult exec_result = {};
     SlSqliteResult query_result = {};
     SlSqliteQueryOneResult one_result = {};
+    uint32_t max_rows = SL_SQLITE_DEFAULT_MAX_ROWS;
     SlDiag admission_diag = {};
     SlStatus status = sl_status_ok();
     std::string error;
@@ -602,7 +603,19 @@ bool sqlite_v8_prepare_param_values(v8::Isolate* isolate, v8::Local<v8::Context>
                                     std::vector<SqliteV8ParamValue>* out)
 {
     return sqlite_v8_convert_param_values(
-        isolate, context, args.Length() == 3 ? args[2] : v8::Undefined(isolate), out);
+        isolate, context, args.Length() >= 3 ? args[2] : v8::Undefined(isolate), out);
+}
+
+bool sqlite_v8_prepare_query_options(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                     const v8::FunctionCallbackInfo<v8::Value>& args,
+                                     SqliteV8Request* request, const char* operation_label)
+{
+    if (request == nullptr) {
+        return false;
+    }
+    return sl_v8_db_parse_max_rows_option(
+        isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
+        SL_SQLITE_DEFAULT_MAX_ROWS, &request->max_rows, operation_label);
 }
 
 void sqlite_v8_refresh_param_views(SqliteV8Request* request)
@@ -895,9 +908,12 @@ SlStatus sqlite_v8_run_request_with_capacity(SqliteV8Request* request, size_t ca
         return sl_sqlite_exec(&request->arena, &request->resource->connection, sql, params,
                               param_count, &request->exec_result, out_diag);
     case SqliteV8Operation::Query:
-    case SqliteV8Operation::QueryRaw:
+    case SqliteV8Operation::QueryRaw: {
+        SlSqliteQueryOptions options = {};
+        options.max_rows = request->max_rows;
         return sl_sqlite_query(&request->arena, &request->resource->connection, sql, params,
-                               param_count, nullptr, &request->query_result, out_diag);
+                               param_count, &options, &request->query_result, out_diag);
+    }
     case SqliteV8Operation::QueryOne:
         return sl_sqlite_query_one(&request->arena, &request->resource->connection, sql, params,
                                    param_count, &request->one_result, out_diag);
@@ -920,10 +936,13 @@ SlStatus sqlite_v8_run_request_with_capacity(SqliteV8Request* request, size_t ca
         return sl_sqlite_transaction_exec(&request->arena, &request->resource->transaction, sql,
                                           params, param_count, &request->exec_result, out_diag);
     case SqliteV8Operation::TransactionQuery:
-    case SqliteV8Operation::TransactionQueryRaw:
+    case SqliteV8Operation::TransactionQueryRaw: {
+        SlSqliteQueryOptions options = {};
+        options.max_rows = request->max_rows;
         return sl_sqlite_transaction_query(&request->arena, &request->resource->transaction, sql,
-                                           params, param_count, nullptr, &request->query_result,
+                                           params, param_count, &options, &request->query_result,
                                            out_diag);
+    }
     case SqliteV8Operation::TransactionQueryOne:
         return sl_sqlite_transaction_query_one(&request->arena, &request->resource->transaction,
                                                sql, params, param_count, &request->one_result,
@@ -1372,12 +1391,11 @@ void sqlite_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     std::unique_ptr<SqliteV8Request> request(new (std::nothrow) SqliteV8Request());
     v8::Local<v8::Promise> promise;
 
-    if (backend == nullptr || args.Length() < 2 || args.Length() > 3 || !request ||
+    if (backend == nullptr || args.Length() < 2 || args.Length() > 4 || !request ||
         !sqlite_v8_value_to_std_string(isolate, args[1], &sql) || sql.empty())
     {
-        sqlite_v8_throw_type_error(
-            isolate,
-            "__sloppy.data.sqlite.query requires a handle, SQL string, and optional params");
+        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.query requires a handle, SQL "
+                                            "string, optional params, and optional options");
         return;
     }
 
@@ -1392,6 +1410,9 @@ void sqlite_v8_query_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     }
 
     if (!sqlite_v8_prepare_param_values(isolate, context, args, &request->param_values)) {
+        return;
+    }
+    if (!sqlite_v8_prepare_query_options(isolate, context, args, request.get(), "sqlite query")) {
         return;
     }
 
@@ -1426,12 +1447,11 @@ void sqlite_v8_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
     std::unique_ptr<SqliteV8Request> request(new (std::nothrow) SqliteV8Request());
     v8::Local<v8::Promise> promise;
 
-    if (backend == nullptr || args.Length() < 2 || args.Length() > 3 || !request ||
+    if (backend == nullptr || args.Length() < 2 || args.Length() > 4 || !request ||
         !sqlite_v8_value_to_std_string(isolate, args[1], &sql) || sql.empty())
     {
-        sqlite_v8_throw_type_error(
-            isolate,
-            "__sloppy.data.sqlite.queryRaw requires a handle, SQL string, and optional params");
+        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.queryRaw requires a handle, SQL "
+                                            "string, optional params, and optional options");
         return;
     }
 
@@ -1446,6 +1466,10 @@ void sqlite_v8_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
     }
 
     if (!sqlite_v8_prepare_param_values(isolate, context, args, &request->param_values)) {
+        return;
+    }
+    if (!sqlite_v8_prepare_query_options(isolate, context, args, request.get(), "sqlite raw query"))
+    {
         return;
     }
 
@@ -1722,11 +1746,12 @@ void sqlite_v8_transaction_query_callback(const v8::FunctionCallbackInfo<v8::Val
     std::unique_ptr<SqliteV8Request> request(new (std::nothrow) SqliteV8Request());
     v8::Local<v8::Promise> promise;
 
-    if (backend == nullptr || args.Length() < 2 || args.Length() > 3 || !request ||
+    if (backend == nullptr || args.Length() < 2 || args.Length() > 4 || !request ||
         !sqlite_v8_value_to_std_string(isolate, args[1], &sql) || sql.empty())
     {
-        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.transactionQuery requires a "
-                                            "handle, SQL string, and optional params");
+        sqlite_v8_throw_type_error(isolate,
+                                   "__sloppy.data.sqlite.transactionQuery requires a "
+                                   "handle, SQL string, optional params, and optional options");
         return;
     }
 
@@ -1741,6 +1766,11 @@ void sqlite_v8_transaction_query_callback(const v8::FunctionCallbackInfo<v8::Val
     }
 
     if (!sqlite_v8_prepare_param_values(isolate, context, args, &request->param_values)) {
+        return;
+    }
+    if (!sqlite_v8_prepare_query_options(isolate, context, args, request.get(),
+                                         "sqlite transaction query"))
+    {
         return;
     }
 
@@ -1775,11 +1805,12 @@ void sqlite_v8_transaction_query_raw_callback(const v8::FunctionCallbackInfo<v8:
     std::unique_ptr<SqliteV8Request> request(new (std::nothrow) SqliteV8Request());
     v8::Local<v8::Promise> promise;
 
-    if (backend == nullptr || args.Length() < 2 || args.Length() > 3 || !request ||
+    if (backend == nullptr || args.Length() < 2 || args.Length() > 4 || !request ||
         !sqlite_v8_value_to_std_string(isolate, args[1], &sql) || sql.empty())
     {
-        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.transactionQueryRaw requires a "
-                                            "handle, SQL string, and optional params");
+        sqlite_v8_throw_type_error(isolate,
+                                   "__sloppy.data.sqlite.transactionQueryRaw requires a "
+                                   "handle, SQL string, optional params, and optional options");
         return;
     }
 
@@ -1794,6 +1825,11 @@ void sqlite_v8_transaction_query_raw_callback(const v8::FunctionCallbackInfo<v8:
     }
 
     if (!sqlite_v8_prepare_param_values(isolate, context, args, &request->param_values)) {
+        return;
+    }
+    if (!sqlite_v8_prepare_query_options(isolate, context, args, request.get(),
+                                         "sqlite transaction raw query"))
+    {
         return;
     }
 

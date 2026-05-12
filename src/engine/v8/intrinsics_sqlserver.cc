@@ -216,6 +216,7 @@ struct SqlSrvV8Request
     int64_t affected_rows = -1;
     bool affected_rows_known = false;
     std::string error;
+    uint32_t max_rows = SL_SQLSERVER_DEFAULT_MAX_ROWS;
     bool transaction_terminal = false;
     bool connect_pending = false;
     bool execute_pending = false;
@@ -437,6 +438,13 @@ bool sqlsrv_v8_result_is_query(SqlSrvV8Operation operation)
            operation == SqlSrvV8Operation::TransactionQuery ||
            operation == SqlSrvV8Operation::TransactionQueryRaw ||
            operation == SqlSrvV8Operation::TransactionQueryOne;
+}
+
+bool sqlsrv_v8_operation_allows_max_rows(SqlSrvV8Operation operation)
+{
+    return operation == SqlSrvV8Operation::Query || operation == SqlSrvV8Operation::QueryRaw ||
+           operation == SqlSrvV8Operation::TransactionQuery ||
+           operation == SqlSrvV8Operation::TransactionQueryRaw;
 }
 
 bool sqlsrv_v8_result_is_exec(SqlSrvV8Operation operation)
@@ -1419,6 +1427,12 @@ void sqlsrv_v8_pump_connection(SqlSrvV8Connection* connection)
                                                                "sqlserver fetch failed"));
                 return;
             }
+            if (sqlsrv_v8_operation_allows_max_rows(request->operation) &&
+                request->rows.size() >= request->max_rows)
+            {
+                sqlsrv_v8_fail_request(request, "sqlserver provider query exceeded max rows");
+                return;
+            }
             if (!sqlsrv_v8_materialize_current_row(request.get())) {
                 sqlsrv_v8_fail_request(request, request->error);
                 return;
@@ -1955,8 +1969,15 @@ void sqlsrv_v8_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
             return;
         }
         if (!sqlsrv_v8_convert_params(isolate, context,
-                                      args.Length() == 3 ? args[2] : v8::Undefined(isolate),
+                                      args.Length() >= 3 ? args[2] : v8::Undefined(isolate),
                                       &request->params))
+        {
+            return;
+        }
+        if (sqlsrv_v8_operation_allows_max_rows(operation) &&
+            !sl_v8_db_parse_max_rows_option(
+                isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
+                SL_SQLSERVER_DEFAULT_MAX_ROWS, &request->max_rows, "sqlserver query"))
         {
             return;
         }

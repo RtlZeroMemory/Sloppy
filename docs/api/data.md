@@ -207,9 +207,18 @@ await db.query(sql`SELECT * FROM big_table`, {
 | `deadline`   | Abort at this absolute deadline                              |
 | `signal`     | Abort when the supplied cancellation signal fires            |
 | `mode`       | `query` only: `"object"` (default) or `"raw"`                 |
+| `maxRows`    | `query`/`queryRaw` only: maximum rows to materialize          |
 
 `mode` is rejected on `queryRaw`, `queryOne`, and `exec`; those methods have
-fixed result shapes.
+fixed result shapes. `maxRows` must be an integer from `1` to `4294967295`.
+The default native provider cap is `128` rows. Queries that exceed the cap fail
+instead of silently truncating rows. Cursor-style incremental result streaming is
+not yet part of the public data API.
+
+The current JavaScript API checks `deadline`, `signal`, and `timeoutMs` before
+dispatching a provider call. Driver-level in-flight cancellation is not exposed
+as a portable data-provider guarantee yet; use `maxRows` and query-specific SQL
+limits for bounded result behavior.
 
 ## PostgreSQL
 

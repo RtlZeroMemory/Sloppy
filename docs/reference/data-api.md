@@ -74,6 +74,7 @@ Operation options currently support:
 - `signal`
 - `timeoutMs`
 - `mode` on `query(...)` only: `object` (default) or `raw`
+- `maxRows` on `query(...)` and `queryRaw(...)`: integer `1..4294967295`
 
 Unsupported option keys are rejected.
 
@@ -97,6 +98,11 @@ column name. The returned row array carries non-enumerable, read-only metadata:
 
 Duplicate column names are preserved in raw mode. In object-row mode, ordinary
 JS property semantics apply and the last duplicate column value wins.
+
+Query materialization is bounded. The default cap is 128 rows, and `maxRows`
+changes the cap for one `query` or `queryRaw` call. Exceeding the cap fails the
+operation instead of returning a partial row set. Cursor-style incremental row
+streaming is not exposed in the public data API yet.
 
 ## sqlite.open Options
 
@@ -140,6 +146,8 @@ provider integration checks.
 
 ## Limits
 
-- No ORM/migration API in this surface.
+- No ORM API in this surface.
 - No prepared statement handle API in sqlite surface.
 - Automatic retry/pool tuning is limited to the exposed bounded options.
+- `deadline`, `signal`, and `timeoutMs` are checked before provider dispatch;
+  they are not yet a portable driver-level in-flight cancellation guarantee.

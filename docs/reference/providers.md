@@ -168,6 +168,12 @@ the runtime data API:
 Raw mode preserves duplicate column names and positional values. Object mode
 uses normal JS object property semantics, so the last duplicate column name wins.
 
+`query(...)` and `queryRaw(...)` are bounded. The default cap is 128 materialized
+rows, and operation option `{ maxRows }` adjusts the cap for one call. Providers
+fail with an exceeded-max-rows diagnostic instead of silently truncating. The
+current public provider API does not expose cursor-style incremental row
+streaming.
+
 ## Redaction Helpers
 
 Redaction behavior includes:
@@ -181,6 +187,12 @@ Redaction behavior includes:
 - Compiler-generated static provider handler bridge is sqlite-only;
   non-sqlite static provider handlers fail with
   `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
+- `deadline`, `signal`, and `timeoutMs` provider operation options are checked
+  before dispatch. Portable driver-level in-flight cancellation is not yet a
+  first-party data-provider guarantee.
+- PostgreSQL and SQL Server pools are bounded and fail fast under full
+  saturation. They do not expose a public wait queue, acquire timeout, idle
+  pruning, or max-lifetime policy yet.
 - Fake provider APIs (`data.createFakeProvider`) validate shape and behavior
   contracts only. Live database behavior uses provider integration checks.
 - Missing optional provider dependencies are reported as provider-specific

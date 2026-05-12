@@ -6485,6 +6485,98 @@ static int test_sqlite_intrinsics_execute_query_and_close(void)
     return 0;
 }
 
+static int test_sqlite_intrinsic_query_max_rows_option(void)
+{
+    unsigned char engine_storage[262144];
+    unsigned char result_storage[65536];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlPlan plan = {0};
+    SlPlanDataProvider providers[1];
+    SlPlanCapability capabilities[1];
+    SlCapabilityRegistry registry = {0};
+    SlRuntimeFeatureSet features = {0};
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 1360;
+    }
+
+    if (attach_sqlite_plan(&options, &plan, &registry, providers, capabilities, &engine_arena,
+                           &features, "readwrite") != 0)
+    {
+        return 1361;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 1362;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("sqlite-max-rows.js"),
+                sl_str_from_cstr(
+                    "globalThis.sqliteMaxRows = async function () {"
+                    "  const db = __sloppy.data.sqlite.open({ provider: 'sqlite', database: "
+                    "':memory:', capability: 'data.main' });"
+                    "  await __sloppy.data.sqlite.exec(db, 'create table users (id integer "
+                    "primary key, name text not null)', []);"
+                    "  await __sloppy.data.sqlite.exec(db, \"insert into users (name) values "
+                    "('Ada'), ('Grace')\", []);"
+                    "  const rows = await __sloppy.data.sqlite.query(db, 'select name from users "
+                    "order by id', [], { maxRows: 2 });"
+                    "  let queryRejected = false;"
+                    "  try { await __sloppy.data.sqlite.query(db, 'select name from users order "
+                    "by id', [], { maxRows: 1 }); }"
+                    "  catch (error) { queryRejected = String(error.message).includes('exceeded "
+                    "max rows'); }"
+                    "  let rawRejected = false;"
+                    "  try { await __sloppy.data.sqlite.queryRaw(db, 'select name from users "
+                    "order by id', [], { maxRows: 1 }); }"
+                    "  catch (error) { rawRejected = String(error.message).includes('exceeded "
+                    "max rows'); }"
+                    "  await __sloppy.data.sqlite.transactionBegin(db);"
+                    "  const txRaw = await __sloppy.data.sqlite.transactionQueryRaw(db, 'select "
+                    "name from users order by id', [], { maxRows: 2 });"
+                    "  await __sloppy.data.sqlite.transactionCommit(db);"
+                    "  __sloppy.data.sqlite.close(db);"
+                    "  return { __sloppyResult: true, kind: 'json', status: 200, contentType: "
+                    "'application/json; charset=utf-8', body: { rowsLength: rows.length, "
+                    "queryRejected, rawRejected, txRowsLength: txRaw.rows.length } };"
+                    "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1363;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sqliteMaxRows"), &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1364;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body,
+                           "{\"rowsLength\":2,\"queryRejected\":true,\"rawRejected\":true,"
+                           "\"txRowsLength\":2}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 1365;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_sqlite_intrinsic_stale_handle_fails(void)
 {
     unsigned char engine_storage[16384];
@@ -8039,6 +8131,11 @@ int main(int argc, char** argv)
     }
 
     result = test_sqlite_intrinsics_execute_query_and_close();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_sqlite_intrinsic_query_max_rows_option();
     if (result != 0) {
         return result;
     }

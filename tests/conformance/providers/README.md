@@ -10,23 +10,26 @@ separately. Benchmark output is measurement data, not correctness coverage.
 All providers expose `query`, `queryOne`, `exec`, and callback `transaction` behavior.
 The common tests cover statement text plus bound parameters, parameter ordering,
 `queryOne` found/not-found behavior, execute result shape, result ownership, invalid
-state cleanup, unsupported value diagnostics, and redacted provider diagnostics.
+state cleanup, unsupported value diagnostics, and redacted provider diagnostics. Query
+materialization is bounded by default, and provider-specific tests cover the adjustable
+`maxRows` option.
 
 SQLite is the default embedded conformance provider. PostgreSQL and SQL Server reuse the
 same shape in their Docker-backed live lanes because they require external services and
-driver dependencies.
+driver dependencies. Parameterization tests treat quotes, semicolons, SQL comments,
+UTF-8 text, NUL-containing blobs, and binary payloads as data rather than executable SQL.
 
 ## Registered Lanes
 
 | Lane | Command | Coverage |
 | --- | --- | --- |
 | Common native contract | `ctest -R conformance.data.common_contract --output-on-failure` | DbValue, statement, row-set, execute-result, and redaction contract. |
-| SQLite default native | `ctest -R conformance.sqlite.native_provider --output-on-failure` | Embedded `:memory:` and temp-file provider behavior without Docker. |
+| SQLite default native | `ctest -R conformance.sqlite.native_provider --output-on-failure` | Embedded `:memory:` and temp-file provider behavior without Docker, including parameter safety and exact text/blob round trips. |
 | SQLite V8 bridge | `ctest -R conformance.sqlite.bridge --output-on-failure` | JS bridge, Promise settlement, capability admission, transaction callback, and `Uint8Array` blob parameters when V8 is enabled. |
 | PostgreSQL default native | `ctest -R conformance.postgres.native_provider --output-on-failure` | Native diagnostics, redaction, pooling lifecycle, and non-live failure paths. |
-| PostgreSQL live native/V8 | `tools/windows/test-live-postgres.ps1` or `tools/unix/test-live-postgres.sh` | Docker-backed PostgreSQL provider and V8 bridge behavior when the live URL and V8 lane are configured. |
+| PostgreSQL live native/V8 | `tools/windows/test-live-postgres.ps1` or `tools/unix/test-live-postgres.sh` | Docker-backed PostgreSQL provider and V8 bridge behavior when the live URL and V8 lane are configured, including malicious-looking parameter values. |
 | SQL Server default native | `ctest -R conformance.sqlserver.native_provider --output-on-failure` | Native diagnostics, redaction, ODBC driver detection, pooling lifecycle, and unavailable-driver behavior. |
-| SQL Server live native/V8 | `tools/windows/test-live-sqlserver.ps1` or `tools/unix/test-live-sqlserver.sh` | Docker-backed SQL Server provider and V8 bridge behavior when Docker, ODBC, and async driver support are available. |
+| SQL Server live native/V8 | `tools/windows/test-live-sqlserver.ps1` or `tools/unix/test-live-sqlserver.sh` | Docker-backed SQL Server provider and V8 bridge behavior when Docker, ODBC, and async driver support are available, including malicious-looking parameter values. |
 | Provider stress/torture smoke | `ctest -R stress.provider_executor --output-on-failure` | Bounded provider executor pressure for queue overflow, shutdown, cancellation, pool workers, late completion, and cleanup-once behavior. |
 
 `tools/windows/test-live-providers.ps1` and `tools/unix/test-live-providers.sh` run
