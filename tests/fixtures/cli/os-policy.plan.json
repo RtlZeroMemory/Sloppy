@@ -40,7 +40,7 @@
     {
       "id": "stdlib.os.redaction",
       "status": "ok",
-      "message": "OS doctor metadata omits environment values, secret args, captured output, raw PIDs, and native handles"
+      "message": "OS doctor metadata omits environment values, secret args, captured output, pid-as-handle capabilities, and native handles"
     }
   ]
 }

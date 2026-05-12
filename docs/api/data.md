@@ -102,6 +102,9 @@ data.sqlite.open({
 });
 ```
 
+Provider names, capability tokens, database paths, and connection strings must
+be non-empty strings and must not contain NUL bytes.
+
 ### Querying
 
 ```ts

@@ -1713,6 +1713,7 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
                                  "  const digest = hex(c.hash('sha256', enc('abc')));"
                                  "  const key = new Uint8Array(20); key.fill(0x0b);"
                                  "  const sig = c.hmac('sha256', key, enc('Hi There'));"
+                                 "  const sig512 = c.hmac('sha512', key, enc('Hi There'));"
                                  "  const uuid = c.randomUuid();"
                                  "  const code = c.randomNumericCode(6);"
                                  "  const randomHexLength = c.randomHex(4).length;"
@@ -1739,6 +1740,7 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
                                  "  })();"
                                  "  const equal = c.constantTimeEquals(sig, sig);"
                                  "  return digest + ':' + hex(sig).slice(0, 8) + ':' + "
+                                 "hex(sig512).slice(0, 8) + ':' + "
                                  "uuid[14] + ':' + code.length + ':' + randomHexLength + ':' + "
                                  "emptyRandomText.length + ':' + passwordHash.startsWith("
                                  "'$argon2id$') + ':' + passwordOk + ':' + passwordRehash + ':' + "
@@ -1765,7 +1767,7 @@ static int test_crypto_intrinsic_hash_hmac_random_and_constant_time(void)
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
         !sl_str_equal(result.text, sl_str_from_cstr("ba7816bf8f01cfea414140de5dae2223"
                                                     "b00361a396177a9cb410ff61f20015ad:"
-                                                    "b0344c61:4:6:8:0:true:true:true:true:"
+                                                    "b0344c61:87aa7cde:4:6:8:0:true:true:true:true:"
                                                     "26c7827d889f6da3:true:true:true")))
     {
         sl_engine_destroy(engine);
@@ -2677,14 +2679,20 @@ static int test_os_intrinsic_system_and_environment(void)
                                            "  if (!os || typeof os.systemInfo !== 'function') {"
                                            "    return 'os-missing';"
                                            "  }"
+                                           "  if (typeof os.processInfo !== 'function') {"
+                                           "    return 'process-info-missing';"
+                                           "  }"
                                            "  const info = os.systemInfo();"
+                                           "  const process = os.processInfo();"
                                            "  const env = os.environmentGet('SLOPPY_OS_V8_TEST');"
                                            "  const has = os.environmentHas('SLOPPY_OS_V8_TEST');"
                                            "  const listed = os.environmentList('SLOPPY_OS_V8_')"
                                            "    .includes('SLOPPY_OS_V8_TEST');"
                                            "  return info.platform + ':' + info.arch + ':' +"
                                            "    (info.cpuCount > 0) + ':' + env + ':' + has + ':' +"
-                                           "    listed;"
+                                           "    listed + ':' + (process.pid > 0) + ':' +"
+                                           "    (typeof process.cwd === 'string') + ':' +"
+                                           "    Array.isArray(process.args);"
                                            "};"),
                           &diag),
                       SL_STATUS_OK) != 0)
@@ -2703,7 +2711,8 @@ static int test_os_intrinsic_system_and_environment(void)
     }
 
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
-        expect_str_contains(result.text, sl_str_from_cstr(":true:v8-env-ok:true:true")) != 0)
+        expect_str_contains(result.text,
+                            sl_str_from_cstr(":true:v8-env-ok:true:true:true:true:true")) != 0)
     {
         sl_engine_destroy(engine);
         return 449;

@@ -213,6 +213,21 @@ SlStatus sl_os_environment_list(SlArena* arena, const SlOsPolicy* policy, SlStr 
     return sl_os_platform_environment_list(arena, effective_prefix, out, out_diag);
 }
 
+SlStatus sl_os_process_info(SlArena* arena, const SlOsPolicy* policy, SlOsProcessInfo* out,
+                            SlDiag* out_diag)
+{
+    if (arena == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = (SlOsProcessInfo){0};
+    if (policy != NULL && policy->mode == SL_OS_POLICY_STRICT && !policy->allow_system_info) {
+        return sl_os_denied(
+            SL_DIAG_OS_FEATURE_UNAVAILABLE, out_diag, sl_str_from_cstr("OS feature is unavailable"),
+            sl_str_from_cstr("Grant os.info before reading process identity metadata."));
+    }
+    return sl_os_platform_process_info(arena, out, out_diag);
+}
+
 static bool sl_os_process_env_override_valid(const SlOsEnvironmentOverride* entry)
 {
     size_t index = 0U;

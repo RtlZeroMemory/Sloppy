@@ -137,7 +137,9 @@ static int test_hmac_and_constant_time(void)
     unsigned char key[20] = {0};
     const unsigned char data[] = {'H', 'i', ' ', 'T', 'h', 'e', 'r', 'e'};
     unsigned char digest[SL_CRYPTO_SHA256_SIZE] = {0};
-    char hex[SL_CRYPTO_SHA256_SIZE * 2U] = {0};
+    unsigned char digest384[SL_CRYPTO_SHA384_SIZE] = {0};
+    unsigned char digest512[SL_CRYPTO_SHA512_SIZE] = {0};
+    char hex[SL_CRYPTO_SHA512_SIZE * 2U] = {0};
     bool equal = false;
     size_t index = 0U;
 
@@ -155,9 +157,44 @@ static int test_hmac_and_constant_time(void)
         expect_text_equal(hex,
                           "b0344c61d8db38535ca8afceaf0bf12b"
                           "881dc200c9833da726e9376c2e32cff7",
-                          sizeof(hex)) != 0)
+                          (size_t)SL_CRYPTO_SHA256_SIZE * 2U) != 0)
     {
         return 20;
+    }
+
+    memset(hex, 0, sizeof(hex));
+    if (expect_status(sl_crypto_hmac(SL_CRYPTO_HASH_SHA384, sl_bytes_from_parts(key, sizeof(key)),
+                                     sl_bytes_from_parts(data, sizeof(data)),
+                                     (SlOwnedBytes){digest384, sizeof(digest384)}),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_crypto_hex_encode(sl_bytes_from_parts(digest384, sizeof(digest384)), hex,
+                                           sizeof(hex)),
+                      SL_STATUS_OK) != 0 ||
+        expect_text_equal(hex,
+                          "afd03944d84895626b0825f4ab46907f"
+                          "15f9dadbe4101ec682aa034c7cebc59c"
+                          "faea9ea9076ede7f4af152e8b2fa9cb6",
+                          (size_t)SL_CRYPTO_SHA384_SIZE * 2U) != 0)
+    {
+        return 25;
+    }
+
+    memset(hex, 0, sizeof(hex));
+    if (expect_status(sl_crypto_hmac(SL_CRYPTO_HASH_SHA512, sl_bytes_from_parts(key, sizeof(key)),
+                                     sl_bytes_from_parts(data, sizeof(data)),
+                                     (SlOwnedBytes){digest512, sizeof(digest512)}),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_crypto_hex_encode(sl_bytes_from_parts(digest512, sizeof(digest512)), hex,
+                                           sizeof(hex)),
+                      SL_STATUS_OK) != 0 ||
+        expect_text_equal(hex,
+                          "87aa7cdea5ef619d4ff0b4241a1d6cb0"
+                          "2379f4e2ce4ec2787ad0b30545e17cde"
+                          "daa833b7d6b8a702038b274eaea3f4e"
+                          "4be9d914eeb61f1702e696c203a126854",
+                          (size_t)SL_CRYPTO_SHA512_SIZE * 2U) != 0)
+    {
+        return 26;
     }
 
     if (expect_status(sl_crypto_hmac_verify(SL_CRYPTO_HASH_SHA256,

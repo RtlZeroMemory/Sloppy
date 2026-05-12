@@ -14,8 +14,8 @@ CLI fixtures under `tests/golden/cli/` pin routes, capabilities, doctor, audit, 
 OpenAPI output. Network, HTTP client, and OS doctor/audit goldens are metadata coverage
 only: they must not include live external network statements, raw URLs that carry secrets,
 cookies, authorization headers, bearer tokens, API keys, TLS-sensitive material,
-environment values, secret process args, captured process output, raw PIDs, native
-handles, release publishing statements, or benchmark comparisons.
+environment values, secret process args, captured process output, raw native handles,
+pid-as-handle capabilities, release publishing statements, or benchmark comparisons.
 
 Golden files should be reviewed like public API changes.
 

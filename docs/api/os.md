@@ -28,9 +28,8 @@ experiments. If the `__sloppy.os` bridge is missing,
 the very first import-time check throws `SLOPPY_E_OS_FEATURE_UNAVAILABLE`
 rather than letting the module half-load.
 
-`Process` is the subprocess execution surface. Process *identity* helpers
-(`pid`, `argv`, `cwd`) are not part of the current stdlib. Native handles and
-file descriptors are never exposed to JS.
+`Process` is the current-process identity and subprocess execution surface.
+Native handles and file descriptors are never exposed to JS.
 
 ## System
 
@@ -65,11 +64,37 @@ env vars directly into log lines.
 
 ## Process
 
-`Process` is the subprocess execution surface. It exposes two entry points:
+`Process` exposes current-process identity plus subprocess execution:
 
+- `Process.info()` — return pid, parent pid, executable path, cwd, and
+  command-line arguments when the platform exposes them.
 - `Process.run(command, args?, options?)` — spawn, wait, return output.
 - `Process.start(command, args?, options?)` — spawn and return a handle for
   streaming I/O and cooperative shutdown.
+
+### `Process.info`
+
+```ts
+const current = Process.info();
+// current.pid, current.parentPid, current.executablePath, current.cwd
+```
+
+The result is frozen:
+
+```ts
+{
+  pid: number;
+  parentPid: number;          // 0 when unavailable
+  executablePath: string;     // empty when unavailable
+  cwd: string;
+  args: string[];             // frozen copy
+  argsAvailable: boolean;
+}
+```
+
+`argsAvailable` is `true` on platforms where Sloppy can snapshot the native
+command line. It may be `false` on platforms without a safe current-process
+argv source.
 
 ```ts
 const result = await Process.run("git", ["status", "--short"], {
@@ -156,8 +181,8 @@ Options:
 
 ### Process subprocess boundaries
 
-- No process *identity* exposure today. There is no `Process.pid`,
-  `Process.argv`, `Process.cwd()`, or `Process.exit()`.
+- Process identity is snapshot-only through `Process.info()`. There is no
+  mutable `process` global, `Process.exit()`, or raw pid-as-handle API.
 - No process groups, priority, CPU affinity, or resource limits.
 - No `child_process`, `spawn`, `exec`, or `node:child_process` compatibility.
 - No detached/inherited stdio fan-out beyond `"ignore"` and `"pipe"`.
@@ -192,13 +217,14 @@ There is no general POSIX signal handler API today.
 Inspect the host:
 
 ```ts
-import { System, Environment } from "sloppy/os";
+import { System, Environment, Process } from "sloppy/os";
 
 const host = {
     platform: System.platform,
     arch: System.arch,
     cpuCount: System.cpuCount,
     feature: Environment.get("MY_APP_FEATURE"),
+    pid: Process.info().pid,
 };
 ```
 

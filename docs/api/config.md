@@ -36,7 +36,8 @@ up automatically from the project layout. See
 ## Keys and environment variables
 
 Configuration keys are case-insensitive and use `:` as a path
-separator. Internally they're normalized to uppercase:
+separator. They must be non-empty and must not contain NUL bytes.
+Internally they're normalized to uppercase:
 
 ```ts
 builder.config.addObject({ "app:Name": "demo" });

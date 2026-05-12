@@ -261,6 +261,16 @@ function isPlainObject(value) {
     return prototype === Object.prototype || prototype === null;
 }
 
+function validateWorkerOptions(options, operation) {
+    if (options === undefined || options === null) {
+        return {};
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError(`${operation} options must be a plain object.`);
+    }
+    return options;
+}
+
 function serializePayload(value, seen = new Set()) {
     if (value === undefined) {
         return null;
@@ -364,6 +374,7 @@ function retryDelayMs(backoff, attempt, error) {
 
 class WorkQueueHandle {
     constructor(name, options = undefined) {
+        options = validateWorkerOptions(options, "WorkQueue.create");
         this.name = validateName(name, "WorkQueue");
         this.maxQueued = positiveInteger(options?.maxQueued, "WorkQueue.maxQueued", DEFAULT_QUEUE_CAPACITY);
         this.concurrency = positiveInteger(options?.concurrency, "WorkQueue.concurrency", 1);
@@ -691,6 +702,7 @@ class WorkQueueHandle {
 
 class BackgroundServiceHandle {
     constructor(name, handler, options = undefined) {
+        options = validateWorkerOptions(options, "BackgroundService.create");
         this.name = validateName(name, "BackgroundService");
         if (typeof handler !== "function") {
             throw new TypeError("BackgroundService.create requires a function.");
@@ -774,6 +786,7 @@ class BackgroundServiceHandle {
 
 class WorkerPoolHandle {
     constructor(name, options = undefined) {
+        options = validateWorkerOptions(options, "WorkerPool.create");
         this.name = validateName(name, "WorkerPool");
         this.workers = positiveInteger(options?.workers, "WorkerPool.workers", 1);
         this.maxQueued = positiveInteger(options?.maxQueued, "WorkerPool.maxQueued", DEFAULT_WORKER_POOL_CAPACITY);
@@ -951,8 +964,9 @@ const WorkerPool = Object.freeze({
 
 const Worker = Object.freeze({
     async start(modulePath, options = undefined) {
-        if (typeof modulePath !== "string" || modulePath.length === 0) {
-            throw new TypeError("Worker.start module path must be a non-empty string.");
+        options = validateWorkerOptions(options, "Worker.start");
+        if (typeof modulePath !== "string" || modulePath.length === 0 || modulePath.includes("\0")) {
+            throw new TypeError("Worker.start module path must be a non-empty string without NUL.");
         }
         const memoryLimitMb = positiveInteger(options?.memoryLimitMb, "Worker.memoryLimitMb", 128);
         const bridge = globalThis.__sloppy?.workers;

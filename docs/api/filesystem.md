@@ -27,6 +27,9 @@ operations require the
 `File` is a frozen namespace of static async methods. Every method takes a path
 string and returns a `Promise`.
 
+Path strings must be non-empty and must not contain NUL bytes. Temp-file and
+temp-directory prefixes follow the same NUL-free string rule.
+
 | Method | Returns | Notes |
 | --- | --- | --- |
 | `File.readText(path, options?)` | `Promise<string>` | UTF-8 decode |

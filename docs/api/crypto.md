@@ -75,11 +75,16 @@ Digest sizes: SHA-256 = 32 bytes, SHA-384 = 48, SHA-512 = 64.
 
 ```ts
 await Hmac.sha256(secret, value);                              // Promise<Uint8Array>
+await Hmac.sha384(secret, value);                              // Promise<Uint8Array>
+await Hmac.sha512(secret, value);                              // Promise<Uint8Array>
 await Hmac.verifySha256(secret, value, signature);             // Promise<boolean>
+await Hmac.verifySha384(secret, value, signature);             // Promise<boolean>
+await Hmac.verifySha512(secret, value, signature);             // Promise<boolean>
 ```
 
 `secret`, `value`, and `signature` accept `string`, `Uint8Array`, or
-`Secret`. `verifySha256` performs the comparison in constant time.
+`Secret`. `verifySha256`, `verifySha384`, and `verifySha512` perform the
+comparison in constant time.
 
 ## ConstantTime
 
@@ -162,8 +167,8 @@ import { Hash, Hmac, Secret } from "sloppy/crypto";
 const key = Secret.fromUtf8(signingKey);
 try {
     const digest = await Hash.sha256Hex(payload);
-    const signature = await Hmac.sha256(key, payload);
-    const ok = await Hmac.verifySha256(key, payload, signature);
+    const signature = await Hmac.sha512(key, payload);
+    const ok = await Hmac.verifySha512(key, payload, signature);
 } finally {
     key.dispose();
 }
@@ -198,8 +203,8 @@ In-repo references:
 
 ## Boundaries
 
-- No bring-your-own-algorithm. Hash is SHA-256/384/512 only. Password is
-  Argon2id only. HMAC is bound to SHA-256.
+- No bring-your-own-algorithm. Hash and HMAC are SHA-256/384/512 only.
+  Password is Argon2id only.
 - No streaming HMAC or PBKDF2. Argon2id is the password KDF.
 - No public AEAD/cipher API in `sloppy/crypto` today. Symmetric and asymmetric
   encryption are roadmap work.

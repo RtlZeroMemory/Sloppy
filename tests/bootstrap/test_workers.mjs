@@ -78,6 +78,14 @@ function installWorkerBridge() {
 }
 
 {
+    assert.throws(() => BackgroundService.create("bad-options", async () => {}, "bad"), TypeError);
+    assert.throws(() => WorkQueue.create("bad-options", "bad"), TypeError);
+    assert.throws(() => WorkerPool.create("bad-options", "bad"), TypeError);
+    await assert.rejects(Worker.start("bad\0worker", {}), TypeError);
+    await assert.rejects(Worker.start("file:///worker.mjs", "bad"), TypeError);
+}
+
+{
     let started = 0;
     let observedCancel = false;
     const service = BackgroundService.create("cleanup", async (ctx) => {

@@ -780,6 +780,26 @@ function compressionBackendUnavailable(operation) {
     );
 }
 
+const COMPRESSION_BRIDGE_ERROR_CODES = new Set([
+    "SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE",
+    "SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED",
+    "SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT",
+]);
+
+function normalizeCompressionError(error) {
+    if (error instanceof CodecError) {
+        return error;
+    }
+    const message = typeof error?.message === "string" ? error.message : String(error);
+    const match = /\b(SLOPPY_E_CODEC_[A-Z_]+)\b(?::\s*)?(.*)$/u.exec(message);
+    if (match !== null && COMPRESSION_BRIDGE_ERROR_CODES.has(match[1])) {
+        const normalized = codecError(match[1], match[2] || "Compression backend failed.");
+        normalized.cause = error;
+        return normalized;
+    }
+    return error;
+}
+
 function nativeCodec(operation) {
     const bridge = globalThis.__sloppy?.codec ?? null;
     if (bridge === null) {
@@ -935,7 +955,7 @@ function raceCompressionTerminal(promise, options, operation) {
     const signal = options.signal;
     const remainingMs = deadlineRemainingMs(options.deadline, operation);
     if (!isCancellationSignal(signal) && remainingMs === Infinity) {
-        return promise;
+        return promise.catch((error) => Promise.reject(normalizeCompressionError(error)));
     }
     return new Promise((resolve, reject) => {
         let finished = false;
@@ -969,7 +989,7 @@ function raceCompressionTerminal(promise, options, operation) {
                 finish(resolve, value);
             },
             (error) => {
-                finish(reject, error);
+                finish(reject, normalizeCompressionError(error));
             },
         );
         function cleanupAll() {
@@ -994,7 +1014,7 @@ function runCompression(operation, bytes, options, invoke) {
         );
         return raceCompressionTerminal(promise, options ?? {}, operation);
     } catch (error) {
-        return Promise.reject(error);
+        return Promise.reject(normalizeCompressionError(error));
     }
 }
 
@@ -1110,7 +1130,6 @@ const CRC32_POLYNOMIAL_REFLECTED = 0xedb88320;
 const CRC32_INITIAL = 0xffffffff;
 const CRC32_FINAL_XOR = 0xffffffff;
 const CRC32_TABLE = makeCrc32Table();
-const CHECKSUM_UNSUPPORTED_ALGORITHM_DIAGNOSTIC = "SLOPPY_E_CODEC_CHECKSUM_UNSUPPORTED_ALGORITHM";
 
 function crc32(bytes) {
     bytes = requireBytes(bytes, "Checksums.crc32");

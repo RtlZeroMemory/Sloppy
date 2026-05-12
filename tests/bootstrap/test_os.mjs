@@ -22,6 +22,7 @@ assertOsError(() => System.platform, "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
 assert.throws(() => Environment.get(""), TypeError);
 assert.throws(() => Environment.has("A=B"), TypeError);
 assert.throws(() => Environment.list({ values: true }), TypeError);
+assertOsError(() => Process.info(), "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
 await assertOsRejects(Process.run("echo", []), "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
 assert.throws(() => Signals.onShutdown("not-a-function"), TypeError);
 assertOsError(() => Signals.onShutdown(() => {}), "SLOPPY_E_OS_FEATURE_UNAVAILABLE");
@@ -64,6 +65,16 @@ try {
             },
             environmentList(prefix) {
                 return ["SLOPPY_OS_TEST", "SLOPPY_OS_SECRET_TOKEN"].filter((key) => key.startsWith(prefix));
+            },
+            processInfo() {
+                return {
+                    pid: 123,
+                    parentPid: 45,
+                    executablePath: "/bin/sloppy",
+                    cwd: "/work/app",
+                    args: ["sloppy", "run", "app.js"],
+                    argsAvailable: true,
+                };
             },
             processRun(command, args, options) {
                 return {
@@ -150,6 +161,14 @@ try {
         "SLOPPY_OS_TEST",
         "SLOPPY_OS_SECRET_TOKEN",
     ]);
+    assert.deepEqual(Process.info(), {
+        pid: 123,
+        parentPid: 45,
+        executablePath: "/bin/sloppy",
+        cwd: "/work/app",
+        args: Object.freeze(["sloppy", "run", "app.js"]),
+        argsAvailable: true,
+    });
     assert.deepEqual(await Process.run("tool", ["arg"], { timeoutMs: 5, capture: "text" }), {
         command: "tool",
         args: ["arg"],

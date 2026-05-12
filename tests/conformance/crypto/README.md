@@ -4,7 +4,7 @@ This directory is the validation index.
 Crypto conformance is split by lane:
 
 - default native vectors: `core.crypto` covers OS-random API shape, UUID v4 text shape,
-  token/hex/numeric alphabets, SHA-256/SHA-384/SHA-512 vectors, HMAC-SHA-256 vectors,
+  token/hex/numeric alphabets, SHA-256/SHA-384/SHA-512 vectors, HMAC-SHA-256/384/512 vectors,
   constant-time equality correctness, Secret cleanup-once behavior, password
   hash/verify/needsRehash for the selected Argon2id PHC backend, unsupported password
   formats, and xxHash64 known-answer vectors;

@@ -11,6 +11,8 @@ foreach(required IN ITEMS
         "System.cpuCount"
         "System.tempDirectory"
         "Environment.get(\"MY_APP_SETTING\")"
+        "Process.info()"
+        "argsAvailable"
         "Process.run(\"git\", [\"status\", \"--short\"]"
         "capture: \"text\""
         "Process.start(command, args"
@@ -26,6 +28,7 @@ endforeach()
 
 foreach(required IN ITEMS
         "Sloppy-owned OS runtime API"
+        "current-process snapshots"
         "Shell execution"
         "raw native handle"
         "outside this example")

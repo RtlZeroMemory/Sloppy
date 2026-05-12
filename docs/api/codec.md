@@ -110,7 +110,7 @@ and `writer.bytes(input)` copies the input rather than retaining it.
 streaming gzip.
 
 ```ts
-await Compression.gzip(bytes, { level?: number });            // 1..9, default 6
+await Compression.gzip(bytes, { level?: number });            // 0..9, default 6
 await Compression.gunzip(bytes, { maxOutputBytes?: number }); // default 64 MiB
 
 for await (const chunk of Compression.gzipStream(input, options?)) { ... }
@@ -132,6 +132,7 @@ Errors:
 | --- | --- |
 | `SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE` | `__sloppy.codec` bridge missing |
 | `SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED` | output exceeds `maxOutputBytes` |
+| `SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT` | input is not valid gzip data |
 
 ## Checksums
 
@@ -222,6 +223,7 @@ runtime; absence of the bridge does not affect the other exports.
 - `SLOPPY_E_CODEC_BINARY_INVALID_ENDIAN_OR_FIELD_SIZE`
 - `SLOPPY_E_CODEC_COMPRESSION_BACKEND_UNAVAILABLE`
 - `SLOPPY_E_CODEC_DECOMPRESSION_LIMIT_EXCEEDED`
+- `SLOPPY_E_CODEC_COMPRESSED_STREAM_CORRUPT`
 
 Argument-shape mistakes (non-string, non-Uint8Array, unknown options) throw
 plain `TypeError`.

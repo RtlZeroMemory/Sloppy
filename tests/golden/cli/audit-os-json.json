@@ -1,8 +1,8 @@
 {
   "findings": [
-    { "severity": "note", "code": "SLOPPY_AUDIT_OS_POLICY_VISIBLE", "message": "OS capabilities are policy-visible for sloppy/os; no OS sandbox, environment values, native handles, or raw PIDs are exposed", "path": "capabilities" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_OS_POLICY_VISIBLE", "message": "OS capabilities are policy-visible for sloppy/os; no OS sandbox, environment values, native handles, or pid-as-handle capabilities are exposed", "path": "capabilities" },
     { "severity": "note", "code": "SLOPPY_AUDIT_OS_ENV_REDACTED", "message": "environment metadata names access only and omits variable values", "path": "capabilities" },
-    { "severity": "note", "code": "SLOPPY_AUDIT_OS_PROCESS_EXPLICIT_ARGV", "message": "process metadata is explicit-argv and does not imply shell execution", "path": "capabilities" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_OS_PROCESS_EXPLICIT_ARGV", "message": "process metadata includes current-process snapshots and explicit argv only", "path": "capabilities" },
     { "severity": "warn", "code": "SLOPPY_AUDIT_OS_SHELL_DENIED", "message": "shell capability metadata is visible, but shell execution is denied unless a future explicit gate enables it", "path": "capabilities" },
     { "severity": "note", "code": "SLOPPY_AUDIT_OS_PLAN_VISIBLE", "message": "sloppy/os is Plan-visible as stdlib.os", "path": "requiredFeatures" }
   ]

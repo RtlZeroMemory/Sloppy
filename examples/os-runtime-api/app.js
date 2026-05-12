@@ -2,12 +2,16 @@ import { Environment, Process, Signals, System } from "sloppy/os";
 import { Deadline } from "sloppy/time";
 
 export function describeHost() {
+  const current = Process.info();
   return {
     platform: System.platform,
     arch: System.arch,
     cpuCount: System.cpuCount,
     tempDirectory: System.tempDirectory,
-    setting: Environment.get("MY_APP_SETTING")
+    setting: Environment.get("MY_APP_SETTING"),
+    pid: current.pid,
+    cwd: current.cwd,
+    argsAvailable: current.argsAvailable
   };
 }
 

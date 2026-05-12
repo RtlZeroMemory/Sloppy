@@ -1,8 +1,8 @@
 # OS Runtime API
 
-This source example shows the `sloppy/os` API shape for host information, redacted
-environment access, explicit-argv process execution, streaming process handles, and
-shutdown handler registration.
+This source example shows the `sloppy/os` API shape for host information,
+current-process snapshots, redacted environment access, explicit-argv process
+execution, streaming process handles, and shutdown handler registration.
 
 ## Limitations
 

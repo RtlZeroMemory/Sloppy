@@ -22,8 +22,8 @@ function createConfigContainer() {
 }
 
 function validateConfigKey(key) {
-    if (typeof key !== "string" || key.length === 0) {
-        throw new TypeError("Sloppy config key must be a non-empty string.");
+    if (typeof key !== "string" || key.length === 0 || key.includes("\0")) {
+        throw new TypeError("Sloppy config key must be a non-empty string without NUL.");
     }
 }
 

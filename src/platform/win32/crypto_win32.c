@@ -12,6 +12,8 @@
 #include <limits.h>
 #include <stddef.h>
 
+#define SL_WIN32_CRYPTO_MAX_OBJECT_BYTES 16384U
+
 static SlStatus sl_win32_crypto_status(NTSTATUS status)
 {
     return status >= 0 ? sl_status_ok() : sl_status_from_code(SL_STATUS_INTERNAL);
@@ -51,7 +53,7 @@ static SlStatus sl_win32_crypto_ulong_property(BCRYPT_ALG_HANDLE handle, const w
 static SlStatus sl_win32_crypto_hash_internal(SlCryptoHashAlgorithm algorithm, SlBytes key,
                                               SlBytes data, SlOwnedBytes out, bool hmac)
 {
-    unsigned char object_storage[512] = {0};
+    unsigned char object_storage[SL_WIN32_CRYPTO_MAX_OBJECT_BYTES] = {0};
     BCRYPT_ALG_HANDLE algorithm_handle = NULL;
     BCRYPT_HASH_HANDLE hash_handle = NULL;
     ULONG object_length = 0U;
@@ -78,9 +80,10 @@ static SlStatus sl_win32_crypto_hash_internal(SlCryptoHashAlgorithm algorithm, S
         status =
             sl_win32_crypto_ulong_property(algorithm_handle, BCRYPT_HASH_LENGTH, &digest_length);
     }
-    if (sl_status_is_ok(status) &&
-        (object_length > sizeof(object_storage) || digest_length != out.length))
-    {
+    if (sl_status_is_ok(status) && digest_length != out.length) {
+        status = sl_status_from_code(SL_STATUS_UNSUPPORTED);
+    }
+    if (sl_status_is_ok(status) && object_length > SL_WIN32_CRYPTO_MAX_OBJECT_BYTES) {
         status = sl_status_from_code(SL_STATUS_UNSUPPORTED);
     }
     if (sl_status_is_ok(status)) {
