@@ -104,6 +104,7 @@ function(assert_package_artifacts fixture target_dir)
     endforeach()
 
     file(GLOB_RECURSE leaked_node_modules
+         LIST_DIRECTORIES true
          "${target_dir}/.sloppy/package/**/node_modules")
     if(leaked_node_modules)
         message(

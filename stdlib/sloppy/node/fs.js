@@ -276,5 +276,5 @@ const symlink = callbackify(symlinkPromise, "symlink");
 const unlink = callbackify(unlinkPromise, "unlink");
 const writeFile = callbackify(writeFilePromise, "writeFile");
 
-export { access, appendFile, copyFile, existsSync, lstat, mkdir, mkdtemp, promises, readdir, readFile, readlink, realpath, rename, rm, stat, symlink, unlink, writeFile };
-export default { access, appendFile, copyFile, existsSync, lstat, mkdir, mkdtemp, promises, readdir, readFile, readlink, realpath, rename, rm, stat, symlink, unlink, writeFile };
+export { access, appendFile, copyFile, existsSync, lstat, mkdir, mkdtemp, promises, readdir, readFile, readFileSync, readlink, realpath, rename, rm, stat, statSync, symlink, unlink, writeFile };
+export default { access, appendFile, copyFile, existsSync, lstat, mkdir, mkdtemp, promises, readdir, readFile, readFileSync, readlink, realpath, rename, rm, stat, statSync, symlink, unlink, writeFile };
