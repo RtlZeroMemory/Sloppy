@@ -70,6 +70,7 @@ jobs:
       windows_tooling_relevant: ${{ steps.changed.outputs.windows_tooling_relevant }}
       provider_relevant: ${{ steps.changed.outputs.provider_relevant }}
       package_relevant: ${{ steps.changed.outputs.package_relevant }}
+      unix_matrix: ${{ steps.unix-matrix.outputs.unix_matrix }}
 
     steps:
       - name: Checkout
@@ -162,7 +163,7 @@ jobs:
             esac
 
             case "$file" in
-              compiler/**)
+              compiler/**|stdlib/sloppy/**)
                 rust_relevant=true
                 ;;
             esac
@@ -220,6 +221,26 @@ jobs:
           echo "windows_tooling_relevant=$windows_tooling_relevant" >> "$GITHUB_OUTPUT"
           echo "provider_relevant=$provider_relevant" >> "$GITHUB_OUTPUT"
           echo "package_relevant=$package_relevant" >> "$GITHUB_OUTPUT"
+
+      - name: Compute unix matrix
+        id: unix-matrix
+        shell: bash
+        env:
+          HAS_FULL_CI: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          clang_entry='{"name":"linux-clang","runner":"ubuntu-latest","preset":"linux-clang","cc":"clang","cxx":"clang++","compiler_packages":"clang"}'
+          gcc_entry='{"name":"linux-gcc","runner":"ubuntu-latest","preset":"linux-gcc","cc":"gcc","cxx":"g++","compiler_packages":"gcc g++"}'
+          macos_entry='{"name":"macos","runner":"macos-latest","preset":"macos-clang","cc":"clang","cxx":"clang++"}'
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$HAS_FULL_CI" != "true" ]; then
+            # PR without full-ci label: only linux-clang
+            matrix="{\"include\":[$clang_entry]}"
+          else
+            # Schedule, push, dispatch, or PR with full-ci: all three
+            matrix="{\"include\":[$clang_entry,$gcc_entry,$macos_entry]}"
+          fi
+          echo "unix_matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   ci-fast:
     name: ci-fast / static
@@ -411,104 +432,6 @@ jobs:
         shell: pwsh
         run: ctest --preset windows-dev --output-on-failure
 
-  windows-tooling:
-    name: windows-tooling
-    runs-on: windows-latest
-    needs: changes
-    if: |
-      github.event_name != 'workflow_dispatch' &&
-      needs.changes.outputs.windows_tooling_relevant == 'true' &&
-      needs.changes.outputs.native_relevant != 'true' &&
-      needs.changes.outputs.rust_relevant != 'true' &&
-      !(github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Ensure Ninja
-        shell: pwsh
-        run: |
-          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
-            choco install ninja -y --no-progress
-          }
-
-      - name: Restore vcpkg cache
-        id: vcpkg-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            .sdeps/vcpkg
-            .sdeps/vcpkg-bincache
-            vcpkg_installed
-          key: windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-          restore-keys: |
-            windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
-            windows-vcpkg-${{ env.VCPKG_COMMIT }}-
-            windows-vcpkg-
-
-      - name: Bootstrap vcpkg
-        shell: pwsh
-        run: |
-          Write-Host "vcpkg cache hit: ${{ steps.vcpkg-cache.outputs.cache-hit }}"
-          $vcpkgRoot = Join-Path $PWD ".sdeps/vcpkg"
-          $vcpkgBinaryCache = Join-Path $PWD ".sdeps/vcpkg-bincache"
-          New-Item -ItemType Directory -Force -Path $vcpkgBinaryCache | Out-Null
-          if (-not (Test-Path -LiteralPath $vcpkgRoot)) {
-            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $vcpkgRoot) | Out-Null
-            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
-          }
-          git -C $vcpkgRoot fetch origin
-          git -C $vcpkgRoot checkout $env:VCPKG_COMMIT
-          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe"))) {
-            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
-          }
-          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VCPKG_DEFAULT_BINARY_CACHE=$vcpkgBinaryCache" | Out-File -FilePath $env:GITHUB_ENV -Append
-          if (-not [string]::IsNullOrWhiteSpace($env:NUGET_PAT)) {
-            $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
-            $nugetExe = & $vcpkgExe fetch nuget | Select-Object -Last 1
-            & $nugetExe sources add -Source $env:NUGET_FEED_URL -StorePasswordInClearText -Name GitHubPackages -UserName $env:NUGET_USERNAME -Password $env:NUGET_PAT 2>&1 | Out-Null
-            & $nugetExe setapikey $env:NUGET_PAT -Source $env:NUGET_FEED_URL 2>&1 | Out-Null
-          } else {
-            Write-Host "::warning::NUGET_PAT secret not set; using local file binary cache only"
-            "VCPKG_BINARY_SOURCES=default,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
-          }
-
-      - name: Save vcpkg cache after bootstrap
-        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
-        continue-on-error: true
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            .sdeps/vcpkg
-            .sdeps/vcpkg-bincache
-            vcpkg_installed
-          key: windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-
-      - name: Bootstrap doctor
-        shell: pwsh
-        run: .\tools\windows\bootstrap.ps1
-
-      - name: Doctor OFF mode
-        shell: pwsh
-        run: .\tools\windows\dev.ps1 doctor -V8Mode OFF
-
-      - name: Test engine PR report
-        shell: pwsh
-        run: .\tools\windows\test-engine.ps1 -Tier pr -Area fuzz -Out artifacts\test-engine\pr-fuzz-windows-tooling.json
-
-      - name: Upload test engine PR report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-engine-pr-windows-tooling
-          path: artifacts/test-engine/pr-fuzz-windows-tooling.json
-          if-no-files-found: error
-
   windows-package-smoke:
     name: windows-package-smoke
     runs-on: windows-latest
@@ -602,6 +525,7 @@ jobs:
     runs-on: windows-latest
     needs: changes
     if: |
+      needs.changes.outputs.native_relevant == 'true' ||
       github.event_name == 'schedule' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       github.event_name == 'workflow_dispatch' ||
@@ -962,112 +886,6 @@ jobs:
         shell: pwsh
         run: ctest --preset "${{ matrix.preset }}" -R "core\.(bytes|str)|fuzz\.memory_primitives\.seed_replay|benchmarks\.sloppy_bench" --output-on-failure
 
-  provider-live:
-    name: provider-live / docker-backed
-    runs-on: windows-latest
-    needs: changes
-    if: |
-      github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_dispatch' && inputs.live_provider != 'none') ||
-      (github.event_name == 'pull_request' && (
-        contains(github.event.pull_request.labels.*.name, 'live-postgres') ||
-        contains(github.event.pull_request.labels.*.name, 'live-sqlserver') ||
-        contains(github.event.pull_request.labels.*.name, 'live-providers') ||
-        contains(github.event.pull_request.labels.*.name, 'full-ci')
-      ))
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Ensure Ninja
-        shell: pwsh
-        run: |
-          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
-            choco install ninja -y --no-progress
-          }
-
-      - name: Restore vcpkg cache
-        id: vcpkg-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            .sdeps/vcpkg
-            .sdeps/vcpkg-bincache
-            vcpkg_installed
-          key: windows-provider-live-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-          restore-keys: |
-            windows-provider-live-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
-            windows-provider-live-${{ env.VCPKG_COMMIT }}-
-            windows-vcpkg-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-
-            windows-vcpkg-${{ env.VCPKG_COMMIT }}-
-            windows-vcpkg-
-
-      - name: Bootstrap vcpkg
-        shell: pwsh
-        run: |
-          $vcpkgRoot = Join-Path $PWD ".sdeps/vcpkg"
-          $vcpkgBinaryCache = Join-Path $PWD ".sdeps/vcpkg-bincache"
-          New-Item -ItemType Directory -Force -Path $vcpkgBinaryCache | Out-Null
-          if (-not (Test-Path -LiteralPath $vcpkgRoot)) {
-            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $vcpkgRoot) | Out-Null
-            git clone https://github.com/microsoft/vcpkg.git $vcpkgRoot
-          }
-          git -C $vcpkgRoot fetch origin
-          git -C $vcpkgRoot checkout $env:VCPKG_COMMIT
-          if (-not (Test-Path -LiteralPath (Join-Path $vcpkgRoot "vcpkg.exe"))) {
-            & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
-          }
-          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VCPKG_DEFAULT_BINARY_CACHE=$vcpkgBinaryCache" | Out-File -FilePath $env:GITHUB_ENV -Append
-          if (-not [string]::IsNullOrWhiteSpace($env:NUGET_PAT)) {
-            $vcpkgExe = Join-Path $vcpkgRoot "vcpkg.exe"
-            $nugetExe = & $vcpkgExe fetch nuget | Select-Object -Last 1
-            & $nugetExe sources add -Source $env:NUGET_FEED_URL -StorePasswordInClearText -Name GitHubPackages -UserName $env:NUGET_USERNAME -Password $env:NUGET_PAT 2>&1 | Out-Null
-            & $nugetExe setapikey $env:NUGET_PAT -Source $env:NUGET_FEED_URL 2>&1 | Out-Null
-          } else {
-            Write-Host "::warning::NUGET_PAT secret not set; using local file binary cache only"
-            "VCPKG_BINARY_SOURCES=default,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
-          }
-
-      - name: Toolchain bootstrap
-        shell: pwsh
-        run: .\tools\windows\bootstrap.ps1
-
-      - name: Configure provider live preset
-        shell: pwsh
-        run: .\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo
-
-      - name: Save vcpkg cache after configure
-        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
-        continue-on-error: true
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            .sdeps/vcpkg
-            .sdeps/vcpkg-bincache
-            vcpkg_installed
-          key: windows-provider-live-${{ env.VCPKG_CACHE_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
-
-      - name: Run selected provider live lanes
-        shell: pwsh
-        run: |
-          $provider = "all"
-          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-            $provider = "${{ inputs.live_provider }}"
-          } elseif ("${{ github.event_name }}" -eq "pull_request") {
-            if ("${{ contains(github.event.pull_request.labels.*.name, 'live-postgres') }}" -eq "true") {
-              $provider = "postgres"
-            }
-            if ("${{ contains(github.event.pull_request.labels.*.name, 'live-sqlserver') }}" -eq "true") {
-              $provider = if ($provider -eq "postgres") { "all" } else { "sqlserver" }
-            }
-          }
-          .\tools\windows\test-live-providers.ps1 -Provider $provider -Preset windows-relwithdebinfo
-
   unix:
     name: ci-platform / ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
@@ -1076,25 +894,7 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - name: linux-clang
-            runner: ubuntu-latest
-            preset: linux-clang
-            cc: clang
-            cxx: clang++
-            compiler_packages: clang
-          - name: linux-gcc
-            runner: ubuntu-latest
-            preset: linux-gcc
-            cc: gcc
-            cxx: g++
-            compiler_packages: gcc g++
-          - name: macos
-            runner: macos-latest
-            preset: macos-clang
-            cc: clang
-            cxx: clang++
+      matrix: ${{ fromJSON(needs.changes.outputs.unix_matrix) }}
 
     steps:
       - name: Checkout

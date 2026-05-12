@@ -82,7 +82,7 @@ static int call_strlen(const SlFfiRegistry* registry, SlStr library)
     const char* text = "sloppy";
     uint32_t result = 0U;
     void* pointer = (void*)text;
-    void* args[1] = {&pointer};
+    void* args[1] = {(void*)&pointer};
 
     if (expect_status(
             sl_ffi_registry_find(registry, library, sl_str_from_cstr("strlen"), &function),
@@ -104,7 +104,7 @@ static int call_sum_bytes(const SlFfiRegistry* registry, SlStr library)
     uintptr_t length = sizeof(bytes);
     uint32_t result = 0U;
     void* pointer = bytes;
-    void* args[2] = {&pointer, &length};
+    void* args[2] = {(void*)&pointer, &length};
 
     if (expect_status(
             sl_ffi_registry_find(registry, library, sl_str_from_cstr("sumBytes"), &function),
@@ -126,7 +126,7 @@ static int call_fill(const SlFfiRegistry* registry, SlStr library)
     uintptr_t length = sizeof(bytes);
     uint8_t value = 7U;
     void* pointer = bytes;
-    void* args[3] = {&pointer, &length, &value};
+    void* args[3] = {(void*)&pointer, &length, &value};
 
     if (expect_status(sl_ffi_registry_find(registry, library, sl_str_from_cstr("fill"), &function),
                       SL_STATUS_OK) != 0 ||
@@ -145,7 +145,7 @@ static int call_write_u32(const SlFfiRegistry* registry, SlStr library)
     const SlFfiFunction* function = NULL;
     uint32_t value = 0U;
     void* pointer = &value;
-    void* args[1] = {&pointer};
+    void* args[1] = {(void*)&pointer};
 
     if (expect_status(
             sl_ffi_registry_find(registry, library, sl_str_from_cstr("writeU32"), &function),
@@ -172,7 +172,7 @@ static int call_point_sum(const SlFfiRegistry* registry, SlStr library)
     TestPoint point = {19, 23};
     int32_t result = 0;
     void* pointer = &point;
-    void* args[1] = {&pointer};
+    void* args[1] = {(void*)&pointer};
 
     if (expect_status(
             sl_ffi_registry_find(registry, library, sl_str_from_cstr("pointSum"), &function),
