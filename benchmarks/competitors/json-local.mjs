@@ -24,8 +24,11 @@ const warmupIterations = Number(args.get("warmup") ?? "10");
 const repeat = Number(args.get("repeat") ?? "1");
 const outPath = args.get("out") ?? "artifacts/bench/json-competitors.json";
 const sloppyBinArg = args.get("sloppy-bin") ?? "";
+const httpProfile = ["1", "true", "TRUE", "on", "ON"].includes(args.get("http-profile") ?? "");
+const httpProfileOut = args.get("http-profile-out") ?? path.join("artifacts", "bench");
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..");
+const httpProfileOutDir = path.resolve(repoRoot, httpProfileOut);
 
 const payloads = {
   small: { username: "ada", password: "correct horse battery staple" },
@@ -260,7 +263,7 @@ async function waitForHttpReady(baseUrl) {
   throw lastError ?? new Error("server did not become ready");
 }
 
-async function startSloppyServer(mode, sloppyInfo) {
+async function startSloppyServer(mode, sloppyInfo, profile = null) {
   const port = await getFreePort();
   const appRoot = path.join(scriptDir, "sloppy-json");
   const artifacts = path.join(repoRoot, "artifacts", "bench", `sloppy-json-${mode}`);
@@ -274,9 +277,22 @@ async function startSloppyServer(mode, sloppyInfo) {
     throw new Error(`sloppy build failed: ${build.error?.message ?? ""}\n${build.stdout}\n${build.stderr}`);
   }
 
+  if (profile?.outPath) {
+    await fs.mkdir(path.dirname(profile.outPath), { recursive: true });
+  }
   const child = spawn(sloppyInfo.path, ["run", artifacts, "--host", "127.0.0.1", "--port", String(port)], {
     cwd: appRoot,
-    env: { ...process.env, SLOPPY_JSON_DISPATCH: mode },
+    env: {
+      ...process.env,
+      SLOPPY_JSON_DISPATCH: mode,
+      ...(profile
+        ? {
+            SLOPPY_HTTP_PROFILE: "1",
+            SLOPPY_HTTP_PROFILE_SCENARIO: profile.scenario,
+            SLOPPY_HTTP_PROFILE_OUT: profile.outPath,
+          }
+        : {}),
+    },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
@@ -381,6 +397,11 @@ function runtimeRowPrefix(runtime) {
   return `${runtime.replaceAll(":", "_")}.loopback`;
 }
 
+function profilePathFor(runtime, scenario, repeatIndex) {
+  const name = `${runtimeRowPrefix(runtime)}.${scenarioRowSegment(scenario)}`.replaceAll(/[^\w.-]/g, "_");
+  return path.join(httpProfileOutDir, `http-profile-${name}-repeat-${repeatIndex}.json`);
+}
+
 function median(values) {
   if (values.length === 0) {
     return null;
@@ -421,9 +442,44 @@ function summarizeRows(results) {
 
 async function runRuntime(name, version, start) {
   let server = null;
+  const scenarios = ["small", "invalid", "medium", "large", "route-table"];
   try {
+    if (httpProfile && name.startsWith("sloppy:loopback:")) {
+      const rows = [];
+      for (let repeatIndex = 1; repeatIndex <= repeat; repeatIndex += 1) {
+        for (const scenario of scenarios) {
+          const rowName = `${runtimeRowPrefix(name)}.${scenarioRowSegment(scenario)}`;
+          try {
+            server = await start({
+              scenario: rowName,
+              outPath: profilePathFor(name, scenario, repeatIndex),
+            });
+            const row = await runScenario(server.baseUrl, scenario);
+            row.name = rowName;
+            row.repeat = repeatIndex;
+            rows.push(row);
+          } catch (error) {
+            rows.push({
+              name: rowName,
+              scenario,
+              status: "FAIL",
+              reason: error.message,
+              iterations,
+              warmupIterations,
+              repeat: repeatIndex,
+            });
+          } finally {
+            if (server != null) {
+              await server.close();
+              server = null;
+            }
+          }
+        }
+      }
+      const status = rows.every((row) => row.status === "PASS") ? "PASS" : "FAIL";
+      return { runtime: name, version, status, rows };
+    }
     server = await start();
-    const scenarios = ["small", "invalid", "medium", "large", "route-table"];
     const rows = [];
     for (let repeatIndex = 1; repeatIndex <= repeat; repeatIndex += 1) {
       for (const scenario of scenarios) {
@@ -506,8 +562,16 @@ async function startExternalServer(command, commandArgs) {
 const results = [];
 const sloppyInfo = resolveSloppyBin();
 if (sloppyInfo.available) {
-  results.push(await runRuntime("sloppy:loopback:native_json", sloppyInfo.version, () => startSloppyServer("native", sloppyInfo)));
-  results.push(await runRuntime("sloppy:loopback:generic_json", sloppyInfo.version, () => startSloppyServer("generic", sloppyInfo)));
+  results.push(
+    await runRuntime("sloppy:loopback:native_json", sloppyInfo.version, (profile) =>
+      startSloppyServer("native", sloppyInfo, profile),
+    ),
+  );
+  results.push(
+    await runRuntime("sloppy:loopback:generic_json", sloppyInfo.version, (profile) =>
+      startSloppyServer("generic", sloppyInfo, profile),
+    ),
+  );
 } else {
   results.push({ runtime: "sloppy:loopback:native_json", status: "SKIPPED", reason: "sloppy executable not found", rows: [] });
   results.push({ runtime: "sloppy:loopback:generic_json", status: "SKIPPED", reason: "sloppy executable not found", rows: [] });
@@ -559,6 +623,10 @@ const report = {
   iterations,
   warmupIterations,
   repeat,
+  httpProfile: {
+    enabled: httpProfile,
+    outDir: httpProfile ? httpProfileOutDir : null,
+  },
   client: "node fetch loop, one awaited request at a time",
   scenarios: {
     small: "POST /small with a small JSON login payload; validates JSON echo response",
@@ -579,4 +647,24 @@ const report = {
 
 await fs.mkdir(path.dirname(outPath), { recursive: true });
 await fs.writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+if (httpProfile) {
+  const files = (await fs.readdir(httpProfileOutDir))
+    .filter((entry) => entry.startsWith("http-profile-") && entry.endsWith(".json"))
+    .sort();
+  const lines = [
+    "# HTTP phase profile summary",
+    "",
+    "| Scenario | Requests | HTTP parse avg ns | Route dispatch avg ns | JSON validation avg ns | V8 handler avg ns | V8 handler count | Response serialization avg ns | Socket write avg ns | Write completion avg ns |",
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+  ];
+  for (const file of files) {
+    const profile = JSON.parse(await fs.readFile(path.join(httpProfileOutDir, file), "utf8"));
+    const phaseAvg = (name) => profile.phases?.[name]?.avgNs ?? 0;
+    const phaseCount = (name) => profile.phases?.[name]?.count ?? 0;
+    lines.push(
+      `| ${profile.scenario ?? file} | ${profile.requests ?? 0} | ${phaseAvg("http_parse")} | ${phaseAvg("route_dispatch")} | ${phaseAvg("json_validation")} | ${phaseAvg("v8_handler_execution")} | ${phaseCount("v8_handler_execution")} | ${phaseAvg("response_serialization_header_writing")} | ${phaseAvg("socket_write_scheduling")} | ${phaseAvg("write_completion")} |`,
+    );
+  }
+  await fs.writeFile(path.join(httpProfileOutDir, "http-profile-summary.md"), `${lines.join("\n")}\n`, "utf8");
+}
 console.log(JSON.stringify(report, null, 2));

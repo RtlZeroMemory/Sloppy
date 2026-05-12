@@ -38,7 +38,8 @@ Implemented diagnostic coverage includes:
 - HTTP parser, backend, transport, request body, response writer, and timeout diagnostics;
 - capability denial and provider metadata diagnostics;
 - V8 exception mapping and source-map primary-span remapping in V8-enabled runs;
-- V8 handler entry/exit/rejection breadcrumbs in runtime paths;
+- V8 handler rejection breadcrumbs in runtime paths, with routine successful
+  HTTP/V8 request breadcrumbs enabled only when `SLOPPY_SUCCESS_BREADCRUMBS=1`;
 - app-host startup, feature activation, artifact loading, and selected CLI diagnostics;
 - `sloppy run --diagnostics-json` for structured runtime diagnostics on stderr;
 - unique local crash report directories under `.sloppy/reports/crashes/<counter>-<pid>/`;

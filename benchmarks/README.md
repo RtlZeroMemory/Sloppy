@@ -40,6 +40,7 @@ Run a measured local benchmark from a Release build:
 .\tools\windows\bench-json-dispatch.ps1 -Configuration RelWithDebInfo -JsonMode native -Repeat 3
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100 -Warmup 10
+.\tools\windows\bench-json-competitors.ps1 -Iterations 100 -Warmup 10 -HttpProfile
 ```
 
 Run the local runtime engine:
@@ -231,6 +232,13 @@ Bun, Deno, Express, and Fastify rows are also named as loopback HTTP rows. These
 rows are the only JSON rows in this family intended for local
 Sloppy-vs-runtime loopback comparison. In-process `sloppy_bench` JSON rows must
 not be compared directly against competitor loopback rows.
+
+Pass `-HttpProfile` to run Sloppy loopback rows with `SLOPPY_HTTP_PROFILE=1`.
+The runner starts a fresh Sloppy process per profiled scenario and writes
+machine-readable phase summaries to `artifacts/bench/http-profile-*.json`, plus
+`artifacts/bench/http-profile-summary.md`. Profiling is disabled by default and
+the runtime writes no profile file unless `SLOPPY_HTTP_PROFILE_OUT` is set by
+the harness or by an explicit local profiling command.
 
 The competitor `route-table` scenario validates `/route/{id}` loopback routing
 for IDs in a 1000-value cycle. Raw Node/Bun/Deno implementations may use a
