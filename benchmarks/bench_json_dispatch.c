@@ -398,10 +398,27 @@ static SlStatus bench_json_append_escaped_string(SlStringBuilder* builder, SlStr
 {
     static const char hex[] = "0123456789abcdef";
     size_t index = 0U;
-    SlStatus status = sl_string_builder_append_char(builder, '"');
+    bool needs_escape = false;
+    SlStatus status;
 
+    for (index = 0U; index < value.length; index += 1U) {
+        unsigned char ch = (unsigned char)value.ptr[index];
+        if (ch < 0x20U || ch == '"' || ch == '\\') {
+            needs_escape = true;
+            break;
+        }
+    }
+
+    status = sl_string_builder_append_char(builder, '"');
     if (!sl_status_is_ok(status)) {
         return status;
+    }
+    if (!needs_escape) {
+        status = sl_string_builder_append_str(builder, value);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        return sl_string_builder_append_char(builder, '"');
     }
     for (index = 0U; index < value.length; index += 1U) {
         unsigned char ch = (unsigned char)value.ptr[index];
@@ -447,30 +464,60 @@ static SlStatus bench_json_append_escaped_string(SlStringBuilder* builder, SlStr
     return sl_string_builder_append_char(builder, '"');
 }
 
-static SlStatus bench_json_append_field_name(SlStringBuilder* builder, bool* needs_comma,
-                                             const char* name)
+static SlStatus bench_json_response_native_schema_payload(SlStringBuilder* builder)
 {
-    SlStatus status;
+    SlStatus status = sl_string_builder_append_cstr(builder, "{\"name\":");
 
-    if (needs_comma == NULL || name == NULL) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-    if (*needs_comma) {
-        status = sl_string_builder_append_char(builder, ',');
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-    }
-    status = bench_json_append_escaped_string(builder, sl_str_from_cstr(name));
     if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_char(builder, ':');
+        status = bench_json_append_escaped_string(builder, sl_str_from_cstr("Ada"));
     }
-    *needs_comma = true;
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(builder, ",\"escaped\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status =
+            bench_json_append_escaped_string(builder, sl_str_from_cstr("line\nquote\"slash\\"));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(builder, ",\"count\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_i64(builder, 7);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(builder, ",\"score\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_f64(builder, 1.5);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(builder,
+                                               ",\"ok\":true,\"note\":null,\"nested\":{\"label\":");
+    }
+    if (sl_status_is_ok(status)) {
+        status = bench_json_append_escaped_string(builder, sl_str_from_cstr("inner"));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(builder, "},\"tags\":[");
+    }
+    if (sl_status_is_ok(status)) {
+        status = bench_json_append_escaped_string(builder, sl_str_from_cstr("a"));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_char(builder, ',');
+    }
+    if (sl_status_is_ok(status)) {
+        status = bench_json_append_escaped_string(builder, sl_str_from_cstr("b"));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(builder, "]}");
+    }
     return status;
 }
 
-static SlStatus bench_json_response_generic_serialize(const SlBenchContext* context,
-                                                      uint64_t iterations, uint64_t* out_checksum)
+static SlStatus bench_json_response_generic_serialize_payload_only(const SlBenchContext* context,
+                                                                   uint64_t iterations,
+                                                                   uint64_t* out_checksum)
 {
     uint64_t checksum = 0U;
     uint64_t index = 0U;
@@ -485,6 +532,8 @@ static SlStatus bench_json_response_generic_serialize(const SlBenchContext* cont
         yyjson_mut_doc* doc = yyjson_mut_doc_new(NULL);
         yyjson_mut_val* root = NULL;
         yyjson_mut_val* tags = NULL;
+        yyjson_mut_val* nested = NULL;
+        yyjson_mut_val* note = NULL;
         char* json = NULL;
         size_t length = 0U;
 
@@ -493,10 +542,17 @@ static SlStatus bench_json_response_generic_serialize(const SlBenchContext* cont
         }
         root = yyjson_mut_obj(doc);
         tags = yyjson_mut_arr(doc);
-        if (root == NULL || tags == NULL || !yyjson_mut_obj_add_str(doc, root, "name", "Ada") ||
+        nested = yyjson_mut_obj(doc);
+        note = yyjson_mut_null(doc);
+        if (root == NULL || tags == NULL || nested == NULL || note == NULL ||
+            !yyjson_mut_obj_add_str(doc, root, "name", "Ada") ||
+            !yyjson_mut_obj_add_str(doc, root, "escaped", "line\nquote\"slash\\") ||
             !yyjson_mut_obj_add_int(doc, root, "count", 7) ||
             !yyjson_mut_obj_add_real(doc, root, "score", 1.5) ||
             !yyjson_mut_obj_add_bool(doc, root, "ok", true) ||
+            !yyjson_mut_obj_add_val(doc, root, "note", note) ||
+            !yyjson_mut_obj_add_str(doc, nested, "label", "inner") ||
+            !yyjson_mut_obj_add_val(doc, root, "nested", nested) ||
             !yyjson_mut_arr_add_str(doc, tags, "a") || !yyjson_mut_arr_add_str(doc, tags, "b") ||
             !yyjson_mut_obj_add_val(doc, root, "tags", tags))
         {
@@ -518,101 +574,60 @@ static SlStatus bench_json_response_generic_serialize(const SlBenchContext* cont
     return sl_status_ok();
 }
 
-static SlStatus bench_json_response_native_schema_write(const SlBenchContext* context,
-                                                        uint64_t iterations, uint64_t* out_checksum)
+static SlStatus bench_json_response_generic_http_response_write(const SlBenchContext* context,
+                                                                uint64_t iterations,
+                                                                uint64_t* out_checksum)
 {
-    unsigned char arena_storage[8192];
-    SlArena arena = {0};
+    unsigned char output[1024];
+    static const unsigned char body[] =
+        "{\"name\":\"Ada\",\"escaped\":\"line\\nquote\\\"slash\\\\\",\"count\":7,\"score\":1.5,"
+        "\"ok\":true,\"note\":null,\"nested\":{\"label\":\"inner\"},\"tags\":[\"a\",\"b\"]}";
+    SlHttpResponse response =
+        sl_http_response_json(200U, sl_bytes_from_parts(body, sizeof(body) - 1U));
     uint64_t checksum = 0U;
     uint64_t index = 0U;
-    SlStatus status;
 
     (void)context;
 
     if (out_checksum == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
-    if (!sl_status_is_ok(status)) {
-        return status;
+
+    for (index = 0U; index < iterations; index += 1U) {
+        SlBytes bytes = {0};
+        SlStatus status = sl_http_response_write(&response, output, sizeof(output), &bytes);
+
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        checksum += sl_bench_json_checksum(bytes);
+        checksum += (uint64_t)bytes.length;
+    }
+
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
+static SlStatus bench_json_response_native_schema_serialize_payload_only(
+    const SlBenchContext* context, uint64_t iterations, uint64_t* out_checksum)
+{
+    uint64_t checksum = 0U;
+    uint64_t index = 0U;
+
+    (void)context;
+
+    if (out_checksum == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
     for (index = 0U; index < iterations; index += 1U) {
+        char output[512];
         SlStringBuilder builder = {0};
         SlStr json = sl_str_empty();
-        bool needs_comma = false;
+        SlStatus status = sl_string_builder_init_fixed(&builder, output, sizeof(output));
 
-        sl_arena_reset(&arena);
-        status = sl_string_builder_init_arena(&builder, &arena, 128U, 4096U);
         if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_char(&builder, '{');
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_field_name(&builder, &needs_comma, "name");
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_escaped_string(&builder, sl_str_from_cstr("Ada"));
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_field_name(&builder, &needs_comma, "escaped");
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_escaped_string(&builder,
-                                                      sl_str_from_cstr("line\nquote\"slash\\"));
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_field_name(&builder, &needs_comma, "count");
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_i64(&builder, 7);
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_field_name(&builder, &needs_comma, "score");
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_f64(&builder, 1.5);
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_field_name(&builder, &needs_comma, "ok");
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_cstr(&builder, "true");
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_field_name(&builder, &needs_comma, "note");
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_cstr(&builder, "null");
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_field_name(&builder, &needs_comma, "nested");
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_cstr(&builder, "{\"label\":");
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_escaped_string(&builder, sl_str_from_cstr("inner"));
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_char(&builder, '}');
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_field_name(&builder, &needs_comma, "tags");
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_char(&builder, '[');
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_escaped_string(&builder, sl_str_from_cstr("a"));
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_char(&builder, ',');
-        }
-        if (sl_status_is_ok(status)) {
-            status = bench_json_append_escaped_string(&builder, sl_str_from_cstr("b"));
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_cstr(&builder, "]}");
+            status = bench_json_response_native_schema_payload(&builder);
         }
         if (!sl_status_is_ok(status)) {
             return status;
@@ -620,6 +635,50 @@ static SlStatus bench_json_response_native_schema_write(const SlBenchContext* co
         json = sl_string_builder_view(&builder);
         checksum += sl_bench_json_checksum(
             sl_bytes_from_parts((const unsigned char*)json.ptr, json.length));
+    }
+
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
+static SlStatus bench_json_response_native_schema_http_response_write(const SlBenchContext* context,
+                                                                      uint64_t iterations,
+                                                                      uint64_t* out_checksum)
+{
+    unsigned char output[1024];
+    uint64_t checksum = 0U;
+    uint64_t index = 0U;
+
+    (void)context;
+
+    if (out_checksum == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (index = 0U; index < iterations; index += 1U) {
+        char body_storage[512];
+        SlStringBuilder builder = {0};
+        SlStr json = sl_str_empty();
+        SlBytes bytes = {0};
+        SlHttpResponse response;
+        SlStatus status =
+            sl_string_builder_init_fixed(&builder, body_storage, sizeof(body_storage));
+
+        if (sl_status_is_ok(status)) {
+            status = bench_json_response_native_schema_payload(&builder);
+        }
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        json = sl_string_builder_view(&builder);
+        response = sl_http_response_json(
+            200U, sl_bytes_from_parts((const unsigned char*)json.ptr, json.length));
+        status = sl_http_response_write(&response, output, sizeof(output), &bytes);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        checksum += sl_bench_json_checksum(bytes);
+        checksum += (uint64_t)bytes.length;
     }
 
     *out_checksum = checksum;
@@ -1174,31 +1233,32 @@ static SlStatus bench_json_dispatch_validate_then_static_response(const SlBenchC
 }
 
 static const SlBenchDefinition json_dispatch_definitions[] = {
-    {"json.request.generic_parse.small_login", "json",
+    {"json.request.generic_parse.small_login.payload_only", "json",
      "generic baseline parse for a small JSON login body", 1000U, 100000U,
      bench_json_request_generic_parse_valid,
      "baseline JSON parse only; no schema validation, handler, socket, or response writer", false,
      sizeof("{\"username\":\"ada\",\"password\":\"longpass\"}") - 1U, 1U, 0U},
-    {"json.request.native_schema.valid", "json",
+    {"json.request.native_schema.valid.payload_validate_only", "json",
      "validate a schema-backed JSON request body without entering JavaScript", 1000U, 100000U,
      bench_json_request_native_schema_valid,
      "parses and validates the request body; no sockets, response writer, or JavaScript handler",
      false, sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U, 1U, 0U},
-    {"json.request.native_materialize_once.small_login", "json",
+    {"json.request.native_materialize_once.small_login.payload_validate_materialize", "json",
      "validate a schema-backed JSON body and materialize one cached JSON value", 1000U, 50000U,
      bench_json_request_native_materialize_once,
      "models the native-validated materialize-once handoff without entering V8", false,
      sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U, 1U, 0U},
-    {"json.request.generic_parse.medium_body", "json",
+    {"json.request.generic_parse.medium_body.payload_only", "json",
      "generic baseline parse for a medium JSON body", 100U, 20000U,
      bench_json_request_generic_parse_medium_body,
      "medium body parser row; no schema validation, handler, socket, or response writer", false,
      4095U, 1U, 0U},
-    {"json.request.generic_parse.malformed", "json", "generic baseline malformed JSON reject", 100U,
-     20000U, bench_json_request_generic_parse_reject,
+    {"json.request.generic_parse.malformed.payload_only", "json",
+     "generic baseline malformed JSON reject", 100U, 20000U,
+     bench_json_request_generic_parse_reject,
      "baseline malformed JSON parser rejection; no schema problem serialization", false,
      sizeof("{\"username\":\"ada\",\"password\":") - 1U, 1U, 0U},
-    {"json.request.native_schema.reject", "json",
+    {"json.request.native_schema.reject.problem_details", "json",
      "reject a schema-backed JSON request body and build validation problem details", 100U, 20000U,
      bench_json_request_native_schema_reject,
      "negative-path validation with max-bound and unknown-field diagnostics", false,
@@ -1206,39 +1266,68 @@ static const SlBenchDefinition json_dispatch_definitions[] = {
             "\"extra\":true}") -
          1U,
      1U, 0U},
-    {"json.response.generic.serialize", "json", "serialize a dynamic JSON response through yyjson",
-     1000U, 100000U, bench_json_response_generic_serialize,
-     "generic response serialization baseline; no schema-backed native writer or sockets", false,
-     sizeof("{\"name\":\"Ada\",\"count\":7,\"score\":1.5,\"ok\":true,\"tags\":[\"a\",\"b\"]}") - 1U,
-     1U, 0U},
-    {"json.response.native_static.write", "json", "write a preencoded native Results.json response",
-     1000U, 100000U, bench_json_response_native_static_write,
-     "response body is already JSON bytes; no schema serialization or sockets", false,
-     sizeof("{\"ok\":true,\"items\":[1,2,3]}") - 1U, 1U, 0U},
-    {"json.response.native_schema.write", "json",
-     "write a supported schema-backed dynamic JSON response in stable field order", 1000U, 100000U,
-     bench_json_response_native_schema_write,
-     "native schema response writer shape; no sockets or JavaScript handler execution", false,
+    {"json.response.generic.serialize.payload_only", "json",
+     "serialize a dynamic JSON response through yyjson", 1000U, 100000U,
+     bench_json_response_generic_serialize_payload_only,
+     "generic response serialization baseline; no HTTP headers, schema-backed native writer, or "
+     "sockets",
+     false,
      sizeof("{\"name\":\"Ada\",\"escaped\":\"line\\nquote\\\"slash\\\\\",\"count\":7,\"score\":1.5,"
             "\"ok\":true,\"note\":null,\"nested\":{\"label\":\"inner\"},\"tags\":[\"a\",\"b\"]}") -
          1U,
      1U, 0U},
-    {"json.response.native_static.head_write", "json",
+    {"json.response.native_schema.serialize.payload_only", "json",
+     "serialize a supported schema-backed dynamic JSON response in stable field order", 1000U,
+     100000U, bench_json_response_native_schema_serialize_payload_only,
+     "native schema response payload writer shape; no HTTP headers, sockets, or JavaScript handler",
+     false,
+     sizeof("{\"name\":\"Ada\",\"escaped\":\"line\\nquote\\\"slash\\\\\",\"count\":7,\"score\":1.5,"
+            "\"ok\":true,\"note\":null,\"nested\":{\"label\":\"inner\"},\"tags\":[\"a\",\"b\"]}") -
+         1U,
+     1U, 0U},
+    {"json.response.generic.http_response_write", "json",
+     "write a generic serialized JSON payload through the HTTP response writer", 1000U, 100000U,
+     bench_json_response_generic_http_response_write,
+     "body is already serialized JSON bytes; includes HTTP status/header/body framing but no "
+     "sockets",
+     false,
+     sizeof("{\"name\":\"Ada\",\"escaped\":\"line\\nquote\\\"slash\\\\\",\"count\":7,\"score\":1.5,"
+            "\"ok\":true,\"note\":null,\"nested\":{\"label\":\"inner\"},\"tags\":[\"a\",\"b\"]}") -
+         1U,
+     1U, 0U},
+    {"json.response.native_schema.http_response_write", "json",
+     "serialize a supported schema-backed JSON payload and write an HTTP response", 1000U, 100000U,
+     bench_json_response_native_schema_http_response_write,
+     "includes native schema payload serialization plus HTTP status/header/body framing; no "
+     "sockets",
+     false,
+     sizeof("{\"name\":\"Ada\",\"escaped\":\"line\\nquote\\\"slash\\\\\",\"count\":7,\"score\":1.5,"
+            "\"ok\":true,\"note\":null,\"nested\":{\"label\":\"inner\"},\"tags\":[\"a\",\"b\"]}") -
+         1U,
+     1U, 0U},
+    {"json.response.native_static.http_response_write", "json",
+     "write a preencoded native Results.json response through the HTTP response writer", 1000U,
+     100000U, bench_json_response_native_static_write,
+     "response body is already JSON bytes; includes HTTP status/header/body framing but no schema "
+     "serialization or sockets",
+     false, sizeof("{\"ok\":true,\"items\":[1,2,3]}") - 1U, 1U, 0U},
+    {"json.response.native_static.head_http_response_write", "json",
      "write preencoded native Results.json metadata while suppressing the body", 1000U, 100000U,
      bench_json_response_native_static_head_write,
      "models HEAD response writing after GET dispatch; body bytes are omitted on the wire", false,
      0U, 1U, 0U},
-    {"json.response.large_list.write", "json", "write a large JSON list response body", 100U,
-     10000U, bench_json_response_large_list_write,
+    {"json.response.large_list.http_response_write", "json",
+     "write a large JSON list response body through the HTTP response writer", 100U, 10000U,
+     bench_json_response_large_list_write,
      "large response/list writer row; body is preencoded JSON bytes", false, 9120U, 1U, 0U},
-    {"json.dispatch.full.generic_json", "json",
+    {"json.dispatch.full_inprocess.generic_json", "json",
      "route a POST request, generically parse JSON, and return a native JSON response", 1000U,
      50000U, bench_json_dispatch_generic_json,
      "full in-process dispatch path without sockets; handler is bypassed by native response", false,
      (sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U) +
          (sizeof("{\"ok\":true}") - 1U),
      2U, 0U},
-    {"json.dispatch.full.native_json", "json",
+    {"json.dispatch.full_inprocess.native_json", "json",
      "route a POST request, natively validate JSON, and return a native JSON response", 1000U,
      50000U, bench_json_dispatch_native_json,
      "full in-process dispatch path without sockets; handler is bypassed by native response", false,
@@ -1327,7 +1416,7 @@ static const SlBenchDefinition json_dispatch_definitions[] = {
      (sizeof("{\"name\":\"Ada\",\"age\":42,\"active\":true}") - 1U) +
          (sizeof("{\"ok\":true}") - 1U),
      2U, 0U},
-    {"json.dispatch.native_schema_static_response", "json",
+    {"json.dispatch.native_schema_static_response.full_inprocess", "json",
      "validate a schema-backed JSON request then write a preencoded JSON response", 1000U, 50000U,
      bench_json_dispatch_validate_then_static_response,
      "bounded native request/response path only; no user handler or socket transport", false,

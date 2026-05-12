@@ -1,10 +1,10 @@
 # Local JSON Competitor Benchmark
 
-This is a local dev-machine harness for JSON route comparisons. It is not wired
-into default CI and must not be used for public performance claims.
+This is a local dev-machine loopback HTTP harness for JSON route comparisons. It
+is not wired into default CI and must not be used for public performance claims.
 
 ```sh
-node benchmarks/competitors/json-local.mjs --iterations 100 --out artifacts/bench/json-competitors.json
+node benchmarks/competitors/json-local.mjs --iterations 100 --warmup 10 --repeat 3 --out artifacts/bench/json-competitors.json
 ```
 
 On Windows, the wrapper is:
@@ -14,4 +14,22 @@ On Windows, the wrapper is:
 ```
 
 The harness records versions, OS/CPU details, SKIPPED entries for unavailable
-runtimes or optional dependencies, and machine-readable JSON results.
+runtimes or optional dependencies, response-correctness failures, and
+machine-readable JSON results.
+
+Rows in this harness include client/server/socket/event-loop overhead and are
+not directly comparable to in-process `sloppy_bench` JSON rows. Use the
+`sloppy.loopback.native_json.*` and `sloppy.loopback.generic_json.*` rows from
+this harness for local Sloppy-vs-runtime loopback comparisons.
+
+Optional Express and Fastify rows are reported as `SKIPPED` until their
+dependencies are installed locally:
+
+```sh
+npm install --no-save express fastify
+```
+
+The `route-table` scenario validates `/route/{id}` loopback routing for IDs in
+a 1000-value cycle. Raw Node/Bun/Deno implementations may use one parameterized
+route, so this row is loopback routing evidence, not a generated 1000-route
+algorithm comparison.

@@ -33,6 +33,8 @@ typedef struct SlBenchResult
     uint64_t generic_fallback_count;
     uint64_t materialization_count;
     uint64_t reject_count;
+    uint64_t schema_response_native_hits;
+    uint64_t duplicate_validation_skipped_count;
     const char* note;
 } SlBenchResult;
 

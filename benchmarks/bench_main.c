@@ -238,6 +238,14 @@ static void sl_bench_apply_json_counters(const SlBenchDefinition* definition, Sl
     if (strstr(definition->name, "materialize") != NULL) {
         result->materialization_count = result->iterations;
     }
+    if (strstr(definition->name, "native_schema.serialize") != NULL ||
+        strstr(definition->name, "native_schema.http_response_write") != NULL)
+    {
+        result->schema_response_native_hits = result->iterations;
+    }
+    if (strstr(definition->name, "materialize_once") != NULL) {
+        result->duplicate_validation_skipped_count = result->iterations;
+    }
     if (strstr(definition->name, "reject") != NULL || strstr(definition->name, "malformed") != NULL)
     {
         result->reject_count = result->iterations;
@@ -346,6 +354,13 @@ static void sl_bench_print_text_result(const SlBenchResult* result)
     if (result->reject_count != 0U) {
         printf(" rejects=%" PRIu64, result->reject_count);
     }
+    if (result->schema_response_native_hits != 0U) {
+        printf(" schema_response_native=%" PRIu64, result->schema_response_native_hits);
+    }
+    if (result->duplicate_validation_skipped_count != 0U) {
+        printf(" duplicate_validation_skipped=%" PRIu64,
+               result->duplicate_validation_skipped_count);
+    }
     printf(" checksum=%" PRIu64 "\n", result->checksum);
 }
 
@@ -408,6 +423,10 @@ static void sl_bench_print_json_result(const SlBenchResult* result, bool first)
     printf("      \"genericFallbackCount\": %" PRIu64 ",\n", result->generic_fallback_count);
     printf("      \"materializationCount\": %" PRIu64 ",\n", result->materialization_count);
     printf("      \"rejectCount\": %" PRIu64 ",\n", result->reject_count);
+    printf("      \"schemaResponseNativeHits\": %" PRIu64 ",\n",
+           result->schema_response_native_hits);
+    printf("      \"duplicateValidationSkippedCount\": %" PRIu64 ",\n",
+           result->duplicate_validation_skipped_count);
     printf("      \"note\": ");
     sl_bench_print_json_string(result->note);
     printf("\n");
