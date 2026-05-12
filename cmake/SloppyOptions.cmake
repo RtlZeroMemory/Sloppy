@@ -279,14 +279,19 @@ endfunction()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
     set(SLOPPY_V8_EXPECTED_PLATFORM "windows-x64")
+    set(SLOPPY_V8_EXPECTED_TARGET_ARCH "x64")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
     set(SLOPPY_V8_EXPECTED_PLATFORM "linux-x64")
+    set(SLOPPY_V8_EXPECTED_TARGET_ARCH "x64")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
     set(SLOPPY_V8_EXPECTED_PLATFORM "macos-arm64")
+    set(SLOPPY_V8_EXPECTED_TARGET_ARCH "arm64")
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
     set(SLOPPY_V8_EXPECTED_PLATFORM "macos-x64")
+    set(SLOPPY_V8_EXPECTED_TARGET_ARCH "x64")
 else()
     set(SLOPPY_V8_EXPECTED_PLATFORM "${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+    set(SLOPPY_V8_EXPECTED_TARGET_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
 endif()
 
 if(SLOPPY_ENABLE_V8)
@@ -326,8 +331,12 @@ if(SLOPPY_ENABLE_V8)
         sloppy_require_v8_manifest_string(
             "${SLOPPY_V8_EXPECTED_CR_LIBCXX_REVISION}" "abi.crLibcxxRevision" abi
             crLibcxxRevision)
+    elseif(SLOPPY_V8_EXPECTED_PLATFORM MATCHES "^macos-")
+        sloppy_require_v8_manifest_string("sloppy-built-v8" "source" source)
+        sloppy_require_v8_manifest_string("macos clang-libc++ static-v8" "crtCompatibility"
+                                          crtCompatibility)
     endif()
-    sloppy_require_v8_manifest_string("x64" "abi.v8TargetArch" abi v8TargetArch)
+    sloppy_require_v8_manifest_string("${SLOPPY_V8_EXPECTED_TARGET_ARCH}" "abi.v8TargetArch" abi v8TargetArch)
     sloppy_get_v8_manifest_bool(
         SLOPPY_V8_ABI_COMPRESS_POINTERS "abi.v8CompressPointers" abi v8CompressPointers)
     sloppy_get_v8_manifest_bool(
@@ -447,10 +456,21 @@ if(SLOPPY_ENABLE_V8)
 
     add_library(Sloppy::V8 INTERFACE IMPORTED)
     target_include_directories(Sloppy::V8 INTERFACE "${SLOPPY_V8_ROOT}/include")
-    target_compile_definitions(
-        Sloppy::V8
-        INTERFACE
-            $<$<COMPILE_LANGUAGE:CXX>:V8_TARGET_ARCH_X64>)
+    if(SLOPPY_V8_EXPECTED_TARGET_ARCH STREQUAL "arm64")
+        target_compile_definitions(
+            Sloppy::V8
+            INTERFACE
+                $<$<COMPILE_LANGUAGE:CXX>:V8_TARGET_ARCH_ARM64>)
+    elseif(SLOPPY_V8_EXPECTED_TARGET_ARCH STREQUAL "x64")
+        target_compile_definitions(
+            Sloppy::V8
+            INTERFACE
+                $<$<COMPILE_LANGUAGE:CXX>:V8_TARGET_ARCH_X64>)
+    else()
+        message(
+            FATAL_ERROR
+                "V8 bridge: unsupported abi.v8TargetArch '${SLOPPY_V8_EXPECTED_TARGET_ARCH}'.")
+    endif()
     if(SLOPPY_V8_ABI_COMPRESS_POINTERS)
         target_compile_definitions(Sloppy::V8 INTERFACE $<$<COMPILE_LANGUAGE:CXX>:V8_COMPRESS_POINTERS>)
     endif()

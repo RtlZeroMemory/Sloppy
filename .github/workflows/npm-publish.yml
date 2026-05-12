@@ -75,6 +75,22 @@ jobs:
           name: sloppy-linux-x64-dry-run
           path: artifacts/npm-publish/linux
 
+      - name: Download macOS arm64 npm tarballs
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.release_artifacts_run_id }}
+          name: sloppy-macos-arm64-dry-run
+          path: artifacts/npm-publish/macos-arm64
+
+      - name: Download macOS x64 npm tarballs
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.release_artifacts_run_id }}
+          name: sloppy-macos-x64-dry-run
+          path: artifacts/npm-publish/macos-x64
+
       - name: Locate npm tarballs
         id: tarballs
         shell: bash
@@ -83,8 +99,10 @@ jobs:
           mapfile -t root_candidates < <(find artifacts/npm-publish/linux -type f -name 'rtlzeromemory-sloppy-[0-9]*.tgz' | sort)
           mapfile -t linux_candidates < <(find artifacts/npm-publish/linux -type f -name 'rtlzeromemory-sloppy-linux-x64-*.tgz' | sort)
           mapfile -t windows_candidates < <(find artifacts/npm-publish/windows -type f -name 'rtlzeromemory-sloppy-win32-x64-*.tgz' | sort)
-          if [[ "${#root_candidates[@]}" -ne 1 || "${#linux_candidates[@]}" -ne 1 || "${#windows_candidates[@]}" -ne 1 ]]; then
-            echo "Expected one root, one Linux, and one Windows npm tarball from release-artifacts." >&2
+          mapfile -t macos_arm64_candidates < <(find artifacts/npm-publish/macos-arm64 -type f -name 'rtlzeromemory-sloppy-darwin-arm64-*.tgz' | sort)
+          mapfile -t macos_x64_candidates < <(find artifacts/npm-publish/macos-x64 -type f -name 'rtlzeromemory-sloppy-darwin-x64-*.tgz' | sort)
+          if [[ "${#root_candidates[@]}" -ne 1 || "${#linux_candidates[@]}" -ne 1 || "${#windows_candidates[@]}" -ne 1 || "${#macos_arm64_candidates[@]}" -ne 1 || "${#macos_x64_candidates[@]}" -ne 1 ]]; then
+            echo "Expected one root, one Linux, one Windows, one macOS arm64, and one macOS x64 npm tarball from release-artifacts." >&2
             find artifacts/npm-publish -name '*.tgz' -print >&2
             exit 1
           fi
@@ -92,6 +110,8 @@ jobs:
             echo "root=${root_candidates[0]}"
             echo "linux=${linux_candidates[0]}"
             echo "windows=${windows_candidates[0]}"
+            echo "macos_arm64=${macos_arm64_candidates[0]}"
+            echo "macos_x64=${macos_x64_candidates[0]}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Local npm install smoke
@@ -147,6 +167,8 @@ jobs:
           set -euo pipefail
           npm publish "${{ steps.tarballs.outputs.windows }}" --registry https://registry.npmjs.org/ --access public --tag alpha --dry-run
           npm publish "${{ steps.tarballs.outputs.linux }}" --registry https://registry.npmjs.org/ --access public --tag alpha --dry-run
+          npm publish "${{ steps.tarballs.outputs.macos_arm64 }}" --registry https://registry.npmjs.org/ --access public --tag alpha --dry-run
+          npm publish "${{ steps.tarballs.outputs.macos_x64 }}" --registry https://registry.npmjs.org/ --access public --tag alpha --dry-run
           npm publish "${{ steps.tarballs.outputs.root }}" --registry https://registry.npmjs.org/ --access public --tag alpha --dry-run
           echo "Dry-run only. Set publish=true and confirm=publish-alpha to publish."
 
@@ -165,6 +187,8 @@ jobs:
           }
           publish_one "${{ steps.tarballs.outputs.windows }}"
           publish_one "${{ steps.tarballs.outputs.linux }}"
+          publish_one "${{ steps.tarballs.outputs.macos_arm64 }}"
+          publish_one "${{ steps.tarballs.outputs.macos_x64 }}"
 
       - name: Publish root launcher package
         if: ${{ inputs.publish == true }}

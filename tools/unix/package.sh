@@ -91,8 +91,8 @@ platform_triplet="$platform-$arch"
 resolved_v8_root=""
 resolved_v8_llvm_root=""
 
-if [[ "$enable_v8" -eq 1 && "$platform_triplet" != "linux-x64" ]]; then
-  echo "package: --enable-v8 is currently supported only on linux-x64." >&2
+if [[ "$enable_v8" -eq 1 && "$platform_triplet" != "linux-x64" && "$platform_triplet" != "macos-arm64" && "$platform_triplet" != "macos-x64" ]]; then
+  echo "package: --enable-v8 is currently supported only on linux-x64, macos-arm64, and macos-x64." >&2
   exit 1
 fi
 
