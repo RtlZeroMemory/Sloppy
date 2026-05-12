@@ -170,7 +170,12 @@ summary for package review.
 Real installed packages work when their JavaScript and runtime API usage are
 compatible with Sloppy's loader and shims.
 
-## Compatibility Gauntlet
+## Compatibility Gauntlets
+
+Sloppy commits two complementary gauntlets that together cover npm package
+compatibility.
+
+### Resolver Matrix
 
 The compiler exercises a committed package compatibility matrix at
 `tests/fixtures/npm-compat/`. Each fixture is a tiny hand-authored package
@@ -182,6 +187,30 @@ resolver test walks `matrix.json` and asserts that each shape resolves to the
 documented outcome. The matrix is the regression baseline for currently tested
 package shapes — shapes outside the matrix are not implicit non-regressions;
 add a new fixture before claiming support for a new shape.
+
+**The resolver matrix proves package shapes resolve.**
+
+### Runtime Behavior Matrix
+
+The runtime matrix at `tests/fixtures/npm-runtime/` is built, packaged,
+copied outside the source checkout, and re-run under V8. Each fixture pins
+expected stdout (for `supported` fixtures) or expected stderr substring (for
+`stubbed` and `negative-runtime` fixtures). Fixtures cover CJS semantics
+(`module.exports = fn`, `exports.foo` mutation, `exports = ...` rebind),
+ESM/CJS interop (default and named imports across module systems),
+`createRequire`/`require.resolve` against the sealed graph, `__dirname` and
+`__filename`, package self-reference, `imports` aliases, `import`/`require`
+exports conditions, and `node:` builtins (Buffer, crypto, stream, zlib, and
+the sealed sync `fs` subset).
+
+**The runtime matrix proves selected package behaviors execute after
+packaging.**
+
+The two matrices are complementary; neither implies the other. Add a fixture
+plus matrix entry alongside any change that broadens either resolver or
+runtime behavior.
+
+### Ad-hoc smoke script
 
 There is also an optional ad-hoc smoke script at
 `tools/scripts/npm-compat-smoke.mjs` that installs a curated list of small

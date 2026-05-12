@@ -32,9 +32,13 @@ The packaged app contains the bundled dependency graph and does not need
 `node_modules` at runtime.
 
 The supported package shapes are committed in
-[`tests/fixtures/npm-compat/`](../../tests/fixtures/npm-compat). Adding a real
-package outside that matrix may surface a clear unsupported-shape diagnostic;
-the diagnostic identifies the package, the field, the subpath, and the
-reason. The optional `tools/scripts/npm-compat-smoke.mjs` script can install a
+[`tests/fixtures/npm-compat/`](../../tests/fixtures/npm-compat) and the
+runtime behaviors Sloppy currently exercises are committed in
+[`tests/fixtures/npm-runtime/`](../../tests/fixtures/npm-runtime). The
+resolver matrix proves package shapes resolve; the runtime matrix proves
+selected package behaviors execute after packaging. Adding a real package
+outside either matrix may surface a clear unsupported-shape diagnostic; the
+diagnostic identifies the package, the field, the subpath, and the reason.
+The optional `tools/scripts/npm-compat-smoke.mjs` script can install a
 curated list of small pure-JS packages and try to build them; it is advisory,
 not a release gate.

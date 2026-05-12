@@ -1,4 +1,9 @@
 import { Directory, File } from "../fs.js";
+import { Base64, Text } from "../codec.js";
+
+function bytesFromBase64(value) {
+    return Base64.decode(value);
+}
 
 function toSloppyPath(path) {
     if (typeof path !== "string") {
@@ -115,8 +120,107 @@ function callbackify(method, name) {
     };
 }
 
-function existsSync() {
-    throw new Error("SLOPPY_E_NODE_SYNC_FS_UNSUPPORTED: synchronous fs APIs are not available.");
+function sealedAssetMap() {
+    const map = globalThis.__sloppy_program_assets;
+    return (map && typeof map === "object") ? map : null;
+}
+
+function lookupSealedAsset(path) {
+    const map = sealedAssetMap();
+    if (!map) {
+        return undefined;
+    }
+    const sloppyPath = toSloppyPath(path);
+    if (Object.prototype.hasOwnProperty.call(map, sloppyPath)) {
+        return map[sloppyPath];
+    }
+    if (typeof path === "string" && Object.prototype.hasOwnProperty.call(map, path)) {
+        return map[path];
+    }
+    const normalized = typeof path === "string"
+        ? path.replace(/\\/g, "/").replace(/^(\.\/)+/, "")
+        : null;
+    if (normalized && Object.prototype.hasOwnProperty.call(map, normalized)) {
+        return map[normalized];
+    }
+    return undefined;
+}
+
+function unsealedSyncError(operation, _path) {
+    return new Error(
+        `SLOPPY_E_NODE_SYNC_FS_UNSEALED: node:fs.${operation} requires the path to be a sealed package asset; the requested path was not found in the bundled asset map.`,
+    );
+}
+
+function decodeSealedAssetText(entry) {
+    if (typeof entry === "string") {
+        return entry;
+    }
+    if (entry && typeof entry === "object" && typeof entry.text === "string") {
+        return entry.text;
+    }
+    if (entry && typeof entry === "object" && typeof entry.base64 === "string") {
+        const bytes = bytesFromBase64(entry.base64);
+        return Text.utf8.decode(bytes);
+    }
+    return undefined;
+}
+
+function decodeSealedAssetBytes(entry) {
+    if (entry instanceof Uint8Array) {
+        return entry.slice();
+    }
+    if (entry && typeof entry === "object" && entry.bytes instanceof Uint8Array) {
+        return entry.bytes.slice();
+    }
+    if (entry && typeof entry === "object" && typeof entry.base64 === "string") {
+        return bytesFromBase64(entry.base64).slice();
+    }
+    if (typeof entry === "string") {
+        return Text.utf8.encode(entry);
+    }
+    return undefined;
+}
+
+function readFileSync(path, options = undefined) {
+    const entry = lookupSealedAsset(path);
+    if (entry === undefined) {
+        throw unsealedSyncError("readFileSync", path);
+    }
+    const encoding = normalizeEncoding(options, "node:fs.readFileSync");
+    if (encoding === "utf8") {
+        const text = decodeSealedAssetText(entry);
+        if (text === undefined) {
+            throw unsealedSyncError("readFileSync", path);
+        }
+        return text;
+    }
+    const bytes = decodeSealedAssetBytes(entry);
+    if (bytes === undefined) {
+        throw unsealedSyncError("readFileSync", path);
+    }
+    return bytes.slice();
+}
+
+function existsSync(path) {
+    return lookupSealedAsset(path) !== undefined;
+}
+
+function statSync(path, options = undefined) {
+    const entry = lookupSealedAsset(path);
+    if (entry === undefined) {
+        const opts = options && typeof options === "object" ? options : {};
+        if (opts.throwIfNoEntry === false) {
+            return undefined;
+        }
+        throw unsealedSyncError("statSync", path);
+    }
+    const bytes = decodeSealedAssetBytes(entry);
+    return nodeStats({
+        kind: "file",
+        exists: true,
+        size: bytes ? bytes.byteLength : 0,
+    });
 }
 
 async function unsupportedPromise(name) {
@@ -172,5 +276,5 @@ const symlink = callbackify(symlinkPromise, "symlink");
 const unlink = callbackify(unlinkPromise, "unlink");
 const writeFile = callbackify(writeFilePromise, "writeFile");
 
-export { access, appendFile, copyFile, existsSync, lstat, mkdir, mkdtemp, promises, readdir, readFile, readlink, realpath, rename, rm, stat, symlink, unlink, writeFile };
-export default { access, appendFile, copyFile, existsSync, lstat, mkdir, mkdtemp, promises, readdir, readFile, readlink, realpath, rename, rm, stat, symlink, unlink, writeFile };
+export { access, appendFile, copyFile, existsSync, lstat, mkdir, mkdtemp, promises, readdir, readFile, readFileSync, readlink, realpath, rename, rm, stat, statSync, symlink, unlink, writeFile };
+export default { access, appendFile, copyFile, existsSync, lstat, mkdir, mkdtemp, promises, readdir, readFile, readFileSync, readlink, realpath, rename, rm, stat, statSync, symlink, unlink, writeFile };
