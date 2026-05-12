@@ -236,6 +236,7 @@
     "dependencyGraph": true,
     "health": true,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
     "os": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -408,6 +409,38 @@
   "requiredFeatures": [
     "stdlib.os"
   ],
+  "routeDispatch": {
+    "artifact": {
+      "kind": "none",
+      "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [
+        "int"
+      ],
+      "exactStaticPaths": 12,
+      "parameterCandidateBuckets": 2,
+      "segmentTrieNodes": 0,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "first-static-segment-bucket"
+      ]
+    },
+    "endpointCount": 14,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 1
+    },
+    "mode": "native-compiled-in-memory",
+    "nativeNoJsEndpoints": 0,
+    "parameterRoutes": 2,
+    "routeCount": 14,
+    "staticRoutes": 12,
+    "urlGeneration": false,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [
@@ -436,6 +469,13 @@
           "https://app.example.com"
         ],
         "preflight": false
+      },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "effects": [
         {
@@ -625,6 +665,13 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 2,
       "injections": [
         {
@@ -787,6 +834,13 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 3,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "parameter-candidate-bucket"
+      },
       "handlerId": 3,
       "injections": [
         {
@@ -900,6 +954,13 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 4,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 4,
       "health": {
         "checks": [
@@ -1006,6 +1067,13 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 5,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 5,
       "health": {
         "checks": [
@@ -1110,6 +1178,13 @@
           "https://app.example.com"
         ],
         "preflight": false
+      },
+      "dispatch": {
+        "endpointId": 6,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 6,
       "health": {
@@ -1220,6 +1295,13 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 7,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 7,
       "method": "GET",
       "middleware": [
@@ -1273,6 +1355,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 8,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 8,
       "method": "GET",
@@ -1335,6 +1424,13 @@
           "https://app.example.com"
         ],
         "preflight": true
+      },
+      "dispatch": {
+        "endpointId": 9,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 9,
       "method": "OPTIONS",
@@ -1418,6 +1514,13 @@
         ],
         "preflight": true
       },
+      "dispatch": {
+        "endpointId": 10,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 10,
       "method": "OPTIONS",
       "middleware": [
@@ -1499,6 +1602,13 @@
           "https://app.example.com"
         ],
         "preflight": true
+      },
+      "dispatch": {
+        "endpointId": 11,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "parameter-candidate-bucket"
       },
       "handlerId": 11,
       "method": "OPTIONS",
@@ -1582,6 +1692,13 @@
         ],
         "preflight": true
       },
+      "dispatch": {
+        "endpointId": 12,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 12,
       "method": "OPTIONS",
       "middleware": [
@@ -1664,6 +1781,13 @@
         ],
         "preflight": true
       },
+      "dispatch": {
+        "endpointId": 13,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 13,
       "method": "OPTIONS",
       "middleware": [
@@ -1745,6 +1869,13 @@
           "https://app.example.com"
         ],
         "preflight": true
+      },
+      "dispatch": {
+        "endpointId": 14,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 14,
       "method": "OPTIONS",
@@ -1918,6 +2049,7 @@
       "health": true,
       "os": true,
       "providers": true,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true
     },

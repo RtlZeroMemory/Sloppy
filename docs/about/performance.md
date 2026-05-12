@@ -27,6 +27,12 @@ candidate patterns are checked. Valid HTTP/1.1 error responses, including 404
 route misses, remain eligible for keep-alive instead of forcing a reconnect per
 miss.
 
+The compiler exposes this as `routeDispatch.mode:
+native-compiled-in-memory` in Plan metadata. It is current runtime structure
+evidence, not a benchmark result. The binary `routes.slrt` artifact, segment
+trie, native no-JS endpoints, and native URL writers are not claimed by the
+current counters.
+
 The V8 path has opt-in startup experiments through `SLOPPY_V8_CODE_CACHE_DIR`
 and `SLOPPY_V8_SNAPSHOT_DIR`. They are engineering knobs for startup
 measurement, not default runtime guarantees. Code-cache entries are invalidated

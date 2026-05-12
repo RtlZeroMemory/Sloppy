@@ -183,6 +183,27 @@ typedef struct SlCliSchema
     size_t property_count;
 } SlCliSchema;
 
+typedef struct SlCliRouteDispatch
+{
+    bool present;
+    SlCliSpan mode;
+    SlCliSpan artifact_kind;
+    SlCliSpan artifact_reason;
+    uint64_t route_count;
+    uint64_t endpoint_count;
+    uint64_t static_routes;
+    uint64_t parameter_routes;
+    uint64_t catch_all_routes;
+    uint64_t native_no_js_endpoints;
+    uint64_t exact_static_paths;
+    uint64_t parameter_candidate_buckets;
+    uint64_t segment_trie_nodes;
+    uint64_t dynamic_fallback_routes;
+    uint64_t partial_fallback_routes;
+    bool url_generation;
+    bool classic_fallback_available;
+} SlCliRouteDispatch;
+
 typedef struct SlCliMetadata
 {
     SlCliRoute routes[SL_CLI_MAX_ROUTES];
@@ -215,6 +236,7 @@ typedef struct SlCliMetadata
     size_t ffi_function_count;
     SlCliFfiStruct ffi_structs[SL_CLI_MAX_FFI_STRUCTS];
     size_t ffi_struct_count;
+    SlCliRouteDispatch route_dispatch;
     SlCliSpan kind;
     SlCliSpan completeness;
 } SlCliMetadata;
@@ -262,5 +284,6 @@ typedef struct SlCliOptions
     bool dev_openapi;
     bool program_args_explicit;
     bool deps_explain;
+    bool dispatch_details;
     bool help;
 } SlCliOptions;

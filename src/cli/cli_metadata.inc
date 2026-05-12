@@ -1005,6 +1005,64 @@ static int sl_cli_parse_ffi_metadata(yyjson_val* root, SlCliMetadata* metadata)
     return sl_cli_parse_ffi_structs(native, metadata);
 }
 
+static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadata)
+{
+    yyjson_val* dispatch = yyjson_obj_get(root, "routeDispatch");
+    yyjson_val* artifact = NULL;
+    yyjson_val* stats = NULL;
+    yyjson_val* fallback = NULL;
+    yyjson_val* url_generation = NULL;
+    yyjson_val* classic_available = NULL;
+
+    if (dispatch == NULL || !yyjson_is_obj(dispatch)) {
+        return;
+    }
+
+    metadata->route_dispatch.present = true;
+    metadata->route_dispatch.mode = sl_cli_json_span(dispatch, "mode");
+    metadata->route_dispatch.route_count = sl_cli_json_uint_or_zero(dispatch, "routeCount");
+    metadata->route_dispatch.endpoint_count = sl_cli_json_uint_or_zero(dispatch, "endpointCount");
+    metadata->route_dispatch.static_routes = sl_cli_json_uint_or_zero(dispatch, "staticRoutes");
+    metadata->route_dispatch.parameter_routes =
+        sl_cli_json_uint_or_zero(dispatch, "parameterRoutes");
+    metadata->route_dispatch.catch_all_routes =
+        sl_cli_json_uint_or_zero(dispatch, "catchAllRoutes");
+    metadata->route_dispatch.native_no_js_endpoints =
+        sl_cli_json_uint_or_zero(dispatch, "nativeNoJsEndpoints");
+
+    url_generation = yyjson_obj_get(dispatch, "urlGeneration");
+    metadata->route_dispatch.url_generation =
+        url_generation != NULL && yyjson_is_bool(url_generation) && yyjson_get_bool(url_generation);
+
+    artifact = yyjson_obj_get(dispatch, "artifact");
+    if (artifact != NULL && yyjson_is_obj(artifact)) {
+        metadata->route_dispatch.artifact_kind = sl_cli_json_span(artifact, "kind");
+        metadata->route_dispatch.artifact_reason = sl_cli_json_span(artifact, "reason");
+    }
+
+    stats = yyjson_obj_get(dispatch, "dispatchStats");
+    if (stats != NULL && yyjson_is_obj(stats)) {
+        metadata->route_dispatch.exact_static_paths =
+            sl_cli_json_uint_or_zero(stats, "exactStaticPaths");
+        metadata->route_dispatch.parameter_candidate_buckets =
+            sl_cli_json_uint_or_zero(stats, "parameterCandidateBuckets");
+        metadata->route_dispatch.segment_trie_nodes =
+            sl_cli_json_uint_or_zero(stats, "segmentTrieNodes");
+    }
+
+    fallback = yyjson_obj_get(dispatch, "fallback");
+    if (fallback != NULL && yyjson_is_obj(fallback)) {
+        classic_available = yyjson_obj_get(fallback, "classicAvailable");
+        metadata->route_dispatch.classic_fallback_available =
+            classic_available != NULL && yyjson_is_bool(classic_available) &&
+            yyjson_get_bool(classic_available);
+        metadata->route_dispatch.dynamic_fallback_routes =
+            sl_cli_json_uint_or_zero(fallback, "dynamicRoutes");
+        metadata->route_dispatch.partial_fallback_routes =
+            sl_cli_json_uint_or_zero(fallback, "partialRoutes");
+    }
+}
+
 static int sl_cli_parse_plan_kind(yyjson_val* root, SlCliMetadata* metadata)
 {
     yyjson_val* kind = yyjson_obj_get(root, "kind");
@@ -1105,6 +1163,7 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, S
     {
         return 1;
     }
+    sl_cli_parse_route_dispatch(root, out_metadata);
 
     return 0;
 }

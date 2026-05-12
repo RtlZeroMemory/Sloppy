@@ -48,6 +48,12 @@
         sloppy.cli.routes_compiler_json tests/golden/cli/routes-compiler-json.json routes --plan
         compiler/tests/fixtures/grouped-route/expected/app.plan.json --format json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.routes_dispatch_text tests/golden/cli/routes-dispatch-text.txt routes --plan
+        compiler/tests/fixtures/grouped-route/expected/app.plan.json --format text --dispatch)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.routes_dispatch_json tests/golden/cli/routes-dispatch-json.json routes --plan
+        compiler/tests/fixtures/grouped-route/expected/app.plan.json --format json --dispatch)
+    sloppy_add_cli_golden_test(
         sloppy.cli.capabilities_users_text tests/golden/cli/capabilities-users-text.txt
         capabilities --plan compiler/tests/fixtures/realistic-users-api/expected/app.plan.json
         --format text)
@@ -129,6 +135,12 @@
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_json ${SLOPPY_DOCTOR_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/doctor.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_dispatch_text tests/golden/cli/doctor-dispatch-text.txt doctor --plan
+        compiler/tests/fixtures/grouped-route/expected/app.plan.json --format text --dispatch)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_dispatch_json tests/golden/cli/doctor-dispatch-json.json doctor --plan
+        compiler/tests/fixtures/grouped-route/expected/app.plan.json --format json --dispatch)
     sloppy_add_cli_golden_test(
         sloppy.cli.doctor_ffi_text ${SLOPPY_DOCTOR_FFI_TEXT_GOLDEN} doctor --plan
         tests/fixtures/cli/ffi-policy.plan.json --format text)

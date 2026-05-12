@@ -81,6 +81,7 @@
     "capabilities": false,
     "dataProviders": false,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -99,6 +100,38 @@
   ],
   "kind": "web",
   "modules": [],
+  "routeDispatch": {
+    "artifact": {
+      "kind": "none",
+      "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [
+        "int"
+      ],
+      "exactStaticPaths": 0,
+      "parameterCandidateBuckets": 1,
+      "segmentTrieNodes": 0,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "first-static-segment-bucket"
+      ]
+    },
+    "endpointCount": 1,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 1
+    },
+    "mode": "native-compiled-in-memory",
+    "nativeNoJsEndpoints": 0,
+    "parameterRoutes": 1,
+    "routeCount": 1,
+    "staticRoutes": 0,
+    "urlGeneration": false,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [
@@ -116,6 +149,13 @@
           }
         ],
         "status": "partial"
+      },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "parameter-candidate-bucket"
       },
       "handlerId": 1,
       "method": "GET",
@@ -154,6 +194,7 @@
       "effects": false,
       "ffi": false,
       "providers": false,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true
     },

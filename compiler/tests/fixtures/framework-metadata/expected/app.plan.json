@@ -215,6 +215,7 @@
     "capabilities": true,
     "dataProviders": true,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
     "os": true,
     "sourceMaps": true,
     "strongPlanMetadata": true,
@@ -250,6 +251,36 @@
     "stdlib.os",
     "stdlib.workers"
   ],
+  "routeDispatch": {
+    "artifact": {
+      "kind": "none",
+      "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [],
+      "exactStaticPaths": 1,
+      "parameterCandidateBuckets": 1,
+      "segmentTrieNodes": 0,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "first-static-segment-bucket"
+      ]
+    },
+    "endpointCount": 2,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    },
+    "mode": "native-compiled-in-memory",
+    "nativeNoJsEndpoints": 0,
+    "parameterRoutes": 1,
+    "routeCount": 2,
+    "staticRoutes": 1,
+    "urlGeneration": false,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [
@@ -341,6 +372,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 1,
       "injections": [
@@ -473,6 +511,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "parameter-candidate-bucket"
       },
       "frameworkPath": "/users/:id",
       "handlerId": 2,
@@ -663,6 +708,7 @@
       "ffi": false,
       "os": true,
       "providers": true,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true,
       "workers": true

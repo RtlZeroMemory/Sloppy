@@ -86,6 +86,10 @@ Handler dispatch benchmarks are split by current runtime capability:
   current noop engine boundary, which is expected to report unsupported.
 - `http.dispatch.get.noop_unsupported` exercises synthetic parsed GET dispatch through the
   existing route matcher, manual dispatch table, plan lookup, and noop engine boundary.
+- Large route-table dispatch benchmarks exercise the current native in-memory
+  endpoint table: exact method/path hash lookup plus parameter-route candidate
+  buckets. They do not measure a `routes.slrt` binary artifact, segment trie,
+  native no-JS endpoint execution, or native URL writers.
 - V8 bridge benchmarks run only when the build is configured with a validated V8 SDK and
   the benchmark is explicitly gated with `--include-v8`.
 

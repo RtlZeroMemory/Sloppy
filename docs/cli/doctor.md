@@ -4,7 +4,7 @@ Check the local runtime, packaged assets, optional provider dependencies, and
 optionally a compiled Plan.
 
 ```sh
-sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
+sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json] [--dispatch]
 ```
 
 ## What it checks
@@ -15,6 +15,7 @@ sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--forma
 - native Plan parsing;
 - route, provider, and capability metadata, including Program Plans with no
   route metadata by design and web Plans with partial/dynamic route metadata;
+- route dispatch metadata when `--dispatch` is passed;
 - dependency graph metadata and compatibility findings;
 - native FFI metadata, dynamic library load checks, and symbol resolution;
 - SQLite metadata and the fact that SQLite needs no external DB driver;
@@ -47,6 +48,13 @@ Sloppy Doctor
 
 The exact rows depend on the current platform, build, package, and provider
 environment.
+
+With `--dispatch`, doctor also reports the Plan route dispatch mode, artifact
+status, classic fallback availability, and current deferred optimization
+surfaces. In this alpha, `native-compiled-in-memory` means the runtime builds
+the route dispatch table from Plan metadata at startup; `routes.slrt`, segment
+trie dispatch, native no-JS endpoint execution, and native URL writers are not
+claimed unless their counters are nonzero.
 
 ## Exit codes
 

@@ -231,6 +231,7 @@
     "dependencyGraph": true,
     "health": true,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
     "os": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -326,6 +327,38 @@
   "requiredFeatures": [
     "stdlib.os"
   ],
+  "routeDispatch": {
+    "artifact": {
+      "kind": "none",
+      "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [
+        "int"
+      ],
+      "exactStaticPaths": 6,
+      "parameterCandidateBuckets": 1,
+      "segmentTrieNodes": 0,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "first-static-segment-bucket"
+      ]
+    },
+    "endpointCount": 7,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    },
+    "mode": "native-compiled-in-memory",
+    "nativeNoJsEndpoints": 0,
+    "parameterRoutes": 1,
+    "routeCount": 7,
+    "staticRoutes": 6,
+    "urlGeneration": false,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [
@@ -338,6 +371,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "effects": [
         {
@@ -482,6 +522,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 2,
       "injections": [
         {
@@ -599,6 +646,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 3,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "parameter-candidate-bucket"
+      },
       "handlerId": 3,
       "injections": [
         {
@@ -667,6 +721,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 4,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 4,
       "health": {
         "checks": [
@@ -728,6 +789,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 5,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 5,
       "health": {
         "checks": [
@@ -788,6 +856,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 6,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 6,
       "health": {
         "checks": [
@@ -847,6 +922,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 7,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 7,
       "method": "GET",
@@ -1000,6 +1082,7 @@
       "health": true,
       "os": true,
       "providers": true,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true
     },

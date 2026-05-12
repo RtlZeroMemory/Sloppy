@@ -76,6 +76,7 @@
     "capabilities": false,
     "dataProviders": false,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -138,12 +139,51 @@
   ],
   "kind": "web",
   "modules": [],
+  "routeDispatch": {
+    "artifact": {
+      "kind": "none",
+      "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [
+        "int"
+      ],
+      "exactStaticPaths": 2,
+      "parameterCandidateBuckets": 3,
+      "segmentTrieNodes": 0,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "first-static-segment-bucket"
+      ]
+    },
+    "endpointCount": 5,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    },
+    "mode": "native-compiled-in-memory",
+    "nativeNoJsEndpoints": 0,
+    "parameterRoutes": 3,
+    "routeCount": 5,
+    "staticRoutes": 2,
+    "urlGeneration": false,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [],
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 1,
       "method": "GET",
@@ -165,6 +205,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "exact-static-hash"
       },
       "handlerId": 2,
       "method": "POST",
@@ -193,6 +240,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 3,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "parameter-candidate-bucket"
+      },
       "handlerId": 3,
       "method": "PUT",
       "name": "Users.Update",
@@ -220,6 +274,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 4,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "parameter-candidate-bucket"
+      },
       "handlerId": 4,
       "method": "PATCH",
       "name": "Users.Patch",
@@ -240,6 +301,13 @@
       "completeness": {
         "reasons": [],
         "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 5,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled-in-memory",
+        "specializable": true,
+        "strategy": "parameter-candidate-bucket"
       },
       "handlerId": 5,
       "method": "DELETE",
@@ -283,6 +351,7 @@
       "effects": false,
       "ffi": false,
       "providers": false,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true
     },

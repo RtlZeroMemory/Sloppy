@@ -73,6 +73,44 @@ static void sl_cli_routes_emit_json_response_value(SlCliSpan kind, SlCliSpan hel
     printf(" }");
 }
 
+static void sl_cli_routes_emit_json_dispatch(const SlCliRouteDispatch* dispatch)
+{
+    if (dispatch == NULL || !dispatch->present) {
+        printf(",\n  \"dispatch\": { \"mode\": \"legacy-plan-route-table\", "
+               "\"metadata\": \"not-present\" }");
+        return;
+    }
+
+    printf(",\n  \"dispatch\": { \"mode\": ");
+    sl_cli_json_escape(stdout, dispatch->mode);
+    printf(", \"artifact\": { \"kind\": ");
+    sl_cli_json_escape(stdout, dispatch->artifact_kind);
+    if (!sl_cli_span_empty(dispatch->artifact_reason)) {
+        printf(", \"reason\": ");
+        sl_cli_json_escape(stdout, dispatch->artifact_reason);
+    }
+    printf(" }, \"routeCount\": %llu, \"endpointCount\": %llu, \"staticRoutes\": %llu, "
+           "\"parameterRoutes\": %llu, \"catchAllRoutes\": %llu, "
+           "\"nativeNoJsEndpoints\": %llu, \"urlGeneration\": %s, ",
+           (unsigned long long)dispatch->route_count,
+           (unsigned long long)dispatch->endpoint_count,
+           (unsigned long long)dispatch->static_routes,
+           (unsigned long long)dispatch->parameter_routes,
+           (unsigned long long)dispatch->catch_all_routes,
+           (unsigned long long)dispatch->native_no_js_endpoints,
+           dispatch->url_generation ? "true" : "false");
+    printf("\"dispatchStats\": { \"exactStaticPaths\": %llu, "
+           "\"parameterCandidateBuckets\": %llu, \"segmentTrieNodes\": %llu }, ",
+           (unsigned long long)dispatch->exact_static_paths,
+           (unsigned long long)dispatch->parameter_candidate_buckets,
+           (unsigned long long)dispatch->segment_trie_nodes);
+    printf("\"fallback\": { \"classicAvailable\": %s, \"dynamicRoutes\": %llu, "
+           "\"partialRoutes\": %llu } }",
+           dispatch->classic_fallback_available ? "true" : "false",
+           (unsigned long long)dispatch->dynamic_fallback_routes,
+           (unsigned long long)dispatch->partial_fallback_routes);
+}
+
 static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
 {
     size_t response = 0U;
@@ -202,6 +240,36 @@ static bool sl_cli_routes_have_auth(const SlCliMetadata* metadata)
     return false;
 }
 
+static void sl_cli_routes_emit_text_dispatch(const SlCliRouteDispatch* dispatch)
+{
+    if (dispatch == NULL || !dispatch->present) {
+        printf("Route dispatch: legacy-plan-route-table (routeDispatch metadata not present)\n\n");
+        return;
+    }
+
+    printf("Route dispatch: %.*s\n", (int)dispatch->mode.length, dispatch->mode.ptr);
+    printf("  artifact: %.*s", (int)dispatch->artifact_kind.length, dispatch->artifact_kind.ptr);
+    if (!sl_cli_span_empty(dispatch->artifact_reason)) {
+        printf(" (%.*s)", (int)dispatch->artifact_reason.length, dispatch->artifact_reason.ptr);
+    }
+    printf("\n");
+    printf("  routes: %llu endpoints: %llu exact: %llu parameter: %llu catch-all: %llu\n",
+           (unsigned long long)dispatch->route_count,
+           (unsigned long long)dispatch->endpoint_count,
+           (unsigned long long)dispatch->exact_static_paths,
+           (unsigned long long)dispatch->parameter_routes,
+           (unsigned long long)dispatch->catch_all_routes);
+    printf("  parameter buckets: %llu trie nodes: %llu no-js endpoints: %llu url-generation: %s\n",
+           (unsigned long long)dispatch->parameter_candidate_buckets,
+           (unsigned long long)dispatch->segment_trie_nodes,
+           (unsigned long long)dispatch->native_no_js_endpoints,
+           dispatch->url_generation ? "yes" : "no");
+    printf("  fallback: classic=%s dynamic=%llu partial=%llu\n\n",
+           dispatch->classic_fallback_available ? "yes" : "no",
+           (unsigned long long)dispatch->dynamic_fallback_routes,
+           (unsigned long long)dispatch->partial_fallback_routes);
+}
+
 static void sl_cli_routes_emit_text_route(const SlCliRoute* route, bool include_auth)
 {
     SlCliSpan kind = route->kind;
@@ -264,6 +332,9 @@ static int sl_cli_command_routes(const SlCliOptions* options)
     if (options->format == SL_CLI_FORMAT_JSON) {
         printf("{\n  \"kind\": ");
         sl_cli_json_escape(stdout, metadata->kind);
+        if (options->dispatch_details) {
+            sl_cli_routes_emit_json_dispatch(&metadata->route_dispatch);
+        }
         printf(",\n  \"routes\": [");
         for (index = 0U; index < metadata->route_count; index += 1U) {
             sl_cli_routes_emit_json_route(&metadata->routes[index], index);
@@ -271,6 +342,9 @@ static int sl_cli_command_routes(const SlCliOptions* options)
         printf("\n  ]\n}\n");
     }
     else {
+        if (options->dispatch_details) {
+            sl_cli_routes_emit_text_dispatch(&metadata->route_dispatch);
+        }
         if (include_auth) {
             printf("ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  "
                    "BINDINGS  RESPONSE  AUTH  NAME\n");

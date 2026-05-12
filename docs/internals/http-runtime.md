@@ -98,6 +98,13 @@ strict trailing-slash behavior.
 The table is read-only at request time; a registered route never
 disappears or moves.
 
+Current web Plans also emit `routeDispatch` metadata for this native in-memory
+table. The runtime uses the in-memory table, not a `routes.slrt` binary artifact
+yet. Exact static routes are indexed by method and path. Parameter routes are
+bucketed by method and first static segment before candidate patterns are
+checked. Segment-trie dispatch, native no-JS endpoint execution, and native URL
+writer tables are deferred and are reported as zero in Plan/CLI metadata.
+
 ## Body / content-type policy
 
 `request_validation.c` enforces, before any handler runs:

@@ -33,6 +33,100 @@ fn completeness_json(completeness: &Completeness) -> Value {
     })
 }
 
+fn route_pattern_has_params(pattern: &str) -> bool {
+    pattern
+        .split('/')
+        .skip(1)
+        .any(|segment| segment.starts_with('{') && segment.ends_with('}'))
+}
+
+fn route_pattern_first_static_segment(pattern: &str) -> Option<&str> {
+    pattern
+        .split('/')
+        .skip(1)
+        .find(|segment| !segment.is_empty() && !segment.starts_with('{'))
+}
+
+fn route_pattern_constraint_names(pattern: &str) -> Vec<String> {
+    pattern
+        .split('/')
+        .skip(1)
+        .filter_map(|segment| {
+            if !(segment.starts_with('{') && segment.ends_with('}')) {
+                return None;
+            }
+            let inner = &segment[1..segment.len() - 1];
+            let (_, constraint) = inner.split_once(':')?;
+            Some(constraint.to_string())
+        })
+        .collect()
+}
+
+fn route_dispatch_json(app: &ExtractedApp, route_completeness_values: &[Completeness]) -> Value {
+    let static_routes = app
+        .routes
+        .iter()
+        .filter(|route| !route_pattern_has_params(&route.pattern))
+        .count();
+    let parameter_routes = app.routes.len().saturating_sub(static_routes);
+    let parameter_candidate_buckets = app
+        .routes
+        .iter()
+        .filter(|route| route_pattern_has_params(&route.pattern))
+        .map(|route| {
+            (
+                route.method,
+                route_pattern_first_static_segment(&route.pattern)
+                    .unwrap_or("")
+                    .to_string(),
+            )
+        })
+        .collect::<BTreeSet<_>>()
+        .len();
+    let partial_routes = route_completeness_values
+        .iter()
+        .filter(|route| route.status.as_str() != "complete")
+        .count();
+    let constraints = app
+        .routes
+        .iter()
+        .flat_map(|route| route_pattern_constraint_names(&route.pattern))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    json!({
+        "version": 1,
+        "mode": "native-compiled-in-memory",
+        "artifact": {
+            "kind": "none",
+            "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
+        },
+        "routeCount": app.routes.len(),
+        "endpointCount": app.routes.len(),
+        "staticRoutes": static_routes,
+        "parameterRoutes": parameter_routes,
+        "catchAllRoutes": 0,
+        "nativeNoJsEndpoints": 0,
+        "urlGeneration": false,
+        "dispatchStats": {
+            "exactStaticPaths": static_routes,
+            "parameterCandidateBuckets": parameter_candidate_buckets,
+            "segmentTrieNodes": 0,
+            "staticEdgeStrategies": [
+                "open-addressed-exact-hash",
+                "first-static-segment-bucket"
+            ],
+            "constraints": constraints
+        },
+        "fallback": {
+            "classicAvailable": true,
+            "dynamicRoutes": app.dynamic_routes.len(),
+            "partialRoutes": partial_routes
+        }
+    })
+}
+
 #[derive(Debug, Default)]
 struct SchemaReferenceResolution {
     partial_references: BTreeSet<SchemaReferenceFinding>,
@@ -498,6 +592,17 @@ pub(crate) fn emit_plan(
                     })
                     .collect::<Vec<_>>());
             }
+            route_json["dispatch"] = json!({
+                "endpointId": id,
+                "mode": "native-compiled-in-memory",
+                "strategy": if route_pattern_has_params(&route.pattern) {
+                    "parameter-candidate-bucket"
+                } else {
+                    "exact-static-hash"
+                },
+                "specializable": true,
+                "executionKind": "v8-handler"
+            });
             route_json["completeness"] = completeness_json(completeness);
             route_json
         })
@@ -959,6 +1064,11 @@ pub(crate) fn emit_plan(
     }
     if !dynamic_findings.is_empty() {
         value["findings"] = json!(dynamic_findings);
+    }
+    if app.kind == ProjectKind::Web {
+        value["routeDispatch"] = route_dispatch_json(app, &route_completeness_values);
+        value["features"]["nativeEndpointDispatch"] = json!(true);
+        value["strongPlan"]["evidence"]["routeDispatch"] = json!(true);
     }
     if app.kind == ProjectKind::Web && !app.dynamic_routes.is_empty() {
         let complete_count = route_completeness_values

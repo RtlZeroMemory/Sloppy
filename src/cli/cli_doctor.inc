@@ -465,6 +465,54 @@ static void sl_cli_doctor_emit_auth(const SlCliOptions* options, SlArena* arena,
                        emitted);
 }
 
+static void sl_cli_doctor_emit_route_dispatch(const SlCliOptions* options, SlArena* arena,
+                                              const SlCliMetadata* metadata, bool* emitted)
+{
+    const SlCliRouteDispatch* dispatch = &metadata->route_dispatch;
+
+    if (!options->dispatch_details) {
+        return;
+    }
+    if (!dispatch->present) {
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.dispatch.metadata"),
+                           sl_cli_span_cstr("warn"),
+                           sl_cli_span_cstr("routeDispatch Plan metadata is not present"),
+                           emitted);
+        return;
+    }
+
+    sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.dispatch.mode"),
+                       sl_cli_span_cstr("ok"), dispatch->mode, emitted);
+    sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.dispatch.artifact"),
+                       sl_cli_span_equal_cstr(dispatch->artifact_kind, "none")
+                           ? sl_cli_span_cstr("warn")
+                           : sl_cli_span_cstr("ok"),
+                       sl_cli_span_empty(dispatch->artifact_reason)
+                           ? dispatch->artifact_kind
+                           : dispatch->artifact_reason,
+                       emitted);
+    sl_cli_doctor_emit(
+        options, arena, sl_cli_span_cstr("route.dispatch.fallback"),
+        dispatch->classic_fallback_available ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
+        dispatch->classic_fallback_available
+            ? sl_cli_span_cstr("classic dispatch fallback is available")
+            : sl_cli_span_cstr("classic dispatch fallback is not advertised"),
+        emitted);
+    if (dispatch->segment_trie_nodes == 0U && dispatch->parameter_routes > 0U) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("route.dispatch.segment-trie"),
+            sl_cli_span_cstr("warn"),
+            sl_cli_span_cstr("parameter routes use candidate buckets; segment trie is deferred"),
+            emitted);
+    }
+    if (dispatch->native_no_js_endpoints == 0U) {
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.dispatch.no-js"),
+                           sl_cli_span_cstr("warn"),
+                           sl_cli_span_cstr("native no-JS endpoint execution is not advertised"),
+                           emitted);
+    }
+}
+
 static bool sl_cli_provider_is_kind(const SlCliProvider* provider, const char* kind)
 {
     if (provider == NULL || kind == NULL) {
@@ -549,6 +597,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
     sl_cli_doctor_emit_ffi(options, arena, metadata, emitted);
     sl_cli_doctor_emit_config_requirements(options, arena, metadata, emitted);
     sl_cli_doctor_emit_auth(options, arena, metadata, emitted);
+    sl_cli_doctor_emit_route_dispatch(options, arena, metadata, emitted);
     sl_cli_doctor_emit_database_provider_dependencies(options, arena, metadata, emitted);
     if (!sl_cli_span_empty(metadata->completeness)) {
         SlCliSpan status = sl_cli_span_cstr("warn");

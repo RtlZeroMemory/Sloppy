@@ -49,6 +49,8 @@ The compiler can emit route metadata for the supported source subset:
 - Compiler-inferred metadata for typed handlers, including route/body/query/header
   bindings, context bindings, provider/queue injection requirements, schema definitions,
   semantic validation/redaction metadata, and visible `Results.*` response metadata.
+- `routeDispatch` metadata for the native in-memory dispatch table generated
+  from Plan routes at runtime.
 
 The native runtime validates route metadata, builds a deterministic route table, and
 dispatches supported requests through V8 when the runtime is V8-enabled. For typed-handler
@@ -70,6 +72,54 @@ all route metadata is inferred. Unknown dynamic registrations appear in
 `dynamicRoutes[]`, and app-level metadata records route completeness counts.
 OpenAPI emitters include representable known routes and mark the document as a
 partial Plan-supported subset.
+
+## Route Dispatch
+
+Web Plans emit a top-level `routeDispatch` object:
+
+```json
+{
+  "routeDispatch": {
+    "version": 1,
+    "mode": "native-compiled-in-memory",
+    "artifact": {
+      "kind": "none",
+      "reason": "SLRT binary artifact is not emitted; the native runtime compiles the dispatch table from Plan routes at startup."
+    },
+    "routeCount": 2,
+    "endpointCount": 2,
+    "staticRoutes": 1,
+    "parameterRoutes": 1,
+    "catchAllRoutes": 0,
+    "nativeNoJsEndpoints": 0,
+    "urlGeneration": false,
+    "dispatchStats": {
+      "exactStaticPaths": 1,
+      "parameterCandidateBuckets": 1,
+      "segmentTrieNodes": 0,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "first-static-segment-bucket"
+      ],
+      "constraints": ["int"]
+    },
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    }
+  }
+}
+```
+
+`native-compiled-in-memory` is a runtime optimization path, not a public route
+API. The native runtime still validates Plan routes, builds an exact-path hash
+index plus parameter candidate buckets, preserves `HEAD` and `405` behavior,
+and dispatches handlers through the current V8 handler path.
+
+`routes.slrt`, segment trie nodes, native no-JS endpoint execution, and native
+URL writers are not emitted by this Plan version. Their counters stay zero so
+tooling can distinguish implemented behavior from future optimization work.
 
 Typed handler metadata is compiler/Plan-first. For the current supported
 typed-handler subset, the compiler emits a generated JavaScript wrapper that runs after

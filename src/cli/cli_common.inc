@@ -376,13 +376,13 @@ static void sl_cli_print_help(void)
     printf("             [--once METHOD TARGET] [--header 'Name: value'] [--body text]\n");
     printf("             [--body-file path] [--json json] [-- <program-args...>]\n");
     printf("  sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
-           "text|json]\n");
+           "text|json] [--dispatch]\n");
     printf("  sloppy capabilities [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
            "[--format text|json]\n");
     printf("  sloppy deps [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json] [--explain]\n");
     printf("  sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
-           "text|json]\n");
+           "text|json] [--dispatch]\n");
     printf("  sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> [--format "
            "text|json]\n");
     printf("  sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
@@ -395,7 +395,7 @@ static void sl_cli_print_command_help(const char* command)
 {
     if (strcmp(command, "routes") == 0) {
         printf("Usage: sloppy routes [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
-               "[--format text|json]\n");
+               "[--format text|json] [--dispatch]\n");
         return;
     }
     if (strcmp(command, "capabilities") == 0) {
@@ -482,7 +482,7 @@ static void sl_cli_print_command_help(const char* command)
     }
     if (strcmp(command, "doctor") == 0) {
         printf("Usage: sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] "
-               "[--format text|json]\n");
+               "[--format text|json] [--dispatch]\n");
         return;
     }
     if (strcmp(command, "db") == 0) {
@@ -1100,6 +1100,14 @@ static int sl_cli_parse_common_option(int argc, char** argv, int* index, SlCliOp
 
     if (strcmp(argv[*index], "--explain") == 0 && strcmp(out->command, "deps") == 0) {
         out->deps_explain = true;
+        *index += 1;
+        return 1;
+    }
+
+    if (strcmp(argv[*index], "--dispatch") == 0 &&
+        (strcmp(out->command, "routes") == 0 || strcmp(out->command, "doctor") == 0))
+    {
+        out->dispatch_details = true;
         *index += 1;
         return 1;
     }

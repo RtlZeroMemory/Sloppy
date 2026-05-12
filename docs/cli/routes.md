@@ -3,9 +3,9 @@
 List the routes a Plan declares. Read-only; doesn't enter V8.
 
 ```sh
-sloppy routes <artifacts-dir|plan.json> [--format text|json]
-sloppy routes --plan <path> [--format text|json]
-sloppy routes --artifacts <dir> [--format text|json]
+sloppy routes <artifacts-dir|plan.json> [--format text|json] [--dispatch]
+sloppy routes --plan <path> [--format text|json] [--dispatch]
+sloppy routes --artifacts <dir> [--format text|json] [--dispatch]
 ```
 
 Use `sloppy routes .sloppy` for the common case. `--plan <path>` and
@@ -60,6 +60,24 @@ native upgrade execution in this alpha.
 
 For Program Plans, JSON returns `"kind": "program"` and an empty `routes`
 array. Text output says no route metadata is expected for a program Plan.
+
+## Dispatch Details
+
+Pass `--dispatch` to include the compiler/runtime dispatch contract. Current
+alpha builds emit `native-compiled-in-memory`: the runtime compiles Plan routes
+into an exact static-path hash table plus parameter-route candidate buckets at
+startup. No `routes.slrt` binary artifact is emitted yet.
+
+```sh
+sloppy routes .sloppy --dispatch
+sloppy routes .sloppy --dispatch --format json
+```
+
+The dispatch block reports route and endpoint counts, exact static paths,
+parameter routes, candidate bucket count, fallback availability, and deferred
+items such as segment-trie nodes, native no-JS endpoints, and URL generation.
+Those deferred counters stay `0` until the runtime implements and uses those
+paths.
 
 ## Use cases
 
