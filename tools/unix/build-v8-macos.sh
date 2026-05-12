@@ -137,7 +137,14 @@ copy_static_archive_as_full() {
   fi
   while IFS= read -r member; do
     members+=("$member")
-  done < <("$archive_tool" t "$source")
+  done < <("$archive_tool" t "$source" 2>/dev/null) || {
+    cp -f "$source" "$destination"
+    return
+  }
+  if [[ "${#members[@]}" -eq 0 ]]; then
+    cp -f "$source" "$destination"
+    return
+  fi
   for member in "${members[@]}"; do
     [[ -n "$member" ]] || continue
     if [[ "$member" = /* ]]; then
@@ -220,8 +227,9 @@ if [[ "$package_only" -eq 0 ]]; then
 fi
 
 if [[ "$skip_build" -eq 0 && "$package_only" -eq 0 ]]; then
+  ninja_jobs="${SLOPPY_V8_NINJA_JOBS:-$(sysctl -n hw.ncpu)}"
   (cd "$v8_checkout" && gn gen "out.gn/$target_arch.release")
-  (cd "$v8_checkout" && ninja -C "out.gn/$target_arch.release" v8_monolith v8_libplatform v8_libbase)
+  (cd "$v8_checkout" && ninja -j "$ninja_jobs" -C "out.gn/$target_arch.release" v8_monolith v8_libplatform v8_libbase)
 fi
 
 revision="$(git -C "$v8_checkout" rev-parse HEAD)"
