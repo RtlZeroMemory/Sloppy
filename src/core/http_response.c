@@ -18,6 +18,7 @@
  */
 #include "sloppy/http_response.h"
 
+#include "sloppy/breadcrumbs.h"
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
 
@@ -155,7 +156,6 @@ SlStatus sl_http_response_stream_readable_init(SlHttpResponseStreamReadable* ada
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    (void)stream_body_length;
 
     *adapter = (SlHttpResponseStreamReadable){0};
     adapter->chunks = response->stream_chunks;
@@ -565,6 +565,10 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
     if (is_stream_response) {
         status = sl_http_response_stream_validate_and_measure(response, &stream_body_length);
         if (!sl_status_is_ok(status)) {
+            sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_STREAM,
+                                        SL_BREADCRUMB_EVENT_STREAM_FAILURE, sl_status_code(status),
+                                        0U, 0U, 0U, 0U,
+                                        sl_str_from_cstr("stream response validation failed"));
             return status;
         }
     }
@@ -591,6 +595,12 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
         status = sl_byte_builder_append_bytes(&builder, wire_body);
     }
     if (!sl_status_is_ok(status)) {
+        if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+            sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_STREAM,
+                                        SL_BREADCRUMB_EVENT_STREAM_BACKPRESSURE,
+                                        SL_STATUS_CAPACITY_EXCEEDED, 0U, 0U, 0U, 0U,
+                                        sl_str_from_cstr("response buffer capacity exceeded"));
+        }
         return status;
     }
 

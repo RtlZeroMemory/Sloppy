@@ -18,6 +18,8 @@
  */
 #include "engine_internal.h"
 
+#include "sloppy/breadcrumbs.h"
+
 #include <stddef.h>
 
 static SlStr sl_engine_literal(const char* ptr, size_t length)
@@ -287,7 +289,19 @@ SlStatus sl_engine_call_function0(SlEngine* engine, SlArena* arena, SlStr functi
     }
 
 #if defined(SLOPPY_ENABLE_V8_BRIDGE)
-    return sl_engine_v8_call_function0(engine, arena, function_name, out_result, out_diag);
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_ENTER,
+                                SL_STATUS_OK, 0U, 0U, 0U, 0U, function_name);
+    {
+        SlStatus status =
+            sl_engine_v8_call_function0(engine, arena, function_name, out_result, out_diag);
+        sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_V8,
+                                    sl_status_is_ok(status)
+                                        ? SL_BREADCRUMB_EVENT_V8_HANDLER_EXIT
+                                        : SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
+                                    sl_status_code(status), 0U, 0U, 0U, 0U,
+                                    out_diag == NULL ? function_name : out_diag->message);
+        return status;
+    }
 #else
     (void)out_diag;
     return sl_status_from_code(SL_STATUS_UNSUPPORTED);
@@ -331,8 +345,20 @@ SlStatus sl_engine_call_function_with_context(SlEngine* engine, SlArena* arena, 
     }
 
 #if defined(SLOPPY_ENABLE_V8_BRIDGE)
-    return sl_engine_v8_call_function_with_context(engine, arena, function_name, request_context,
-                                                   out_result, out_diag);
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_ENTER,
+                                SL_STATUS_OK, request_context->request_id,
+                                request_context->connection_id, 0U, 0U, function_name);
+    {
+        SlStatus status = sl_engine_v8_call_function_with_context(
+            engine, arena, function_name, request_context, out_result, out_diag);
+        sl_breadcrumb_global_record(
+            SL_DIAG_SUBSYSTEM_V8,
+            sl_status_is_ok(status) ? SL_BREADCRUMB_EVENT_V8_HANDLER_EXIT
+                                    : SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
+            sl_status_code(status), request_context->request_id, request_context->connection_id, 0U,
+            0U, out_diag == NULL ? function_name : out_diag->message);
+        return status;
+    }
 #else
     (void)out_diag;
     return sl_status_from_code(SL_STATUS_UNSUPPORTED);
@@ -410,8 +436,21 @@ SlStatus sl_engine_call_registered_handler_with_context(SlEngine* engine, SlAren
     }
 
 #if defined(SLOPPY_ENABLE_V8_BRIDGE)
-    return sl_engine_v8_call_registered_handler_with_context(engine, arena, handler_id,
-                                                             request_context, out_result, out_diag);
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_ENTER,
+                                SL_STATUS_OK, request_context->request_id,
+                                request_context->connection_id, 0U, (uint64_t)handler_id,
+                                sl_str_empty());
+    {
+        SlStatus status = sl_engine_v8_call_registered_handler_with_context(
+            engine, arena, handler_id, request_context, out_result, out_diag);
+        sl_breadcrumb_global_record(
+            SL_DIAG_SUBSYSTEM_V8,
+            sl_status_is_ok(status) ? SL_BREADCRUMB_EVENT_V8_HANDLER_EXIT
+                                    : SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
+            sl_status_code(status), request_context->request_id, request_context->connection_id, 0U,
+            (uint64_t)handler_id, out_diag == NULL ? sl_str_empty() : out_diag->message);
+        return status;
+    }
 #else
     (void)out_diag;
     return sl_status_from_code(SL_STATUS_UNSUPPORTED);

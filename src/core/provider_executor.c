@@ -9,6 +9,7 @@
 #include "sloppy/provider_executor.h"
 
 #include "sloppy/assert.h"
+#include "sloppy/breadcrumbs.h"
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
 #include "sloppy/container.h"
@@ -499,6 +500,9 @@ static void sl_provider_worker_main(void* user)
 
     sl_provider_executor_lock(executor);
     executor->worker_running = true;
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_PROVIDER, SL_BREADCRUMB_EVENT_WORKER_START,
+                                SL_STATUS_OK, 0U, 0U, 0U, 0U,
+                                sl_owned_str_as_view(executor->provider_token));
     for (;;) {
         SlProviderOperation* operation = NULL;
         SlProviderOperationRunFn run = NULL;
@@ -554,11 +558,16 @@ static void sl_provider_worker_main(void* user)
         }
         if (!sl_status_is_ok(run_status)) {
             executor->worker_failure_count += 1U;
+            sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_PROVIDER, SL_BREADCRUMB_EVENT_WORKER_FAIL,
+                                        sl_status_code(run_status), 0U, 0U, 0U, 0U, message);
         }
     }
 
     executor->worker_running = false;
     executor->worker_stopped_count += 1U;
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_PROVIDER, SL_BREADCRUMB_EVENT_WORKER_STOP,
+                                SL_STATUS_OK, 0U, 0U, 0U, 0U,
+                                sl_owned_str_as_view(executor->provider_token));
     sl_provider_executor_unlock(executor);
 }
 
@@ -1099,8 +1108,11 @@ sl_provider_executor_validate_submission(SlProviderInstanceExecutor* executor, S
 
     if (executor->mode == SL_PROVIDER_EXECUTION_UNAVAILABLE) {
         executor->invalid_operation_count += 1U;
+        sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_PROVIDER, SL_BREADCRUMB_EVENT_PROVIDER_FAIL,
+                                    SL_STATUS_UNSUPPORTED, 0U, 0U, 0U, 0U,
+                                    sl_owned_str_as_view(executor->provider_token));
         return sl_provider_executor_reject_with_diag(
-            arena, descriptor, SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE,
+            arena, descriptor, SL_DIAG_PROVIDER_UNAVAILABLE,
             sl_str_from_cstr("provider operation rejected: execution mode unavailable"),
             SL_STATUS_UNSUPPORTED);
     }

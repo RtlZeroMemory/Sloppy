@@ -998,7 +998,7 @@ static int test_unavailable_executor_rejects_after_capability_before_enqueue(voi
         sl_provider_executor_pending_count(&executor) != 0U ||
         sl_provider_executor_in_flight_count(&executor) != 0U ||
         executor.capability_denied_count != 0U || executor.invalid_operation_count != 1U ||
-        diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE || capability_calls != 1U)
+        diag.code != SL_DIAG_PROVIDER_UNAVAILABLE || capability_calls != 1U)
     {
         return 83;
     }

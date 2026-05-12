@@ -238,8 +238,90 @@ typedef enum SlDiagCode
     SL_DIAG_FFI_INVALID_ARGUMENT_TYPE = 210,
     SL_DIAG_FFI_INTEGER_OUT_OF_RANGE = 211,
     SL_DIAG_FFI_STRING_NUL = 212,
-    SL_DIAG_FFI_CALL_FAILED = 213
+    SL_DIAG_FFI_CALL_FAILED = 213,
+    SL_DIAG_NATIVE_INVARIANT_FAILED = 214,
+    SL_DIAG_PLAN_INVALID = 215,
+    SL_DIAG_PLAN_SCHEMA_UNSUPPORTED = 216,
+    SL_DIAG_ARTIFACT_HASH_MISMATCH = 217,
+    SL_DIAG_ROUTE_ARTIFACT_MISMATCH = 218,
+    SL_DIAG_ROUTE_VALIDATE_MISMATCH = 219,
+    SL_DIAG_HTTP_METHOD_NOT_ALLOWED = 220,
+    SL_DIAG_JSON_MALFORMED = 221,
+    SL_DIAG_JSON_SCHEMA_TYPE_MISMATCH = 222,
+    SL_DIAG_STREAM_BACKPRESSURE_LIMIT = 223,
+    SL_DIAG_STREAM_INVALID_STATE = 224,
+    SL_DIAG_V8_HANDLER_EXCEPTION = 225,
+    SL_DIAG_V8_UNHANDLED_REJECTION = 226,
+    SL_DIAG_V8_FATAL = 227,
+    SL_DIAG_WORKER_FAILED = 228,
+    SL_DIAG_PROVIDER_UNAVAILABLE = 229,
+    SL_DIAG_PROCESS_SPAWN_FAILED = 230,
+    SL_DIAG_PACKAGE_ARTIFACT_MISSING = 231,
+    SL_DIAG_RELEASE_ARTIFACT_MISMATCH = 232
 } SlDiagCode;
+
+typedef enum SlDiagSubsystem
+{
+    SL_DIAG_SUBSYSTEM_CORE = 0,
+    SL_DIAG_SUBSYSTEM_PLAN = 1,
+    SL_DIAG_SUBSYSTEM_ARTIFACT = 2,
+    SL_DIAG_SUBSYSTEM_HTTP = 3,
+    SL_DIAG_SUBSYSTEM_STREAM = 4,
+    SL_DIAG_SUBSYSTEM_V8 = 5,
+    SL_DIAG_SUBSYSTEM_WORKER = 6,
+    SL_DIAG_SUBSYSTEM_PROVIDER = 7,
+    SL_DIAG_SUBSYSTEM_CLI = 8,
+    SL_DIAG_SUBSYSTEM_PACKAGE = 9,
+    SL_DIAG_SUBSYSTEM_RELEASE = 10
+} SlDiagSubsystem;
+
+typedef enum SlDiagPhase
+{
+    SL_DIAG_PHASE_UNKNOWN = 0,
+    SL_DIAG_PHASE_PARSE = 1,
+    SL_DIAG_PHASE_VALIDATE = 2,
+    SL_DIAG_PHASE_LOAD = 3,
+    SL_DIAG_PHASE_STARTUP = 4,
+    SL_DIAG_PHASE_DISPATCH = 5,
+    SL_DIAG_PHASE_EXECUTE = 6,
+    SL_DIAG_PHASE_SHUTDOWN = 7,
+    SL_DIAG_PHASE_PACKAGE = 8,
+    SL_DIAG_PHASE_RELEASE = 9
+} SlDiagPhase;
+
+typedef enum SlDiagRedactionPolicy
+{
+    SL_DIAG_REDACTION_DEFAULT = 0,
+    SL_DIAG_REDACTION_STRICT = 1
+} SlDiagRedactionPolicy;
+
+typedef struct SlDiagMetadata
+{
+    SlDiagSubsystem subsystem;
+    SlDiagPhase phase;
+    SlStatusCode status;
+    SlDiagRedactionPolicy redaction_policy;
+    bool safe_to_expose;
+} SlDiagMetadata;
+
+typedef struct SlDiagReportContext
+{
+    SlStr timestamp_utc;
+    SlStr runtime_version;
+    SlStr build;
+    SlStr command;
+    SlStr plan_path;
+    SlStr plan_hash;
+    SlStr artifact_path;
+    SlStr package_path;
+    SlStr route_id;
+    SlStr route_pattern;
+    SlStr handler_id;
+    SlStr request_id;
+    SlStr connection_id;
+    SlStr cause_code;
+    SlStr cause_message;
+} SlDiagReportContext;
 
 /*
  * User/app source span. This is distinct from SlSourceLoc, which describes C call sites.
@@ -305,6 +387,11 @@ typedef struct SlDiagBuilder
 SlStr sl_diag_severity_name(SlDiagSeverity severity);
 SlStr sl_diag_code_name(SlDiagCode code);
 SlStr sl_diag_redacted(void);
+SlStr sl_diag_subsystem_name(SlDiagSubsystem subsystem);
+SlStr sl_diag_phase_name(SlDiagPhase phase);
+SlStr sl_diag_redaction_policy_name(SlDiagRedactionPolicy policy);
+SlStr sl_diag_status_code_name(SlStatusCode status);
+SlDiagMetadata sl_diag_metadata_for_code(SlDiagCode code);
 
 SlSourceSpan sl_source_span_unknown(void);
 SlSourceSpan sl_source_span_make(SlStr path, size_t line, size_t column, size_t length);
@@ -347,6 +434,15 @@ SlStatus sl_diag_render_text_with_source(SlArena* arena, const SlDiag* diag,
  * Output contains no timestamps, random IDs, or raw pointer values.
  */
 SlStatus sl_diag_render_json(SlArena* arena, const SlDiag* diag, SlStr* out);
+
+/*
+ * Renders the richer local report shape used by CLI diagnostics, crash reports, package
+ * failure reports, and doctor reports. The object includes stable taxonomy metadata and
+ * caller-provided context, but it still uses the diagnostic redaction policy and never
+ * includes timestamps or IDs unless the caller supplies them.
+ */
+SlStatus sl_diag_render_report_json(SlArena* arena, const SlDiag* diag,
+                                    const SlDiagReportContext* context, SlStr* out);
 
 /*
  * Renders deterministic diagnostic JSON and, when `source` matches the primary span, adds

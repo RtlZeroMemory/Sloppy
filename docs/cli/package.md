@@ -88,6 +88,10 @@ The package is a directory shape for local tooling and smoke tests; archive,
 signing, and runtime release packaging are handled by the release scripts under
 `tools/`.
 
+When packaging fails after report initialization is available, `sloppy package`
+writes `.sloppy/reports/package-diagnostic.json` and breadcrumb JSONL. These
+files are local failure evidence, not package artifacts.
+
 `dependencyMode: "bundled"` means compatible dependency modules have been
 emitted into the generated artifacts. Packaged apps do not read the original
 source checkout or `node_modules` at run time for bundled modules.

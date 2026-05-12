@@ -258,6 +258,10 @@
         core_diagnostics_foundation core.diagnostics.foundation tests/unit/core/test_diagnostics.c)
     set_tests_properties(
         core.diagnostics.foundation PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    sloppy_add_c_unit_test(core_runtime_diagnostics core.runtime_diagnostics
+                           tests/unit/core/test_runtime_diagnostics.c)
+    set_tests_properties(
+        core.runtime_diagnostics PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     add_test(
         NAME conformance.foundation.resource_lifecycle
         COMMAND $<TARGET_FILE:core_resource_lifecycle>)
@@ -358,6 +362,7 @@
         core_assert_enabled_under_ndebug tests/unit/core/test_assert_enabled_under_ndebug.c)
     target_include_directories(
         core_assert_enabled_under_ndebug PRIVATE "${PROJECT_SOURCE_DIR}/include")
+    target_link_libraries(core_assert_enabled_under_ndebug PRIVATE sloppy_core)
     target_compile_features(core_assert_enabled_under_ndebug PRIVATE c_std_17)
     target_compile_definitions(core_assert_enabled_under_ndebug PRIVATE SL_ENABLE_ASSERTS=1 NDEBUG)
     sloppy_apply_warnings(core_assert_enabled_under_ndebug)

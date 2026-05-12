@@ -895,6 +895,43 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
     return 0;
 }
 
+static void sl_package_write_failure_report(const char* source_path, const char* out_dir,
+                                            const char* package_dir, const char* message)
+{
+    unsigned char arena_storage[SL_CLI_DIAG_ARENA_BYTES];
+    SlArena arena = {0};
+    SlDiagBuilder builder = {0};
+    SlDiag diag = {0};
+    SlDiagReportContext context = {0};
+
+    if (!sl_status_is_ok(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)))) {
+        return;
+    }
+    if (!sl_status_is_ok(sl_diag_builder_init(
+            &builder, &arena, SL_DIAG_SEVERITY_ERROR, SL_DIAG_PACKAGE_ARTIFACT_MISSING,
+            sl_str_from_cstr(message != NULL ? message : "sloppy package failed"))))
+    {
+        return;
+    }
+    if (source_path != NULL) {
+        if (!sl_status_is_ok(sl_diag_builder_add_hint(&builder, sl_str_from_cstr(source_path)))) {
+            return;
+        }
+    }
+    if (!sl_status_is_ok(sl_diag_builder_finish(&builder, &diag))) {
+        return;
+    }
+    context.command = sl_str_from_cstr("package");
+    context.runtime_version = sl_str_from_cstr(SL_VERSION_STRING);
+    context.artifact_path = out_dir != NULL ? sl_str_from_cstr(out_dir) : sl_str_empty();
+    context.package_path = package_dir != NULL ? sl_str_from_cstr(package_dir) : sl_str_empty();
+    context.cause_message = sl_str_from_cstr(message != NULL ? message : "sloppy package failed");
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_PACKAGE, SL_BREADCRUMB_EVENT_PACKAGE_REPORT,
+                                SL_STATUS_INTERNAL, 0U, 0U, 0U, 0U, context.cause_message);
+    sl_cli_write_diagnostic_report_file("package-diagnostic.json", &diag, &context,
+                                        sl_breadcrumb_global_ring());
+}
+
 static int sl_cli_command_package(const SlCliOptions* options)
 {
     SlSloppyRunConfig config = {0};
@@ -950,12 +987,14 @@ static int sl_cli_command_package(const SlCliOptions* options)
     if (!sl_run_source_input_extension_supported(source_path)) {
         sl_cli_write_error_with_value("sloppy package: unsupported source input: ", source_path,
                                       "\n");
+        sl_package_write_failure_report(source_path, out_dir, NULL, "unsupported source input");
         return 1;
     }
 
     if (sl_run_compile_source(source_path, out_dir, options, environment, "sloppy package",
                               config_dir, project_kind, project_config) != 0)
     {
+        sl_package_write_failure_report(source_path, out_dir, NULL, "source compilation failed");
         return 1;
     }
 
@@ -974,6 +1013,7 @@ static int sl_cli_command_package(const SlCliOptions* options)
         result = 1;
     }
     if (result != 0) {
+        sl_package_write_failure_report(source_path, out_dir, package_dir, "package write failed");
         return result;
     }
 
