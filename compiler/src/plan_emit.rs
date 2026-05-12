@@ -131,8 +131,10 @@ fn schema_response_native_fallback_reason(schema: &Value) -> Option<&'static str
 
     match kind {
         "object" => {
-            let properties = schema.get("properties")?;
-            let Some(properties) = properties.as_object() else {
+            let Some(properties_value) = schema.get("properties") else {
+                return Some("object-properties-missing");
+            };
+            let Some(properties) = properties_value.as_object() else {
                 return Some("object-properties-invalid");
             };
             for property in properties.values() {
@@ -158,6 +160,7 @@ fn schema_response_native_fallback_reason(schema: &Value) -> Option<&'static str
 
 fn route_json_response_plan(
     response: Option<&ResponseMetadata>,
+    responses: &[ResponseMetadata],
     resolved_schemas: &BTreeMap<String, Value>,
 ) -> Value {
     let Some(response) = response else {
@@ -172,14 +175,59 @@ fn route_json_response_plan(
             "writer": "none"
         });
     }
-    if response.native_body.is_some() {
+    let json_responses = if responses.is_empty() {
+        vec![response]
+    } else {
+        responses
+            .iter()
+            .filter(|candidate| candidate.kind == "json")
+            .collect::<Vec<_>>()
+    };
+    if json_responses.is_empty() {
+        return json!({
+            "mode": "none",
+            "writer": "none"
+        });
+    }
+    if json_responses.len() == 1 && json_responses[0].native_body.is_some() {
         return json!({
             "mode": "native-static",
             "writer": "preencoded",
             "contentType": "application/json"
         });
     }
-    if let Some(schema) = &response.body_schema {
+    if json_responses
+        .iter()
+        .any(|candidate| candidate.native_body.is_some())
+    {
+        return json!({
+            "mode": "fallback",
+            "writer": "none",
+            "fallbackReason": "multiple-json-response-shapes"
+        });
+    }
+    let schema_names = json_responses
+        .iter()
+        .filter_map(|candidate| candidate.body_schema.as_deref())
+        .collect::<BTreeSet<_>>();
+    if schema_names.len() > 1 {
+        return json!({
+            "mode": "fallback",
+            "writer": "none",
+            "fallbackReason": "multiple-json-response-schemas"
+        });
+    }
+    if let Some(schema) = schema_names.iter().next().copied() {
+        if json_responses
+            .iter()
+            .any(|candidate| candidate.body_schema.as_deref() != Some(schema))
+        {
+            return json!({
+                "mode": "fallback",
+                "writer": "none",
+                "fallbackReason": "mixed-json-response-schema-coverage"
+            });
+        }
         if let Some(definition) = resolved_schemas.get(schema) {
             if let Some(reason) = schema_response_native_fallback_reason(definition) {
                 return json!({
@@ -295,7 +343,11 @@ fn route_dispatch_json(
         .routes
         .iter()
         .filter(|route| {
-            let plan = route_json_response_plan(route.handler.response.as_ref(), resolved_schemas);
+            let plan = route_json_response_plan(
+                route.handler.response.as_ref(),
+                &route.handler.responses,
+                resolved_schemas,
+            );
             route_json_mode(&plan) == "native-static" || route_json_mode(&plan) == "native-schema"
         })
         .count();
@@ -305,6 +357,7 @@ fn route_dispatch_json(
         .filter(|route| {
             route_json_mode(&route_json_response_plan(
                 route.handler.response.as_ref(),
+                &route.handler.responses,
                 resolved_schemas,
             )) == "generic"
         })
@@ -315,6 +368,7 @@ fn route_dispatch_json(
         .filter(|route| {
             route_json_mode(&route_json_response_plan(
                 route.handler.response.as_ref(),
+                &route.handler.responses,
                 resolved_schemas,
             )) == "fallback"
         })
@@ -855,6 +909,7 @@ pub(crate) fn emit_plan_with_route_artifact(
                 route_json["jsonRequest"] = route_json_request_plan(&route.handler.bindings);
                 route_json["jsonResponse"] = route_json_response_plan(
                     route.handler.response.as_ref(),
+                    &route.handler.responses,
                     &resolved_schema_definitions,
                 );
                 if route.handler.responses.len() > 1 || route.handler.runtime_deferred {
@@ -1797,4 +1852,54 @@ fn package_manifest_entry_json(entry: &ConfigurationPackageEntry) -> Value {
         };
     }
     value
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn json_response(schema: Option<&str>) -> ResponseMetadata {
+        ResponseMetadata {
+            helper: "ok".to_string(),
+            status: 200,
+            kind: "json".to_string(),
+            body_schema: schema.map(str::to_string),
+            native_body: None,
+            source_name: None,
+            source_text: None,
+            span: None,
+            partial: false,
+        }
+    }
+
+    #[test]
+    fn object_schema_without_properties_is_an_explicit_response_fallback() {
+        let schema = json!({ "kind": "object" });
+
+        assert_eq!(
+            schema_response_native_fallback_reason(&schema),
+            Some("object-properties-missing")
+        );
+    }
+
+    #[test]
+    fn route_json_response_plan_considers_all_declared_json_responses() {
+        let primary = json_response(Some("UserDto"));
+        let responses = vec![primary.clone(), json_response(Some("OrderDto"))];
+        let mut resolved = BTreeMap::new();
+        resolved.insert(
+            "UserDto".to_string(),
+            json!({ "kind": "object", "properties": { "id": { "kind": "int" } } }),
+        );
+        resolved.insert(
+            "OrderDto".to_string(),
+            json!({ "kind": "object", "properties": { "id": { "kind": "int" } } }),
+        );
+
+        let plan = route_json_response_plan(Some(&primary), &responses, &resolved);
+
+        assert_eq!(plan["mode"], "fallback");
+        assert_eq!(plan["writer"], "none");
+        assert_eq!(plan["fallbackReason"], "multiple-json-response-schemas");
+    }
 }

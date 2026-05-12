@@ -3161,6 +3161,9 @@ static size_t sl_http_dispatch_effective_max_body_length(const SlPlanRoute* rout
     size_t seed_max_body_length = seed == NULL ? 0U : seed->max_body_length;
     size_t route_max_body_length = 0U;
 
+    if (seed_max_body_length == SL_HTTP_DEFAULT_MAX_BODY_LENGTH) {
+        seed_max_body_length = 0U;
+    }
     if (route != NULL && sl_http_dispatch_route_expects_json_body(route) &&
         route->json_request.max_body_bytes != 0U)
     {

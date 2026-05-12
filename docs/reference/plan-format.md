@@ -168,7 +168,7 @@ Compiler-emitted web Plan routes include JSON request and response plans:
   "method": "POST",
   "pattern": "/users",
   "bindings": [
-    { "kind": "body-json", "name": "body", "schema": "CreateUser" }
+    { "kind": "body.json", "name": "body", "schema": "CreateUser" }
   ],
   "jsonRequest": {
     "mode": "native-schema",
@@ -176,9 +176,7 @@ Compiler-emitted web Plan routes include JSON request and response plans:
     "materialization": "materialize-once",
     "unknownFields": "ignore",
     "maxBodyBytes": 65536,
-    "maxDepth": 50,
-    "maxStringBytes": 4096,
-    "maxArrayLength": 1024
+    "maxDepth": 50
   },
   "jsonResponse": {
     "mode": "native-schema",

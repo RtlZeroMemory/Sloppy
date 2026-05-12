@@ -2268,6 +2268,66 @@ static int test_json_route_without_route_max_uses_backend_body_limit(void)
     return 0;
 }
 
+static int test_route_json_max_can_exceed_default_when_backend_limit_is_unset(void)
+{
+    static unsigned char body[SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 1U];
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlHttpHeader headers[2] = {
+        {.name = sl_str_from_cstr("content-type"), .value = sl_str_from_cstr("application/json")},
+        {.name = sl_str_from_cstr("content-length"), .value = {0}}};
+    SlHttpRequestLifecycle request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    memset(body, 'a', sizeof(body));
+    body[0] = '"';
+    body[sizeof(body) - 1U] = '"';
+    headers[1].value = body_limit_plus_one_header_value();
+    route.method = sl_str_from_cstr("POST");
+    route.pattern = sl_str_from_cstr("/echo");
+    route.handler_id = 1U;
+    route.json_request.mode = SL_PLAN_JSON_REQUEST_GENERIC;
+    route.json_request.materialization = SL_PLAN_JSON_MATERIALIZATION_GENERIC;
+    route.json_request.max_body_bytes = SL_HTTP_DEFAULT_MAX_BODY_LENGTH + 8U;
+    plan.routes = &route;
+    plan.route_count = 1U;
+    request.head.method = SL_HTTP_METHOD_POST;
+    request.head.path = sl_str_from_cstr("/echo");
+    request.head.raw_target = request.head.path;
+    request.head.headers = headers;
+    request.head.header_count = sizeof(headers) / sizeof(headers[0]);
+    request.head.body = sl_bytes_from_parts(body, sizeof(body));
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 153;
+    }
+
+    if (expect_status(sl_http_dispatch_request_lifecycle(&arena, engine, &plan, &table.dispatch,
+                                                         &request, &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        sl_engine_destroy(engine);
+        return 154;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_generic_json_route_still_uses_json_media_and_size_policy(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -3553,6 +3613,7 @@ int main(void)
         HTTP_DISPATCH_TEST(test_route_json_max_overrides_higher_backend_body_limit),
         HTTP_DISPATCH_TEST(test_backend_body_limit_remains_stricter_than_route_json_max),
         HTTP_DISPATCH_TEST(test_json_route_without_route_max_uses_backend_body_limit),
+        HTTP_DISPATCH_TEST(test_route_json_max_can_exceed_default_when_backend_limit_is_unset),
         HTTP_DISPATCH_TEST(test_generic_json_route_still_uses_json_media_and_size_policy),
         HTTP_DISPATCH_TEST(
             test_schema_json_route_rejects_empty_or_missing_body_before_handler_call),

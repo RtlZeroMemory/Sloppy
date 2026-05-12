@@ -7512,6 +7512,20 @@ export default app;
         .map(|response| response.body_schema.as_deref())
         .collect();
     assert_eq!(body_schemas, vec![Some("UserDto"), Some("OrderDto")]);
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["routes"][0]["jsonResponse"]["mode"], "fallback");
+    assert_eq!(
+        plan["routes"][0]["jsonResponse"]["fallbackReason"],
+        "multiple-json-response-schemas"
+    );
 }
 
 #[test]

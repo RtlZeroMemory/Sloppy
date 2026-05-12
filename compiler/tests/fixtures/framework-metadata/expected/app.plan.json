@@ -284,9 +284,9 @@
         "native": 2
       },
       "response": {
-        "fallback": 0,
+        "fallback": 1,
         "generic": 0,
-        "native": 2
+        "native": 1
       }
     },
     "mode": "native-compiled",
@@ -570,10 +570,9 @@
         "unknownFields": "ignore"
       },
       "jsonResponse": {
-        "contentType": "application/json",
-        "mode": "native-schema",
-        "schema": "UserDto",
-        "writer": "bounded"
+        "fallbackReason": "mixed-json-response-schema-coverage",
+        "mode": "fallback",
+        "writer": "none"
       },
       "method": "GET",
       "name": null,

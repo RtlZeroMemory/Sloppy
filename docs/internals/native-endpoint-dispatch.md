@@ -62,7 +62,8 @@ The Plan records the `routes.slrt` path and SHA-256 hash, route
 counts, endpoint counts, exact static paths, parameter route counts, native
 no-JS route counts, URL writer counts, candidate bucket counts, segment-trie
 node counts, known constraints, aggregate JSON request/response
-native/generic/fallback counts, and fallback reason summaries.
+native/generic/fallback counts. Fallback reasons are exposed per route through
+`routes[].jsonRequest` and `routes[].jsonResponse`.
 
 `routes[].dispatch` records the endpoint ID, dispatch strategy, and execution
 kind for each static Plan route. Execution kind is `v8-handler`,

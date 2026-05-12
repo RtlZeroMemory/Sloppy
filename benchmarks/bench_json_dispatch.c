@@ -359,6 +359,7 @@ static SlStatus bench_json_request_generic_parse_medium_body(const SlBenchContex
     uint64_t checksum = 0U;
     uint64_t index = 0U;
     size_t payload_length = 0U;
+    size_t body_length = 0U;
     int written = 0;
 
     (void)context;
@@ -376,20 +377,96 @@ static SlStatus bench_json_request_generic_parse_medium_body(const SlBenchContex
     memset(&body[written], 'a', payload_length);
     memcpy(&body[(size_t)written + payload_length], "\"}", sizeof("\"}") - 1U);
     body[(size_t)written + payload_length + sizeof("\"}") - 1U] = '\0';
+    body_length = (size_t)written + payload_length + (sizeof("\"}") - 1U);
 
     for (index = 0U; index < iterations; index += 1U) {
-        yyjson_doc* doc = yyjson_read(body, strlen(body), 0U);
+        yyjson_doc* doc = yyjson_read(body, body_length, 0U);
 
         if (doc == NULL) {
             return sl_status_from_code(SL_STATUS_INVALID_STATE);
         }
         checksum +=
-            sl_bench_json_checksum(sl_bytes_from_parts((const unsigned char*)body, strlen(body)));
+            sl_bench_json_checksum(sl_bytes_from_parts((const unsigned char*)body, body_length));
         yyjson_doc_free(doc);
     }
 
     *out_checksum = checksum;
     return sl_status_ok();
+}
+
+static SlStatus bench_json_append_escaped_string(SlStringBuilder* builder, SlStr value)
+{
+    static const char hex[] = "0123456789abcdef";
+    size_t index = 0U;
+    SlStatus status = sl_string_builder_append_char(builder, '"');
+
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    for (index = 0U; index < value.length; index += 1U) {
+        unsigned char ch = (unsigned char)value.ptr[index];
+        char escaped[7] = {'\\', 'u', '0', '0', '0', '0', '\0'};
+
+        switch (ch) {
+        case '"':
+            status = sl_string_builder_append_cstr(builder, "\\\"");
+            break;
+        case '\\':
+            status = sl_string_builder_append_cstr(builder, "\\\\");
+            break;
+        case '\b':
+            status = sl_string_builder_append_cstr(builder, "\\b");
+            break;
+        case '\f':
+            status = sl_string_builder_append_cstr(builder, "\\f");
+            break;
+        case '\n':
+            status = sl_string_builder_append_cstr(builder, "\\n");
+            break;
+        case '\r':
+            status = sl_string_builder_append_cstr(builder, "\\r");
+            break;
+        case '\t':
+            status = sl_string_builder_append_cstr(builder, "\\t");
+            break;
+        default:
+            if (ch < 0x20U) {
+                escaped[4] = hex[(ch >> 4U) & 0x0FU];
+                escaped[5] = hex[ch & 0x0FU];
+                status = sl_string_builder_append_cstr(builder, escaped);
+            }
+            else {
+                status = sl_string_builder_append_char(builder, (char)ch);
+            }
+            break;
+        }
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    return sl_string_builder_append_char(builder, '"');
+}
+
+static SlStatus bench_json_append_field_name(SlStringBuilder* builder, bool* needs_comma,
+                                             const char* name)
+{
+    SlStatus status;
+
+    if (needs_comma == NULL || name == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (*needs_comma) {
+        status = sl_string_builder_append_char(builder, ',');
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    status = bench_json_append_escaped_string(builder, sl_str_from_cstr(name));
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_char(builder, ':');
+    }
+    *needs_comma = true;
+    return status;
 }
 
 static SlStatus bench_json_response_generic_serialize(const SlBenchContext* context,
@@ -463,15 +540,79 @@ static SlStatus bench_json_response_native_schema_write(const SlBenchContext* co
     for (index = 0U; index < iterations; index += 1U) {
         SlStringBuilder builder = {0};
         SlStr json = sl_str_empty();
+        bool needs_comma = false;
 
         sl_arena_reset(&arena);
         status = sl_string_builder_init_arena(&builder, &arena, 128U, 4096U);
         if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_cstr(
-                &builder,
-                "{\"name\":\"Ada\",\"escaped\":\"line\\nquote\\\"slash\\\\\",\"count\":7,"
-                "\"score\":1.5,\"ok\":true,\"note\":null,\"nested\":{\"label\":\"inner\"},"
-                "\"tags\":[\"a\",\"b\"]}");
+            status = sl_string_builder_append_char(&builder, '{');
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_field_name(&builder, &needs_comma, "name");
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_escaped_string(&builder, sl_str_from_cstr("Ada"));
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_field_name(&builder, &needs_comma, "escaped");
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_escaped_string(&builder,
+                                                      sl_str_from_cstr("line\nquote\"slash\\"));
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_field_name(&builder, &needs_comma, "count");
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_i64(&builder, 7);
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_field_name(&builder, &needs_comma, "score");
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_f64(&builder, 1.5);
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_field_name(&builder, &needs_comma, "ok");
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_cstr(&builder, "true");
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_field_name(&builder, &needs_comma, "note");
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_cstr(&builder, "null");
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_field_name(&builder, &needs_comma, "nested");
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_cstr(&builder, "{\"label\":");
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_escaped_string(&builder, sl_str_from_cstr("inner"));
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_char(&builder, '}');
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_field_name(&builder, &needs_comma, "tags");
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_char(&builder, '[');
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_escaped_string(&builder, sl_str_from_cstr("a"));
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_char(&builder, ',');
+        }
+        if (sl_status_is_ok(status)) {
+            status = bench_json_append_escaped_string(&builder, sl_str_from_cstr("b"));
+        }
+        if (sl_status_is_ok(status)) {
+            status = sl_string_builder_append_cstr(&builder, "]}");
         }
         if (!sl_status_is_ok(status)) {
             return status;
