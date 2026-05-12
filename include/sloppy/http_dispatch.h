@@ -46,6 +46,13 @@ typedef struct SlHttpRouteTrieRoot SlHttpRouteTrieRoot;
 typedef struct SlHttpRouteTrieNode SlHttpRouteTrieNode;
 typedef struct SlHttpRouteTrieEdge SlHttpRouteTrieEdge;
 
+typedef enum SlHttpRouteDispatchMode
+{
+    SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED = 0,
+    SL_HTTP_ROUTE_DISPATCH_MODE_CLASSIC = 1,
+    SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE = 2
+} SlHttpRouteDispatchMode;
+
 /*
  * Borrowed route binding table.
  *
@@ -73,6 +80,7 @@ typedef struct SlHttpDispatchTable
     const SlHttpRouteTrieEdge* param_route_trie_edges;
     size_t param_route_trie_edge_count;
     const SlPlan* plan;
+    SlHttpRouteDispatchMode dispatch_mode;
     /*
      * Runtime-owned dispatch metadata. Callers that manually create this struct must
      * zero-initialize it and leave this field untouched.

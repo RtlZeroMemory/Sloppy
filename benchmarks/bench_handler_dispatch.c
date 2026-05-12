@@ -13,7 +13,6 @@
 #include "sloppy/string.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 static SlPlan sl_bench_plan(const SlPlanHandler* handlers, size_t handler_count)
@@ -65,6 +64,40 @@ static SlStatus sl_bench_format_route_path(char* buffer, size_t buffer_size, siz
     return sl_status_ok();
 }
 
+static SlStatus sl_bench_format_param_route_path(char* buffer, size_t buffer_size,
+                                                 size_t route_index)
+{
+    int written = 0;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    written = snprintf(buffer, buffer_size, "/orgs/{org}/teams/%zu/users/{id:int}", route_index);
+    if (written < 0 || (size_t)written >= buffer_size) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    return sl_status_ok();
+}
+
+static SlStatus sl_bench_format_param_request_path(char* buffer, size_t buffer_size,
+                                                   size_t route_index)
+{
+    int written = 0;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    written = snprintf(buffer, buffer_size, "/orgs/acme/teams/%zu/users/42", route_index);
+    if (written < 0 || (size_t)written >= buffer_size) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    return sl_status_ok();
+}
+
 typedef enum SlBenchRouteDispatchMode
 {
     SL_BENCH_ROUTE_DISPATCH_COMPILED,
@@ -80,96 +113,17 @@ typedef enum SlBenchDispatchExpectation
     SL_BENCH_EXPECT_METHOD_MISMATCH
 } SlBenchDispatchExpectation;
 
-static const char* sl_bench_route_dispatch_mode_value(SlBenchRouteDispatchMode mode)
+static SlHttpRouteDispatchMode sl_bench_route_dispatch_mode_value(SlBenchRouteDispatchMode mode)
 {
     switch (mode) {
     case SL_BENCH_ROUTE_DISPATCH_COMPILED:
-        return "compiled";
+        return SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED;
     case SL_BENCH_ROUTE_DISPATCH_CLASSIC:
-        return "classic";
+        return SL_HTTP_ROUTE_DISPATCH_MODE_CLASSIC;
     case SL_BENCH_ROUTE_DISPATCH_VALIDATE:
-        return "validate";
+        return SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE;
     }
-    return "compiled";
-}
-
-static int sl_bench_set_env(const char* key, const char* value)
-{
-#ifdef _WIN32
-    return _putenv_s(key, value == NULL ? "" : value);
-#else
-    if (value == NULL || value[0] == '\0') {
-        return unsetenv(key);
-    }
-    return setenv(key, value, 1);
-#endif
-}
-
-#ifndef _WIN32
-static char* sl_bench_strdup(const char* value)
-{
-    size_t length = 0U;
-    char* copy = NULL;
-
-    if (value == NULL) {
-        return NULL;
-    }
-    length = strlen(value);
-    copy = (char*)malloc(length + 1U);
-    if (copy == NULL) {
-        return NULL;
-    }
-    memcpy(copy, value, length + 1U);
-    return copy;
-}
-#endif
-
-static SlStatus sl_bench_copy_env_value(const char* key, char** out_value)
-{
-    if (key == NULL || out_value == NULL) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-    *out_value = NULL;
-#ifdef _WIN32
-    {
-        size_t length = 0U;
-        return _dupenv_s(out_value, &length, key) == 0
-                   ? sl_status_ok()
-                   : sl_status_from_code(SL_STATUS_INVALID_STATE);
-    }
-#else
-    {
-        const char* current = getenv(key);
-        if (current == NULL) {
-            return sl_status_ok();
-        }
-        *out_value = sl_bench_strdup(current);
-        return *out_value == NULL ? sl_status_from_code(SL_STATUS_OUT_OF_MEMORY) : sl_status_ok();
-    }
-#endif
-}
-
-static SlStatus sl_bench_route_dispatch_env_enter(SlBenchRouteDispatchMode mode, char** saved)
-{
-    SlStatus status;
-
-    if (saved == NULL) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-    status = sl_bench_copy_env_value("SLOPPY_ROUTE_DISPATCH", saved);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    return sl_bench_set_env("SLOPPY_ROUTE_DISPATCH", sl_bench_route_dispatch_mode_value(mode)) == 0
-               ? sl_status_ok()
-               : sl_status_from_code(SL_STATUS_INVALID_STATE);
-}
-
-static SlStatus sl_bench_route_dispatch_env_restore(char* saved)
-{
-    int result = sl_bench_set_env("SLOPPY_ROUTE_DISPATCH", saved == NULL ? "" : saved);
-    free(saved);
-    return result == 0 ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_STATE);
+    return SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED;
 }
 
 static void sl_bench_set_native_text_route(SlPlanRoute* route, const char* method,
@@ -443,7 +397,6 @@ static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t ta
     static char pattern_storage[SL_BENCH_MAX_ROUTES][32];
     static SlHttpRouteTable cached_table;
     static size_t cached_route_count;
-    static SlBenchRouteDispatchMode cached_mode;
     static bool cached_ready;
     char request_path[32];
     SlArena engine_arena;
@@ -456,7 +409,6 @@ static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t ta
     uint64_t checksum = 0U;
     uint64_t index;
     size_t route_index = 0U;
-    char* saved_dispatch_mode = NULL;
     bool rebuild_table = false;
     SlStatus status;
 
@@ -476,17 +428,11 @@ static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t ta
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_bench_route_dispatch_env_enter(mode, &saved_dispatch_mode);
-    if (!sl_status_is_ok(status)) {
-        sl_engine_destroy(engine);
-        return status;
-    }
 
-    rebuild_table = !cached_ready || cached_route_count != route_count || cached_mode != mode;
+    rebuild_table = !cached_ready || cached_route_count != route_count;
     if (rebuild_table) {
         status = sl_arena_init(&route_arena, route_storage, sizeof(route_storage));
         if (!sl_status_is_ok(status)) {
-            sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
             sl_engine_destroy(engine);
             return status;
         }
@@ -494,7 +440,6 @@ static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t ta
             status = sl_bench_format_route_path(pattern_storage[route_index],
                                                 sizeof(pattern_storage[route_index]), route_index);
             if (!sl_status_is_ok(status)) {
-                sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
                 sl_engine_destroy(engine);
                 return status;
             }
@@ -507,20 +452,18 @@ static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t ta
         plan.route_count = route_count;
         status = sl_http_route_table_build(&route_arena, &plan, &cached_table, NULL);
         if (!sl_status_is_ok(status)) {
-            sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
             sl_engine_destroy(engine);
             return status;
         }
         cached_route_count = route_count;
-        cached_mode = mode;
         cached_ready = true;
     }
+    cached_table.dispatch.dispatch_mode = sl_bench_route_dispatch_mode_value(mode);
     plan.routes = routes;
     plan.route_count = route_count;
 
     status = sl_bench_format_route_path(request_path, sizeof(request_path), target_index);
     if (!sl_status_is_ok(status)) {
-        sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
         sl_engine_destroy(engine);
         return status;
     }
@@ -535,20 +478,17 @@ static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t ta
                                                &cached_table.dispatch, &request, &result, NULL);
         if (expectation == SL_BENCH_EXPECT_MISSING) {
             if (sl_status_code(status) != SL_STATUS_OUT_OF_RANGE) {
-                sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
                 sl_engine_destroy(engine);
                 return status;
             }
         }
         else if (expectation == SL_BENCH_EXPECT_METHOD_MISMATCH) {
             if (sl_status_code(status) != SL_STATUS_UNSUPPORTED) {
-                sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
                 sl_engine_destroy(engine);
                 return status;
             }
         }
         else if (sl_status_code(status) != SL_STATUS_UNSUPPORTED) {
-            sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
             sl_engine_destroy(engine);
             return status;
         }
@@ -556,11 +496,6 @@ static SlStatus sl_bench_route_table_dispatch_loop(size_t route_count, size_t ta
         checksum += (uint64_t)result.kind;
     }
 
-    status = sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
-    if (!sl_status_is_ok(status)) {
-        sl_engine_destroy(engine);
-        return status;
-    }
     sl_engine_destroy(engine);
     *out_checksum = checksum;
     return sl_status_ok();
@@ -611,15 +546,17 @@ SL_BENCH_STATIC_SET(bench_route_table_10000_validate, 10000U, 5000U, 9999U,
 static SlStatus sl_bench_param_trie_dispatch_loop(SlBenchRouteDispatchMode mode,
                                                   const char* request_path,
                                                   SlBenchDispatchExpectation expectation,
-                                                  const char* expected_text, uint64_t iterations,
+                                                  const char* expected_text,
+                                                  bool capture_route_params, uint64_t iterations,
                                                   uint64_t* out_checksum)
 {
     static unsigned char engine_storage[1024];
     static unsigned char route_storage[65536];
     static unsigned char dispatch_storage[8192];
     static SlPlanRoute routes[8];
+    static SlPlanRequestBinding route0_bindings[2];
     static SlHttpRouteTable cached_table;
-    static SlBenchRouteDispatchMode cached_mode;
+    static bool cached_capture_route_params;
     static bool cached_ready;
     SlArena engine_arena;
     SlArena route_arena;
@@ -637,7 +574,6 @@ static SlStatus sl_bench_param_trie_dispatch_loop(SlBenchRouteDispatchMode mode,
     };
     SlPlan plan = sl_bench_plan(handlers, sizeof(handlers) / sizeof(handlers[0]));
     SlHttpRequestHead request = {0};
-    char* saved_dispatch_mode = NULL;
     uint64_t checksum = 0U;
     uint64_t index;
     SlStatus status;
@@ -661,20 +597,28 @@ static SlStatus sl_bench_param_trie_dispatch_loop(SlBenchRouteDispatchMode mode,
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_bench_route_dispatch_env_enter(mode, &saved_dispatch_mode);
-    if (!sl_status_is_ok(status)) {
-        sl_engine_destroy(engine);
-        return status;
-    }
-    if (!cached_ready || cached_mode != mode) {
+    if (!cached_ready || cached_capture_route_params != capture_route_params) {
         status = sl_arena_init(&route_arena, route_storage, sizeof(route_storage));
         if (!sl_status_is_ok(status)) {
-            sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
             sl_engine_destroy(engine);
             return status;
         }
         sl_bench_set_native_text_route(&routes[0], "GET", "/orgs/{org}/users/{id:int}", 1U,
                                        "param-hit");
+        if (capture_route_params) {
+            route0_bindings[0] = (SlPlanRequestBinding){0};
+            route0_bindings[0].name = sl_str_from_cstr("org");
+            route0_bindings[0].schema = sl_str_from_cstr("string");
+            route0_bindings[0].type = sl_str_from_cstr("Route<string>");
+            route0_bindings[0].kind = SL_PLAN_REQUEST_BINDING_ROUTE;
+            route0_bindings[1] = (SlPlanRequestBinding){0};
+            route0_bindings[1].name = sl_str_from_cstr("id");
+            route0_bindings[1].schema = sl_str_from_cstr("number");
+            route0_bindings[1].type = sl_str_from_cstr("Route<number>");
+            route0_bindings[1].kind = SL_PLAN_REQUEST_BINDING_ROUTE;
+            routes[0].bindings = route0_bindings;
+            routes[0].binding_count = sizeof(route0_bindings) / sizeof(route0_bindings[0]);
+        }
         sl_bench_set_native_text_route(&routes[1], "GET", "/orgs/{org}/settings", 2U,
                                        "shared-prefix");
         sl_bench_set_native_text_route(&routes[2], "GET", "/{tenant}/users/{id:int}", 3U,
@@ -687,13 +631,13 @@ static SlStatus sl_bench_param_trie_dispatch_loop(SlBenchRouteDispatchMode mode,
                                        "post");
         status = sl_http_route_table_build(&route_arena, &plan, &cached_table, NULL);
         if (!sl_status_is_ok(status)) {
-            sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
             sl_engine_destroy(engine);
             return status;
         }
-        cached_mode = mode;
+        cached_capture_route_params = capture_route_params;
         cached_ready = true;
     }
+    cached_table.dispatch.dispatch_mode = sl_bench_route_dispatch_mode_value(mode);
 
     request.method = SL_HTTP_METHOD_GET;
     request.path = sl_str_from_cstr(request_path);
@@ -706,7 +650,6 @@ static SlStatus sl_bench_param_trie_dispatch_loop(SlBenchRouteDispatchMode mode,
                                                &cached_table.dispatch, &request, &result, NULL);
         if (expectation == SL_BENCH_EXPECT_MISSING) {
             if (sl_status_code(status) != SL_STATUS_OUT_OF_RANGE) {
-                sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
                 sl_engine_destroy(engine);
                 return status;
             }
@@ -715,7 +658,6 @@ static SlStatus sl_bench_param_trie_dispatch_loop(SlBenchRouteDispatchMode mode,
             if (!sl_status_is_ok(status) || result.kind != SL_ENGINE_RESULT_TEXT ||
                 !sl_str_equal(result.text, sl_str_from_cstr(expected_text)))
             {
-                sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
                 sl_engine_destroy(engine);
                 return sl_status_from_code(SL_STATUS_INVALID_STATE);
             }
@@ -725,61 +667,187 @@ static SlStatus sl_bench_param_trie_dispatch_loop(SlBenchRouteDispatchMode mode,
         checksum += result.kind == SL_ENGINE_RESULT_TEXT ? (uint64_t)result.text.length : 0U;
     }
 
-    status = sl_bench_route_dispatch_env_restore(saved_dispatch_mode);
-    if (!sl_status_is_ok(status)) {
-        sl_engine_destroy(engine);
-        return status;
-    }
     sl_engine_destroy(engine);
     *out_checksum = checksum;
     return sl_status_ok();
 }
 
-#define SL_BENCH_PARAM_TRIE_FN(name, mode, path, expectation, expected_text)                       \
+#define SL_BENCH_PARAM_TRIE_FN(name, mode, path, expectation, expected_text, capture)              \
     static SlStatus name(const SlBenchContext* context, uint64_t iterations,                       \
                          uint64_t* out_checksum)                                                   \
     {                                                                                              \
         (void)context;                                                                             \
         return sl_bench_param_trie_dispatch_loop((mode), (path), (expectation), (expected_text),   \
-                                                 iterations, out_checksum);                        \
+                                                 (capture), iterations, out_checksum);             \
     }
 
 SL_BENCH_PARAM_TRIE_FN(bench_param_hit_compiled, SL_BENCH_ROUTE_DISPATCH_COMPILED,
-                       "/orgs/acme/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "param-hit")
+                       "/orgs/acme/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "param-hit", false)
 SL_BENCH_PARAM_TRIE_FN(bench_param_hit_classic, SL_BENCH_ROUTE_DISPATCH_CLASSIC,
-                       "/orgs/acme/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "param-hit")
+                       "/orgs/acme/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "param-hit", false)
 SL_BENCH_PARAM_TRIE_FN(bench_param_hit_validate, SL_BENCH_ROUTE_DISPATCH_VALIDATE,
-                       "/orgs/acme/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "param-hit")
+                       "/orgs/acme/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "param-hit", false)
+SL_BENCH_PARAM_TRIE_FN(bench_param_hit_capture_compiled, SL_BENCH_ROUTE_DISPATCH_COMPILED,
+                       "/orgs/acme/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "param-hit", true)
 SL_BENCH_PARAM_TRIE_FN(bench_param_miss_compiled, SL_BENCH_ROUTE_DISPATCH_COMPILED,
-                       "/orgs/acme/missing/42", SL_BENCH_EXPECT_MISSING, NULL)
+                       "/orgs/acme/missing/42", SL_BENCH_EXPECT_MISSING, NULL, false)
 SL_BENCH_PARAM_TRIE_FN(bench_param_miss_classic, SL_BENCH_ROUTE_DISPATCH_CLASSIC,
-                       "/orgs/acme/missing/42", SL_BENCH_EXPECT_MISSING, NULL)
+                       "/orgs/acme/missing/42", SL_BENCH_EXPECT_MISSING, NULL, false)
 SL_BENCH_PARAM_TRIE_FN(bench_param_miss_validate, SL_BENCH_ROUTE_DISPATCH_VALIDATE,
-                       "/orgs/acme/missing/42", SL_BENCH_EXPECT_MISSING, NULL)
+                       "/orgs/acme/missing/42", SL_BENCH_EXPECT_MISSING, NULL, false)
 SL_BENCH_PARAM_TRIE_FN(bench_constraint_miss_compiled, SL_BENCH_ROUTE_DISPATCH_COMPILED,
-                       "/users/nope", SL_BENCH_EXPECT_NATIVE_TEXT, "string")
+                       "/users/nope", SL_BENCH_EXPECT_NATIVE_TEXT, "string", false)
 SL_BENCH_PARAM_TRIE_FN(bench_constraint_miss_classic, SL_BENCH_ROUTE_DISPATCH_CLASSIC,
-                       "/users/nope", SL_BENCH_EXPECT_NATIVE_TEXT, "string")
+                       "/users/nope", SL_BENCH_EXPECT_NATIVE_TEXT, "string", false)
 SL_BENCH_PARAM_TRIE_FN(bench_constraint_miss_validate, SL_BENCH_ROUTE_DISPATCH_VALIDATE,
-                       "/users/nope", SL_BENCH_EXPECT_NATIVE_TEXT, "string")
+                       "/users/nope", SL_BENCH_EXPECT_NATIVE_TEXT, "string", false)
 SL_BENCH_PARAM_TRIE_FN(bench_parameter_first_compiled, SL_BENCH_ROUTE_DISPATCH_COMPILED,
-                       "/tenant-a/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "parameter-first")
+                       "/tenant-a/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "parameter-first", false)
 SL_BENCH_PARAM_TRIE_FN(bench_parameter_first_classic, SL_BENCH_ROUTE_DISPATCH_CLASSIC,
-                       "/tenant-a/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "parameter-first")
+                       "/tenant-a/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "parameter-first", false)
 SL_BENCH_PARAM_TRIE_FN(bench_parameter_first_validate, SL_BENCH_ROUTE_DISPATCH_VALIDATE,
-                       "/tenant-a/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "parameter-first")
+                       "/tenant-a/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "parameter-first", false)
 SL_BENCH_PARAM_TRIE_FN(bench_static_vs_param_compiled, SL_BENCH_ROUTE_DISPATCH_COMPILED,
-                       "/users/me", SL_BENCH_EXPECT_NATIVE_TEXT, "static")
+                       "/users/me", SL_BENCH_EXPECT_NATIVE_TEXT, "static", false)
 SL_BENCH_PARAM_TRIE_FN(bench_static_vs_param_classic, SL_BENCH_ROUTE_DISPATCH_CLASSIC, "/users/me",
-                       SL_BENCH_EXPECT_NATIVE_TEXT, "static")
+                       SL_BENCH_EXPECT_NATIVE_TEXT, "static", false)
 SL_BENCH_PARAM_TRIE_FN(bench_static_vs_param_validate, SL_BENCH_ROUTE_DISPATCH_VALIDATE,
-                       "/users/me", SL_BENCH_EXPECT_NATIVE_TEXT, "static")
+                       "/users/me", SL_BENCH_EXPECT_NATIVE_TEXT, "static", false)
 SL_BENCH_PARAM_TRIE_FN(bench_constrained_vs_string_compiled, SL_BENCH_ROUTE_DISPATCH_COMPILED,
-                       "/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "int")
+                       "/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "int", false)
 SL_BENCH_PARAM_TRIE_FN(bench_constrained_vs_string_classic, SL_BENCH_ROUTE_DISPATCH_CLASSIC,
-                       "/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "int")
+                       "/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "int", false)
 SL_BENCH_PARAM_TRIE_FN(bench_constrained_vs_string_validate, SL_BENCH_ROUTE_DISPATCH_VALIDATE,
-                       "/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "int")
+                       "/users/42", SL_BENCH_EXPECT_NATIVE_TEXT, "int", false)
+
+static SlStatus sl_bench_param_heavy_dispatch_loop(size_t route_count, size_t target_index,
+                                                   SlBenchRouteDispatchMode mode,
+                                                   uint64_t iterations, uint64_t* out_checksum)
+{
+    enum
+    {
+        SL_BENCH_MAX_ROUTES = 10000U
+    };
+    static unsigned char engine_storage[1024];
+    static unsigned char route_storage[64U * 1024U * 1024U];
+    static unsigned char dispatch_storage[8192];
+    static SlPlanRoute routes[SL_BENCH_MAX_ROUTES];
+    static char pattern_storage[SL_BENCH_MAX_ROUTES][64];
+    static SlHttpRouteTable cached_table;
+    static size_t cached_route_count;
+    static bool cached_ready;
+    char request_path[64];
+    SlArena engine_arena;
+    SlArena route_arena;
+    SlArena dispatch_arena;
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {1U, sl_str_from_cstr("handlerOne"), sl_str_from_cstr("GET /routes")};
+    SlPlan plan = sl_bench_plan(&handler, 1U);
+    SlHttpRequestHead request = {0};
+    uint64_t checksum = 0U;
+    uint64_t index;
+    size_t route_index = 0U;
+    SlStatus status;
+
+    if (route_count == 0U || route_count > SL_BENCH_MAX_ROUTES || target_index >= route_count ||
+        out_checksum == NULL)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_arena_init(&engine_arena, engine_storage, sizeof(engine_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_arena_init(&dispatch_arena, dispatch_storage, sizeof(dispatch_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_bench_create_noop_engine(&engine_arena, &engine);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    if (!cached_ready || cached_route_count != route_count) {
+        status = sl_arena_init(&route_arena, route_storage, sizeof(route_storage));
+        if (!sl_status_is_ok(status)) {
+            sl_engine_destroy(engine);
+            return status;
+        }
+        for (route_index = 0U; route_index < route_count; route_index += 1U) {
+            status = sl_bench_format_param_route_path(
+                pattern_storage[route_index], sizeof(pattern_storage[route_index]), route_index);
+            if (!sl_status_is_ok(status)) {
+                sl_engine_destroy(engine);
+                return status;
+            }
+            sl_bench_set_native_text_route(&routes[route_index], "GET",
+                                           pattern_storage[route_index], 1U, "param-heavy");
+        }
+        plan.routes = routes;
+        plan.route_count = route_count;
+        status = sl_http_route_table_build(&route_arena, &plan, &cached_table, NULL);
+        if (!sl_status_is_ok(status)) {
+            sl_engine_destroy(engine);
+            return status;
+        }
+        cached_route_count = route_count;
+        cached_ready = true;
+    }
+    cached_table.dispatch.dispatch_mode = sl_bench_route_dispatch_mode_value(mode);
+    plan.routes = routes;
+    plan.route_count = route_count;
+
+    status = sl_bench_format_param_request_path(request_path, sizeof(request_path), target_index);
+    if (!sl_status_is_ok(status)) {
+        sl_engine_destroy(engine);
+        return status;
+    }
+    request.method = SL_HTTP_METHOD_GET;
+    request.path = sl_str_from_cstr(request_path);
+    request.raw_target = request.path;
+
+    for (index = 0U; index < iterations; index += 1U) {
+        SlEngineResult result = {0};
+        sl_arena_reset(&dispatch_arena);
+        status = sl_http_dispatch_request_head(&dispatch_arena, engine, &plan,
+                                               &cached_table.dispatch, &request, &result, NULL);
+        if (!sl_status_is_ok(status) || result.kind != SL_ENGINE_RESULT_TEXT ||
+            !sl_str_equal(result.text, sl_str_from_cstr("param-heavy")))
+        {
+            sl_engine_destroy(engine);
+            return sl_status_from_code(SL_STATUS_INVALID_STATE);
+        }
+        checksum += (uint64_t)result.kind;
+        checksum += (uint64_t)result.text.length;
+    }
+
+    sl_engine_destroy(engine);
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
+#define SL_BENCH_PARAM_HEAVY_FN(name, count, target, mode)                                         \
+    static SlStatus name(const SlBenchContext* context, uint64_t iterations,                       \
+                         uint64_t* out_checksum)                                                   \
+    {                                                                                              \
+        (void)context;                                                                             \
+        return sl_bench_param_heavy_dispatch_loop((count), (target), (mode), iterations,           \
+                                                  out_checksum);                                   \
+    }
+
+SL_BENCH_PARAM_HEAVY_FN(bench_param_heavy_100_compiled_last, 100U, 99U,
+                        SL_BENCH_ROUTE_DISPATCH_COMPILED)
+SL_BENCH_PARAM_HEAVY_FN(bench_param_heavy_100_classic_last, 100U, 99U,
+                        SL_BENCH_ROUTE_DISPATCH_CLASSIC)
+SL_BENCH_PARAM_HEAVY_FN(bench_param_heavy_1000_compiled_last, 1000U, 999U,
+                        SL_BENCH_ROUTE_DISPATCH_COMPILED)
+SL_BENCH_PARAM_HEAVY_FN(bench_param_heavy_1000_classic_last, 1000U, 999U,
+                        SL_BENCH_ROUTE_DISPATCH_CLASSIC)
+SL_BENCH_PARAM_HEAVY_FN(bench_param_heavy_10000_compiled_last, 10000U, 9999U,
+                        SL_BENCH_ROUTE_DISPATCH_COMPILED)
+SL_BENCH_PARAM_HEAVY_FN(bench_param_heavy_10000_classic_last, 10000U, 9999U,
+                        SL_BENCH_ROUTE_DISPATCH_CLASSIC)
 
 static SlStatus sl_bench_native_response_loop(const char* kind, const char* body,
                                               uint64_t iterations, uint64_t* out_checksum)
@@ -944,6 +1012,81 @@ static SlStatus bench_route_table_build_loop(size_t route_count, uint64_t iterat
     }
     *out_checksum = checksum;
     return sl_status_ok();
+}
+
+static SlStatus bench_route_table_build_param_loop(size_t route_count, uint64_t iterations,
+                                                   uint64_t* out_checksum)
+{
+    enum
+    {
+        SL_BENCH_MAX_ROUTES = 10000U
+    };
+    static unsigned char route_storage[64U * 1024U * 1024U];
+    static SlPlanRoute routes[SL_BENCH_MAX_ROUTES];
+    static char pattern_storage[SL_BENCH_MAX_ROUTES][64];
+    SlPlanHandler handler = {1U, sl_str_from_cstr("handlerOne"), sl_str_from_cstr("GET /routes")};
+    SlPlan plan = sl_bench_plan(&handler, 1U);
+    uint64_t checksum = 0U;
+    uint64_t iteration;
+    size_t route_index;
+    SlStatus status;
+
+    if (route_count == 0U || route_count > SL_BENCH_MAX_ROUTES || out_checksum == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (route_index = 0U; route_index < route_count; route_index += 1U) {
+        status = sl_bench_format_param_route_path(
+            pattern_storage[route_index], sizeof(pattern_storage[route_index]), route_index);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        routes[route_index] = (SlPlanRoute){0};
+        routes[route_index].method = sl_str_from_cstr("GET");
+        routes[route_index].pattern = sl_str_from_cstr(pattern_storage[route_index]);
+        routes[route_index].handler_id = 1U;
+    }
+    plan.routes = routes;
+    plan.route_count = route_count;
+
+    for (iteration = 0U; iteration < iterations; iteration += 1U) {
+        SlArena route_arena;
+        SlHttpRouteTable table = {0};
+        status = sl_arena_init(&route_arena, route_storage, sizeof(route_storage));
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_route_table_build(&route_arena, &plan, &table, NULL);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        checksum += (uint64_t)table.route_count;
+        checksum += (uint64_t)table.dispatch.param_route_count;
+        checksum += (uint64_t)table.dispatch.param_route_trie_node_count;
+        checksum += (uint64_t)table.dispatch.param_route_trie_edge_count;
+    }
+    *out_checksum = checksum;
+    return sl_status_ok();
+}
+
+static SlStatus bench_route_table_build_param_100(const SlBenchContext* context,
+                                                  uint64_t iterations, uint64_t* out_checksum)
+{
+    (void)context;
+    return bench_route_table_build_param_loop(100U, iterations, out_checksum);
+}
+
+static SlStatus bench_route_table_build_param_1000(const SlBenchContext* context,
+                                                   uint64_t iterations, uint64_t* out_checksum)
+{
+    (void)context;
+    return bench_route_table_build_param_loop(1000U, iterations, out_checksum);
+}
+
+static SlStatus bench_route_table_build_param_10000(const SlBenchContext* context,
+                                                    uint64_t iterations, uint64_t* out_checksum)
+{
+    (void)context;
+    return bench_route_table_build_param_loop(10000U, iterations, out_checksum);
 }
 
 static SlStatus bench_route_table_build_1000(const SlBenchContext* context, uint64_t iterations,
@@ -1222,7 +1365,7 @@ static SlStatus bench_http_body_reader_json_known_length(const SlBenchContext* c
      1000U,                                                                                        \
      100000U,                                                                                      \
      function_name,                                                                                \
-     note "; SLOPPY_ROUTE_DISPATCH=" #mode,                                                        \
+     note "; dispatch_mode=" #mode,                                                                \
      false}
 
 #define SL_BENCH_ROUTE_TABLE_ENTRIES(count, mode)                                                  \
@@ -1251,7 +1394,17 @@ static SlStatus bench_http_body_reader_json_known_length(const SlBenchContext* c
      1000U,                                                                                        \
      100000U,                                                                                      \
      function_name,                                                                                \
-     "mixed parameter route table is cached after warmup; SLOPPY_ROUTE_DISPATCH=" #mode,           \
+     "mixed parameter route table is cached after warmup; dispatch_mode=" #mode,                   \
+     false}
+
+#define SL_BENCH_PARAM_HEAVY_ENTRY(count, mode, function_name, measured_iterations)                \
+    {"route.dispatch.param_heavy." #count "." #mode ".last",                                       \
+     "route",                                                                                      \
+     "dispatch last parameter route in a shared-prefix " #count "-route table",                    \
+     100U,                                                                                         \
+     measured_iterations,                                                                          \
+     function_name,                                                                                \
+     "parameter route table is cached after warmup; dispatch_mode=" #mode,                         \
      false}
 
 static const SlBenchDefinition handler_definitions[] = {
@@ -1285,6 +1438,12 @@ static const SlBenchDefinition handler_definitions[] = {
     SL_BENCH_PARAM_TRIE_ENTRY(compiled, param_hit,
                               "dispatch parameter hit through shared-prefix route table",
                               bench_param_hit_compiled),
+    SL_BENCH_PARAM_TRIE_ENTRY(compiled, param_hit_no_capture,
+                              "dispatch parameter hit without route capture materialization",
+                              bench_param_hit_compiled),
+    SL_BENCH_PARAM_TRIE_ENTRY(compiled, param_hit_capture,
+                              "dispatch parameter hit with route capture materialization",
+                              bench_param_hit_capture_compiled),
     SL_BENCH_PARAM_TRIE_ENTRY(classic, param_hit,
                               "dispatch parameter hit through shared-prefix route table",
                               bench_param_hit_classic),
@@ -1330,6 +1489,12 @@ static const SlBenchDefinition handler_definitions[] = {
     SL_BENCH_PARAM_TRIE_ENTRY(validate, constrained_vs_string,
                               "prefer constrained parameter route over string parameter route",
                               bench_constrained_vs_string_validate),
+    SL_BENCH_PARAM_HEAVY_ENTRY(100, compiled, bench_param_heavy_100_compiled_last, 100000U),
+    SL_BENCH_PARAM_HEAVY_ENTRY(100, classic, bench_param_heavy_100_classic_last, 100000U),
+    SL_BENCH_PARAM_HEAVY_ENTRY(1000, compiled, bench_param_heavy_1000_compiled_last, 20000U),
+    SL_BENCH_PARAM_HEAVY_ENTRY(1000, classic, bench_param_heavy_1000_classic_last, 20000U),
+    SL_BENCH_PARAM_HEAVY_ENTRY(10000, compiled, bench_param_heavy_10000_compiled_last, 1000U),
+    SL_BENCH_PARAM_HEAVY_ENTRY(10000, classic, bench_param_heavy_10000_classic_last, 1000U),
     {"route.dispatch.native_response.text", "route",
      "dispatch a native Results.text literal and construct the response", 1000U, 100000U,
      bench_native_response_text,
@@ -1350,6 +1515,18 @@ static const SlBenchDefinition handler_definitions[] = {
      "build a route dispatch table from a 10000-route Plan", 10U, 100U,
      bench_route_table_build_10000,
      "measures Plan-backed route table materialization before serving", false},
+    {"route.dispatch.table_build_param.100", "route",
+     "build a route dispatch table from a 100-route shared-prefix parameter Plan", 100U, 1000U,
+     bench_route_table_build_param_100,
+     "measures Plan-backed parameter bucket and trie materialization before serving", false},
+    {"route.dispatch.table_build_param.1000", "route",
+     "build a route dispatch table from a 1000-route shared-prefix parameter Plan", 20U, 200U,
+     bench_route_table_build_param_1000,
+     "measures Plan-backed parameter bucket and trie materialization before serving", false},
+    {"route.dispatch.table_build_param.10000", "route",
+     "build a route dispatch table from a 10000-route shared-prefix parameter Plan", 1U, 3U,
+     bench_route_table_build_param_10000,
+     "measures Plan-backed parameter bucket and trie materialization before serving", false},
     {"route.dispatch.artifact_validate.1", "route",
      "validate a one-route routes.slrt artifact against Plan metadata", 1000U, 100000U,
      bench_route_artifact_validate,
@@ -1363,6 +1540,8 @@ static const SlBenchDefinition handler_definitions[] = {
 };
 
 #undef SL_BENCH_PARAM_TRIE_ENTRY
+#undef SL_BENCH_PARAM_HEAVY_ENTRY
+#undef SL_BENCH_PARAM_HEAVY_FN
 #undef SL_BENCH_ROUTE_TABLE_ENTRIES
 #undef SL_BENCH_ROUTE_TABLE_ENTRY
 

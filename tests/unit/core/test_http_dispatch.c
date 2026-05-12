@@ -53,7 +53,7 @@ static int set_test_env_value(const char* key, const char* value)
 #ifdef _WIN32
     return _putenv_s(key, value == NULL ? "" : value);
 #else
-    if (value == NULL || value[0] == '\0') {
+    if (value == NULL) {
         return unsetenv(key);
     }
     return setenv(key, value, 1);
@@ -104,7 +104,7 @@ static int copy_test_env_value(const char* key, char** out_value)
 
 static int restore_test_env_value(const char* key, const char* original_value)
 {
-    return set_test_env_value(key, original_value == NULL ? "" : original_value);
+    return set_test_env_value(key, original_value);
 }
 
 static int expect_body_contains(SlBytes body, const char* expected)
@@ -741,17 +741,26 @@ static int test_route_table_param_trie_matches_shared_prefix_and_constraints(voi
 static int test_route_dispatch_env_classic_and_validate_modes(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char route_storage[TEST_ARENA_SIZE];
     unsigned char engine_storage[1024];
     SlArena arena = {0};
+    SlArena route_arena = {0};
     SlArena engine_arena = {0};
     SlEngine* engine = NULL;
     SlPlanHandler handler = {0};
     SlPlanRoute route = {0};
     SlPlan plan = one_handler_plan(&handler);
-    SlHttpRouteTable table = {0};
     SlHttpRequestHead request = {0};
     SlDiag diag = {0};
-    const char* modes[] = {"classic", "validate"};
+    const struct
+    {
+        const char* text;
+        SlHttpRouteDispatchMode mode;
+    } modes[] = {
+        {"compiled", SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED},
+        {"classic", SL_HTTP_ROUTE_DISPATCH_MODE_CLASSIC},
+        {"validate", SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE},
+    };
     char* saved_env = NULL;
     size_t mode_index = 0U;
     int result_code = 0;
@@ -769,8 +778,7 @@ static int test_route_dispatch_env_classic_and_validate_modes(void)
     if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
         init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
         create_noop_engine(&engine_arena, &engine) != 0 ||
-        parse_request(&arena, "GET /users/42 HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
-        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+        parse_request(&arena, "GET /users/42 HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0)
     {
         sl_engine_destroy(engine);
         restore_test_env_value("SLOPPY_ROUTE_DISPATCH", saved_env);
@@ -779,10 +787,29 @@ static int test_route_dispatch_env_classic_and_validate_modes(void)
     }
 
     for (mode_index = 0U; mode_index < sizeof(modes) / sizeof(modes[0]); mode_index += 1U) {
+        SlHttpRouteTable table = {0};
         SlEngineResult result = {0};
+        route_arena = (SlArena){0};
         diag = (SlDiag){0};
-        if (set_test_env_value("SLOPPY_ROUTE_DISPATCH", modes[mode_index]) != 0) {
+        if (set_test_env_value("SLOPPY_ROUTE_DISPATCH", modes[mode_index].text) != 0) {
             result_code = 173;
+            break;
+        }
+        if (init_arena(&route_arena, route_storage, sizeof(route_storage)) != 0 ||
+            expect_status(sl_http_route_table_build(&route_arena, &plan, &table, &diag),
+                          SL_STATUS_OK) != 0)
+        {
+            result_code = 174;
+            break;
+        }
+        if (table.dispatch.dispatch_mode != modes[mode_index].mode) {
+            result_code = 175;
+            break;
+        }
+        if (set_test_env_value("SLOPPY_ROUTE_DISPATCH", "compiled") != 0 ||
+            table.dispatch.dispatch_mode != modes[mode_index].mode)
+        {
+            result_code = 176;
             break;
         }
         if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
@@ -790,13 +817,13 @@ static int test_route_dispatch_env_classic_and_validate_modes(void)
                           SL_STATUS_UNSUPPORTED) != 0 ||
             result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
         {
-            result_code = 174;
+            result_code = 177;
             break;
         }
     }
 
     if (restore_test_env_value("SLOPPY_ROUTE_DISPATCH", saved_env) != 0 && result_code == 0) {
-        result_code = 175;
+        result_code = 178;
     }
     free(saved_env);
     sl_engine_destroy(engine);
@@ -2677,14 +2704,10 @@ static int expect_validate_dispatch_agrees(SlPlanRoute* routes, size_t route_cou
     SlHttpRequestHead request = {0};
     SlEngineResult result = {0};
     SlDiag diag = {0};
-    char* saved_env = NULL;
     SlStatus status;
     size_t index = 0U;
     int result_code = 0;
 
-    if (copy_test_env_value("SLOPPY_ROUTE_DISPATCH", &saved_env) != 0) {
-        return 1;
-    }
     for (index = 0U; index < route_count; index += 1U) {
         handlers[index].id = (SlHandlerId)(index + 1U);
         handlers[index].export_name = sl_str_from_cstr("__sloppy_handler");
@@ -2704,10 +2727,7 @@ static int expect_validate_dispatch_agrees(SlPlanRoute* routes, size_t route_cou
         result_code = 2;
         goto cleanup;
     }
-    if (set_test_env_value("SLOPPY_ROUTE_DISPATCH", "validate") != 0) {
-        result_code = 3;
-        goto cleanup;
-    }
+    table.dispatch.dispatch_mode = SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE;
 
     diag = (SlDiag){0};
     status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
@@ -2730,10 +2750,6 @@ static int expect_validate_dispatch_agrees(SlPlanRoute* routes, size_t route_cou
     }
 
 cleanup:
-    if (restore_test_env_value("SLOPPY_ROUTE_DISPATCH", saved_env) != 0 && result_code == 0) {
-        result_code = 7;
-    }
-    free(saved_env);
     sl_engine_destroy(engine);
     return result_code;
 }

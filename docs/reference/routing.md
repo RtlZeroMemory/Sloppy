@@ -109,9 +109,10 @@ Compiler extraction currently enforces:
 - Named static Plan routes have native URL writers that validate required path
   params, percent-encode inserted path values, and roundtrip through the native
   matcher.
-- `SLOPPY_ROUTE_DISPATCH=classic` forces the linear matcher for diagnostics.
-  `SLOPPY_ROUTE_DISPATCH=validate` compares the compiled and linear matchers and
-  fails if they disagree.
+- `SLOPPY_ROUTE_DISPATCH=classic` forces the linear matcher for diagnostics when
+  the route table is built. `SLOPPY_ROUTE_DISPATCH=validate` stores validate
+  mode on the route table, compares the compiled and linear matchers, and fails
+  if they disagree.
 - CORS-enabled routes synthesize `OPTIONS` preflight route entries in the
   app-host route table and in compiler-emitted Plan metadata for static CORS
   policies.

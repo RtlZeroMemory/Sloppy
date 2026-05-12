@@ -46,13 +46,6 @@ typedef struct SlHttpDispatchContextSeed
     const SlCancellationToken* cancellation;
 } SlHttpDispatchContextSeed;
 
-typedef enum SlHttpRouteDispatchRuntimeMode
-{
-    SL_HTTP_ROUTE_DISPATCH_RUNTIME_COMPILED = 0,
-    SL_HTTP_ROUTE_DISPATCH_RUNTIME_CLASSIC = 1,
-    SL_HTTP_ROUTE_DISPATCH_RUNTIME_VALIDATE = 2
-} SlHttpRouteDispatchRuntimeMode;
-
 struct SlHttpRouteTrieRoot
 {
     SlHttpMethod method;
@@ -81,28 +74,27 @@ static SlStr sl_http_dispatch_literal(const char* ptr, size_t length)
     return sl_str_from_parts(ptr, length);
 }
 
-static SlHttpRouteDispatchRuntimeMode
-sl_http_route_dispatch_runtime_mode_from_cstr(const char* value)
+static SlHttpRouteDispatchMode sl_http_route_dispatch_mode_from_cstr(const char* value)
 {
     if (value == NULL || value[0] == '\0' || strcmp(value, "compiled") == 0) {
-        return SL_HTTP_ROUTE_DISPATCH_RUNTIME_COMPILED;
+        return SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED;
     }
     if (strcmp(value, "classic") == 0) {
-        return SL_HTTP_ROUTE_DISPATCH_RUNTIME_CLASSIC;
+        return SL_HTTP_ROUTE_DISPATCH_MODE_CLASSIC;
     }
     if (strcmp(value, "validate") == 0) {
-        return SL_HTTP_ROUTE_DISPATCH_RUNTIME_VALIDATE;
+        return SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE;
     }
-    return SL_HTTP_ROUTE_DISPATCH_RUNTIME_COMPILED;
+    return SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED;
 }
 
-static SlHttpRouteDispatchRuntimeMode sl_http_route_dispatch_runtime_mode(void)
+static SlHttpRouteDispatchMode sl_http_route_dispatch_mode_from_env(void)
 {
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 #endif
-    return sl_http_route_dispatch_runtime_mode_from_cstr(getenv("SLOPPY_ROUTE_DISPATCH"));
+    return sl_http_route_dispatch_mode_from_cstr(getenv("SLOPPY_ROUTE_DISPATCH"));
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
@@ -167,6 +159,13 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
          dispatch_table->param_route_trie_nodes == NULL) ||
         (dispatch_table->param_route_trie_edge_count != 0U &&
          dispatch_table->param_route_trie_edges == NULL))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (dispatch_table->dispatch_mode != SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED &&
+        dispatch_table->dispatch_mode != SL_HTTP_ROUTE_DISPATCH_MODE_CLASSIC &&
+        dispatch_table->dispatch_mode != SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE)
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
@@ -766,21 +765,49 @@ static bool sl_http_route_entry_less(const SlHttpRouteTableEntry* left,
     return left->source_order < right->source_order;
 }
 
-static void sl_http_route_table_sort(SlHttpRouteTableEntry* entries, size_t count)
+static int sl_http_route_table_entry_compare(const void* left, const void* right)
 {
-    size_t outer = 0U;
+    const SlHttpRouteTableEntry* left_entry = (const SlHttpRouteTableEntry*)left;
+    const SlHttpRouteTableEntry* right_entry = (const SlHttpRouteTableEntry*)right;
 
-    for (outer = 1U; outer < count; outer += 1U) {
-        SlHttpRouteTableEntry item = entries[outer];
-        size_t inner = outer;
-
-        while (inner > 0U && sl_http_route_entry_less(&item, &entries[inner - 1U])) {
-            entries[inner] = entries[inner - 1U];
-            inner -= 1U;
-        }
-
-        entries[inner] = item;
+    if (sl_http_route_entry_less(left_entry, right_entry)) {
+        return -1;
     }
+    if (sl_http_route_entry_less(right_entry, left_entry)) {
+        return 1;
+    }
+    return 0;
+}
+
+static size_t sl_http_route_table_partition_exact_first(SlHttpRouteTableEntry* entries,
+                                                        size_t count)
+{
+    size_t index = 0U;
+    size_t exact_count = 0U;
+
+    if (entries == NULL) {
+        return 0U;
+    }
+    for (index = 0U; index < count; index += 1U) {
+        if (entries[index].has_params) {
+            continue;
+        }
+        if (index != exact_count) {
+            SlHttpRouteTableEntry item = entries[index];
+            entries[index] = entries[exact_count];
+            entries[exact_count] = item;
+        }
+        exact_count += 1U;
+    }
+    return exact_count;
+}
+
+static void sl_http_route_table_sort_param_entries(SlHttpRouteTableEntry* entries, size_t count)
+{
+    if (entries == NULL || count < 2U) {
+        return;
+    }
+    qsort(entries, count, sizeof(SlHttpRouteTableEntry), sl_http_route_table_entry_compare);
 }
 
 static SlStatus sl_http_route_table_alloc(SlArena* arena, size_t route_count,
@@ -866,6 +893,83 @@ static bool sl_http_dispatch_next_bucket_count(size_t value, size_t* out)
     }
     *out = bucket_count;
     return true;
+}
+
+static size_t sl_http_route_table_plan_route_hash(const SlPlanRoute* route)
+{
+    size_t hash = (size_t)2166136261U;
+    size_t index = 0U;
+
+    if (route == NULL) {
+        return hash;
+    }
+    for (index = 0U; index < route->method.length; index += 1U) {
+        hash = sl_http_dispatch_hash_step(hash, (unsigned char)route->method.ptr[index]);
+    }
+    hash = sl_http_dispatch_hash_step(hash, 0xffU);
+    for (index = 0U; index < route->pattern.length; index += 1U) {
+        hash = sl_http_dispatch_hash_step(hash, (unsigned char)route->pattern.ptr[index]);
+    }
+    return hash;
+}
+
+static SlStatus sl_http_route_table_has_duplicate_plan_routes(SlArena* arena, const SlPlan* plan,
+                                                              bool* out_has_duplicate)
+{
+    SlSlice slot_slice = {0};
+    const SlPlanRoute** slots = NULL;
+    size_t slot_count = 0U;
+    size_t route_index = 0U;
+    SlStatus status;
+
+    if (out_has_duplicate != NULL) {
+        *out_has_duplicate = false;
+    }
+    if (arena == NULL || plan == NULL || out_has_duplicate == NULL ||
+        (plan->route_count != 0U && plan->routes == NULL))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (plan->route_count < 2U) {
+        return sl_status_ok();
+    }
+    if (!sl_http_dispatch_next_bucket_count(plan->route_count, &slot_count)) {
+        return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+    }
+    status = sl_arena_array_alloc(arena, slot_count, sizeof(SlPlanRoute*), _Alignof(SlPlanRoute*),
+                                  &slot_slice);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    slots = (const SlPlanRoute**)slot_slice.ptr;
+    for (route_index = 0U; route_index < slot_count; route_index += 1U) {
+        slots[route_index] = NULL;
+    }
+    for (route_index = 0U; route_index < plan->route_count; route_index += 1U) {
+        const SlPlanRoute* route = &plan->routes[route_index];
+        size_t hash = sl_http_route_table_plan_route_hash(route);
+        size_t mask = slot_count - 1U;
+        size_t probe = 0U;
+
+        for (probe = 0U; probe < slot_count; probe += 1U) {
+            size_t slot_index = (hash + probe) & mask;
+            const SlPlanRoute* existing = slots[slot_index];
+            if (existing == NULL) {
+                slots[slot_index] = route;
+                break;
+            }
+            if (sl_str_equal(existing->method, route->method) &&
+                sl_str_equal(existing->pattern, route->pattern))
+            {
+                *out_has_duplicate = true;
+                return sl_status_ok();
+            }
+        }
+        if (probe == slot_count) {
+            return sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        }
+    }
+    return sl_status_ok();
 }
 
 static SlStatus sl_http_route_table_insert_exact(SlHttpRouteBinding** buckets, size_t bucket_count,
@@ -1089,25 +1193,27 @@ static SlHttpRouteTrieRoot* sl_http_route_table_find_param_trie_root(SlHttpRoute
 }
 
 static SlStatus sl_http_route_table_append_trie_edge(SlHttpRouteTrieNode* nodes,
+                                                     size_t* node_last_edges,
                                                      SlHttpRouteTrieEdge* edges,
                                                      size_t parent_index, size_t edge_index)
 {
-    size_t current = SL_HTTP_ROUTE_TRIE_NONE;
-
-    if (nodes == NULL || edges == NULL || parent_index == SL_HTTP_ROUTE_TRIE_NONE) {
+    if (nodes == NULL || node_last_edges == NULL || edges == NULL ||
+        parent_index == SL_HTTP_ROUTE_TRIE_NONE)
+    {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
     if (nodes[parent_index].first_edge == SL_HTTP_ROUTE_TRIE_NONE) {
         nodes[parent_index].first_edge = edge_index;
+        node_last_edges[parent_index] = edge_index;
         return sl_status_ok();
     }
 
-    current = nodes[parent_index].first_edge;
-    while (edges[current].next_edge != SL_HTTP_ROUTE_TRIE_NONE) {
-        current = edges[current].next_edge;
+    if (node_last_edges[parent_index] == SL_HTTP_ROUTE_TRIE_NONE) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
     }
-    edges[current].next_edge = edge_index;
+    edges[node_last_edges[parent_index]].next_edge = edge_index;
+    node_last_edges[parent_index] = edge_index;
     return sl_status_ok();
 }
 
@@ -1156,9 +1262,11 @@ static SlStatus sl_http_route_table_build_param_trie(SlArena* arena,
 {
     SlSlice root_slice = {0};
     SlSlice node_slice = {0};
+    SlSlice node_last_edge_slice = {0};
     SlSlice edge_slice = {0};
     SlHttpRouteTrieRoot* roots = NULL;
     SlHttpRouteTrieNode* nodes = NULL;
+    size_t* node_last_edges = NULL;
     SlHttpRouteTrieEdge* edges = NULL;
     size_t segment_capacity = 0U;
     size_t root_count = 0U;
@@ -1191,6 +1299,11 @@ static SlStatus sl_http_route_table_build_param_trie(SlArena* arena,
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    status = sl_arena_array_alloc(arena, segment_capacity + param_route_count, sizeof(size_t),
+                                  _Alignof(size_t), &node_last_edge_slice);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
     status = sl_arena_array_alloc(arena, segment_capacity, sizeof(SlHttpRouteTrieEdge),
                                   _Alignof(SlHttpRouteTrieEdge), &edge_slice);
     if (!sl_status_is_ok(status)) {
@@ -1199,6 +1312,7 @@ static SlStatus sl_http_route_table_build_param_trie(SlArena* arena,
 
     roots = (SlHttpRouteTrieRoot*)root_slice.ptr;
     nodes = (SlHttpRouteTrieNode*)node_slice.ptr;
+    node_last_edges = (size_t*)node_last_edge_slice.ptr;
     edges = (SlHttpRouteTrieEdge*)edge_slice.ptr;
     for (route_index = 0U; route_index < param_route_count; route_index += 1U) {
         roots[route_index] = (SlHttpRouteTrieRoot){0};
@@ -1206,6 +1320,7 @@ static SlStatus sl_http_route_table_build_param_trie(SlArena* arena,
     for (route_index = 0U; route_index < segment_capacity + param_route_count; route_index += 1U) {
         nodes[route_index].terminal = NULL;
         nodes[route_index].first_edge = SL_HTTP_ROUTE_TRIE_NONE;
+        node_last_edges[route_index] = SL_HTTP_ROUTE_TRIE_NONE;
     }
     for (route_index = 0U; route_index < segment_capacity; route_index += 1U) {
         edges[route_index] = (SlHttpRouteTrieEdge){0};
@@ -1232,6 +1347,7 @@ static SlStatus sl_http_route_table_build_param_trie(SlArena* arena,
             }
             nodes[node_count].terminal = NULL;
             nodes[node_count].first_edge = SL_HTTP_ROUTE_TRIE_NONE;
+            node_last_edges[node_count] = SL_HTTP_ROUTE_TRIE_NONE;
             roots[root_count].method = binding->method;
             roots[root_count].root_index = node_count;
             root = &roots[root_count];
@@ -1253,12 +1369,14 @@ static SlStatus sl_http_route_table_build_param_trie(SlArena* arena,
                 }
                 nodes[child_index].terminal = NULL;
                 nodes[child_index].first_edge = SL_HTTP_ROUTE_TRIE_NONE;
+                node_last_edges[child_index] = SL_HTTP_ROUTE_TRIE_NONE;
                 edges[edge_count].kind = segment->kind;
                 edges[edge_count].param_kind = segment->param_kind;
                 edges[edge_count].text = segment->text;
                 edges[edge_count].child_index = child_index;
                 edges[edge_count].next_edge = SL_HTTP_ROUTE_TRIE_NONE;
-                status = sl_http_route_table_append_trie_edge(nodes, edges, node_index, edge_count);
+                status = sl_http_route_table_append_trie_edge(nodes, node_last_edges, edges,
+                                                              node_index, edge_count);
                 if (!sl_status_is_ok(status)) {
                     return status;
                 }
@@ -1823,8 +1941,11 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
                                    SlDiag* out_diag)
 {
     SlArenaMark mark = {0};
+    SlArenaMark duplicate_mark = {0};
     SlHttpRouteTableEntry* entries = NULL;
     SlHttpRouteBinding* bindings = NULL;
+    bool has_duplicate_routes = false;
+    size_t param_start = 0U;
     size_t index = 0U;
     size_t runnable_route_count = 0U;
     SlStatus status;
@@ -1842,7 +1963,17 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    if (sl_plan_has_duplicate_routes(plan)) {
+    duplicate_mark = sl_arena_mark(arena);
+    status = sl_http_route_table_has_duplicate_plan_routes(arena, plan, &has_duplicate_routes);
+    if (!sl_status_is_ok(status)) {
+        sl_arena_reset_to(arena, duplicate_mark);
+        return status;
+    }
+    status = sl_arena_reset_to(arena, duplicate_mark);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (has_duplicate_routes) {
         return sl_http_route_table_duplicate_route(arena, out_diag);
     }
     if (sl_plan_has_duplicate_handler_ids(plan)) {
@@ -1868,6 +1999,7 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
         out_table->dispatch.routes = NULL;
         out_table->dispatch.route_count = 0U;
         out_table->dispatch.plan = plan;
+        out_table->dispatch.dispatch_mode = sl_http_route_dispatch_mode_from_env();
         out_table->dispatch.runtime_reserved0 = 0U;
         out_table->route_count = 0U;
         return sl_status_ok();
@@ -1878,7 +2010,9 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
         goto failure;
     }
 
-    sl_http_route_table_sort(entries, runnable_route_count);
+    param_start = sl_http_route_table_partition_exact_first(entries, runnable_route_count);
+    sl_http_route_table_sort_param_entries(&entries[param_start],
+                                           runnable_route_count - param_start);
     for (index = 0U; index < runnable_route_count; index += 1U) {
         entries[index].binding.pattern = &entries[index].pattern;
         bindings[index] = entries[index].binding;
@@ -1889,6 +2023,7 @@ SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRou
     out_table->dispatch.routes = bindings;
     out_table->dispatch.route_count = runnable_route_count;
     out_table->dispatch.plan = plan;
+    out_table->dispatch.dispatch_mode = sl_http_route_dispatch_mode_from_env();
     out_table->dispatch.handler_cache_trusted = true;
     status = sl_http_route_table_build_exact_index(arena, bindings, runnable_route_count,
                                                    &out_table->dispatch);
@@ -2354,11 +2489,12 @@ sl_http_dispatch_find_param_trie_root(const SlHttpDispatchTable* dispatch_table,
 }
 
 static const SlHttpRouteTrieEdge*
-sl_http_dispatch_find_trie_edge_for_segment(const SlHttpDispatchTable* dispatch_table,
-                                            const SlHttpRouteTrieNode* node, SlStr path_segment,
-                                            int pass)
+sl_http_dispatch_find_best_trie_edge(const SlHttpDispatchTable* dispatch_table,
+                                     const SlHttpRouteTrieNode* node, SlStr path_segment)
 {
     size_t edge_index = SL_HTTP_ROUTE_TRIE_NONE;
+    const SlHttpRouteTrieEdge* constrained = NULL;
+    const SlHttpRouteTrieEdge* string_param = NULL;
 
     if (dispatch_table == NULL || node == NULL || dispatch_table->param_route_trie_edges == NULL) {
         return NULL;
@@ -2371,42 +2507,26 @@ sl_http_dispatch_find_trie_edge_for_segment(const SlHttpDispatchTable* dispatch_
             return NULL;
         }
         edge = &dispatch_table->param_route_trie_edges[edge_index];
-        if (pass == 0 && edge->kind == SL_ROUTE_SEGMENT_STATIC &&
-            sl_str_equal(edge->text, path_segment))
-        {
-            return edge;
+        if (edge->kind == SL_ROUTE_SEGMENT_STATIC) {
+            if (sl_str_equal(edge->text, path_segment)) {
+                return edge;
+            }
         }
-        if (pass == 1 && edge->kind == SL_ROUTE_SEGMENT_PARAM &&
-            edge->param_kind != SL_ROUTE_PARAM_STRING &&
-            sl_http_dispatch_path_segment_matches_kind(edge->param_kind, path_segment))
-        {
-            return edge;
-        }
-        if (pass == 2 && edge->kind == SL_ROUTE_SEGMENT_PARAM &&
-            edge->param_kind == SL_ROUTE_PARAM_STRING &&
-            sl_http_dispatch_path_segment_matches_kind(edge->param_kind, path_segment))
-        {
-            return edge;
+        else if (edge->kind == SL_ROUTE_SEGMENT_PARAM) {
+            if (edge->param_kind != SL_ROUTE_PARAM_STRING && constrained == NULL &&
+                sl_http_dispatch_path_segment_matches_kind(edge->param_kind, path_segment))
+            {
+                constrained = edge;
+            }
+            else if (edge->param_kind == SL_ROUTE_PARAM_STRING && string_param == NULL &&
+                     sl_http_dispatch_path_segment_matches_kind(edge->param_kind, path_segment))
+            {
+                string_param = edge;
+            }
         }
         edge_index = edge->next_edge;
     }
-    return NULL;
-}
-
-static const SlHttpRouteTrieEdge*
-sl_http_dispatch_find_best_trie_edge(const SlHttpDispatchTable* dispatch_table,
-                                     const SlHttpRouteTrieNode* node, SlStr path_segment)
-{
-    int pass = 0;
-
-    for (pass = 0; pass < 3; pass += 1) {
-        const SlHttpRouteTrieEdge* edge =
-            sl_http_dispatch_find_trie_edge_for_segment(dispatch_table, node, path_segment, pass);
-        if (edge != NULL) {
-            return edge;
-        }
-    }
-    return NULL;
+    return constrained != NULL ? constrained : string_param;
 }
 
 static SlStatus
@@ -2766,9 +2886,10 @@ sl_http_dispatch_find_route(SlArena* arena, const SlHttpDispatchTable* dispatch_
                             const SlHttpRouteBinding** out_binding, bool* out_method_mismatch,
                             SlRouteMatch* out_route_match, bool* out_has_route_match)
 {
-    SlHttpRouteDispatchRuntimeMode mode = sl_http_route_dispatch_runtime_mode();
+    SlHttpRouteDispatchMode mode = dispatch_table == NULL ? SL_HTTP_ROUTE_DISPATCH_MODE_COMPILED
+                                                          : dispatch_table->dispatch_mode;
 
-    if (mode == SL_HTTP_ROUTE_DISPATCH_RUNTIME_CLASSIC) {
+    if (mode == SL_HTTP_ROUTE_DISPATCH_MODE_CLASSIC) {
         if (out_route_match != NULL) {
             *out_route_match = (SlRouteMatch){0};
         }
@@ -2779,7 +2900,7 @@ sl_http_dispatch_find_route(SlArena* arena, const SlHttpDispatchTable* dispatch_
                                                   out_method_mismatch);
     }
 
-    if (mode == SL_HTTP_ROUTE_DISPATCH_RUNTIME_VALIDATE) {
+    if (mode == SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE) {
         const SlHttpRouteBinding* compiled_binding = NULL;
         const SlHttpRouteBinding* classic_binding = NULL;
         bool compiled_method_mismatch = false;
@@ -2823,6 +2944,8 @@ typedef struct SlHttpDispatchContextNeeds
     bool log;
     bool metadata;
 } SlHttpDispatchContextNeeds;
+
+static bool sl_http_dispatch_route_has_native_response(const SlPlanRoute* route);
 
 static void sl_http_dispatch_context_needs_all(SlHttpDispatchContextNeeds* needs)
 {
@@ -2996,7 +3119,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     }
 
     status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding, &method_mismatch,
-                                         &route_match, &route_match_captured);
+                                         NULL, NULL);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -3027,7 +3150,14 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     }
 
     validation_route = sl_http_dispatch_find_validation_route(plan, binding);
-    needs = sl_http_dispatch_context_needs(validation_route);
+    if (validation_route != NULL && sl_http_dispatch_route_has_native_response(validation_route) &&
+        !sl_plan_route_has_bindings(validation_route))
+    {
+        needs = (SlHttpDispatchContextNeeds){0};
+    }
+    else {
+        needs = sl_http_dispatch_context_needs(validation_route);
+    }
 
     status = sl_http_dispatch_apply_body_policy(arena, request,
                                                 seed == NULL || seed->max_body_length == 0U

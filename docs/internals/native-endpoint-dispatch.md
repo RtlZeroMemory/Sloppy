@@ -32,7 +32,8 @@ kinds before building the arena-owned native dispatch table from
 This is not a second public router. The source API remains the existing Sloppy
 app/group/route registration API.
 
-`SLOPPY_ROUTE_DISPATCH` can force the lookup lane for diagnostics:
+`SLOPPY_ROUTE_DISPATCH` can force the lookup lane for diagnostics. The value is
+read when the route table is built and stored on the dispatch table:
 
 - `compiled` or unset uses the native exact hash plus segment trie;
 - `classic` uses the linear route-table matcher;

@@ -95,7 +95,7 @@ Handler dispatch benchmarks are split by current runtime capability:
 Native route dispatch benchmark rows are intentionally scoped:
 
 - `route.dispatch.generated_table.<count>.<mode>.<target>` compares identical
-  static route tables under `SLOPPY_ROUTE_DISPATCH=compiled`, `classic`, and
+  static route tables under stored dispatch modes `compiled`, `classic`, and
   `validate`. Counts cover 10, 100, 1000, and 10000 routes. Targets cover
   first, middle, last, missing static path, and method mismatch. The route
   table is cached by the warmup call; the measured loop excludes artifact
@@ -107,7 +107,13 @@ Native route dispatch benchmark rows are intentionally scoped:
   parameter, parameter-first routes, static-vs-parameter precedence, and
   constrained-vs-string precedence. The mixed table is cached by the warmup
   call. Validate mode must agree with classic and compiled dispatch before the
-  benchmark contributes timing.
+  benchmark contributes timing. The compiled parameter-hit row also has
+  no-capture and capture variants to separate trie lookup from route-param
+  materialization.
+- `route.dispatch.param_heavy.<count>.<mode>.last` compares compiled and classic
+  dispatch for the last route in shared-prefix parameter tables with 100, 1000,
+  and 10000 routes. The table is cached before timing; the row measures
+  dispatch plus native static response construction.
 - `route.dispatch.native_response.*` measures dispatch plus construction of a
   native no-JS static response for literal `Results.text`, `Results.json`, and
   `Results.ok` shapes. It excludes sockets and the response writer. Use
@@ -116,7 +122,10 @@ Native route dispatch benchmark rows are intentionally scoped:
 - `route.dispatch.table_build.*` measures Plan-backed route-table
   materialization before serving. It excludes route lookup, handler execution,
   sockets, the HTTP parser, response writer, V8, and routes.slrt artifact
-  validation.
+  validation. `route.dispatch.table_build_param.*` repeats the build
+  measurement for 100, 1000, and 10000 shared-prefix parameter routes so
+  parameter bucket and trie construction scale independently from exact-static
+  indexing.
 - `route.dispatch.artifact_validate.1` measures one-route `routes.slrt`
   artifact validation against Plan metadata and reports the route count and
   artifact byte size in benchmark metadata. It excludes dispatch table

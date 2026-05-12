@@ -140,7 +140,7 @@ static int test_valid_artifact(void)
     return summary.route_count == 1U && summary.string_table_size == 13U ? 0 : 3;
 }
 
-static int expect_invalid_after_mutation(size_t offset, unsigned char value)
+static int expect_invalid_after_mutation(size_t offset)
 {
     unsigned char arena_storage[TEST_ARENA_SIZE];
     unsigned char artifact_storage[TEST_ARTIFACT_SIZE];
@@ -156,7 +156,7 @@ static int expect_invalid_after_mutation(size_t offset, unsigned char value)
     {
         return 10;
     }
-    artifact_storage[offset] = value;
+    artifact_storage[offset] = (unsigned char)(artifact_storage[offset] ^ 0x01U);
     return expect_status(
         sl_route_artifact_validate(&arena, artifact, sl_str_empty(), &plan, NULL, &diag),
         SL_STATUS_INVALID_ARGUMENT);
@@ -181,11 +181,9 @@ static int test_malformed_artifacts_fail_cleanly(void)
     if (expect_status(sl_route_artifact_validate(&arena, sl_bytes_from_parts(artifact.ptr, 8U),
                                                  sl_str_empty(), &plan, NULL, &diag),
                       SL_STATUS_INVALID_ARGUMENT) != 0 ||
-        expect_invalid_after_mutation(0U, 'X') != 0 ||
-        expect_invalid_after_mutation(4U, 99U) != 0 ||
-        expect_invalid_after_mutation(40U, 0U) != 0 ||
-        expect_invalid_after_mutation(68U, 99U) != 0 ||
-        expect_invalid_after_mutation(76U, 120U) != 0)
+        expect_invalid_after_mutation(0U) != 0 || expect_invalid_after_mutation(4U) != 0 ||
+        expect_invalid_after_mutation(40U) != 0 || expect_invalid_after_mutation(68U) != 0 ||
+        expect_invalid_after_mutation(76U) != 0)
     {
         return 21;
     }
