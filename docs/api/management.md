@@ -1,9 +1,7 @@
 # Management
 
-Status: experimental (public alpha).
-
 `app.management()` installs an opt-in actuator-style backend endpoint group.
-This surface is alpha and intended for controlled pre-alpha operations
+This API is experimental public alpha and intended for controlled pre-alpha operations
 environments.
 
 ```ts

@@ -1162,7 +1162,7 @@ SlStatus sl_sqlite_cursor_next(SlArena* arena, SlSqliteCursor* cursor,
         return sl_status_ok();
     }
     if (cursor->max_rows > 0U && cursor->rows_read >= cursor->max_rows) {
-        (void)sl_sqlite_cursor_close(cursor);
+        sl_sqlite_cursor_close(cursor);
         return sl_sqlite_diag(
             arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
             sl_sqlite_literal("sqlite provider cursor exceeded max rows",
@@ -1175,13 +1175,13 @@ SlStatus sl_sqlite_cursor_next(SlArena* arena, SlSqliteCursor* cursor,
     rc = sqlite3_step(stmt);
     if (rc == SQLITE_DONE) {
         cursor->done = true;
-        (void)sl_sqlite_cursor_close(cursor);
+        sl_sqlite_cursor_close(cursor);
         out_result->done = true;
         return sl_status_ok();
     }
     if (rc != SQLITE_ROW) {
         const bool expired = (rc == SQLITE_INTERRUPT && cursor->timeout_expired);
-        (void)sl_sqlite_cursor_close(cursor);
+        sl_sqlite_cursor_close(cursor);
         return sl_sqlite_diag(
             arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
             expired
@@ -1198,7 +1198,7 @@ SlStatus sl_sqlite_cursor_next(SlArena* arena, SlSqliteCursor* cursor,
         status = sl_arena_array_alloc(arena, cursor->column_count, sizeof(SlSqliteValue),
                                       _Alignof(SlSqliteValue), &value_slice);
         if (!sl_status_is_ok(status)) {
-            (void)sl_sqlite_cursor_close(cursor);
+            sl_sqlite_cursor_close(cursor);
             return status;
         }
     }
@@ -1207,7 +1207,7 @@ SlStatus sl_sqlite_cursor_next(SlArena* arena, SlSqliteCursor* cursor,
     for (column = 0U; column < cursor->column_count; column += 1U) {
         status = sl_sqlite_copy_value(arena, stmt, column, &out_result->row.values[column]);
         if (!sl_status_is_ok(status)) {
-            (void)sl_sqlite_cursor_close(cursor);
+            sl_sqlite_cursor_close(cursor);
             return status;
         }
     }
