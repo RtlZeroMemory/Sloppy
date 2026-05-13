@@ -160,7 +160,7 @@ static SlStatus sl_pg_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code, Sl
             return diag_status;
         }
     }
-    if (pg_message != NULL && pg_message[0] != '\0') {
+    if (pg_message != NULL && pg_message[0] != '\0' && sl_str_is_empty(sql)) {
         diag_status = sl_diag_builder_add_hint(&builder, sl_str_from_cstr(pg_message));
         if (!sl_status_is_ok(diag_status)) {
             return diag_status;
@@ -855,13 +855,15 @@ static SlStatus sl_pg_exec_params(SlArena* arena, SlPostgresConnection* connecti
     }
     if (PQresultStatus(result) != expected) {
         const char* message = PQresultErrorMessage(result);
+        SlStatus diag_status;
 
+        diag_status = sl_pg_diag(arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
+                                 sl_pg_literal("postgres provider query failed",
+                                               sizeof("postgres provider query failed") - 1U),
+                                 operation, message, sl_str_empty(), sql,
+                                 sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
         PQclear(result);
-        return sl_pg_diag(arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
-                          sl_pg_literal("postgres provider query failed",
-                                        sizeof("postgres provider query failed") - 1U),
-                          operation, message, sl_str_empty(), sql,
-                          sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+        return diag_status;
     }
     *out_result = result;
     return sl_status_ok();
@@ -1030,7 +1032,7 @@ static SlStatus sl_pg_materialize_rows(SlArena* arena, PGresult* result, size_t 
             cells = (SlPostgresValue*)cell_slice.ptr;
         }
         for (size_t row = 0U; row < row_count; row += 1U) {
-            rows[row].values = cells + (row * column_count);
+            rows[row].values = column_count == 0U ? NULL : cells + (row * column_count);
             for (size_t column = 0U; column < column_count; column += 1U) {
                 status = sl_pg_copy_value(arena, result, (int)row, (int)column,
                                           &rows[row].values[column]);
@@ -1123,14 +1125,16 @@ SlStatus sl_postgres_exec_batch(SlArena* arena, SlPostgresConnection* connection
     result_status = PQresultStatus(result);
     if (result_status != PGRES_COMMAND_OK && result_status != PGRES_TUPLES_OK) {
         const char* message = PQresultErrorMessage(result);
+        SlStatus diag_status;
 
-        PQclear(result);
-        return sl_pg_diag(
+        diag_status = sl_pg_diag(
             arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
             sl_pg_literal("postgres provider batch failed",
                           sizeof("postgres provider batch failed") - 1U),
             sl_pg_literal("operation: execBatch", sizeof("operation: execBatch") - 1U), message,
             sl_str_empty(), sql, sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+        PQclear(result);
+        return diag_status;
     }
     tuples = PQcmdTuples(result);
     if (tuples != NULL && tuples[0] != '\0') {

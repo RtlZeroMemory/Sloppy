@@ -43,7 +43,7 @@ app.use(Auth.apiKey({
 }));
 
 app.get("/internal/status", () => Results.ok({ ok: true }))
-    .requireAuth();
+    .requireAuth("apiKeyAuth");
 
 app.auth.addPolicy("admin-or-ops", (user) =>
     user.roles.includes("admin") || user.claims.department === "ops",

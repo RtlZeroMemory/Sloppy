@@ -1549,13 +1549,17 @@ async function signIn(ctx, claims, options = undefined) {
     const current = Math.floor(currentMs / 1000);
     const csrf = scheme.csrf.enabled ? Random.token(32) : undefined;
     if (scheme.store !== undefined) {
+        const cookieOptions = sessionStoreCookieOptions(scheme, options, scheme.absoluteTimeoutMs);
+        const absoluteLifetimeMs = cookieOptions.maxAgeSeconds === undefined
+            ? scheme.absoluteTimeoutMs
+            : Math.min(scheme.absoluteTimeoutMs, Math.max(0, cookieOptions.maxAgeSeconds * 1000));
         const sessionId = Random.token(32);
         const record = {
             id: sessionId,
             claims: sessionClaims,
             createdAt: currentMs,
             lastSeenAt: currentMs,
-            expiresAt: currentMs + scheme.absoluteTimeoutMs,
+            expiresAt: currentMs + absoluteLifetimeMs,
             idleExpiresAt: scheme.idleTimeoutMs === undefined ? undefined : currentMs + scheme.idleTimeoutMs,
             csrf,
             metadata: isPlainObject(options?.metadata) ? { ...options.metadata } : undefined,
@@ -1574,7 +1578,7 @@ async function signIn(ctx, claims, options = undefined) {
         let result = Results.ok({ ok: true }).cookie(
             scheme.cookieName,
             value,
-            sessionStoreCookieOptions(scheme, options, scheme.absoluteTimeoutMs),
+            cookieOptions,
         );
         if (scheme.csrf.enabled) {
             result = result.cookie(scheme.csrf.cookieName, csrf, {
@@ -1585,9 +1589,10 @@ async function signIn(ctx, claims, options = undefined) {
         }
         return result;
     }
+    const cookieOptions = sessionCookieOptions(scheme, options);
     const payload = {
         iat: current,
-        ...(scheme.maxAgeSeconds === undefined ? {} : { exp: current + scheme.maxAgeSeconds }),
+        ...(cookieOptions.maxAgeSeconds === undefined ? {} : { exp: current + cookieOptions.maxAgeSeconds }),
         claims: sessionClaims,
     };
     if (csrf !== undefined) {
@@ -1595,7 +1600,7 @@ async function signIn(ctx, claims, options = undefined) {
     }
     const value = await signSessionPayload(scheme, payload);
     ctx.user = userFromClaims(sessionClaims, scheme.principalScheme, scheme.name);
-    let result = Results.ok({ ok: true }).cookie(scheme.cookieName, value, sessionCookieOptions(scheme, options));
+    let result = Results.ok({ ok: true }).cookie(scheme.cookieName, value, cookieOptions);
     if (scheme.csrf.enabled) {
         result = result.cookie(scheme.csrf.cookieName, payload.csrf, {
             path: scheme.path,

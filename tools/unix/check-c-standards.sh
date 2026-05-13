@@ -11,7 +11,9 @@ if [ "${1:-}" = "--self-test" ]; then
     valid="$tmp/valid"
     invalid="$tmp/invalid"
     invalid_inc="$tmp/invalid-inc"
-    mkdir -p "$valid/src/core" "$valid/tests/unit/core" "$invalid/src/core" "$invalid/src/cli" "$invalid/tests/unit/core" "$invalid_inc/src/cli"
+    mkdir -p "$valid/src/core" "$valid/tests/unit/core" "$invalid/src/core" "$invalid/src/cli" \
+        "$invalid/src/platform/posix" "$invalid/src/platform/win32" \
+        "$invalid/tests/unit/core" "$invalid_inc/src/cli"
 
     cat > "$valid/src/core/string.c" <<'EOF'
 #include <string.h>
@@ -40,6 +42,12 @@ void bad_close_cast(FILE* file) { (void)fclose(file); }
 EOF
     cat > "$invalid/src/cli/bad_fragment.inc" <<'EOF'
 void bad_fragment_write(FILE* file) { (void)fputs("bad", file); }
+EOF
+    cat > "$invalid/src/platform/posix/bad_fs.c" <<'EOF'
+int bad_open_dir(int dirfd, const char* name) { return openat(dirfd, name, O_RDONLY | O_DIRECTORY); }
+EOF
+    cat > "$invalid/src/platform/win32/bad_dynlib.c" <<'EOF'
+void* bad_load_library(const wchar_t* path) { return LoadLibraryW(path); }
 EOF
     cat > "$invalid/tests/unit/core/test_bad.c" <<'EOF'
 #include <string.h>
@@ -72,6 +80,16 @@ EOF
         cat "$invalid_out" >&2
         exit 1
     fi
+    if ! grep -q "LoadLibraryW" "$invalid_out"; then
+        echo "C standards scanner self-test did not assert safe Win32 DLL loading." >&2
+        cat "$invalid_out" >&2
+        exit 1
+    fi
+    if ! grep -q "O_NOFOLLOW" "$invalid_out"; then
+        echo "C standards scanner self-test did not assert POSIX no-follow directory opens." >&2
+        cat "$invalid_out" >&2
+        exit 1
+    fi
     cat > "$valid/tests/unit/core/test_unused_cast.c" <<'EOF'
 void ok_unused_cast(void* user) { (void)user; }
 EOF
@@ -95,6 +113,10 @@ warnings=()
 
 is_platform_path() {
     [[ "$1" == src/platform/* ]]
+}
+
+is_posix_platform_path() {
+    [[ "$1" == src/platform/posix/* ]]
 }
 
 is_v8_path() {
@@ -226,6 +248,16 @@ while IFS= read -r file; do
             [[ "$line" =~ (^|[^[:alnum:]_])(malloc|free|realloc|calloc)[[:space:]]*\( ]] &&
             ! is_allowed_alloc_path "$file"; then
             add_finding violations "$file" "$line_number" "Raw allocation belongs in allocator modules." "${BASH_REMATCH[2]}"
+        fi
+
+        if is_implementation_path "$file" && [[ "$line" =~ (^|[^[:alnum:]_])LoadLibraryW[[:space:]]*\( ]]; then
+            add_finding violations "$file" "$line_number" "Plain Win32 DLL loading is forbidden because it inherits unsafe search-path behavior. Use the platform dynamic-library helper with LoadLibraryExW search flags." "LoadLibraryW"
+        fi
+
+        if is_posix_platform_path "$file" &&
+            [[ "$line" =~ (^|[^[:alnum:]_])(open|openat)[[:space:]]*\(.*O_DIRECTORY ]] &&
+            [[ "$line" != *"O_NOFOLLOW"* ]]; then
+            add_finding violations "$file" "$line_number" "Directory handles used by POSIX platform code must not follow symlinks by default. Add O_NOFOLLOW, or document and test a narrow platform exception." "O_DIRECTORY"
         fi
         previous_line="$line"
     done < "$repo_root/$file"

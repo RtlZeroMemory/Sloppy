@@ -11,7 +11,11 @@
 
 SlStatus sl_alloc_bytes(size_t size, unsigned char** out)
 {
-    if (out == NULL || size == 0U) {
+    if (out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = NULL;
+    if (size == 0U) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
@@ -31,7 +35,11 @@ SlStatus sl_heap_buffer_alloc(SlHeapBuffer* out, size_t length)
 {
     void* ptr = NULL;
 
-    if (out == NULL || length == 0U) {
+    if (out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out = (SlHeapBuffer){0};
+    if (length == 0U) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 

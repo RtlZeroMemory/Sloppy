@@ -9,7 +9,8 @@ static int expect_true(int condition)
 
 static int test_alloc_bytes(void)
 {
-    unsigned char* ptr = NULL;
+    unsigned char sentinel = 0U;
+    unsigned char* ptr = &sentinel;
     SlStatus status = sl_status_ok();
 
     status = sl_alloc_bytes(0U, &ptr);
@@ -40,7 +41,8 @@ static int test_alloc_bytes(void)
 
 static int test_heap_buffer_invalid_arguments(void)
 {
-    SlHeapBuffer buffer = {0};
+    unsigned char sentinel = 0U;
+    SlHeapBuffer buffer = {.ptr = &sentinel, .length = 99U};
 
     if (sl_status_code(sl_heap_buffer_alloc(NULL, 16U)) != SL_STATUS_INVALID_ARGUMENT) {
         return 1;

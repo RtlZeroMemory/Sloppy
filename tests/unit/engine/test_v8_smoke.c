@@ -3344,7 +3344,8 @@ static int test_promise_rejection_redacts_secret_text(void)
                 engine, sl_str_from_cstr("v8-promise-secret-reject.js"),
                 sl_str_from_cstr("globalThis.sloppy_reject_secret = async function () { throw new "
                                  "Error('password=hunter2 token=abc Authorization: Bearer "
-                                 "bearer-secret'); };"),
+                                 "bearer-secret; Authorization: Basic basic-secret; "
+                                 "Authorization: Digest digest-secret'); };"),
                 &diag),
             SL_STATUS_OK) != 0)
     {
@@ -3365,7 +3366,9 @@ static int test_promise_rejection_redacts_secret_text(void)
         expect_str_contains(diag.message, sl_str_from_cstr("[REDACTED]")) != 0 ||
         expect_str_contains(diag.message, sl_str_from_cstr("hunter2")) == 0 ||
         expect_str_contains(diag.message, sl_str_from_cstr("token=abc")) == 0 ||
-        expect_str_contains(diag.message, sl_str_from_cstr("bearer-secret")) == 0)
+        expect_str_contains(diag.message, sl_str_from_cstr("bearer-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("basic-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("digest-secret")) == 0)
     {
         sl_engine_destroy(engine);
         return 74;

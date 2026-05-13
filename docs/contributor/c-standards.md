@@ -610,6 +610,12 @@ The C standards scanner is the fast first line of defense. These categories are 
 for implementation code under `include/` and `src/`, with always-unsafe string APIs also
 banned in tests and benchmarks.
 
+Keep scanner rules broad and reviewable. A good rule catches a class of unsafe code across
+normal implementation paths, such as unsafe C strings, raw allocation outside allocator
+modules, plain Win32 DLL loading, or POSIX directory opens that can follow symlinks. Do not
+add one-off checks for a single line of code when a focused unit test or clearer helper
+would be more honest.
+
 Always banned:
 
 - `gets`;
@@ -662,6 +668,12 @@ Use checked add/mul for allocation sizes. Prefer checked array-size helpers for
 Avoid unchecked casts from signed to unsigned and truncating conversions without helpers.
 Avoid magic constants. Use `size_t` for sizes and `uint*_t` when exact width matters.
 
+When a dependency API accepts a narrower size type, check the value against that target
+type before casting. This applies to ODBC `SQLLEN`, libpq parameter lengths, V8 string
+lengths, Win32 `DWORD`, POSIX `int`, and any other API where Sloppy stores the value as a
+`size_t` or wider integer first. The guard should live next to the cast so reviewers do not
+have to reconstruct the range proof from distant control flow.
+
 ## Memory Allocation
 
 Raw `malloc`/`free` are forbidden outside allocator modules once those modules exist. Use
@@ -674,6 +686,15 @@ allocation unless intentional.
 No `windows.h`, `unistd.h`, `pthread.h`, `epoll`, `kqueue`, or similar OS headers outside
 `src/platform/*`. No scattered `#ifdef _WIN32` in core logic. Platform behavior sits behind
 Sloppy-owned APIs.
+
+Platform security-sensitive APIs need the same boundary discipline:
+
+- Windows dynamic-library loading must go through Sloppy's platform helper and use
+  `LoadLibraryExW` with explicit search flags. Do not call `LoadLibraryW` directly.
+- POSIX platform code that opens directory handles for traversal or recursive delete must
+  include `O_NOFOLLOW`, or document and test a narrow exception.
+- Windows recursive traversal must check `FILE_ATTRIBUTE_REPARSE_POINT` before descending
+  into a directory-like entry.
 
 ## V8 Isolation
 

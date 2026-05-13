@@ -1771,6 +1771,17 @@ size_t sl_v8_secret_value_end(std::string_view text, size_t start)
     return cursor;
 }
 
+size_t sl_v8_authorization_value_end(std::string_view text, size_t start)
+{
+    size_t cursor = start;
+    while (cursor < text.size() && text[cursor] != '\r' && text[cursor] != '\n' &&
+           text[cursor] != ';' && text[cursor] != '&')
+    {
+        cursor += 1U;
+    }
+    return cursor;
+}
+
 } // namespace
 
 std::string sl_v8_redact_diagnostic_text(std::string_view input)
@@ -1805,11 +1816,29 @@ std::string sl_v8_redact_diagnostic_text(std::string_view input)
             while (cursor < text.size() && (text[cursor] == ' ' || text[cursor] == '\t')) {
                 cursor += 1U;
             }
-            if (key == "authorization" && sl_v8_ascii_equal_ci(text, cursor, "bearer ")) {
-                cursor += sizeof("bearer ") - 1U;
+            if (key == "authorization") {
+                size_t field_end = sl_v8_authorization_value_end(text, cursor);
+                size_t scheme_end = cursor;
+
+                while (scheme_end < field_end && text[scheme_end] != ' ' &&
+                       text[scheme_end] != '\t')
+                {
+                    scheme_end += 1U;
+                }
+                value_start = scheme_end;
+                while (value_start < field_end &&
+                       (text[value_start] == ' ' || text[value_start] == '\t'))
+                {
+                    value_start += 1U;
+                }
+                if (value_start >= field_end) {
+                    value_start = cursor;
+                }
+                value_end = field_end;
+            } else {
+                value_start = cursor;
+                value_end = sl_v8_secret_value_end(text, value_start);
             }
-            value_start = cursor;
-            value_end = sl_v8_secret_value_end(text, value_start);
             if (value_end > value_start) {
                 text.replace(value_start, value_end - value_start, "[REDACTED]");
                 search = value_start + sizeof("[REDACTED]") - 1U;

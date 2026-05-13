@@ -179,7 +179,7 @@ SlStatus sl_crypto_base64_encode(SlBytes data, char* out, size_t out_length, siz
 
     status = sl_checked_add_size(data.length, 2U, &required);
     if (sl_status_is_ok(status)) {
-        required = (required / 3U) * 4U;
+        status = sl_checked_mul_size(required / 3U, 4U, &required);
     }
     if (!sl_status_is_ok(status)) {
         return status;

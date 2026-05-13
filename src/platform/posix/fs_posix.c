@@ -29,6 +29,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#ifndef O_NOFOLLOW
+#define O_NOFOLLOW 0
+#endif
+
 struct SlFsFileHandle
 {
     int fd;
@@ -212,9 +216,16 @@ static SlStatus sl_fs_posix_remove_tree_fd(int dirfd)
             closedir(dir);
             return sl_fs_posix_status(error);
         }
-        child = openat(dirfd, entry->d_name, O_RDONLY | O_DIRECTORY);
+        child = openat(dirfd, entry->d_name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
         if (child < 0) {
             int error = errno;
+            if (error == ELOOP) {
+                if (unlinkat(dirfd, entry->d_name, 0) == 0) {
+                    errno = 0;
+                    continue;
+                }
+                error = errno;
+            }
             closedir(dir);
             return sl_fs_posix_status(error);
         }
@@ -525,8 +536,11 @@ SlStatus sl_fs_platform_delete_directory(SlStr path, bool recursive, SlDiag* out
     if (!recursive) {
         return rmdir(native.ptr) == 0 ? sl_status_ok() : sl_fs_posix_status(errno);
     }
-    fd = open(native.ptr, O_RDONLY | O_DIRECTORY);
+    fd = open(native.ptr, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     if (fd < 0) {
+        if (errno == ELOOP) {
+            return unlink(native.ptr) == 0 ? sl_status_ok() : sl_fs_posix_status(errno);
+        }
         return sl_fs_posix_status(errno);
     }
     status = sl_fs_posix_remove_tree_fd(fd);

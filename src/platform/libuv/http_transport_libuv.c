@@ -4299,7 +4299,7 @@ static void sl_http_transport_reject_pending(uv_stream_t* listener,
     platform->overflow_initialized = true;
     platform->overflow.data = platform;
     if (uv_accept(listener, (uv_stream_t*)&platform->overflow) != 0) {
-        platform->overflow_initialized = false;
+        uv_close((uv_handle_t*)&platform->overflow, sl_http_transport_overflow_close_cb);
         return;
     }
     uv_close((uv_handle_t*)&platform->overflow, sl_http_transport_overflow_close_cb);

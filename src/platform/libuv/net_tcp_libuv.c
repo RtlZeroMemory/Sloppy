@@ -416,6 +416,7 @@ static void sl_tcp_listener_connection_cb(uv_stream_t* server, int status)
         uv_status = uv_tcp_init(&listener->loop, &connection->handle);
         if (uv_status == 0) {
             connection->handle.data = connection;
+            connection->handle_initialized = true;
             uv_status = uv_accept(server, (uv_stream_t*)&connection->handle);
         }
         listener->accept_status = uv_status;
@@ -423,7 +424,6 @@ static void sl_tcp_listener_connection_cb(uv_stream_t* server, int status)
             connection->loop = &listener->loop;
             connection->owns_loop = false;
             connection->loop_initialized = true;
-            connection->handle_initialized = true;
             connection->owner_listener = listener;
             listener->active_connections++;
             connection->state = SL_TCP_CONNECTION_CONNECTED;

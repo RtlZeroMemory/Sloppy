@@ -923,13 +923,28 @@ SlStatus sl_fs_resolve_path(SlArena* arena, const SlFsPolicy* policy, SlStr inpu
 
     out->kind = kind;
     if (kind == SL_FS_PATH_ABSOLUTE) {
-        return sl_fs_resolve_absolute(arena, policy, input, out, out_diag, mark);
+        status = sl_fs_resolve_absolute(arena, policy, input, out, out_diag, mark);
+        if (!sl_status_is_ok(status)) {
+            sl_arena_reset_to(arena, mark);
+            *out = (SlFsResolvedPath){0};
+        }
+        return status;
     }
     if (kind == SL_FS_PATH_PROJECT_RELATIVE) {
-        return sl_fs_resolve_project_relative(arena, policy, input, out, out_diag, mark);
+        status = sl_fs_resolve_project_relative(arena, policy, input, out, out_diag, mark);
+        if (!sl_status_is_ok(status)) {
+            sl_arena_reset_to(arena, mark);
+            *out = (SlFsResolvedPath){0};
+        }
+        return status;
     }
     if (kind == SL_FS_PATH_NAMED_ROOT) {
-        return sl_fs_resolve_named_root(arena, policy, input, out, out_diag, mark);
+        status = sl_fs_resolve_named_root(arena, policy, input, out, out_diag, mark);
+        if (!sl_status_is_ok(status)) {
+            sl_arena_reset_to(arena, mark);
+            *out = (SlFsResolvedPath){0};
+        }
+        return status;
     }
 
     sl_arena_reset_to(arena, mark);

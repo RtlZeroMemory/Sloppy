@@ -294,6 +294,8 @@ struct PgV8Connection
     std::shared_ptr<PgV8Request> request;
     std::shared_ptr<std::mutex> conn_mutex = std::make_shared<std::mutex>();
     bool transaction_pinned = false;
+    bool read_only_configured = false;
+    bool read_only_configuring = false;
 };
 
 struct PgV8ConnectionResource
@@ -592,6 +594,8 @@ void pg_v8_close_connection(PgV8Connection& connection)
     }
     connection.request.reset();
     connection.transaction_pinned = false;
+    connection.read_only_configured = false;
+    connection.read_only_configuring = false;
     connection.state = PgV8ConnectionState::Closed;
 }
 
@@ -1523,10 +1527,18 @@ bool pg_v8_request_prepare_wire(PgV8Request* request)
             continue;
         }
         if (param.format == 1) {
+            if (param.bytes.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+                request->error = "postgres binary parameter is too large";
+                return false;
+            }
             param.value = reinterpret_cast<const char*>(param.bytes.data());
             param.length = static_cast<int>(param.bytes.size());
         }
         else {
+            if (param.text.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+                request->error = "postgres text parameter is too large";
+                return false;
+            }
             param.value = param.text.c_str();
             param.length = static_cast<int>(param.text.size());
         }
@@ -1559,6 +1571,72 @@ bool pg_v8_send_query(PgV8Request* request)
         return false;
     }
     return sent == 1;
+}
+
+bool pg_v8_send_read_only_setup(PgV8Connection* connection)
+{
+    if (connection == nullptr || connection->conn == nullptr) {
+        return false;
+    }
+    int sent = PQsendQuery(connection->conn, "SET default_transaction_read_only = on");
+    if (sent != 1) {
+        return false;
+    }
+    connection->read_only_configuring = true;
+    return true;
+}
+
+bool pg_v8_send_request_or_read_only_setup(PgV8ConnectionResource* resource,
+                                           PgV8Connection* connection,
+                                           const std::shared_ptr<PgV8Request>& request)
+{
+    if (resource == nullptr || connection == nullptr || request == nullptr) {
+        return false;
+    }
+    if (resource->access == SL_POSTGRES_ACCESS_READ && !connection->read_only_configured) {
+        return pg_v8_send_read_only_setup(connection);
+    }
+    return pg_v8_send_query(request.get());
+}
+
+void pg_v8_complete_read_only_setup(PgV8Connection* connection)
+{
+    std::shared_ptr<PgV8Request> request = connection == nullptr ? nullptr : connection->request;
+    PGresult* result = nullptr;
+    bool saw_result = false;
+
+    if (connection == nullptr || request == nullptr || connection->conn == nullptr) {
+        return;
+    }
+    for (;;) {
+        result = PQgetResult(connection->conn);
+        if (result == nullptr) {
+            break;
+        }
+        saw_result = true;
+        if (PQresultStatus(result) != PGRES_COMMAND_OK) {
+            request->error = PQresultErrorMessage(result);
+            PQclear(result);
+            connection->read_only_configuring = false;
+            pg_v8_settle_request(request, false);
+            return;
+        }
+        PQclear(result);
+    }
+    if (!saw_result) {
+        request->error = "postgres read-only setup completed without a result";
+        connection->read_only_configuring = false;
+        pg_v8_settle_request(request, false);
+        return;
+    }
+    connection->read_only_configuring = false;
+    connection->read_only_configured = true;
+    request->state = PgV8RequestState::Sending;
+    if (!pg_v8_send_query(request.get())) {
+        pg_v8_fail_request(request, "postgres query submission failed");
+        return;
+    }
+    pg_v8_pump_connection(connection);
 }
 
 void pg_v8_complete_read(PgV8Connection* connection)
@@ -1669,7 +1747,7 @@ void pg_v8_pump_connection(PgV8Connection* connection)
         }
         request->state = PgV8RequestState::Sending;
         connection->state = PgV8ConnectionState::Busy;
-        if (!pg_v8_send_query(request.get())) {
+        if (!pg_v8_send_request_or_read_only_setup(request->resource, connection, request)) {
             pg_v8_fail_request(request, "postgres query submission failed");
             return;
         }
@@ -1702,6 +1780,10 @@ void pg_v8_pump_connection(PgV8Connection* connection)
             }
             return;
         }
+        if (connection->read_only_configuring) {
+            pg_v8_complete_read_only_setup(connection);
+            return;
+        }
         pg_v8_complete_read(connection);
     }
 }
@@ -1730,7 +1812,7 @@ bool pg_v8_attach_request_to_connection(PgV8ConnectionResource* resource,
     }
     else {
         request->state = PgV8RequestState::Sending;
-        if (!pg_v8_send_query(request.get())) {
+        if (!pg_v8_send_request_or_read_only_setup(resource, connection, request)) {
             request->error = "postgres query submission failed";
             return false;
         }

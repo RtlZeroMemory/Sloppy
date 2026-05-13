@@ -1963,6 +1963,7 @@ SlStatus sl_http_dispatch_generate_url(SlArena* arena, const SlHttpDispatchTable
                                        size_t param_count, SlStr* out_url)
 {
     SlArenaMark mark = {0};
+    SlArenaMark validation_mark = {0};
     SlStringBuilder builder = {0};
     const SlHttpRouteBinding* binding = NULL;
     SlRouteMatch match = {0};
@@ -2027,7 +2028,14 @@ SlStatus sl_http_dispatch_generate_url(SlArena* arena, const SlHttpDispatchTable
     }
 
     url = sl_string_builder_view(&builder);
+    validation_mark = sl_arena_mark(arena);
     status = sl_route_pattern_match(arena, binding->pattern, url, &match);
+    {
+        SlStatus reset_status = sl_arena_reset_to(arena, validation_mark);
+        if (!sl_status_is_ok(reset_status)) {
+            status = reset_status;
+        }
+    }
     if (!sl_status_is_ok(status)) {
         goto cleanup;
     }
