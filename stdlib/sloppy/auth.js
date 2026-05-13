@@ -938,6 +938,7 @@ export function snapshotAuthRequirement(requirement) {
         ...(requirement.roles === undefined ? {} : { roles: Object.freeze([...requirement.roles]) }),
         ...(requirement.policy === undefined ? {} : { policy: requirement.policy }),
         ...(requirement.claims === undefined ? {} : { claims: Object.freeze([...requirement.claims]) }),
+        ...(requirement.scopes === undefined ? {} : { scopes: Object.freeze([...requirement.scopes]) }),
     });
 }
 
@@ -1073,6 +1074,12 @@ export function authorizeRoute(ctx, requirement, state) {
     }
     if (Array.isArray(requirement.claims) && requirement.claims.length > 0) {
         const matched = requirement.claims.every((claim) => ctx.user.hasClaim(claim));
+        if (!matched) {
+            return forbidden();
+        }
+    }
+    if (Array.isArray(requirement.scopes) && requirement.scopes.length > 0) {
+        const matched = requirement.scopes.every((scope) => ctx.user.hasScope(scope));
         if (!matched) {
             return forbidden();
         }

@@ -15,6 +15,7 @@ codebase itself. If you're using Sloppy to build an application, you want
 - [HTTP runtime](http-runtime.md) — parser, transport, dispatch
 - [Native endpoint dispatch](native-endpoint-dispatch.md) — Plan-backed dispatch table metadata
 - [TestHost](testhost.md) — app-host, artifact, and loopback test harness boundaries
+- [WebSocket runtime](websocket-runtime.md) — app-host simulation boundaries and native upgrade work still required
 - [Async runtime](async-runtime.md) — owner-thread model, cancellation
 - [Provider runtime](provider-runtime.md) — provider executor and bridges
 - [Memory model](memory-model.md) — arenas, lifetimes, ownership

@@ -84,6 +84,51 @@ await host.get("/admin").asUser({ sub: "u_1", roles: ["admin"] });
 `asUser` is app-host only. Artifact and loopback modes must use headers,
 cookies, API keys, or JWTs so the production auth pipeline still runs.
 
+## WebSockets
+
+`TestHost.create(app)` supports in-memory WebSocket connections for
+`app.websocket(...)` routes:
+
+```ts
+await using host = await TestHost.create(app);
+
+const ws = await host.websocket("/ws")
+    .origin("https://app.example.com")
+    .protocols(["sloppy.realtime"])
+    .asUser({ sub: "u_1", scopes: ["realtime"] })
+    .connect();
+
+await ws.sendText("hello");
+await ws.expectText("echo:hello");
+
+await ws.sendJson({ type: "ping" });
+await ws.expectJson({ type: "pong" });
+
+await ws.close();
+```
+
+The WebSocket builder supports `.header(...)`, `.headers(...)`, `.origin(...)`,
+`.protocols(...)`, `.bearer(...)`, `.apiKey(...)`, `.withJwt(...)`,
+`.withSession(...)`, `.asUser(...)`, and `.timeout(...)`.
+
+Rejected handshakes use `expectRejected(status)`:
+
+```ts
+await host.websocket("/secure/ws")
+    .connect()
+    .expectRejected(401);
+```
+
+App-host WebSocket tests run the normal route middleware and auth ordering
+before the socket handler accepts. Origin and subprotocol policy are checked
+before the handler runs. Message size and send-queue limits are enforced by the
+in-memory socket.
+
+Artifact and package hosts do not claim WebSocket runtime support yet.
+`host.websocket(...).connect()` rejects with `501` and records
+`SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` unless a future runtime bridge
+provides real WebSocket support for that lane.
+
 ## Responses
 
 Responses expose status, case-insensitive headers, and body readers:
@@ -184,6 +229,8 @@ them after dispatch.
 - `TestHost.create(app)` is an app-host test lane, not a native runtime lane.
 - Artifact and package one-off CLI mode starts `sloppy run --once` per request.
 - Loopback mode requires an artifact or package path.
+- WebSocket helpers are app-host only today. Artifact/package WebSockets use an
+  explicit unsupported diagnostic.
 - Multipart request builder sugar is not exposed yet.
 - Explicit multipart bytes plus a `Content-Type: multipart/form-data; boundary=...`
   header are supported through `.bytes(...)` or request `body` options.

@@ -6,7 +6,12 @@ import {
     normalizeAuthRequirement,
     snapshotAuthRequirement,
 } from "../auth.js";
-import { createSseRouteHandler, createWebSocketRouteHandler } from "../realtime.js";
+import {
+    createSseRouteHandler,
+    createWebSocketRouteHandler,
+    normalizeWebSocketRouteOptions,
+    webSocketRouteOptions,
+} from "../realtime.js";
 import { Results } from "../results.js";
 import { isSchema, schema as Schema } from "../schema.js";
 import { cleanupAfterFailure, finishWithCleanup, validateServiceToken } from "./services.js";
@@ -796,7 +801,7 @@ function createRouteHandler(host, handler, middleware = [], corsPolicy = null, r
         return handler(ctx);
     }
 
-    return function routeHandler(context) {
+    function routeHandler(context) {
         if (context !== undefined && context !== null) {
             const providedContext = decorateProvidedContext(host, context, routeInfo);
             try {
@@ -852,7 +857,14 @@ function createRouteHandler(host, handler, middleware = [], corsPolicy = null, r
                 () => ownedContext.services.dispose(),
             );
         }
-    };
+    }
+    const websocketOptions = webSocketRouteOptions(handler);
+    if (websocketOptions !== undefined) {
+        Object.defineProperty(routeHandler, Symbol.for("sloppy.websocket.routeOptions"), {
+            value: websocketOptions,
+        });
+    }
+    return routeHandler;
 }
 
 function snapshotRoute(route) {
@@ -913,6 +925,20 @@ function snapshotMetadata(metadata) {
     }
     if (Array.isArray(snapshot.headers)) {
         snapshot.headers = Object.freeze(snapshot.headers.map((header) => Object.freeze({ ...header })));
+    }
+    if (snapshot.realtime?.websocket !== undefined) {
+        snapshot.realtime = Object.freeze({
+            ...snapshot.realtime,
+            websocket: Object.freeze({
+                ...snapshot.realtime.websocket,
+                protocols: Object.freeze([...(snapshot.realtime.websocket.protocols ?? [])]),
+                origins: snapshot.realtime.websocket.origins === "*"
+                    ? "*"
+                    : snapshot.realtime.websocket.origins === undefined
+                        ? undefined
+                        : Object.freeze([...snapshot.realtime.websocket.origins]),
+            }),
+        });
     }
 
     return Object.freeze(snapshot);
@@ -1071,6 +1097,37 @@ function createEndpointBuilder(route, assertAppMutable) {
         },
         security(options = undefined) {
             return endpoint.requireAuth(options);
+        },
+        requiresScope(scope) {
+            assertAppMutable();
+            validateMetadataText(scope, "authorization scope");
+            const existing = route.metadata.auth ?? { required: true };
+            const requirement = Object.freeze({
+                ...existing,
+                required: true,
+                scopes: Object.freeze([...new Set([...(existing.scopes ?? []), scope])]),
+            });
+            route.metadata.auth = requirement;
+            if (route.routeInfo !== undefined) {
+                route.routeInfo.auth = requirement;
+            }
+            return endpoint;
+        },
+        allowedOrigins(origins) {
+            assertAppMutable();
+            if (route.kind !== "websocket") {
+                throw new TypeError("Sloppy endpoint allowedOrigins is only supported on WebSocket routes.");
+            }
+            const current = route.metadata.realtime?.websocket ?? {};
+            route.metadata.realtime = Object.freeze({
+                ...(route.metadata.realtime ?? {}),
+                kind: "websocket",
+                websocket: normalizeWebSocketRouteOptions({
+                    ...current,
+                    origins,
+                }),
+            });
+            return endpoint;
         },
         accepts(schema, options = undefined) {
             assertAppMutable();
@@ -1296,9 +1353,12 @@ function registerRoute(
     }
 
     const orderedMiddleware = orderedMiddlewareFunctions(middleware);
+    const realtimeMetadata = kind === "websocket"
+        ? { kind, websocket: webSocketRouteOptions(args.handler) ?? normalizeWebSocketRouteOptions() }
+        : { kind };
     const metadata = {
         ...(metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata)),
-        ...((kind === "http") ? {} : { realtime: { kind } }),
+        ...((kind === "http") ? {} : { realtime: realtimeMetadata }),
         ...((currentModule !== null) ? { module: currentModule } : {}),
         middleware: middlewareMetadata(orderedMiddleware),
         ...((corsPolicy !== null) ? { cors: snapshotCorsPolicy(corsPolicy) } : {}),
@@ -1582,13 +1642,15 @@ function createRouteGroup(
             const mappedOptionsOrHandler = kind === "sse" && typeof optionsOrHandler === "function"
                 ? createSseRouteHandler(optionsOrHandler)
                 : kind === "websocket" && typeof optionsOrHandler === "function"
-                    ? createWebSocketRouteHandler(optionsOrHandler)
+                    ? createWebSocketRouteHandler(optionsOrHandler, maybeHandler)
                     : optionsOrHandler;
             const mappedMaybeHandler = kind === "sse" && typeof optionsOrHandler !== "function"
                 ? createSseRouteHandler(maybeHandler)
                 : kind === "websocket" && typeof optionsOrHandler !== "function"
-                    ? createWebSocketRouteHandler(maybeHandler)
-                    : maybeHandler;
+                    ? createWebSocketRouteHandler(maybeHandler, optionsOrHandler)
+                    : kind === "websocket"
+                        ? undefined
+                        : maybeHandler;
             return registerRoute(
                 routes,
                 host,
@@ -1669,6 +1731,7 @@ function createRouteGroup(
         delete: createMapMethod("DELETE"),
         sse: createMapMethod("GET", "sse"),
         ws: createMapMethod("GET", "websocket"),
+        websocket: createMapMethod("GET", "websocket"),
         group(childPrefix) {
             assertAppMutable();
             const child = createRouteGroup(

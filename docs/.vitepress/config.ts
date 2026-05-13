@@ -87,6 +87,7 @@ export default defineConfig({
           { text: "Request context", link: "/api/request-context" },
           { text: "Results", link: "/api/results" },
           { text: "Realtime (experimental)", link: "/api/realtime" },
+          { text: "WebSockets", link: "/api/websockets" },
           { text: "Services", link: "/api/services" },
           { text: "Config", link: "/api/config" },
           { text: "Logging", link: "/api/logging" },
@@ -125,6 +126,7 @@ export default defineConfig({
         text: "Reference",
         items: [
           { text: "Stability matrix", link: "/reference/stability" },
+          { text: "WebSockets", link: "/reference/websockets" },
           { text: "Supported syntax", link: "/reference/supported-syntax" },
           { text: "Plan format", link: "/reference/plan-format" },
           { text: "Configuration keys", link: "/reference/configuration" },
@@ -145,6 +147,7 @@ export default defineConfig({
           { text: "Compiler", link: "/internals/compiler" },
           { text: "Runtime", link: "/internals/runtime" },
           { text: "HTTP runtime", link: "/internals/http-runtime" },
+          { text: "WebSocket runtime", link: "/internals/websocket-runtime" },
           { text: "V8 bridge", link: "/internals/v8-bridge" },
           { text: "Provider runtime", link: "/internals/provider-runtime" },
           { text: "Async runtime", link: "/internals/async-runtime" },

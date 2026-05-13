@@ -1559,9 +1559,9 @@ function createApp(host) {
         },
 
         ws(pattern, optionsOrHandler, maybeHandler) {
-            const handler = typeof optionsOrHandler === "function" && maybeHandler === undefined
-                ? createWebSocketRouteHandler(optionsOrHandler)
-                : createWebSocketRouteHandler(maybeHandler);
+            const handler = typeof optionsOrHandler === "function"
+                ? createWebSocketRouteHandler(optionsOrHandler, maybeHandler)
+                : createWebSocketRouteHandler(maybeHandler, optionsOrHandler);
             return registerRoute(
                 routes,
                 routeHost,
@@ -1576,6 +1576,10 @@ function createApp(host) {
                 corsPolicy,
                 "websocket",
             );
+        },
+
+        websocket(pattern, handler, options = undefined) {
+            return app.ws(pattern, handler, options);
         },
 
         mapGroup(prefix) {
