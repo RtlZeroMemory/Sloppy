@@ -39,6 +39,8 @@ set(
     src/core/http_context.c
     src/core/http_dispatch.c
     src/core/http_response.c
+    src/core/json_profile.c
+    src/core/json_writer.c
     src/core/request_validation.c
     src/core/route.c
     src/core/route_artifact.c
@@ -180,6 +182,8 @@ set(
     tests/unit/core/test_http_context.c
     tests/unit/core/test_http_dispatch.c
     tests/unit/core/test_http_response.c
+    tests/unit/core/test_json_profile.c
+    tests/unit/core/test_json_writer.c
     tests/unit/core/test_route.c
     tests/unit/core/test_route_artifact.c
     tests/unit/core/test_plan.c
