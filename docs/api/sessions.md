@@ -61,6 +61,9 @@ Defaults:
 When `csrf` is enabled, `Auth.signIn` also sets a CSRF cookie. Unsafe methods
 must send both the CSRF cookie and the matching `X-CSRF-Token` header. Safe
 methods (`GET`, `HEAD`, `OPTIONS`, `TRACE`) do not require the token.
+Store-backed session rotation preserves the original absolute expiry, slides
+only idle expiry, caps the rotated cookie lifetime to the remaining absolute
+lifetime, and rotates the CSRF token when CSRF protection is enabled.
 
 `Auth.signOut(ctx)` clears the session cookie. Session and CSRF values are not
 written into Plan metadata or diagnostics.

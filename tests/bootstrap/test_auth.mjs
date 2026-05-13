@@ -72,6 +72,18 @@ function namedCookieValue(cookies, name) {
     return cookieValue(cookie);
 }
 
+function namedSetCookie(cookies, name) {
+    const cookie = cookies.find((value) => value.startsWith(`${name}=`));
+    assert.ok(cookie, `missing ${name} set-cookie`);
+    return cookie;
+}
+
+function cookieMaxAgeSeconds(setCookie) {
+    const match = /(?:^|;\s*)Max-Age=(\d+)(?:;|$)/u.exec(setCookie);
+    assert.ok(match, "missing Max-Age directive");
+    return Number(match[1]);
+}
+
 function assertCookieDirective(setCookie, directive) {
     assert.match(setCookie, new RegExp(`(?:^|;\\s*)${directive}(?:;|$)`));
 }
@@ -459,6 +471,73 @@ try {
 }
 
 {
+    const startMs = 1_700_000_000_000;
+    let sessionClock = startMs;
+    const app = Sloppy.create();
+    app.use(Auth.cookieSession({
+        secret: "rotate-hard-expiry-secret",
+        store: Auth.sessionStore.memory(),
+        rotation: true,
+        csrf: true,
+        idleTimeoutMs: 10 * 60_000,
+        absoluteTimeoutMs: 10 * 60_000,
+        clock: () => sessionClock,
+    }));
+    app.post("/login", (ctx) => Auth.signIn(ctx, { sub: "hard-expiry-user" }));
+    app.get("/me", (ctx) => Results.ok({
+        id: ctx.session.id,
+        subject: ctx.user.sub,
+        issuedAt: ctx.session.issuedAt,
+        expiresAt: ctx.session.expiresAt,
+    })).requireAuth();
+    app.post("/unsafe", () => Results.ok({ ok: true })).requireAuth();
+
+    const host = Testing.createHost(app);
+    const login = await host.post("/login");
+    const loginCookies = setCookies(login);
+    const firstSession = namedCookieValue(loginCookies, "sloppy.session");
+    const firstCsrf = namedCookieValue(loginCookies, "__Host-sloppy_csrf");
+
+    sessionClock = startMs + 9 * 60_000;
+    const rotatedMe = await requestJson(host, "GET", "/me", {
+        headers: { cookie: `sloppy.session=${firstSession}` },
+    });
+    assert.equal(rotatedMe.response.status, 200);
+    assert.equal(rotatedMe.body.issuedAt, Math.floor(startMs / 1000));
+    assert.equal(rotatedMe.body.expiresAt, Math.floor((startMs + 10 * 60_000) / 1000));
+    const rotatedCookies = setCookies(rotatedMe.response);
+    const rotatedSessionCookie = namedSetCookie(rotatedCookies, "sloppy.session");
+    const rotatedCsrfCookie = namedSetCookie(rotatedCookies, "__Host-sloppy_csrf");
+    const rotatedSession = cookieValue(rotatedSessionCookie);
+    const rotatedCsrf = cookieValue(rotatedCsrfCookie);
+    assert.notEqual(rotatedSession, firstSession);
+    assert.notEqual(rotatedCsrf, firstCsrf);
+    assert.ok(cookieMaxAgeSeconds(rotatedSessionCookie) <= 60);
+    assert.ok(cookieMaxAgeSeconds(rotatedCsrfCookie) <= 60);
+
+    assert.equal((await requestJson(host, "POST", "/unsafe", {
+        headers: {
+            cookie: `sloppy.session=${rotatedSession}; __Host-sloppy_csrf=${firstCsrf}`,
+            "x-csrf-token": firstCsrf,
+        },
+    })).response.status, 403);
+    const csrfSuccess = await requestJson(host, "POST", "/unsafe", {
+        headers: {
+            cookie: `sloppy.session=${rotatedSession}; __Host-sloppy_csrf=${rotatedCsrf}`,
+            "x-csrf-token": rotatedCsrf,
+        },
+    });
+    assert.equal(csrfSuccess.response.status, 200);
+    const secondRotatedSession = namedCookieValue(setCookies(csrfSuccess.response), "sloppy.session");
+
+    sessionClock = startMs + 10 * 60_000 + 1;
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { cookie: `sloppy.session=${secondRotatedSession}` },
+    })).response.status, 401);
+    await host.close();
+}
+
+{
     let createSql;
     const db = {
         __debug() {
@@ -544,10 +623,22 @@ try {
     assert.equal(me.body.subject, "db-user");
     assert.equal(row.last_seen_at_ms, 1_700_000_000_000);
     const validRow = { ...row };
-    row.claims_json = "{";
-    assert.equal((await requestJson(host, "GET", "/me", {
-        headers: { cookie: `sloppy.session=${session}` },
-    })).response.status, 401);
+    const invalidRows = [
+        ["malformed claims JSON", (candidate) => { candidate.claims_json = "{"; }],
+        ["null claims JSON", (candidate) => { candidate.claims_json = "null"; }],
+        ["string claims JSON", (candidate) => { candidate.claims_json = "\"bad\""; }],
+        ["invalid created_at_ms", (candidate) => { candidate.created_at_ms = "bad"; }],
+        ["invalid expires_at_ms", (candidate) => { candidate.expires_at_ms = "bad"; }],
+        ["invalid metadata_json shape", (candidate) => { candidate.metadata_json = "[]"; }],
+        ["malformed metadata JSON", (candidate) => { candidate.metadata_json = "{"; }],
+    ];
+    for (const [name, mutate] of invalidRows) {
+        row = { ...validRow };
+        mutate(row);
+        assert.equal((await requestJson(host, "GET", "/me", {
+            headers: { cookie: `sloppy.session=${session}` },
+        })).response.status, 401, name);
+    }
     row = validRow;
     assert.equal((await requestJson(host, "POST", "/logout", {
         headers: { cookie: `sloppy.session=${session}` },

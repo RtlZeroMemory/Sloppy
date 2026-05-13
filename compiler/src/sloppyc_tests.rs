@@ -7097,6 +7097,9 @@ export default app;
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("__sloppy_auth_session"));
     assert!(emitted_js.source.contains("cookieSession"));
+    assert!(emitted_js
+        .source
+        .contains("\"secretEnvKey\":\"Auth__SessionSecret\""));
     assert!(emitted_js.source.contains("__sloppy_auth_memory_sessions"));
     assert!(emitted_js
         .source
@@ -7202,6 +7205,11 @@ export default app;
         .expect("anonymous route auth should extract");
     assert!(!public.required);
     assert!(public.allow_anonymous);
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("\"secretEnvKey\":\"Auth__JwtSecret\""));
+    assert!(emitted_js.source.contains("__sloppy_auth_config_value"));
     let plan = super::emit_plan(&app, "bundle-hash", "map-hash")
         .expect("plan should emit auth route metadata");
     let plan: serde_json::Value =
@@ -7213,6 +7221,15 @@ export default app;
         .iter()
         .find(|route| route["pattern"] == "/me")
         .expect("protected route should be emitted");
+    assert_eq!(
+        protected["dispatch"]["executionKind"],
+        serde_json::json!("v8-handler")
+    );
+    assert!(protected["response"].get("nativeBody").is_none());
+    assert_eq!(
+        protected["bindings"][0]["kind"],
+        serde_json::json!("context")
+    );
     assert_eq!(
         protected["auth"]["schemes"],
         serde_json::json!(["bearerAuth"])

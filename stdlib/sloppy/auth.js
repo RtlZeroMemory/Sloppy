@@ -516,13 +516,21 @@ function sessionCookieOptions(scheme, overrides = undefined) {
     });
 }
 
-function sessionStoreCookieOptions(scheme, overrides = undefined) {
+function sessionStoreCookieOptions(scheme, overrides = undefined, remainingAbsoluteLifetimeMs = undefined) {
     const options = sessionCookieOptions(scheme, overrides);
+    let maxAgeSeconds = options.maxAgeSeconds;
+    if (overrides?.maxAgeSeconds === undefined && scheme.absoluteTimeoutMs !== undefined) {
+        maxAgeSeconds = Math.ceil(scheme.absoluteTimeoutMs / 1000);
+    }
+    if (remainingAbsoluteLifetimeMs !== undefined) {
+        const remainingSeconds = Math.max(0, Math.ceil(remainingAbsoluteLifetimeMs / 1000));
+        maxAgeSeconds = maxAgeSeconds === undefined
+            ? remainingSeconds
+            : Math.min(maxAgeSeconds, remainingSeconds);
+    }
     return Object.freeze({
         ...options,
-        ...(overrides?.maxAgeSeconds === undefined && scheme.absoluteTimeoutMs !== undefined
-            ? { maxAgeSeconds: Math.ceil(scheme.absoluteTimeoutMs / 1000) }
-            : {}),
+        ...(maxAgeSeconds !== undefined ? { maxAgeSeconds } : {}),
     });
 }
 
@@ -673,15 +681,22 @@ async function cookieSessionMiddleware(ctx, next, scheme) {
         return result;
     }
     const currentMs = nowMilliseconds(scheme.clock);
+    const remainingAbsoluteLifetimeMs = verified.record.expiresAt === undefined
+        ? undefined
+        : verified.record.expiresAt - currentMs;
+    if (remainingAbsoluteLifetimeMs !== undefined && remainingAbsoluteLifetimeMs <= 0) {
+        await scheme.store.revoke(verified.payload.sid, currentMs);
+        return unauthorized();
+    }
     const sessionId = Random.token(32);
     await scheme.store.revoke(verified.payload.sid, currentMs);
-    const csrf = verified.payload.csrf;
+    const csrf = scheme.csrf.enabled ? Random.token(32) : verified.payload.csrf;
     const record = {
         id: sessionId,
         claims: verified.record.claims,
-        createdAt: currentMs,
+        createdAt: verified.record.createdAt,
         lastSeenAt: currentMs,
-        expiresAt: currentMs + scheme.absoluteTimeoutMs,
+        expiresAt: verified.record.expiresAt,
         idleExpiresAt: scheme.idleTimeoutMs === undefined ? undefined : currentMs + scheme.idleTimeoutMs,
         csrf,
         metadata: verified.record.metadata,
@@ -696,7 +711,23 @@ async function cookieSessionMiddleware(ctx, next, scheme) {
         csrfToken: csrf,
         revoke: () => scheme.store.revoke(sessionId, nowMilliseconds(scheme.clock)),
     });
-    return result.cookie(scheme.cookieName, rotatedValue, sessionStoreCookieOptions(scheme));
+    let rotatedResult = result.cookie(
+        scheme.cookieName,
+        rotatedValue,
+        sessionStoreCookieOptions(scheme, undefined, remainingAbsoluteLifetimeMs),
+    );
+    if (scheme.csrf.enabled) {
+        rotatedResult = rotatedResult.cookie(scheme.csrf.cookieName, csrf, {
+            path: scheme.path,
+            secure: scheme.secure,
+            httpOnly: false,
+            sameSite: scheme.sameSite,
+            ...(remainingAbsoluteLifetimeMs !== undefined
+                ? { maxAgeSeconds: Math.max(0, Math.ceil(remainingAbsoluteLifetimeMs / 1000)) }
+                : {}),
+        });
+    }
+    return rotatedResult;
 }
 
 export function createAuthState() {
@@ -1255,6 +1286,23 @@ function normalizeSessionRow(row) {
     if (row === undefined || row === null) {
         return undefined;
     }
+    function finiteNumber(value) {
+        if (typeof value === "string" && value.trim().length === 0) {
+            return undefined;
+        }
+        const number = Number(value);
+        return Number.isFinite(number) ? number : undefined;
+    }
+    function optionalFiniteNumber(...values) {
+        const value = values.find((entry) => entry !== undefined && entry !== null);
+        if (value === undefined) {
+            return { valid: true, value: undefined };
+        }
+        const number = finiteNumber(value);
+        return number === undefined
+            ? { valid: false, value: undefined }
+            : { valid: true, value: number };
+    }
     const claimsText = row.claims_json ?? row.claimsJson ?? row.claims;
     const metadataText = row.metadata_json ?? row.metadataJson ?? row.metadata;
     let claimsValue = claimsText;
@@ -1269,21 +1317,35 @@ function normalizeSessionRow(row) {
     } catch {
         return undefined;
     }
+    const createdAt = finiteNumber(row.created_at_ms ?? row.createdAt ?? row.created_at);
+    const lastSeenAt = finiteNumber(row.last_seen_at_ms ?? row.lastSeenAt ?? row.last_seen_at);
+    const expiresAt = optionalFiniteNumber(row.expires_at_ms, row.expiresAt, row.expires_at);
+    const idleExpiresAt = optionalFiniteNumber(row.idle_expires_at_ms, row.idleExpiresAt, row.idle_expires_at);
+    const revokedAt = optionalFiniteNumber(row.revoked_at_ms, row.revokedAt, row.revoked_at);
+    const csrf = row.csrf === null || row.csrf === undefined ? undefined : row.csrf;
+    if (
+        typeof row.id !== "string" ||
+        row.id.length === 0 ||
+        !isPlainObject(claimsValue) ||
+        createdAt === undefined ||
+        lastSeenAt === undefined ||
+        expiresAt.valid !== true ||
+        idleExpiresAt.valid !== true ||
+        revokedAt.valid !== true ||
+        (csrf !== undefined && typeof csrf !== "string") ||
+        (metadataValue !== null && metadataValue !== undefined && !isPlainObject(metadataValue))
+    ) {
+        return undefined;
+    }
     return cloneSessionRecord({
         id: row.id,
         claims: claimsValue,
-        createdAt: Number(row.created_at_ms ?? row.createdAt ?? row.created_at),
-        lastSeenAt: Number(row.last_seen_at_ms ?? row.lastSeenAt ?? row.last_seen_at),
-        expiresAt: row.expires_at_ms === null || row.expires_at_ms === undefined
-            ? undefined
-            : Number(row.expires_at_ms),
-        idleExpiresAt: row.idle_expires_at_ms === null || row.idle_expires_at_ms === undefined
-            ? undefined
-            : Number(row.idle_expires_at_ms),
-        revokedAt: row.revoked_at_ms === null || row.revoked_at_ms === undefined
-            ? undefined
-            : Number(row.revoked_at_ms),
-        csrf: row.csrf === null ? undefined : row.csrf,
+        createdAt,
+        lastSeenAt,
+        expiresAt: expiresAt.value,
+        idleExpiresAt: idleExpiresAt.value,
+        revokedAt: revokedAt.value,
+        csrf,
         metadata: metadataValue === null || metadataValue === undefined
             ? undefined
             : metadataValue,
@@ -1513,7 +1575,11 @@ async function signIn(ctx, claims, options = undefined) {
             csrfToken: csrf,
             revoke: () => scheme.store.revoke(sessionId, nowMilliseconds(scheme.clock)),
         });
-        let result = Results.ok({ ok: true }).cookie(scheme.cookieName, value, sessionStoreCookieOptions(scheme, options));
+        let result = Results.ok({ ok: true }).cookie(
+            scheme.cookieName,
+            value,
+            sessionStoreCookieOptions(scheme, options, scheme.absoluteTimeoutMs),
+        );
         if (scheme.csrf.enabled) {
             result = result.cookie(scheme.csrf.cookieName, csrf, {
                 path: scheme.path,

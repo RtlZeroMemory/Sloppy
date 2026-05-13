@@ -1930,7 +1930,7 @@ async function flushMicrotasks(count = 6) {
     app.get("/key", (ctx) => Results.json({
         authenticated: ctx.user.authenticated,
         sub: ctx.user.sub,
-    })).requireAuth();
+    })).requireAuth({ schemes: ["apiKeyAuth"] });
     app.get("/principal", (ctx) => Results.json({
         authenticated: ctx.user.authenticated,
         sub: ctx.user.sub,
@@ -2007,7 +2007,7 @@ async function flushMicrotasks(count = 6) {
                 trace: "trace-1",
             });
         await host.post("/form").form({ name: "Ada", role: "admin" }).expectJson({ name: "Ada", role: "admin" });
-        await host.get("/principal").asUser({ sub: "u_1", roles: ["admin"] }).expectJson({
+        await host.get("/principal").asUser({ sub: "u_1", roles: ["admin"], scheme: "bearerAuth" }).expectJson({
             authenticated: true,
             sub: "u_1",
         });

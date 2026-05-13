@@ -2755,6 +2755,7 @@ bool http_v8_status_supported(uint16_t status)
     case 204U:
     case 400U:
     case 401U:
+    case 403U:
     case 404U:
     case 405U:
     case 413U:
@@ -4168,10 +4169,10 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
             engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
             http_v8_literal("JavaScript result descriptor has an unsupported status",
                             sizeof("JavaScript result descriptor has an unsupported status") - 1U),
-            http_v8_literal("Supported response statuses are 200, 201, 202, 204, 400, 401, 404, "
-                            "405, 413, 415, 500, 501, and 503.",
+            http_v8_literal("Supported response statuses are 200, 201, 202, 204, 400, 401, 403, "
+                            "404, 405, 413, 415, 500, 501, and 503.",
                             sizeof("Supported response statuses are 200, 201, 202, 204, 400, "
-                                   "401, 404, 405, 413, 415, 500, 501, and 503.") -
+                                   "401, 403, 404, 405, 413, 415, 500, 501, and 503.") -
                                 1U));
     }
 
