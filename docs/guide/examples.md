@@ -48,12 +48,49 @@ repository.
 | --- | --- |
 | [`framework-validation-errors`](#framework-validation-errors) | Schema-backed body binding, Plan-level validation diagnostics |
 
-## Workers
+## Rate limiting
+
+| Example | Shows |
+| --- | --- |
+| `rate-limit-basic` | Sliding-window IP limit on a public login route |
+| `rate-limit-auth` | User-partitioned limits on authenticated routes |
+| `rate-limit-redis` | Declares `RateLimit.redis(...)` and its fail-closed behavior on `main` |
+| `rate-limit-testhost` | Deterministic windows under `FakeClock` |
+| `rate-limit-websocket` | WebSocket upgrade rate limiting |
+
+Guide: [Rate limiting](rate-limiting.md). API: [RateLimit](../api/rate-limit.md).
+
+## Webhooks
+
+| Example | Shows |
+| --- | --- |
+| `webhooks-basic` | Event descriptor, outbox registration, transactional publish, signed delivery wiring |
+
+Guide: [Webhooks](webhooks.md). Bootstrap test coverage:
+`node tests/bootstrap/test_webhooks.mjs`.
+
+## Static files
+
+| Example | Shows |
+| --- | --- |
+| `static-files-basic` | `app.staticFiles("/assets", { root: "public", ... })` over a project-local directory |
+| `static-files-package` | Static assets carried into a packaged app artifact |
+
+Guide: [Serve Static Assets](static-assets.md). API:
+[Static Files](../api/static-files.md).
+
+## Background tasks and workers
 
 | Example | Shows |
 | --- | --- |
 | [`workers-background-service`](#workers-background-service) | Long-running service alongside the HTTP server |
+| `workers-workqueue` | Producer/consumer queue with retry |
 | [`workers-workerpool`](#workers-workerpool) | Bounded pool of worker isolates |
+| `workers-js-isolate` | Single `Worker.start` isolate from a module path |
+| `workers-shutdown` | Drain-vs-cancel `stop()` behavior |
+
+Guide: [Background tasks](background-tasks.md). API:
+[Workers](../api/workers.md).
 
 ## Stdlib (filesystem, network, OS, time, crypto, codec)
 
@@ -247,9 +284,17 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `os-runtime-api` | OS API-shape fixture |
 | `postgres-basic` | PostgreSQL provider fixture, live-provider gated |
 | `control-plane` | Larger app-style coverage example for routing, data, diagnostics, and tooling |
+| `rate-limit-auth` | Authenticated-user rate-limit example |
+| `rate-limit-basic` | Sliding-window IP rate-limit example |
+| `rate-limit-redis` | Distributed rate-limit adapter declaration (fails closed on `main`) |
+| `rate-limit-testhost` | Rate-limit windows under `FakeClock` |
+| `rate-limit-websocket` | WebSocket upgrade rate limiting |
 | `request-context` | Curated request context example |
 | `sqlite-basic` | SQLite provider fixture |
 | `sqlserver-basic` | SQL Server provider fixture, live-provider gated |
+| `static-files-basic` | `app.staticFiles` over a project-local directory |
+| `static-files-package` | Static assets carried into a packaged app artifact |
+| `webhooks-basic` | Webhook event descriptor, outbox registration, transactional publish, signed delivery |
 | `time-basic` | Time API-shape fixture |
 | `time-deadline-cancellation` | Time cancellation fixture |
 | `time-fake-clock` | Time fake-clock fixture |

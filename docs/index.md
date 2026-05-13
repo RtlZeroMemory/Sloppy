@@ -137,15 +137,17 @@ sloppy run .sloppy --once GET /health
     <a class="battery" href="/Slop/api/middleware"><span class="dot"></span>Middleware pipeline</a>
     <a class="battery" href="/Slop/guide/auth"><span class="dot"></span>Auth &amp; sessions</a>
     <a class="battery" href="/Slop/api/cors"><span class="dot"></span>CORS &amp; security headers</a>
+    <a class="battery" href="/Slop/guide/rate-limiting"><span class="dot"></span>Rate limiting</a>
     <a class="battery" href="/Slop/api/request-logging"><span class="dot"></span>Request logging &amp; context</a>
     <a class="battery" href="/Slop/api/config"><span class="dot"></span>Config &amp; services</a>
     <a class="battery" href="/Slop/api/logging"><span class="dot"></span>Structured logging</a>
     <a class="battery" href="/Slop/api/data"><span class="dot"></span>Data providers &amp; migrations</a>
     <a class="battery" href="/Slop/cli/openapi"><span class="dot"></span>OpenAPI emission</a>
     <a class="battery" href="/Slop/api/health"><span class="dot"></span>Health, metrics &amp; management</a>
-    <a class="battery" href="/Slop/api/static-files"><span class="dot"></span>Static files</a>
+    <a class="battery" href="/Slop/guide/static-assets"><span class="dot"></span>Static files</a>
     <a class="battery" href="/Slop/api/realtime"><span class="dot"></span>Realtime &amp; WebSockets</a>
-    <a class="battery" href="/Slop/api/workers"><span class="dot"></span>Workers &amp; jobs</a>
+    <a class="battery" href="/Slop/guide/webhooks"><span class="dot"></span>Webhooks</a>
+    <a class="battery" href="/Slop/guide/background-tasks"><span class="dot"></span>Background tasks &amp; jobs</a>
     <a class="battery" href="/Slop/guide/program-mode"><span class="dot"></span>Program Mode</a>
     <a class="battery" href="/Slop/api/testing"><span class="dot"></span>TestHost &amp; TestServices</a>
   </div>

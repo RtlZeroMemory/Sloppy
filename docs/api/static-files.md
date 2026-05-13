@@ -1,8 +1,10 @@
 # Static Files
 
-Static files are an experimental first-party app-host feature for fixed
-project assets. Use `app.staticFiles(mount, options)` for a public asset
-directory and `app.spa(mount, options)` for a client app with an HTML fallback.
+`app.staticFiles(mount, options)` serves a public asset directory and
+`app.spa(mount, options)` serves a client app with an HTML fallback. Both are
+first-party app-host features that emit compiler-generated handlers and Plan
+metadata. See the [stability matrix](../reference/stability.md) for the
+current support boundary; this page documents the supported shape.
 
 ```ts
 const app = Sloppy.create();

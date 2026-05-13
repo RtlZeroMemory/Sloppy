@@ -45,6 +45,7 @@ export default defineConfig({
           { text: "Auth", link: "/guide/auth" },
           { text: "Sessions", link: "/api/sessions" },
           { text: "Security headers", link: "/api/security" },
+          { text: "Rate limiting", link: "/guide/rate-limiting" },
           { text: "Validation", link: "/guide/validation" },
           { text: "Error handling", link: "/guide/error-handling" },
           { text: "Cookies", link: "/guide/cookies" },
@@ -52,6 +53,8 @@ export default defineConfig({
           { text: "Static assets", link: "/guide/static-assets" },
           { text: "Realtime updates", link: "/guide/realtime" },
           { text: "WebSockets", link: "/api/websockets" },
+          { text: "Webhooks", link: "/guide/webhooks" },
+          { text: "Background tasks", link: "/guide/background-tasks" },
           { text: "TypeScript source input", link: "/guide/typescript" },
           { text: "Program Mode", link: "/guide/program-mode" }
         ]
@@ -68,9 +71,14 @@ export default defineConfig({
           { text: "Request IDs", link: "/api/request-id" },
           { text: "Request logging", link: "/api/request-logging" },
           { text: "Request context", link: "/api/request-context" },
+          { text: "Rate limit", link: "/api/rate-limit" },
           { text: "Health checks", link: "/api/health" },
+          { text: "Metrics", link: "/api/metrics" },
+          { text: "Management", link: "/api/management" },
           { text: "Static files", link: "/api/static-files" },
           { text: "Realtime", link: "/api/realtime" },
+          { text: "Webhooks", link: "/api/webhooks" },
+          { text: "Workers", link: "/api/workers" },
           { text: "Data", link: "/api/data" },
           { text: "HTTP client / Network", link: "/api/http-client" },
           { text: "Filesystem", link: "/api/filesystem" },
@@ -78,7 +86,6 @@ export default defineConfig({
           { text: "Time", link: "/api/time" },
           { text: "Crypto", link: "/api/crypto" },
           { text: "Codec", link: "/api/codec" },
-          { text: "Workers", link: "/api/workers" },
           { text: "Schema", link: "/api/schema" }
         ]
       },
@@ -108,6 +115,10 @@ export default defineConfig({
           { text: "db", link: "/cli/db" },
           { text: "sloppyc", link: "/cli/sloppyc" },
           { text: "Migrations", link: "/guide/migrations" },
+          { text: "Health checks", link: "/api/health" },
+          { text: "Metrics", link: "/api/metrics" },
+          { text: "Management endpoints", link: "/api/management" },
+          { text: "Background tasks", link: "/guide/background-tasks" },
           { text: "Troubleshooting", link: "/guide/troubleshooting" }
         ]
       },
@@ -130,7 +141,10 @@ export default defineConfig({
         text: "Reference",
         items: [
           { text: "Stability matrix", link: "/reference/stability" },
+          { text: "Rate limit", link: "/reference/rate-limit" },
           { text: "WebSockets", link: "/reference/websockets" },
+          { text: "Webhooks", link: "/reference/webhooks" },
+          { text: "Workers", link: "/reference/workers" },
           { text: "Supported syntax", link: "/reference/supported-syntax" },
           { text: "Plan format", link: "/reference/plan-format" },
           { text: "Configuration keys", link: "/reference/configuration" },
