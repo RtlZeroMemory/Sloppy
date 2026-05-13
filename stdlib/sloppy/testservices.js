@@ -2,6 +2,13 @@ import { Text } from "./codec.js";
 import { Random } from "./crypto.js";
 import { data, Migrations } from "./data.js";
 import { File } from "./fs.js";
+import {
+    SECRET_REDACTION,
+    boundedText,
+    redactObject,
+    redactTextSecrets,
+} from "./internal/redaction.js";
+import { isPlainObject, requirePositiveFiniteNumber } from "./internal/validation.js";
 import { Process as SloppyProcess } from "./os.js";
 import { Redis } from "./redis.js";
 
@@ -17,17 +24,8 @@ const DEFAULT_STARTUP_TIMEOUT_MS = 30000;
 const DEFAULT_SQLSERVER_STARTUP_TIMEOUT_MS = 60000;
 const DEFAULT_STOP_TIMEOUT_MS = 10000;
 const DEFAULT_LOG_TAIL = 120;
-const SECRET_REDACTION = "[REDACTED]";
 const ASYNC_DISPOSE = Symbol.asyncDispose;
 let nonSecurityNameCounter = 0;
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -46,22 +44,11 @@ function processOutputText(value) {
     return String(value);
 }
 
-function boundedText(value, max = 12000) {
-    const text = String(value ?? "");
-    if (text.length <= max) {
-        return text;
-    }
-    return text.slice(text.length - max);
-}
-
 function normalizeTimeout(value, fallback, subject) {
     if (value === undefined) {
         return fallback;
     }
-    if (!Number.isFinite(value) || value < 1) {
-        throw new TypeError(`Sloppy TestServices ${subject} must be a positive finite number.`);
-    }
-    return Math.ceil(value);
+    return requirePositiveFiniteNumber(value, `Sloppy TestServices ${subject} must be a positive finite number.`);
 }
 
 function normalizePort(value, fallback, subject) {
@@ -118,12 +105,7 @@ function generatedSqlServerPassword() {
 }
 
 function redactWithSecrets(value, secrets) {
-    let text = String(value ?? "");
-    for (const secret of secrets) {
-        if (typeof secret === "string" && secret.length > 0) {
-            text = text.replaceAll(secret, SECRET_REDACTION);
-        }
-    }
+    let text = redactTextSecrets(value, secrets);
     text = data.postgres.redactConnectionString(text);
     text = data.sqlserver.redactConnectionString(text);
     text = Redis._redactUrl(text);
@@ -131,30 +113,10 @@ function redactWithSecrets(value, secrets) {
 }
 
 function safeObject(value, secrets) {
-    if (value === null || value === undefined) {
-        return value;
-    }
-    if (typeof value === "string") {
-        return redactWithSecrets(value, secrets);
-    }
-    if (typeof value === "number" || typeof value === "boolean") {
-        return value;
-    }
-    if (Array.isArray(value)) {
-        return Object.freeze(value.map((entry) => safeObject(entry, secrets)));
-    }
-    if (isPlainObject(value)) {
-        const safe = {};
-        for (const [key, entryValue] of Object.entries(value)) {
-            if (/password|secret|token|connectionstring|connectionString|pwd/iu.test(key)) {
-                safe[key] = SECRET_REDACTION;
-            } else {
-                safe[key] = safeObject(entryValue, secrets);
-            }
-        }
-        return Object.freeze(safe);
-    }
-    return redactWithSecrets(value, secrets);
+    return redactObject(value, {
+        secrets,
+        redactText: (text) => redactWithSecrets(text, secrets),
+    });
 }
 
 function createDiagnosticState(kind, image, name, secrets) {

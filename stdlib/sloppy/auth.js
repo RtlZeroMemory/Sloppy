@@ -1,5 +1,13 @@
 import { Base64Url, Hex, Text } from "./codec.js";
 import { Hash, Hmac, Password, Random } from "./crypto.js";
+import {
+    isPlainObject,
+    optionalBoolean,
+    optionalInteger,
+    optionalPositiveInteger,
+    requireHttpToken,
+    requireNonEmptyString,
+} from "./internal/validation.js";
 import { Results } from "./results.js";
 
 const AUTH_HEADER = "authorization";
@@ -10,23 +18,12 @@ const DEFAULT_SESSION_COOKIE = "sloppy.session";
 const DEFAULT_CSRF_COOKIE = "__Host-sloppy_csrf";
 const DEFAULT_CSRF_HEADER = "x-csrf-token";
 const SAFE_CSRF_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE"]);
-const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
 const STANDARD_JWT_CLAIMS = new Set(["iss", "sub", "aud", "exp", "nbf", "iat", "jti", "name", "role", "roles", "scope", "scp", "scopes"]);
 const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_SESSION_ABSOLUTE_TIMEOUT_MS = 24 * 60 * 60_000;
 
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
-
 function validateHeaderName(name, subject) {
-    if (typeof name !== "string" || !HEADER_TOKEN_PATTERN.test(name)) {
-        throw new TypeError(`Sloppy ${subject} header must be an HTTP token string.`);
-    }
+    requireHttpToken(name, `Sloppy ${subject} header must be an HTTP token string.`);
 }
 
 function isConfigReference(value) {
@@ -51,10 +48,7 @@ function stringOption(value, subject, required = true) {
     if (value === undefined && !required) {
         return undefined;
     }
-    if (typeof value !== "string" || value.length === 0) {
-        throw new TypeError(`Sloppy ${subject} must be a non-empty string.`);
-    }
-    return value;
+    return requireNonEmptyString(value, `Sloppy ${subject} must be a non-empty string.`);
 }
 
 function stringArrayOption(value, subject, { lower = false } = {}) {
@@ -70,23 +64,11 @@ function stringArrayOption(value, subject, { lower = false } = {}) {
 }
 
 function booleanOption(value, subject, defaultValue) {
-    if (value === undefined) {
-        return defaultValue;
-    }
-    if (typeof value !== "boolean") {
-        throw new TypeError(`Sloppy ${subject} must be a boolean.`);
-    }
-    return value;
+    return optionalBoolean(value, `Sloppy ${subject} must be a boolean.`, defaultValue);
 }
 
 function integerOption(value, subject, defaultValue = undefined) {
-    if (value === undefined) {
-        return defaultValue;
-    }
-    if (!Number.isInteger(value)) {
-        throw new TypeError(`Sloppy ${subject} must be an integer.`);
-    }
-    return value;
+    return optionalInteger(value, `Sloppy ${subject} must be an integer.`, defaultValue);
 }
 
 function authProblem(status, title, code, headers = undefined) {
@@ -1156,13 +1138,7 @@ function normalizeSameSiteOption(value) {
 }
 
 function normalizeTimeoutMs(value, subject, defaultValue = undefined) {
-    if (value === undefined) {
-        return defaultValue;
-    }
-    if (!Number.isInteger(value) || value <= 0) {
-        throw new TypeError(`Sloppy ${subject} must be a positive integer number of milliseconds.`);
-    }
-    return value;
+    return optionalPositiveInteger(value, `Sloppy ${subject} must be a positive integer number of milliseconds.`, defaultValue);
 }
 
 function normalizeSessionStoreDescriptor(value) {
@@ -1496,9 +1472,7 @@ function cookieSession(options) {
         store === undefined ? undefined : DEFAULT_SESSION_ABSOLUTE_TIMEOUT_MS,
     );
     const name = options.name ?? DEFAULT_SESSION_COOKIE;
-    if (typeof name !== "string" || !HEADER_TOKEN_PATTERN.test(name)) {
-        throw new TypeError("Sloppy Auth.cookieSession name must be a safe HTTP token.");
-    }
+    requireHttpToken(name, "Sloppy Auth.cookieSession name must be a safe HTTP token.");
     return Object.freeze({
         __sloppyAuth: true,
         kind: "cookieSession",

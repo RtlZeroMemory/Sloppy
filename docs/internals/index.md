@@ -12,6 +12,7 @@ codebase itself. If you're using Sloppy to build an application, you want
 - [Plan](plan.md) — Plan parsing, validation, schema evolution
 - [Logging runtime](logging.md) — structured events, redaction, queues, sinks
 - [Runtime diagnostics](diagnostics-runtime.md) — diagnostic reports, breadcrumbs, local crash reports
+- [JavaScript stdlib standards](javascript-stdlib-standards.md) — module boundaries, validation, redaction, lifecycle, runtime-classic drift
 - [V8 bridge](v8-bridge.md) — boundaries, ownership rules, isolation
 - [HTTP runtime](http-runtime.md) — parser, transport, dispatch
 - [Native endpoint dispatch](native-endpoint-dispatch.md) — Plan-backed dispatch table metadata

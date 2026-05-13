@@ -61,12 +61,15 @@
     "sloppy/app.js",
     "sloppy/internal/capabilities.js",
     "sloppy/internal/config.js",
+    "sloppy/internal/disposable.js",
     "sloppy/internal/intrinsics.js",
     "sloppy/internal/logging.js",
     "sloppy/internal/modules.js",
+    "sloppy/internal/redaction.js",
     "sloppy/internal/routes.js",
     "sloppy/internal/services.js",
     "sloppy/internal/shared.js",
+    "sloppy/internal/validation.js",
     "sloppy/internal/runtime-classic.js"
   ]
 }

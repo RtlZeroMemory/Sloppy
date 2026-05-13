@@ -13,18 +13,16 @@ import { RAW_JSON_BODY, serializeJson } from "./results.js";
 import { isRealtimeChannel } from "./realtime.js";
 import { Schema, validationProblem } from "./schema.js";
 import { TestServices as ImportedTestServices } from "./testservices.js";
+import { redactObject, redactTextSecrets } from "./internal/redaction.js";
+import { isHttpToken, isPlainObject, requireHttpToken, requirePlainObject } from "./internal/validation.js";
 
 const SUPPORTED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
 const TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
 const TestServices = Object.freeze(ImportedTestServices);
-const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
-const WEBSOCKET_PROTOCOL_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
 const TESTHOST_BINARY_BODY = Symbol("sloppyTestHostBinaryBody");
 const TESTHOST_TEXT_BODY = Symbol("sloppyTestHostTextBody");
-const SECRET_REDACTION = "[REDACTED]";
-const SENSITIVE_KEY_PATTERN = /(password|passwd|pwd|secret|token|authorization|cookie|set-cookie|apikey|clientsecret|privatekey|passphrase|connectionstring)/iu;
 const DEFAULT_SERIALIZATION_OPTIONS = Object.freeze({
     json: undefined,
     contentNegotiation: Object.freeze({
@@ -64,54 +62,24 @@ function nowMs() {
     return Date.now();
 }
 
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
-
 function normalizeOverrideMap(value, subject) {
     if (value === undefined) {
         return Object.freeze({});
     }
-    if (!isPlainObject(value)) {
-        throw new TypeError(`Sloppy TestHost ${subject} overrides must be a plain object.`);
-    }
+    requirePlainObject(value, `Sloppy TestHost ${subject} overrides must be a plain object.`);
     return Object.freeze({ ...value });
 }
 
 function redactConfiguredSecrets(value, secretTexts) {
-    let text = String(value);
-    for (const secret of secretTexts) {
-        text = text.replaceAll(secret, SECRET_REDACTION);
-    }
-    return text;
+    return redactTextSecrets(value, secretTexts);
 }
 
 function redactedValue(key, value, secretTexts = []) {
-    if (SENSITIVE_KEY_PATTERN.test(String(key))) {
-        return SECRET_REDACTION;
-    }
-    if (value === null || value === undefined) {
-        return value;
-    }
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-        return redactConfiguredSecrets(value, secretTexts);
-    }
-    if (Array.isArray(value)) {
-        return Object.freeze(value.map((entry) => redactedValue(key, entry, secretTexts)));
-    }
-    if (isPlainObject(value)) {
-        const copied = {};
-        for (const [entryKey, entryValue] of Object.entries(value)) {
-            copied[entryKey] = redactedValue(entryKey, entryValue, secretTexts);
-        }
-        return Object.freeze(copied);
-    }
-    return redactConfiguredSecrets(value, secretTexts);
+    return redactObject({ [key]: value }, {
+        secrets: secretTexts,
+        redactText: (text) => redactConfiguredSecrets(text, secretTexts),
+        stringifyPrimitives: true,
+    })[key];
 }
 
 function createDiagnosticsStore(secrets = []) {
@@ -181,9 +149,7 @@ function createDiagnosticsStore(secrets = []) {
 }
 
 function assertHeaderName(name, subject) {
-    if (typeof name !== "string" || !HEADER_TOKEN_PATTERN.test(name)) {
-        throw new TypeError(`Sloppy test host ${subject} header names must be safe HTTP tokens.`);
-    }
+    requireHttpToken(name, `Sloppy test host ${subject} header names must be safe HTTP tokens.`);
 }
 
 function assertHeaderValue(value, subject) {
@@ -214,9 +180,7 @@ function headerEntriesFromObject(headers, subject) {
         return [];
     }
 
-    if (!isPlainObject(headers)) {
-        throw new TypeError(`Sloppy test host ${subject} headers must be a plain object.`);
-    }
+    requirePlainObject(headers, `Sloppy test host ${subject} headers must be a plain object.`);
 
     const entries = [];
     for (const [name, value] of Object.entries(headers)) {
@@ -570,7 +534,7 @@ function parseCookieHeader(value) {
         }
         const name = pair.slice(0, equals).trim();
         let rawValue = pair.slice(equals + 1).trim();
-        if (!HEADER_TOKEN_PATTERN.test(name)) {
+        if (!isHttpToken(name)) {
             continue;
         }
         if (rawValue.length >= 2 && rawValue.startsWith("\"") && rawValue.endsWith("\"")) {
@@ -2411,7 +2375,7 @@ function createWebSocketMessage(kind, value) {
 }
 
 function validateWebSocketProtocolToken(value) {
-    if (typeof value !== "string" || value.length === 0 || !WEBSOCKET_PROTOCOL_PATTERN.test(value)) {
+    if (!isHttpToken(value)) {
         throw new TypeError("Sloppy TestHost WebSocket protocols must be non-empty WebSocket subprotocol tokens.");
     }
     return value;

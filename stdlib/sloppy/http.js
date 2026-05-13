@@ -1,12 +1,19 @@
 import { Text } from "./codec.js";
 import { Random } from "./crypto.js";
+import { disposeAll, onceAsync } from "./internal/disposable.js";
+import { redactHeaders, redactUrlTemplate } from "./internal/redaction.js";
+import {
+    isPlainObject,
+    optionalNonNegativeInteger,
+    optionalPositiveInteger,
+    requireHttpToken,
+    requirePlainObject,
+} from "./internal/validation.js";
 import { HttpClient } from "./net.js";
 
 const CLIENT_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/u;
 const METHOD_WITH_BODY = new Set(["POST", "PUT", "PATCH"]);
 const SAFE_RETRY_METHODS = new Set(["GET", "HEAD", "PUT", "DELETE"]);
-const SENSITIVE_HEADER_PATTERN = /^(authorization|cookie|set-cookie|x-api-key|api-key)$/iu;
-const SENSITIVE_QUERY_PATTERN = /(token|secret|password|authorization|api[_-]?key)/iu;
 const HTTP_CLIENT_TOKEN_PREFIX = "http.";
 const TYPED_CLIENT_RESERVED_ENDPOINT_NAMES = new Set(["send", "metrics", "diagnostics", "dispose", "close"]);
 
@@ -29,14 +36,6 @@ class SloppyHttpClientError extends Error {
 }
 
 const HttpError = SloppyHttpClientError;
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
 
 function isSchema(value) {
     return value !== null && typeof value === "object" && typeof value.validate === "function";
@@ -105,14 +104,10 @@ function validateHeaders(headers, subject) {
     if (headers === undefined) {
         return undefined;
     }
-    if (!isPlainObject(headers)) {
-        throw new TypeError(`${subject} headers must be a plain object.`);
-    }
+    requirePlainObject(headers, `${subject} headers must be a plain object.`);
     const normalized = {};
     for (const [name, value] of Object.entries(headers)) {
-        if (!/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u.test(name)) {
-            throw new TypeError(`${subject} header names must be safe HTTP tokens.`);
-        }
+        requireHttpToken(name, `${subject} header names must be safe HTTP tokens.`);
         if (typeof value !== "string" || /[\x00-\x08\x0A-\x1F\x7F]/u.test(value)) {
             throw new TypeError(`${subject} header values must be safe strings.`);
         }
@@ -122,32 +117,18 @@ function validateHeaders(headers, subject) {
 }
 
 function positiveInteger(value, subject, defaultValue = undefined) {
-    if (value === undefined) {
-        return defaultValue;
-    }
-    if (!Number.isInteger(value) || value <= 0) {
-        throw new TypeError(`${subject} must be a positive integer.`);
-    }
-    return value;
+    return optionalPositiveInteger(value, `${subject} must be a positive integer.`, defaultValue);
 }
 
 function nonNegativeInteger(value, subject, defaultValue = undefined) {
-    if (value === undefined) {
-        return defaultValue;
-    }
-    if (!Number.isInteger(value) || value < 0) {
-        throw new TypeError(`${subject} must be a non-negative integer.`);
-    }
-    return value;
+    return optionalNonNegativeInteger(value, `${subject} must be a non-negative integer.`, defaultValue);
 }
 
 function optionalDelayMs(options, subject) {
     if (options === undefined) {
         return undefined;
     }
-    if (!isPlainObject(options)) {
-        throw new TypeError(`${subject} options must be a plain object.`);
-    }
+    requirePlainObject(options, `${subject} options must be a plain object.`);
     return nonNegativeInteger(options.delayMs, `${subject} delayMs`);
 }
 
@@ -329,29 +310,6 @@ function createDiagnostics(limit = 128) {
             return Object.freeze([...records]);
         },
     };
-}
-
-function redactHeaders(headers = {}) {
-    const output = {};
-    for (const [name, value] of Object.entries(headers)) {
-        output[name] = SENSITIVE_HEADER_PATTERN.test(name) ? "[REDACTED]" : value;
-    }
-    return Object.freeze(output);
-}
-
-function redactUrlTemplate(path, query = undefined) {
-    if (query === undefined || query === null) {
-        return path;
-    }
-    const keys = Object.keys(query);
-    if (keys.length === 0) {
-        return path;
-    }
-    const rendered = keys
-        .sort()
-        .map((key) => `${encodeURIComponent(key)}=${SENSITIVE_QUERY_PATTERN.test(key) ? "[REDACTED]" : "{value}"}`)
-        .join("&");
-    return `${path}?${rendered}`;
 }
 
 function sleep(ms, signal) {
@@ -668,7 +626,7 @@ class HttpClientFactory {
     dispose() {
         if (this._disposePromise === undefined) {
             this._closed = true;
-            this._disposePromise = Promise.all(Array.from(this._clients.values(), (client) => client.dispose?.())).then(() => undefined);
+            this._disposePromise = disposeAll(this._clients.values());
         }
         return this._disposePromise;
     }
@@ -686,7 +644,6 @@ function createManagedClient(name, options, transport = undefined) {
         pool: options.pool,
     });
     let closed = false;
-    let closePromise;
 
     function assertOpen() {
         if (closed) {
@@ -694,13 +651,10 @@ function createManagedClient(name, options, transport = undefined) {
         }
     }
 
-    async function closeClient() {
-        if (closePromise === undefined) {
-            closed = true;
-            closePromise = Promise.resolve(lowLevel.close?.() ?? lowLevel.dispose?.()).then(() => undefined);
-        }
-        return closePromise;
-    }
+    const closeClient = onceAsync(async () => {
+        closed = true;
+        await (lowLevel.close?.() ?? lowLevel.dispose?.());
+    });
 
     async function execute(method, path, requestOptions = {}) {
         assertOpen();

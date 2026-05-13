@@ -12,6 +12,9 @@ make the app model discoverable without imitating Node, Bun, Deno, or browser co
 layers. It must not introduce package-manager assumptions before a scoped packaging story
 exists.
 
+For runtime and stdlib implementation details, also follow
+[JavaScript stdlib standards](../internals/javascript-stdlib-standards.md).
+
 ## Scope
 
 These standards govern:

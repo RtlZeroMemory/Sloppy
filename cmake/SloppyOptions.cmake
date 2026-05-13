@@ -199,12 +199,15 @@ set(
     testing.js
     internal/capabilities.js
     internal/config.js
+    internal/disposable.js
     internal/intrinsics.js
     internal/logging.js
     internal/modules.js
+    internal/redaction.js
     internal/routes.js
     internal/services.js
     internal/shared.js
+    internal/validation.js
     internal/runtime-classic.js)
 
 find_program(CARGO_EXECUTABLE cargo)

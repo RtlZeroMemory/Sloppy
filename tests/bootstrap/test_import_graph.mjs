@@ -30,11 +30,14 @@ const modules = [
     "request-logging.js",
     "internal/capabilities.js",
     "internal/config.js",
+    "internal/disposable.js",
     "internal/logging.js",
     "internal/modules.js",
+    "internal/redaction.js",
     "internal/routes.js",
     "internal/services.js",
     "internal/shared.js",
+    "internal/validation.js",
 ];
 
 const sourceBootstrapDir = path.resolve(

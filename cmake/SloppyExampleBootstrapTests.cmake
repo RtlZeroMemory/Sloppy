@@ -141,6 +141,10 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_stdlib_public_exports.mjs")
         add_test(
+            NAME bootstrap.stdlib.internal_utilities
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_internal_utilities.mjs")
+        add_test(
             NAME bootstrap.stdlib.app_host_foundation
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_app_host_foundation.mjs")
@@ -152,6 +156,10 @@
             NAME bootstrap.stdlib.realtime_runtime_classic
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_realtime_runtime_classic.mjs")
+        add_test(
+            NAME bootstrap.stdlib.runtime_classic_surface
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_runtime_classic_surface.mjs")
         add_test(
             NAME bootstrap.stdlib.testhost_process_modes
             COMMAND
@@ -251,8 +259,9 @@
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_core_integration.mjs")
         set_tests_properties(
             bootstrap.stdlib.import_graph bootstrap.stdlib.public_exports
+            bootstrap.stdlib.internal_utilities
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.testhost_process_modes
-            bootstrap.stdlib.realtime_framework
+            bootstrap.stdlib.realtime_framework bootstrap.stdlib.runtime_classic_surface
             bootstrap.stdlib.prealpha_control_plane_dogfood
             bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.orm bootstrap.stdlib.orm_runtime_classic
