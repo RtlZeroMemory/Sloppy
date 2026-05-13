@@ -485,8 +485,13 @@ static int sl_db_read_migration_files(const char* base_path, const SlCliDbMigrat
     }
     status = sl_fs_list_directory(&arena, sl_str_from_cstr(directory), &list, NULL);
     if (!sl_status_is_ok(status)) {
-        *out_count = 0U;
-        return 0;
+        if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
+            *out_count = 0U;
+            return 0;
+        }
+        sl_cli_write_error_with_value("sloppy db: failed to read migration directory: ",
+                                      directory, "\n");
+        return 1;
     }
     for (size_t entry_index = 0U; entry_index < list.count; entry_index += 1U) {
         SlBytes bytes = {0};
