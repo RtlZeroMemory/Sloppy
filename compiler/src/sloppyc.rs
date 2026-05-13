@@ -62,6 +62,8 @@ const WORKER_EXPORTS: &[&str] = &[
     "SloppyWorkerError",
 ];
 
+const JOBS_EXPORTS: &[&str] = &["Jobs", "SloppyJobsError"];
+
 const DEFAULT_HEALTH_PATH: &str = "/health";
 const DEFAULT_LIVENESS_PATH: &str = "/health/live";
 const DEFAULT_READINESS_PATH: &str = "/health/ready";
@@ -375,6 +377,7 @@ struct AppState {
     http_client_imported: bool,
     realtime_imported: bool,
     workers_imported: bool,
+    jobs_imported: bool,
     ffi_imported: bool,
     ffi_libraries: Vec<FfiLibraryMetadata>,
     ffi_structs: Vec<FfiStructMetadata>,
@@ -439,6 +442,7 @@ impl AppState {
             http_client_imported: false,
             realtime_imported: false,
             workers_imported: false,
+            jobs_imported: false,
             ffi_imported: false,
             ffi_libraries: Vec::new(),
             ffi_structs: Vec::new(),
@@ -1000,6 +1004,8 @@ struct ModuleGraph {
     uses_http_client_runtime: bool,
     uses_realtime_runtime: bool,
     uses_workers_runtime: bool,
+    uses_jobs_runtime: bool,
+    program_data_providers: BTreeSet<String>,
     dependency_graph: DependencyGraph,
     uses_ffi_runtime: bool,
     ffi_libraries: Vec<FfiLibraryMetadata>,
@@ -1050,6 +1056,8 @@ impl ModuleGraph {
             uses_http_client_runtime: false,
             uses_realtime_runtime: false,
             uses_workers_runtime: false,
+            uses_jobs_runtime: false,
+            program_data_providers: BTreeSet::new(),
             dependency_graph: DependencyGraph::default(),
             uses_ffi_runtime: false,
             ffi_libraries: Vec::new(),
@@ -1118,6 +1126,7 @@ impl ModuleGraph {
                 "os" => self.uses_os_runtime = true,
                 "crypto" => self.uses_crypto_runtime = true,
                 "codec" => self.uses_codec_runtime = true,
+                "jobs" => self.uses_jobs_runtime = true,
                 _ => {}
             }
         }
@@ -1356,6 +1365,7 @@ fn apply_declared_capabilities(
             "crypto" => app.uses_crypto_runtime = true,
             "codec" => app.uses_codec_runtime = true,
             "workers" => app.uses_workers_runtime = true,
+            "jobs" => app.uses_jobs_runtime = true,
             "ffi" => app.uses_ffi_runtime = true,
             _ => {}
         }
@@ -1538,6 +1548,7 @@ fn extract_program_with_metrics(
         uses_http_client_runtime: graph.uses_http_client_runtime,
         uses_realtime_runtime: graph.uses_realtime_runtime,
         uses_workers_runtime: graph.uses_workers_runtime,
+        uses_jobs_runtime: graph.uses_jobs_runtime,
         uses_ffi_runtime: graph.uses_ffi_runtime,
         ffi: graph.ffi_libraries,
         ffi_structs: graph.ffi_structs,
@@ -1589,6 +1600,9 @@ fn program_inferred_capabilities(graph: &ModuleGraph) -> Vec<DatabaseCapability>
     if graph.uses_workers_runtime {
         push_program_inferred_capability(&mut capabilities, "workers");
     }
+    for provider in &graph.program_data_providers {
+        push_program_inferred_database_capability(&mut capabilities, provider);
+    }
     if graph.uses_ffi_runtime || !graph.ffi_libraries.is_empty() || !graph.ffi_structs.is_empty() {
         push_program_inferred_capability(&mut capabilities, "ffi");
     }
@@ -1612,6 +1626,36 @@ fn push_program_inferred_capability(capabilities: &mut Vec<DatabaseCapability>, 
         source: format!("import:{token}"),
         span: Span::new(0, 0),
         from_provider_use: false,
+    });
+}
+
+fn push_program_inferred_database_capability(
+    capabilities: &mut Vec<DatabaseCapability>,
+    provider: &str,
+) {
+    let token = format!("data.{provider}.program");
+    if capabilities.iter().any(|capability| {
+        capability.capability_kind == "database" && capability.provider == provider
+    }) {
+        return;
+    }
+    capabilities.push(DatabaseCapability {
+        token: token.clone(),
+        capability_kind: "database".to_string(),
+        provider: provider.to_string(),
+        config_name: None,
+        config_key: None,
+        access: "readwrite".to_string(),
+        database: if provider == "sqlite" {
+            Some(":memory:".to_string())
+        } else {
+            None
+        },
+        config_source: None,
+        source_name: "program provider".to_string(),
+        source: format!("data.{provider}.open"),
+        span: Span::new(0, 0),
+        from_provider_use: true,
     });
 }
 
@@ -1954,6 +1998,7 @@ fn transform_program_source(
 
     let mut program = parsed.program;
     let source_name = graph.record_source(path, source);
+    mark_program_direct_provider_usage(source, graph);
     extract_ffi_declarations_from_statements(
         path,
         source,
@@ -1972,6 +2017,19 @@ fn transform_program_source(
     )?;
     let transformed = transpile_program_typescript(path, &allocator, &mut program)?;
     rewrite_program_module_exports(path, &transformed, graph, package)
+}
+
+fn mark_program_direct_provider_usage(source: &str, graph: &mut ModuleGraph) {
+    for (needle, provider) in [
+        ("data.sqlite.open", "sqlite"),
+        ("data.postgres.open", "postgres"),
+        ("data.sqlserver.open", "sqlserver"),
+    ] {
+        if source.contains(needle) {
+            graph.uses_data_runtime = true;
+            graph.program_data_providers.insert(provider.to_string());
+        }
+    }
 }
 
 fn analyze_program_imports(
@@ -2341,6 +2399,13 @@ fn analyze_program_import(
                 resolved_package,
                 Some(from_id),
             )?;
+            Ok(())
+        }
+        resolver::ImportKind::SlopJobs => {
+            validate_program_stdlib_import(path, import, &import_kind)?;
+            mark_program_import(graph, &import_kind, import);
+            ensure_sloppy_jobs_module(graph, modules);
+            graph.add_dependency_import(&from_id, specifier, "sloppy/jobs", "sloppy-stdlib");
             Ok(())
         }
         resolver::ImportKind::SlopStdlib
@@ -2748,6 +2813,57 @@ fn ensure_node_compat_module(
 }
 
 const SLOPPY_SQLITE_PROVIDER_PROGRAM_MODULE: &str = r#"function validateSqliteProviderName(name){if(typeof name!=="string"||name.length===0){throw new TypeError("Sloppy sqlite provider name must be a non-empty string.");}if(name.trim()!==name||!/^[A-Za-z0-9_.-]+$/u.test(name)){throw new TypeError("Sloppy sqlite provider name must contain only letters, digits, dots, underscores, or hyphens.");}}function validateSqliteProviderOptions(options){if(options===undefined){return Object.freeze({});}if(options===null||typeof options!=="object"||Array.isArray(options)){throw new TypeError("Sloppy sqlite provider options must be a plain object.");}if(Object.prototype.hasOwnProperty.call(options,"database")&&typeof options.database!=="string"){throw new TypeError("Sloppy sqlite provider database option must be a string.");}return Object.freeze({...options});}function sqlite(name,options){validateSqliteProviderName(name);return Object.freeze({__sloppyProvider:true,kind:"sqlite",name,token:name.includes(".")?name:`data.${name}`,options:validateSqliteProviderOptions(options)});}module.exports={sqlite,Sqlite:sqlite,default:null};module.exports.default=module.exports;"#;
+const SLOPPY_JOBS_PROGRAM_MODULE_SOURCE: &str = include_str!("../../stdlib/sloppy/jobs.js");
+
+fn sloppy_jobs_program_module() -> String {
+    SLOPPY_JOBS_PROGRAM_MODULE_SOURCE
+        .replace(
+            "import { Random } from \"./crypto.js\";\r\nimport { CancellationController } from \"./time.js\";\r\n\r\n",
+            "const { CancellationController, Random } = globalThis.__sloppy_runtime;\n\n",
+        )
+        .replace(
+            "import { Random } from \"./crypto.js\";\nimport { CancellationController } from \"./time.js\";\n\n",
+            "const { CancellationController, Random } = globalThis.__sloppy_runtime;\n\n",
+        )
+        .replace(
+            "import { CancellationController } from \"./time.js\";\r\n\r\n",
+            "const { CancellationController } = globalThis.__sloppy_runtime;\n\n",
+        )
+        .replace(
+            "import { CancellationController } from \"./time.js\";\n\n",
+            "const { CancellationController } = globalThis.__sloppy_runtime;\n\n",
+        )
+        .replace(
+            "\r\nexport { Jobs, SloppyJobsError };\r\n",
+            "\nmodule.exports = { Jobs, SloppyJobsError, default: Jobs };\nmodule.exports.default = Jobs;\n",
+        )
+        .replace(
+            "\nexport { Jobs, SloppyJobsError };\n",
+            "\nmodule.exports = { Jobs, SloppyJobsError, default: Jobs };\nmodule.exports.default = Jobs;\n",
+        )
+}
+
+fn ensure_sloppy_jobs_module(graph: &mut ModuleGraph, modules: &mut Vec<ProgramModule>) {
+    if modules.iter().any(|module| module.id == "sloppy/jobs") {
+        return;
+    }
+    graph.dependency_graph.ensure_defaults();
+    graph.add_dependency_module(
+        "sloppy/jobs".to_string(),
+        "sloppy/jobs".to_string(),
+        ModuleFormat::CommonJs,
+        None,
+        Some("sloppy-stdlib".to_string()),
+    );
+    let source = sloppy_jobs_program_module();
+    modules.push(ProgramModule {
+        id: "sloppy/jobs".to_string(),
+        source_name: "sloppy/jobs".to_string(),
+        source: source.clone(),
+        emitted_source: source,
+        format: ModuleFormat::CommonJs,
+    });
+}
 
 fn ensure_sloppy_provider_module(
     backing: &str,
@@ -2965,6 +3081,14 @@ fn resolve_program_dependency(
             );
             Ok(Some("sloppy/providers/sqlite".to_string()))
         }
+        resolver::ImportKind::SlopJobs => {
+            graph.uses_jobs_runtime = true;
+            graph.uses_time_runtime = true;
+            graph.uses_crypto_runtime = true;
+            ensure_sloppy_jobs_module(graph, modules);
+            graph.add_dependency_import(&from_id, specifier, "sloppy/jobs", "sloppy-stdlib");
+            Ok(Some("sloppy/jobs".to_string()))
+        }
         resolver::ImportKind::NodeBuiltin(builtin) => Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN",
             format!(
@@ -3044,6 +3168,7 @@ fn validate_program_stdlib_import(
         resolver::ImportKind::SlopNet => validate_module_sloppy_net_import(path, import),
         resolver::ImportKind::SlopOs => validate_module_sloppy_os_import(path, import),
         resolver::ImportKind::SlopWorkers => validate_module_sloppy_workers_import(path, import),
+        resolver::ImportKind::SlopJobs => validate_module_sloppy_jobs_import(path, import),
         resolver::ImportKind::SlopFfi => validate_module_sloppy_ffi_import(path, import),
         resolver::ImportKind::SqliteProvider => {
             validate_module_sloppy_sqlite_provider_import(path, import)
@@ -3543,6 +3668,7 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi => "globalThis.__sloppy_runtime".to_string(),
+        resolver::ImportKind::SlopJobs => "__sloppy_program_require(\"sloppy/jobs\")".to_string(),
         resolver::ImportKind::SqliteProvider => {
             "__sloppy_program_require(\"sloppy/providers/sqlite\")".to_string()
         }
@@ -3809,6 +3935,7 @@ fn program_reexport_require_expr(
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi => Ok("globalThis.__sloppy_runtime".to_string()),
+        resolver::ImportKind::SlopJobs => Ok("__sloppy_program_require(\"sloppy/jobs\")".to_string()),
         resolver::ImportKind::SqliteProvider => {
             Ok("__sloppy_program_require(\"sloppy/providers/sqlite\")".to_string())
         }
@@ -4000,6 +4127,11 @@ fn mark_program_import(
         }
         resolver::ImportKind::SlopOs => graph.uses_os_runtime = true,
         resolver::ImportKind::SlopWorkers => graph.uses_workers_runtime = true,
+        resolver::ImportKind::SlopJobs => {
+            graph.uses_jobs_runtime = true;
+            graph.uses_time_runtime = true;
+            graph.uses_crypto_runtime = true;
+        }
         resolver::ImportKind::SlopFfi => graph.uses_ffi_runtime = true,
         resolver::ImportKind::SlopStdlib => {
             graph.uses_time_runtime = true;
@@ -4009,6 +4141,7 @@ fn mark_program_import(
             graph.uses_net_runtime = true;
             graph.uses_os_runtime = true;
             graph.uses_workers_runtime = true;
+            graph.uses_jobs_runtime = true;
         }
         _ => {}
     }
@@ -4132,7 +4265,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-                .with_hint("Use documented named imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"; Sloppy does not implement Node or npm resolution."));
+                .with_hint("Use documented named imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", \"sloppy/jobs\", or \"sloppy/ffi\"; Sloppy does not implement Node or npm resolution."));
     }
 
     if let Some((specifier, span)) = &state.unsupported_import_name {
@@ -4142,7 +4275,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-        .with_hint("Use documented imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"."));
+        .with_hint("Use documented imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", \"sloppy/jobs\", or \"sloppy/ffi\"."));
     }
 
     if !state.sloppy_imported {
@@ -4336,6 +4469,7 @@ fn extract_entry(
     };
     let uses_realtime_runtime =
         state.realtime_imported || state.routes.iter().any(|route| route.kind != "http");
+    let uses_jobs_runtime = state.jobs_imported || graph.uses_jobs_runtime;
 
     Ok(ExtractedApp {
         kind: ProjectKind::Web,
@@ -4369,10 +4503,11 @@ fn extract_entry(
         configuration: None,
         schemas: state.schemas,
         config_reads: state.config_reads,
-        uses_time_runtime: state.time_imported || graph.uses_time_runtime,
+        uses_time_runtime: state.time_imported || graph.uses_time_runtime || uses_jobs_runtime,
         uses_fs_runtime: state.fs_imported,
         uses_crypto_runtime: state.crypto_imported
             || graph.uses_crypto_runtime
+            || uses_jobs_runtime
             || state.auth.schemes.iter().any(|scheme| {
                 matches!(
                     scheme,
@@ -4399,6 +4534,7 @@ fn extract_entry(
         uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
         uses_realtime_runtime,
         uses_workers_runtime,
+        uses_jobs_runtime,
         uses_ffi_runtime: state.ffi_imported || graph.uses_ffi_runtime,
         ffi: {
             let mut ffi = graph.ffi_libraries.clone();
@@ -4703,6 +4839,10 @@ fn sloppy_workers_import_name_supported(name: &str) -> bool {
     WORKER_EXPORTS.contains(&name)
 }
 
+fn sloppy_jobs_import_name_supported(name: &str) -> bool {
+    JOBS_EXPORTS.contains(&name)
+}
+
 fn sloppy_ffi_import_name_supported(name: &str) -> bool {
     matches!(name, "unsafeFfi" | "t")
 }
@@ -4716,6 +4856,7 @@ enum SloppyStdlibImport {
     Net,
     Os,
     Workers,
+    Jobs,
     Ffi,
 }
 
@@ -4729,6 +4870,7 @@ impl SloppyStdlibImport {
             "sloppy/net" => Some(Self::Net),
             "sloppy/os" => Some(Self::Os),
             "sloppy/workers" => Some(Self::Workers),
+            "sloppy/jobs" => Some(Self::Jobs),
             "sloppy/ffi" => Some(Self::Ffi),
             _ => None,
         }
@@ -4743,6 +4885,7 @@ impl SloppyStdlibImport {
             Self::Net => sloppy_net_import_name_supported(name),
             Self::Os => sloppy_os_import_name_supported(name),
             Self::Workers => sloppy_workers_import_name_supported(name),
+            Self::Jobs => sloppy_jobs_import_name_supported(name),
             Self::Ffi => sloppy_ffi_import_name_supported(name),
         }
     }
@@ -4982,6 +5125,18 @@ fn validate_module_sloppy_workers_import(
         import,
         "sloppy/workers",
         sloppy_workers_import_name_supported,
+    )
+}
+
+fn validate_module_sloppy_jobs_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/jobs",
+        sloppy_jobs_import_name_supported,
     )
 }
 
@@ -5784,6 +5939,7 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
         SloppyStdlibImport::Net => state.net_imported = true,
         SloppyStdlibImport::Os => state.os_imported = true,
         SloppyStdlibImport::Workers => state.workers_imported = true,
+        SloppyStdlibImport::Jobs => state.jobs_imported = true,
         SloppyStdlibImport::Ffi => state.ffi_imported = true,
     }
 }
@@ -6080,6 +6236,8 @@ fn extract_import(
                         state.provider_health_imported = true;
                     }
                 }
+                ("Jobs", "Jobs") => state.jobs_imported = true,
+                ("SloppyJobsError", "SloppyJobsError") => state.jobs_imported = true,
                 ("schema", "schema") => state.schema_imported = true,
                 ("Schema", "Schema") => state.schema_imported = true,
                 _ if sloppy_root_import_name_supported(imported) && imported == local => {}
@@ -6160,6 +6318,8 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "sql"
             | "Migrations"
             | "ProviderHealth"
+            | "Jobs"
+            | "SloppyJobsError"
             | "schema"
             | "Schema"
             | "Email"
@@ -18270,6 +18430,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     if app.uses_workers_runtime {
         runtime_exports.extend(WORKER_EXPORTS.iter().copied());
     }
+    if app.uses_jobs_runtime {
+        runtime_exports.extend(JOBS_EXPORTS.iter().copied());
+    }
     if app.uses_ffi_runtime || !app.ffi.is_empty() || !app.ffi_structs.is_empty() {
         runtime_exports.extend(["unsafeFfi", "t"]);
     }
@@ -18855,7 +19018,7 @@ fn emit_dynamic_web_app_js(source: &str, app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
+    output.push_str("const { Results, Jobs, SloppyJobsError, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
     output.push_str(
         r#"const __sloppy_framework_services = __createFrameworkServiceProvider();
 const __sloppy_framework_provider_configs = new Map([]);

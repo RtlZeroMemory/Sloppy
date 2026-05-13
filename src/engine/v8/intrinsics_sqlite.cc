@@ -485,7 +485,7 @@ void sqlite_v8_cursor_cleanup(void* ptr, void* user)
         return;
     }
     if (!resource->closed) {
-        (void)sl_sqlite_cursor_close(&resource->cursor);
+        sl_sqlite_cursor_close(&resource->cursor);
         resource->closed = true;
     }
     if (resource->owner != nullptr) {

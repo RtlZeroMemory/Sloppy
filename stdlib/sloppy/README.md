@@ -25,6 +25,7 @@ stdlib/sloppy/
   crypto.js
   os.js
   workers.js
+  jobs.js
   internal/
     capabilities.js
     config.js
@@ -79,9 +80,12 @@ lib/sloppy/bootstrap/sloppy/
   runtime path. The dogfood proof in
   `tests/bootstrap/test_prealpha_control_plane_dogfood.mjs` imports the
   `examples/prealpha-control-plane` route modules through this host.
-- `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
+- `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, `workers.js`, and `jobs.js` expose
   the current public API shape and feature-gated bridge calls where native bridge support
   exists.
+- `jobs.js` provides durable scheduler storage, job definitions, enqueue/delayed/
+  recurring jobs, provider-specific claiming, worker leases, retries/dead-letter
+  handling, distributed locks, retention cleanup, and redacted admin backend APIs.
 - `data.js` exposes query-template lowering, provider metadata helpers, and SQLite,
   PostgreSQL, and SQL Server bridge entry points when the V8 lane installs the matching
   provider bridge with Plan/capability metadata. SQL operation options accept `signal`,
@@ -132,6 +136,9 @@ lib/sloppy/bootstrap/sloppy/
 - `docs/api/crypto.md` — `sloppy/crypto`
 - `docs/api/codec.md` — `sloppy/codec`
 - `docs/api/workers.md` — `sloppy/workers`
+- `docs/api/jobs.md` — `sloppy/jobs`
+- `docs/reference/jobs-storage.md`
+- `docs/internals/scheduler.md`
 - `docs/contributor/js-ts-standards.md`
 - `docs/reference/supported-syntax.md`
 - `docs/reference/providers.md`

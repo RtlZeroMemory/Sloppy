@@ -8,6 +8,7 @@ set(required_bootstrap_assets
     crypto.js
     data.js
     fs.js
+    jobs.js
     net.js
     os.js
     problem-details.js

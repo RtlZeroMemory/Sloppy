@@ -6,6 +6,7 @@ export { ConstantTime, Hash, Hmac, NonCryptoHash, Password, Random, Secret } fro
 export { data, Migrations, ProviderHealth, sql } from "./data.js";
 export { t, unsafeFfi } from "./ffi.js";
 export { Directory, File, FileHandle, FileWatcher, Path } from "./fs.js";
+export { Jobs, SloppyJobsError } from "./jobs.js";
 export {
     HttpClient,
     LocalEndpoint,

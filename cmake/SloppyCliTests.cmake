@@ -321,6 +321,17 @@
     add_test(NAME sloppy.cli.help_includes_dev COMMAND "$<TARGET_FILE:sloppy>" --help)
     set_tests_properties(sloppy.cli.help_includes_dev PROPERTIES PASS_REGULAR_EXPRESSION "sloppy dev")
 
+    add_test(NAME sloppy.cli.help_includes_jobs COMMAND "$<TARGET_FILE:sloppy>" --help)
+    set_tests_properties(sloppy.cli.help_includes_jobs PROPERTIES PASS_REGULAR_EXPRESSION "sloppy jobs")
+
+    add_test(
+        NAME sloppy.cli.jobs_admin
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_jobs_cli.cmake")
+    set_tests_properties(sloppy.cli.jobs_admin PROPERTIES LABELS "cli;jobs")
+
     if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER)
         add_test(
             NAME sloppy.cli.create_package_command

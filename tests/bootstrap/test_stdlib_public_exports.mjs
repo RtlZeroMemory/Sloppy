@@ -63,12 +63,18 @@ import {
     unsafeFfi,
 } from "../../stdlib/sloppy/ffi.js";
 import {
+    Jobs,
+    SloppyJobsError,
+} from "../../stdlib/sloppy/jobs.js";
+import {
     Auth,
     BackgroundService as RootBackgroundService,
     Config,
     FakeClock,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
+    Jobs as RootJobs,
+    SloppyJobsError as RootSloppyJobsError,
     TestData,
     TestHost,
     unsafeFfi as RootUnsafeFfi,
@@ -103,6 +109,7 @@ const documentedSubpathExports = {
         WorkerCancellationSignal,
         SloppyWorkerError,
     ],
+    "sloppy/jobs": [Jobs, SloppyJobsError],
     "sloppy/ffi": [t, unsafeFfi],
 };
 
@@ -113,6 +120,8 @@ for (const [specifier, exports] of Object.entries(documentedSubpathExports)) {
 }
 
 assert.equal(RootHttpClient, HttpClient);
+assert.equal(RootJobs, Jobs);
+assert.equal(RootSloppyJobsError, SloppyJobsError);
 assert.equal(typeof Auth.jwtBearer, "function");
 assert.equal(typeof Auth.apiKey, "function");
 assert.equal(typeof Auth.cookieSession, "function");

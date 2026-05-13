@@ -11,6 +11,7 @@
     "sloppy/data.js",
     "sloppy/ffi.js",
     "sloppy/fs.js",
+    "sloppy/jobs.js",
     "sloppy/net.js",
     "sloppy/os.js",
     "sloppy/time.js",

@@ -73,6 +73,10 @@
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_workers_examples.cmake")
     add_test(
+        NAME examples.jobs.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_jobs_examples.cmake")
+    add_test(
         NAME examples.config.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_config_examples.cmake")
@@ -144,6 +148,9 @@
             NAME bootstrap.stdlib.workers
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_workers.mjs")
         add_test(
+            NAME bootstrap.stdlib.jobs
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_jobs.mjs")
+        add_test(
             NAME bootstrap.stdlib.ffi
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_ffi.mjs")
         add_test(
@@ -157,7 +164,7 @@
             bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.auth bootstrap.stdlib.property
             bootstrap.stdlib.os
-            bootstrap.stdlib.http_client bootstrap.stdlib.workers bootstrap.stdlib.ffi
+            bootstrap.stdlib.http_client bootstrap.stdlib.workers bootstrap.stdlib.jobs bootstrap.stdlib.ffi
             bootstrap.stdlib.codec_properties
             bootstrap.stdlib.core_integration PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")

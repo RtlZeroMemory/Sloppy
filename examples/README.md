@@ -92,6 +92,11 @@ sloppy create my-tool --template program
 | `workers-shutdown` | API-shape fixture | `ctest -R examples.workers.api_shape` | Worker shutdown shape | Static example check only. |
 | `workers-workerpool` | curated worker fixture | `ctest -R examples.workers.api_shape` | Worker pool shape | Static example check only. |
 | `workers-workqueue` | API-shape fixture | `ctest -R examples.workers.api_shape` | Work queue shape | Static example check only. |
+| `jobs-basic` | Program Mode scheduler smoke | `sloppy run examples/jobs-basic/main.ts -- ./jobs-basic.db` | SQLite durable job definition, enqueue, retry, timeout, idempotency, redaction, worker pass | V8-gated runtime lane; static example check covers API shape. |
+| `jobs-recurring` | Program Mode scheduler smoke | `sloppy run examples/jobs-recurring/main.ts -- ./jobs-recurring.db` | SQLite recurring schedule, schema init, and admin listing | V8-gated runtime lane; static example check covers API shape. |
+| `jobs-postgres-worker` | live-provider example | `sloppy run examples/jobs-postgres-worker/main.ts` | PostgreSQL-backed durable worker pass | Requires PostgreSQL provider configuration for live execution; static example check covers API shape. |
+| `jobs-sqlserver-worker` | live-provider example | `sloppy run examples/jobs-sqlserver-worker/main.ts` | SQL Server-backed durable worker pass | Requires SQL Server provider configuration for live execution; static example check covers API shape. |
+| `jobs-stress` | benchmark fixture | `.\tools\windows\bench-jobs.ps1 -JobCount 1000` | Sloppy SQLite scheduler enqueue/claim/complete throughput | Optional benchmark lane, not default CI. |
 
 ## Status Meanings
 

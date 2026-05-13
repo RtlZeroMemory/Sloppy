@@ -21,7 +21,10 @@ Current Sloppy includes:
 - experimental build-time static file routes for supported project assets;
 - first-party APIs for routing, results, services, config, logging,
   capabilities, data, filesystem, network, OS, time, crypto, codec, workers,
-  schema, and testing;
+  jobs, schema, and testing;
+- durable scheduler backend for provider-backed jobs, delayed jobs, recurring
+  jobs, worker leases, retries, dead-letter handling, idempotency, distributed
+  locks, and admin backend operations;
 - experimental typed, Plan-visible FFI for deliberate C ABI interop;
 - Windows x64, Linux x64 glibc, and macOS npm platform packages;
 - source/archive build paths for Linux arm64, Windows arm64, and other
@@ -38,6 +41,7 @@ shape:
 - more examples that show real app structure without implying Node
   compatibility;
 - broader provider evidence for PostgreSQL and SQL Server;
+- broader live scheduler evidence for SQLite, PostgreSQL, and SQL Server;
 - repeated HTTP/2 conformance and client/server coverage;
 - incremental adoption of Core streams inside filesystem, process, codec, and
   HTTP client internals where that reduces duplicated bounded chunk handling;
