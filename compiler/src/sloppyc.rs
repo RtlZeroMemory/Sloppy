@@ -8451,9 +8451,29 @@ fn request_logging_options_from_call(
 
 #[derive(Debug, Clone)]
 struct StaticFilesOptions {
+    kind: StaticFilesKind,
     request_path: String,
     root: String,
+    fallback: Option<String>,
     max_age_seconds: Option<u64>,
+    cache_control: Option<String>,
+    html_cache_control: Option<String>,
+    assets_cache_control: Option<String>,
+    precompressed: Vec<StaticEncoding>,
+    index: Option<String>,
+    max_file_bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum StaticFilesKind {
+    Static,
+    Spa,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum StaticEncoding {
+    Brotli,
+    Gzip,
 }
 
 struct StaticFilesRouteContext<'a> {
@@ -8479,18 +8499,26 @@ fn app_use_static_files_call(
     let Some((receiver, property)) = static_member_name(&call.callee) else {
         return Ok(false);
     };
-    if property != "useStaticFiles" || !state.app_vars.contains(receiver) {
+    if (property != "useStaticFiles" && property != "staticFiles" && property != "spa")
+        || !state.app_vars.contains(receiver)
+    {
         return Ok(false);
     }
-    if call.arguments.len() != 1 {
+    if (property == "useStaticFiles" && call.arguments.len() != 1)
+        || (property != "useStaticFiles" && call.arguments.len() != 2)
+    {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
-            "app.useStaticFiles requires one literal options object",
+            if property == "useStaticFiles" {
+                "app.useStaticFiles requires one literal options object"
+            } else {
+                "app.staticFiles and app.spa require a literal mount path and options object"
+            },
         )
         .with_path(path)
         .with_span(call.span));
     }
-    let options = static_files_options_from_call(path, call)?;
+    let options = static_files_options_from_call(path, call, property)?;
     let context = StaticFilesRouteContext {
         path,
         source,
@@ -8507,8 +8535,32 @@ fn app_use_static_files_call(
 fn static_files_options_from_call(
     path: &Path,
     call: &CallExpression<'_>,
+    method_name: &str,
 ) -> Result<StaticFilesOptions, Diagnostic> {
-    let Some(argument) = call.arguments.first() else {
+    let mount_argument = if method_name == "useStaticFiles" {
+        None
+    } else {
+        call.arguments.first()
+    };
+    let options_argument = if method_name == "useStaticFiles" {
+        call.arguments.first()
+    } else {
+        call.arguments.get(1)
+    };
+    let mount = if let Some(argument) = mount_argument {
+        let Some(Expression::StringLiteral(value)) = argument.as_expression() else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+                "app.staticFiles and app.spa mount path must be a string literal",
+            )
+            .with_path(path)
+            .with_span(argument_span(argument).unwrap_or(call.span)));
+        };
+        Some(value.value.as_str().to_string())
+    } else {
+        None
+    };
+    let Some(argument) = options_argument else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
             "app.useStaticFiles requires one literal options object",
@@ -8527,7 +8579,18 @@ fn static_files_options_from_call(
 
     let mut request_path = None;
     let mut root = None;
+    let mut fallback = None;
     let mut max_age_seconds = None;
+    let mut cache_control = None;
+    let mut html_cache_control = None;
+    let mut assets_cache_control = None;
+    let mut precompressed = Vec::new();
+    let mut index = if method_name == "spa" {
+        None
+    } else {
+        Some("index.html".to_string())
+    };
+    let mut max_file_bytes = STATIC_ASSET_INLINE_MAX_BYTES;
     for property in &object.properties {
         let ObjectPropertyKind::ObjectProperty(property) = property else {
             return Err(static_files_options_diagnostic(path, object.span));
@@ -8551,13 +8614,89 @@ fn static_files_options_from_call(
                 };
                 root = Some(value.value.as_str().to_string());
             }
+            "fallback" => {
+                let Expression::StringLiteral(value) = &property.value else {
+                    return Err(static_files_options_diagnostic(path, property.value.span()));
+                };
+                fallback = Some(value.value.as_str().to_string());
+            }
+            "index" => match &property.value {
+                Expression::StringLiteral(value) => index = Some(value.value.as_str().to_string()),
+                Expression::BooleanLiteral(value) if !value.value => index = None,
+                _ => return Err(static_files_options_diagnostic(path, property.value.span())),
+            },
             "cache" => {
                 max_age_seconds = static_files_cache_max_age(path, &property.value)?;
             }
+            "cacheControl" => match &property.value {
+                Expression::StringLiteral(value) => {
+                    cache_control = Some(value.value.as_str().to_string());
+                }
+                Expression::ObjectExpression(value) if method_name == "spa" => {
+                    for cache_property in &value.properties {
+                        let ObjectPropertyKind::ObjectProperty(cache_property) = cache_property
+                        else {
+                            return Err(static_files_options_diagnostic(path, value.span));
+                        };
+                        let Some(cache_name) = property_key_name(&cache_property.key) else {
+                            return Err(static_files_options_diagnostic(path, cache_property.span));
+                        };
+                        let Expression::StringLiteral(cache_value) = &cache_property.value else {
+                            return Err(static_files_options_diagnostic(
+                                path,
+                                cache_property.value.span(),
+                            ));
+                        };
+                        match cache_name {
+                            "html" => {
+                                html_cache_control = Some(cache_value.value.as_str().to_string())
+                            }
+                            "assets" => {
+                                assets_cache_control = Some(cache_value.value.as_str().to_string());
+                            }
+                            _ => {
+                                return Err(Diagnostic::new(
+                                    "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+                                    format!(
+                                        "unsupported app.spa cacheControl option '{cache_name}'"
+                                    ),
+                                )
+                                .with_path(path)
+                                .with_span(cache_property.span));
+                            }
+                        }
+                    }
+                }
+                _ => return Err(static_files_options_diagnostic(path, property.value.span())),
+            },
+            "precompressed" => {
+                precompressed = static_files_precompressed(path, &property.value)?;
+            }
+            "maxFileBytes" => {
+                let Expression::NumericLiteral(value) = &property.value else {
+                    return Err(static_files_options_diagnostic(path, property.value.span()));
+                };
+                if value.value <= 0.0
+                    || value.value.fract() != 0.0
+                    || value.value > STATIC_ASSET_INLINE_MAX_BYTES as f64
+                {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+                        format!(
+                            "app.{method_name} maxFileBytes must be an integer from 1 to {STATIC_ASSET_INLINE_MAX_BYTES}"
+                        ),
+                    )
+                    .with_path(path)
+                    .with_span(property.span));
+                }
+                max_file_bytes = value.value as u64;
+            }
+            "dotfiles" | "etag" | "lastModified" | "range" | "fallthrough"
+            | "allowedExtensions" | "deniedExtensions" | "contentType" | "assetsPrefix" => {}
             _ => {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
-                    format!("unsupported app.useStaticFiles option '{name}'"),
+                    format!("unsupported app.{method_name} option '{name}'"),
                 )
                 .with_path(path)
                 .with_span(property.span));
@@ -8565,7 +8704,7 @@ fn static_files_options_from_call(
         }
     }
 
-    let request_path = request_path.ok_or_else(|| {
+    let request_path = mount.or(request_path).ok_or_else(|| {
         Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
             "app.useStaticFiles options must include requestPath",
@@ -8585,7 +8724,7 @@ fn static_files_options_from_call(
     if !static_files_request_path_supported(&request_path) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
-            "app.useStaticFiles requestPath must be an absolute static route prefix",
+            format!("app.{method_name} mount path must be an absolute static route prefix"),
         )
         .with_path(path)
         .with_span(object.span)
@@ -8594,7 +8733,7 @@ fn static_files_options_from_call(
     if !static_files_root_supported(&root) {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
-            "app.useStaticFiles root must be a safe project-relative directory",
+            format!("app.{method_name} root must be a safe project-relative directory"),
         )
         .with_path(path)
         .with_span(object.span)
@@ -8602,11 +8741,45 @@ fn static_files_options_from_call(
             "Use a relative directory like \"public\"; traversal and absolute paths are rejected.",
         ));
     }
+    if fallback
+        .as_deref()
+        .is_some_and(|value| !static_files_relative_path_supported(value))
+    {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+            format!("app.{method_name} fallback must be a safe root-relative file path"),
+        )
+        .with_path(path)
+        .with_span(object.span));
+    }
+    if index
+        .as_deref()
+        .is_some_and(|value| !static_files_relative_path_supported(value))
+    {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+            format!("app.{method_name} index must be a safe root-relative file path"),
+        )
+        .with_path(path)
+        .with_span(object.span));
+    }
 
     Ok(StaticFilesOptions {
+        kind: if method_name == "spa" {
+            StaticFilesKind::Spa
+        } else {
+            StaticFilesKind::Static
+        },
         request_path,
         root,
+        fallback,
         max_age_seconds,
+        cache_control,
+        html_cache_control,
+        assets_cache_control,
+        precompressed,
+        index,
+        max_file_bytes,
     })
 }
 
@@ -8676,6 +8849,56 @@ fn static_files_cache_max_age(
     Ok(max_age_seconds)
 }
 
+fn static_files_precompressed(
+    path: &Path,
+    expression: &Expression<'_>,
+) -> Result<Vec<StaticEncoding>, Diagnostic> {
+    match expression {
+        Expression::BooleanLiteral(value) => {
+            if value.value {
+                Ok(vec![StaticEncoding::Brotli, StaticEncoding::Gzip])
+            } else {
+                Ok(Vec::new())
+            }
+        }
+        Expression::ArrayExpression(array) => {
+            let mut encodings = Vec::new();
+            for element in &array.elements {
+                let Some(Expression::StringLiteral(value)) = element.as_expression() else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+                        "app.staticFiles precompressed entries must be string literals",
+                    )
+                    .with_path(path)
+                    .with_span(oxc_span::GetSpan::span(element)));
+                };
+                let encoding = match value.value.as_str() {
+                    "br" => StaticEncoding::Brotli,
+                    "gzip" => StaticEncoding::Gzip,
+                    _ => {
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+                            "app.staticFiles precompressed entries must be 'br' or 'gzip'",
+                        )
+                        .with_path(path)
+                        .with_span(value.span));
+                    }
+                };
+                if !encodings.contains(&encoding) {
+                    encodings.push(encoding);
+                }
+            }
+            Ok(encodings)
+        }
+        _ => Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_STATIC_FILES",
+            "app.staticFiles precompressed must be a boolean or literal array",
+        )
+        .with_path(path)
+        .with_span(expression.span())),
+    }
+}
+
 fn static_files_request_path_supported(request_path: &str) -> bool {
     request_path == "/"
         || (route_pattern_supported(request_path)
@@ -8686,6 +8909,19 @@ fn static_files_request_path_supported(request_path: &str) -> bool {
 
 fn static_files_root_supported(root: &str) -> bool {
     include_pattern_is_safe(root) && !root.contains('*') && !root.contains('?')
+}
+
+fn static_files_relative_path_supported(path: &str) -> bool {
+    !path.is_empty()
+        && include_pattern_is_safe(path)
+        && !path.contains('*')
+        && !path.contains('?')
+        && !path.contains('\\')
+        && !path.starts_with('/')
+        && !path.starts_with("//")
+        && !path
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == "." || segment == "..")
 }
 
 const STATIC_ASSET_INLINE_MAX_BYTES: u64 = 1024 * 1024;
@@ -8766,11 +9002,12 @@ fn static_file_routes_from_options(
             .with_path(&file)
             .with_span(context.span)
         })?;
-        if metadata.len() > STATIC_ASSET_INLINE_MAX_BYTES {
+        if metadata.len() > options.max_file_bytes {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_STATIC_FILES",
                 format!(
-                    "app.useStaticFiles asset exceeds the alpha inline limit of {STATIC_ASSET_INLINE_MAX_BYTES} bytes"
+                    "app static file asset exceeds the configured inline limit of {} bytes",
+                    options.max_file_bytes
                 ),
             )
             .with_path(&file)
@@ -8794,20 +9031,91 @@ fn static_file_routes_from_options(
         })?;
         graph.add_dependency_asset(
             &file,
-            format!(
-                "app.useStaticFiles:{}:{}",
-                options.request_path, options.root
-            ),
+            format!("app.staticFiles:{}:{}", options.request_path, options.root),
         );
-        routes.push(static_asset_route(
-            context,
-            route_path,
-            content_type,
-            &bytes,
-            options.max_age_seconds,
-        ));
+        let variants = static_asset_variants(context, graph, options, &file)?;
+        let mut route_paths = vec![route_path];
+        if options.kind == StaticFilesKind::Static {
+            if let Some(index_route) = static_asset_index_route_path(
+                &options.request_path,
+                relative,
+                options.index.as_deref(),
+            ) {
+                if !route_paths.iter().any(|path| path == &index_route) {
+                    route_paths.push(index_route);
+                }
+            }
+        }
+        for route_path in route_paths {
+            routes.push(static_asset_route(
+                context,
+                route_path,
+                content_type,
+                &bytes,
+                options,
+                &variants,
+                false,
+            ));
+        }
+    }
+    if options.kind == StaticFilesKind::Spa {
+        let fallback = options.fallback.as_deref().unwrap_or("index.html");
+        let fallback_path = canonical_root.join(fallback);
+        let bytes = fs::read(&fallback_path).map_err(|error| {
+            Diagnostic::new(
+                "SLOPPYC_E_STATIC_FILES",
+                format!("failed to read app.spa fallback: {error}"),
+            )
+            .with_path(&fallback_path)
+            .with_span(context.span)
+        })?;
+        if bytes.len() as u64 > options.max_file_bytes {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_STATIC_FILES",
+                format!(
+                    "app.spa fallback exceeds the configured inline limit of {} bytes",
+                    options.max_file_bytes
+                ),
+            )
+            .with_path(&fallback_path)
+            .with_span(context.span));
+        }
+        let content_type =
+            static_asset_content_type(&fallback_path).unwrap_or("text/html; charset=utf-8");
+        let variants = static_asset_variants(context, graph, options, &fallback_path)?;
+        for pattern in static_spa_fallback_patterns(&options.request_path) {
+            routes.push(static_asset_route(
+                context,
+                pattern,
+                content_type,
+                &bytes,
+                options,
+                &variants,
+                true,
+            ));
+        }
     }
     Ok(routes)
+}
+
+fn static_spa_fallback_patterns(mount: &str) -> Vec<String> {
+    let mut routes = Vec::new();
+    if mount == "/" {
+        routes.push("/".to_string());
+    } else {
+        routes.push(mount.to_string());
+    }
+    let prefix = if mount == "/" {
+        String::new()
+    } else {
+        mount.to_string()
+    };
+    let mut path = prefix;
+    for index in 0..32 {
+        path.push_str(&format!("/{{sloppySpa{index}:str}}"));
+        routes.push(path.clone());
+    }
+    routes
 }
 
 fn collect_static_asset_files(
@@ -8828,6 +9136,64 @@ fn collect_static_asset_files(
     }
     files.sort_by_key(|path| resolver::normalized_artifact_id(path, root));
     Ok(())
+}
+
+struct StaticAssetVariant {
+    content_encoding: &'static str,
+    bytes: Vec<u8>,
+    content_hash: String,
+}
+
+fn static_asset_variants(
+    context: &StaticFilesRouteContext<'_>,
+    graph: &mut ModuleGraph,
+    options: &StaticFilesOptions,
+    file: &Path,
+) -> Result<Vec<StaticAssetVariant>, Diagnostic> {
+    let mut variants = Vec::new();
+    for encoding in &options.precompressed {
+        let (extension, content_encoding) = match encoding {
+            StaticEncoding::Brotli => ("br", "br"),
+            StaticEncoding::Gzip => ("gz", "gzip"),
+        };
+        let variant = PathBuf::from(format!("{}.{}", file.display(), extension));
+        if !variant.exists() {
+            continue;
+        }
+        let bytes = fs::read(&variant).map_err(|error| {
+            Diagnostic::new(
+                "SLOPPYC_E_STATIC_FILES",
+                format!("failed to read precompressed static asset: {error}"),
+            )
+            .with_path(&variant)
+            .with_span(context.span)
+        })?;
+        if bytes.len() as u64 > options.max_file_bytes {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_STATIC_FILES",
+                format!(
+                    "precompressed static asset exceeds the configured inline limit of {} bytes",
+                    options.max_file_bytes
+                ),
+            )
+            .with_path(&variant)
+            .with_span(context.span));
+        }
+        graph.add_dependency_asset(
+            &variant,
+            format!(
+                "app.staticFiles:{}:{}:precompressed",
+                options.request_path, options.root
+            ),
+        );
+        let content_hash = sha256_bytes_hex(&bytes);
+        variants.push(StaticAssetVariant {
+            content_encoding,
+            bytes,
+            content_hash,
+        });
+    }
+    Ok(variants)
 }
 
 fn static_asset_route_path(request_path: &str, relative: &Path) -> Option<String> {
@@ -8853,6 +9219,33 @@ fn static_asset_route_path(request_path: &str, relative: &Path) -> Option<String
     route_pattern_supported(&path).then_some(path)
 }
 
+fn static_asset_index_route_path(
+    request_path: &str,
+    relative: &Path,
+    index: Option<&str>,
+) -> Option<String> {
+    let index = index?;
+    if relative.file_name()?.to_str()? != index {
+        return None;
+    }
+    let parent = relative.parent().unwrap_or_else(|| Path::new(""));
+    let parent = resolver::normalized_artifact_id(parent, Path::new(""));
+    if parent.split('/').any(|segment| {
+        !segment.is_empty()
+            && (segment == "." || segment == ".." || segment.contains('{') || segment.contains('}'))
+    }) {
+        return None;
+    }
+    let path = if parent.is_empty() {
+        request_path.to_string()
+    } else if request_path == "/" {
+        format!("/{parent}")
+    } else {
+        format!("{request_path}/{parent}")
+    };
+    route_pattern_supported(&path).then_some(path)
+}
+
 fn static_asset_content_type(path: &Path) -> Option<&'static str> {
     match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
         "txt" => Some("text/plain; charset=utf-8"),
@@ -8873,18 +9266,62 @@ fn static_asset_route(
     route_path: String,
     content_type: &str,
     bytes: &[u8],
-    max_age_seconds: Option<u64>,
+    options: &StaticFilesOptions,
+    variants: &[StaticAssetVariant],
+    spa_fallback: bool,
 ) -> Route {
-    let headers = static_asset_headers(bytes, max_age_seconds);
     let byte_array = bytes
         .iter()
         .map(u8::to_string)
         .collect::<Vec<_>>()
         .join(",");
+    let content_hash = sha256_bytes_hex(bytes);
+    let variants_source = variants
+        .iter()
+        .map(|variant| {
+            let bytes = variant
+                .bytes
+                .iter()
+                .map(u8::to_string)
+                .collect::<Vec<_>>()
+                .join(",");
+            format!(
+                "{{ contentEncoding: {}, contentHash: {}, bytes: new Uint8Array([{}]) }}",
+                json_string(variant.content_encoding),
+                json_string(&variant.content_hash),
+                bytes
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let cache_control = if spa_fallback {
+        options
+            .html_cache_control
+            .as_deref()
+            .or(options.cache_control.as_deref())
+    } else {
+        options
+            .assets_cache_control
+            .as_deref()
+            .or(options.cache_control.as_deref())
+    };
     let handler_source = format!(
-        "function() {{ return Results.bytes(new Uint8Array([{byte_array}]), {{ contentType: {}, headers: {} }}); }}",
+        "function(ctx) {{ return __sloppyStaticAssetResponse(ctx, {{ contentType: {}, contentHash: {}, bytes: new Uint8Array([{byte_array}]), cacheControl: {}, variants: [{}], range: true }}); }}",
         json_string(content_type),
-        headers,
+        json_string(&content_hash),
+        cache_control
+            .or_else(|| options
+                .max_age_seconds
+                .map(|_| "")
+                .filter(|_| false))
+            .map(json_string)
+            .unwrap_or_else(|| {
+                options
+                    .max_age_seconds
+                    .map(|seconds| json_string(&format!("public, max-age={seconds}")))
+                    .unwrap_or_else(|| "undefined".to_string())
+            }),
+        variants_source,
     );
     let handler_source =
         wrap_handler_with_framework_pipeline(&handler_source, context.middleware, context.cors);
@@ -8948,21 +9385,6 @@ fn static_asset_route(
             schema_metadata_conflict: false,
         },
     }
-}
-
-fn static_asset_headers(bytes: &[u8], max_age_seconds: Option<u64>) -> String {
-    let mut headers = serde_json::Map::new();
-    headers.insert(
-        "ETag".to_string(),
-        json!(format!("\"{}\"", sha256_bytes_hex(bytes))),
-    );
-    if let Some(max_age_seconds) = max_age_seconds {
-        headers.insert(
-            "Cache-Control".to_string(),
-            json!(format!("public, max-age={max_age_seconds}")),
-        );
-    }
-    Value::Object(headers).to_string()
 }
 
 fn app_use_middleware_call(
@@ -21388,6 +21810,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
                 .emitted_source
                 .contains("__sloppy_cors_preflight")
     });
+    let needs_static_asset_helper = app.routes.iter().any(|route| {
+        route
+            .handler
+            .emitted_source
+            .contains("__sloppyStaticAssetResponse")
+    });
     let needs_auth_helper = app.routes.iter().any(|route| {
         route
             .handler
@@ -22153,6 +22581,33 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             "async function __sloppy_output_cache(ctx, routeKey, options, authRequired, terminal) { const scope = __sloppy_framework_services.createScope(ctx); ctx.services = scope; try { const cache = scope.get(Cache.token(options.cacheName ?? \"default\")); const key = __sloppy_output_cache_key(ctx, routeKey, options, authRequired); if (key !== undefined) { const cached = await cache.get(key); if (cached !== undefined) { return __sloppy_output_cache_header(cached, \"HIT\"); } } const result = await terminal(ctx); const reason = key === undefined ? \"auth-unsafe\" : __sloppy_output_cache_bypass_reason(ctx, result, options, authRequired); if (reason !== undefined) { return __sloppy_output_cache_header(result, \"BYPASS\"); } await cache.set(key, result, { ttlMs: options.ttlMs, tags: Array.isArray(options.tags) ? options.tags : [`route:${routeKey}`] }); return __sloppy_output_cache_header(result, \"MISS\"); } finally { await scope.dispose(); } }",
         );
     }
+    if needs_static_asset_helper {
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_static_header(ctx, name) { const headers = ctx?.request?.headers; if (headers && typeof headers.get === \"function\") { return headers.get(name); } return undefined; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_static_encoding_q(value, encoding) { let best = 0; for (const part of String(value ?? \"\").split(\",\")) { const pieces = part.trim().toLowerCase().split(\";\").map((entry) => entry.trim()).filter((entry) => entry.length !== 0); const token = pieces.shift(); if (token !== encoding && token !== \"*\") continue; let q = 1; for (const param of pieces) { const match = /^q=([0-9.]+)$/u.exec(param); if (match !== null) { q = Number(match[1]); } } if (Number.isFinite(q) && q >= 0 && q <= 1) best = Math.max(best, q); } return best; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_static_select_variant(ctx, asset) { const accept = __sloppy_static_header(ctx, \"accept-encoding\") ?? \"\"; let selected = asset; let bestQ = 0; for (const variant of asset.variants ?? []) { const q = __sloppy_static_encoding_q(accept, variant.contentEncoding); if (q > 0 && (selected === asset || q > bestQ)) { selected = { ...asset, bytes: variant.bytes, contentEncoding: variant.contentEncoding, contentHash: variant.contentHash }; bestQ = q; } } return selected; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_static_range(value, size) { if (value === undefined) return undefined; const match = /^bytes=(\\d*)-(\\d*)$/u.exec(String(value).trim()); if (match === null || (match[1].length === 0 && match[2].length === 0)) return null; let start; let end; if (match[1].length === 0) { const suffix = Number(match[2]); if (!Number.isSafeInteger(suffix) || suffix <= 0) return null; start = Math.max(0, size - suffix); end = size - 1; } else { start = Number(match[1]); end = match[2].length === 0 ? size - 1 : Number(match[2]); } if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= size) return null; return { start, end: Math.min(end, size - 1) }; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppyStaticAssetResponse(ctx, asset) { const selected = __sloppy_static_select_variant(ctx, asset); const hash = selected.contentHash ?? asset.contentHash; const etag = `W/\"${hash}-${selected.contentEncoding ?? \"identity\"}\"`; const headers = { ETag: etag, \"Accept-Ranges\": asset.range === false || selected.contentEncoding !== undefined ? \"none\" : \"bytes\", \"X-Content-Type-Options\": \"nosniff\" }; if (asset.cacheControl !== undefined) headers[\"Cache-Control\"] = asset.cacheControl; if (selected.contentEncoding !== undefined) { headers[\"Content-Encoding\"] = selected.contentEncoding; headers.Vary = \"Accept-Encoding\"; } const inm = __sloppy_static_header(ctx, \"if-none-match\"); if (inm !== undefined && inm.split(\",\").map((entry) => entry.trim()).some((entry) => entry === \"*\" || entry === etag)) return Results.status(304, undefined, { headers }); if (asset.range !== false && selected.contentEncoding === undefined) { const range = __sloppy_static_range(__sloppy_static_header(ctx, \"range\"), selected.bytes.byteLength); if (range === null) return Results.status(416, undefined, { headers: { ...headers, \"Content-Range\": `bytes */${selected.bytes.byteLength}` } }); if (range !== undefined) return Results.bytes(selected.bytes.slice(range.start, range.end + 1), { status: 206, contentType: asset.contentType, headers: { ...headers, \"Content-Range\": `bytes ${range.start}-${range.end}/${selected.bytes.byteLength}` } }); } return Results.bytes(selected.bytes, { contentType: asset.contentType, headers }); }",
+        );
+    }
     push_generated_line(&mut output, &mut generated_line, "");
 
     for helper_source in &app.helper_sources {
@@ -22331,6 +22786,16 @@ function __sloppy_framework_injection(scope, binding) {
       assertOpen();
       if (options === null || typeof options !== "object" || typeof options.requestPath !== "string" || typeof options.root !== "string") { throw new TypeError("Sloppy app.useStaticFiles requires literal requestPath and root options."); }
       throw new TypeError("Sloppy app.useStaticFiles is not supported for dynamic fallback routes yet.");
+    },
+    staticFiles(mount, options) {
+      assertOpen();
+      if (typeof mount !== "string" || options === null || typeof options !== "object" || typeof options.root !== "string") { throw new TypeError("Sloppy app.staticFiles requires a literal mount path and root option."); }
+      throw new TypeError("Sloppy app.staticFiles is not supported for dynamic fallback routes yet.");
+    },
+    spa(mount, options) {
+      assertOpen();
+      if (typeof mount !== "string" || options === null || typeof options !== "object" || typeof options.root !== "string") { throw new TypeError("Sloppy app.spa requires a literal mount path and root option."); }
+      throw new TypeError("Sloppy app.spa is not supported for dynamic fallback routes yet.");
     },
     freeze() { frozen = true; return app; },
     __getRoutes() { return routes.slice(); }

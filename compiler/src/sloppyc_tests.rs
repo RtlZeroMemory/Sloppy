@@ -1611,6 +1611,10 @@ fn web_static_files_emit_routes_and_dependency_assets_from_config_root() {
         .expect("wasm asset should write");
     fs::write(public_dir.join("app.js"), "export const ok = true;\n")
         .expect("script asset should write");
+    fs::write(public_dir.join("app.js.br"), [0x1b, 0x14, 0x00, 0x00])
+        .expect("brotli variant should write");
+    fs::write(public_dir.join("app.js.gz"), [0x1f, 0x8b, 0x08, 0x00])
+        .expect("gzip variant should write");
     fs::write(
         &input,
         r#"import { Sloppy } from "sloppy";
@@ -1622,10 +1626,10 @@ app.useCors({
   methods: ["GET"],
   headers: ["x-demo"]
 });
-app.useStaticFiles({
-  requestPath: "/public",
+app.staticFiles("/public", {
   root: "public",
-  cache: { maxAgeSeconds: 60 }
+  cache: { maxAgeSeconds: 60 },
+  precompressed: true
 });
 
 export default app;
@@ -1674,6 +1678,9 @@ export default app;
         .any(|route| route["method"] == "GET" && route["pattern"] == "/public/index.html"));
     assert!(routes
         .iter()
+        .any(|route| route["method"] == "GET" && route["pattern"] == "/public"));
+    assert!(routes
+        .iter()
         .any(|route| route["method"] == "GET" && route["pattern"] == "/public/app.js"));
     assert!(routes
         .iter()
@@ -1683,11 +1690,15 @@ export default app;
         .any(|route| route["method"] == "GET" && route["pattern"] == "/public/module.wasm"));
 
     let app_js = fs::read_to_string(out_dir.join("app.js")).expect("app js should emit");
-    assert!(app_js.contains("Results.bytes(new Uint8Array(["));
+    assert!(app_js.contains("__sloppyStaticAssetResponse(ctx"));
     assert!(app_js.contains("__sloppy_run_middleware"));
     assert!(app_js.contains("__sloppy_cors_preflight"));
-    assert!(app_js.contains("\"Cache-Control\":\"public, max-age=60\""));
-    assert!(app_js.contains("\"ETag\":\"\\\"sha256:"));
+    assert!(app_js.contains("cacheControl: \"public, max-age=60\""));
+    assert!(app_js.contains("contentHash: \"sha256:"));
+    assert!(app_js.contains("contentEncoding: \"br\""));
+    assert!(app_js.contains("contentEncoding: \"gzip\""));
+    assert!(!app_js.contains("Thu, 01 Jan 1970 00:00:00 GMT"));
+    assert!(!app_js.contains("Last-Modified"));
 
     let graph_text =
         fs::read_to_string(out_dir.join("deps.graph.json")).expect("dependency graph should emit");
@@ -1698,31 +1709,43 @@ export default app;
         .expect("assets should be an array")
         .iter()
         .any(|asset| asset["path"] == "public/hello.txt"
-            && asset["includedBy"] == "app.useStaticFiles:/public:public"));
+            && asset["includedBy"] == "app.staticFiles:/public:public"));
     assert!(graph["assets"]
         .as_array()
         .expect("assets should be an array")
         .iter()
         .any(|asset| asset["path"] == "public/index.html"
-            && asset["includedBy"] == "app.useStaticFiles:/public:public"));
+            && asset["includedBy"] == "app.staticFiles:/public:public"));
     assert!(graph["assets"]
         .as_array()
         .expect("assets should be an array")
         .iter()
         .any(|asset| asset["path"] == "public/app.js"
-            && asset["includedBy"] == "app.useStaticFiles:/public:public"));
+            && asset["includedBy"] == "app.staticFiles:/public:public"));
+    assert!(graph["assets"]
+        .as_array()
+        .expect("assets should be an array")
+        .iter()
+        .any(|asset| asset["path"] == "public/app.js.br"
+            && asset["includedBy"] == "app.staticFiles:/public:public:precompressed"));
+    assert!(graph["assets"]
+        .as_array()
+        .expect("assets should be an array")
+        .iter()
+        .any(|asset| asset["path"] == "public/app.js.gz"
+            && asset["includedBy"] == "app.staticFiles:/public:public:precompressed"));
     assert!(graph["assets"]
         .as_array()
         .expect("assets should be an array")
         .iter()
         .any(|asset| asset["path"] == "public/data.json"
-            && asset["includedBy"] == "app.useStaticFiles:/public:public"));
+            && asset["includedBy"] == "app.staticFiles:/public:public"));
     assert!(graph["assets"]
         .as_array()
         .expect("assets should be an array")
         .iter()
         .any(|asset| asset["path"] == "public/module.wasm"
-            && asset["includedBy"] == "app.useStaticFiles:/public:public"));
+            && asset["includedBy"] == "app.staticFiles:/public:public"));
 
     fs::remove_dir_all(&root).expect("web fixture directory should be removable");
 }
@@ -1768,6 +1791,47 @@ export default app;
 }
 
 #[test]
+fn web_spa_rejects_traversal_fallback() {
+    let root = fixture_temp_dir("web-spa-traversal-fallback");
+    let src_dir = root.join("src");
+    let public_dir = root.join("public");
+    let input = src_dir.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&src_dir).expect("source directory should be created");
+    fs::create_dir_all(&public_dir).expect("public directory should be created");
+    fs::write(public_dir.join("index.html"), "<!doctype html>").expect("asset should write");
+    fs::write(
+        &input,
+        r#"import { Sloppy } from "sloppy";
+
+const app = Sloppy.create();
+app.spa("/", { root: "public", fallback: "../secret.html" });
+
+export default app;
+"#,
+    )
+    .expect("entry should write");
+
+    let options = CompileOptions {
+        kind: Some(super::ProjectKind::Web),
+        config_dir: Some(root.clone()),
+        ..CompileOptions::default()
+    };
+    let failure =
+        super::build(&input, &out_dir, &options).expect_err("traversal fallback should fail");
+    assert_eq!(
+        failure.diagnostic.code,
+        "SLOPPYC_E_UNSUPPORTED_STATIC_FILES"
+    );
+    assert!(failure
+        .diagnostic
+        .message
+        .contains("fallback must be a safe root-relative file path"));
+
+    fs::remove_dir_all(&root).expect("web fixture directory should be removable");
+}
+
+#[test]
 fn web_static_files_reject_assets_over_alpha_inline_limit() {
     let root = fixture_temp_dir("web-static-files-large-asset");
     let src_dir = root.join("src");
@@ -1801,9 +1865,73 @@ export default app;
     let failure =
         super::build(&input, &out_dir, &options).expect_err("oversized static asset should fail");
     assert_eq!(failure.diagnostic.code, "SLOPPYC_E_STATIC_FILES");
-    assert!(failure.diagnostic.message.contains("alpha inline limit"));
+    assert!(failure
+        .diagnostic
+        .message
+        .contains("configured inline limit"));
 
     fs::remove_dir_all(&root).expect("web fixture directory should be removable");
+}
+
+#[test]
+fn web_static_files_reject_oversized_precompressed_variant_and_spa_fallback() {
+    let cases = [
+        (
+            "variant",
+            r#"app.staticFiles("/public", { root: "public", precompressed: ["gzip"], maxFileBytes: 4 });"#,
+            "public/app.js.gz",
+            "12345",
+            "precompressed static asset exceeds the configured inline limit",
+        ),
+        (
+            "spa-fallback",
+            r#"app.spa("/", { root: "public", fallback: "shell.spa", maxFileBytes: 4 });"#,
+            "public/shell.spa",
+            "12345",
+            "app.spa fallback exceeds the configured inline limit",
+        ),
+    ];
+
+    for (case, registration, oversized_path, oversized_contents, expected) in cases {
+        let root = fixture_temp_dir(&format!("web-static-files-max-{case}"));
+        let src_dir = root.join("src");
+        let public_dir = root.join("public");
+        let input = src_dir.join("main.ts");
+        let out_dir = root.join(".sloppy");
+        fs::create_dir_all(&src_dir).expect("source directory should be created");
+        fs::create_dir_all(&public_dir).expect("public directory should be created");
+        fs::write(public_dir.join("app.js"), "ok").expect("script asset should write");
+        fs::write(root.join(oversized_path), oversized_contents)
+            .expect("oversized asset should write");
+        fs::write(
+            &input,
+            format!(
+                r#"import {{ Sloppy }} from "sloppy";
+
+const app = Sloppy.create();
+{registration}
+
+export default app;
+"#
+            ),
+        )
+        .expect("entry should write");
+
+        let options = CompileOptions {
+            kind: Some(super::ProjectKind::Web),
+            config_dir: Some(root.clone()),
+            ..CompileOptions::default()
+        };
+        let failure =
+            super::build(&input, &out_dir, &options).expect_err("oversized asset should fail");
+        assert_eq!(failure.diagnostic.code, "SLOPPYC_E_STATIC_FILES");
+        assert!(
+            failure.diagnostic.message.contains(expected),
+            "expected diagnostic containing {expected}, got {:?}",
+            failure.diagnostic
+        );
+        fs::remove_dir_all(&root).expect("web fixture directory should be removable");
+    }
 }
 
 #[test]

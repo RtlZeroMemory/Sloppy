@@ -1,0 +1,1 @@
+globalThis.sloppyStaticBasic = true;

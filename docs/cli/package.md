@@ -105,8 +105,14 @@ emitted into the generated artifacts. Packaged apps do not read the original
 source checkout or `node_modules` at run time for bundled modules.
 
 When `deps.graph.json` records assets, `sloppy package` copies those files into
-`artifacts/assets/`. Static files registered with `app.useStaticFiles` are
-recorded as dependency graph assets.
+`artifacts/assets/`. Static files registered with `app.staticFiles`, `app.spa`,
+or the compatibility `app.useStaticFiles` API are recorded as dependency graph
+assets, including enabled `.br` and `.gz` siblings.
+
+Static asset serving is still an alpha inline-handler implementation. The
+package carries copied asset records for provenance and roundtrip checks, but
+generated handlers currently serve bounded bytes embedded in `app.js` rather
+than streaming from `artifacts/assets/`.
 
 ## Flags
 

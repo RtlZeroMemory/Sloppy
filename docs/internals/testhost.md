@@ -47,6 +47,14 @@ App-host helpers are local to each host:
 - `host.jobs` is an explicit test hook object; when no scheduler integration is
   supplied it stores in-memory job assertions.
 
+`TestHost.create(app)` also serves `app.staticFiles(...)` and `app.spa(...)`
+metadata in process after concrete routes fail to match. The static path
+resolver rejects traversal, absolute paths, drive-prefixed paths, backslashes,
+control characters, and hidden files unless the mount opts into dotfiles.
+Responses exercise the public static contract: MIME selection, cache headers,
+ETag and `Last-Modified` validators, `HEAD`, single byte ranges, precompressed
+variants, directory indexes, and SPA fallback behavior.
+
 ## Cleanup
 
 The app-host mode waits for active requests before disposing the root service

@@ -398,46 +398,164 @@ function validateHealthCheckFunction(check) {
 
 function validateStaticRequestPath(path) {
     if (typeof path !== "string" || path.length === 0 || !path.startsWith("/")) {
-        throw new TypeError("Sloppy static files requestPath must be a non-empty string starting with '/'.");
+        throw new TypeError("Sloppy static files mount path must be a non-empty string starting with '/'.");
     }
     if (path.length > 1 && path.endsWith("/")) {
-        throw new TypeError("Sloppy static files requestPath must not end with '/'.");
+        throw new TypeError("Sloppy static files mount path must not end with '/'.");
     }
-    if (path.includes("{") || path.includes("}")) {
-        throw new TypeError("Sloppy static files requestPath must be a static route prefix.");
+    if (path.includes("{") || path.includes("}") || path.includes("//")) {
+        throw new TypeError("Sloppy static files mount path must be a static route prefix.");
+    }
+}
+
+function validateStaticSafeRelativePath(value, subject) {
+    if (typeof value !== "string" || value.length === 0) {
+        throw new TypeError(`Sloppy static files ${subject} must be a non-empty string.`);
+    }
+    if (/[\x00-\x1F\x7F]/u.test(value)) {
+        throw new TypeError(`Sloppy static files ${subject} must not contain control characters.`);
+    }
+    if (value.startsWith("/") || value.startsWith("\\") || /^[A-Za-z]:[\\/]/u.test(value) || value.startsWith("//") || value.startsWith("\\\\")) {
+        throw new TypeError(`Sloppy static files ${subject} must be project-relative.`);
+    }
+    const parts = value.split(/[\\/]/u);
+    if (parts.some((part) => part.length === 0 || part === "." || part === "..")) {
+        throw new TypeError(`Sloppy static files ${subject} must not contain empty, '.', or '..' path segments.`);
     }
 }
 
 function validateStaticRoot(root) {
-    if (typeof root !== "string" || root.length === 0) {
-        throw new TypeError("Sloppy static files root must be a non-empty string.");
+    validateStaticSafeRelativePath(root, "root");
+}
+
+function normalizeStaticCacheControl(cacheControl, subject) {
+    if (cacheControl === undefined) {
+        return undefined;
     }
-    if (root.startsWith("/") || /^[A-Za-z]:[\\/]/.test(root)) {
-        throw new TypeError("Sloppy static files root must be project-relative.");
+    if (typeof cacheControl !== "string" || cacheControl.length === 0 || /[\x00-\x1F\x7F]/u.test(cacheControl)) {
+        throw new TypeError(`Sloppy ${subject} cacheControl must be a safe non-empty string.`);
     }
-    const parts = root.split(/[\\/]/);
-    if (parts.some((part) => part.length === 0 || part === "." || part === "..")) {
-        throw new TypeError("Sloppy static files root must not contain empty, '.', or '..' path segments.");
+    return cacheControl;
+}
+
+function normalizeStaticPrecompressed(value, subject) {
+    if (value === undefined) {
+        return false;
     }
+    if (typeof value === "boolean") {
+        return value;
+    }
+    if (!Array.isArray(value) || value.length === 0) {
+        throw new TypeError(`Sloppy ${subject} precompressed must be a boolean or an array.`);
+    }
+    const values = [];
+    for (const entry of value) {
+        if (entry !== "br" && entry !== "gzip") {
+            throw new TypeError(`Sloppy ${subject} precompressed entries must be 'br' or 'gzip'.`);
+        }
+        if (!values.includes(entry)) {
+            values.push(entry);
+        }
+    }
+    return Object.freeze(values);
+}
+
+function normalizeStaticFileOptions(mount, options, legacy = false) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy app.staticFiles options must be a plain object.");
+    }
+    validateStaticRequestPath(mount);
+    validateStaticRoot(options.root);
+    if (options.index !== undefined && options.index !== false) {
+        validateStaticSafeRelativePath(options.index, "index");
+    }
+    const dotfiles = options.dotfiles ?? "deny";
+    if (dotfiles !== "deny" && dotfiles !== "ignore" && dotfiles !== "allow") {
+        throw new TypeError("Sloppy static files dotfiles must be deny, ignore, or allow.");
+    }
+    const etag = options.etag ?? true;
+    if (etag !== true && etag !== false && etag !== "weak" && etag !== "strong") {
+        throw new TypeError("Sloppy static files etag must be a boolean, weak, or strong.");
+    }
+    const lastModified = options.lastModified ?? true;
+    if (typeof lastModified !== "boolean") {
+        throw new TypeError("Sloppy static files lastModified must be a boolean.");
+    }
+    const range = options.range ?? true;
+    if (typeof range !== "boolean") {
+        throw new TypeError("Sloppy static files range must be a boolean.");
+    }
+    const maxFileBytes = options.maxFileBytes ?? 1024 * 1024;
+    if (!Number.isInteger(maxFileBytes) || maxFileBytes <= 0 || maxFileBytes > 128 * 1024 * 1024) {
+        throw new TypeError("Sloppy static files maxFileBytes must be a positive bounded integer.");
+    }
+    const cacheControl = normalizeStaticCacheControl(
+        options.cacheControl ?? (legacy && options.cache?.maxAgeSeconds !== undefined
+            ? `public, max-age=${options.cache.maxAgeSeconds}`
+            : undefined),
+        "static files",
+    );
+    return Object.freeze({
+        kind: "static",
+        mount,
+        root: options.root,
+        index: options.index === undefined ? "index.html" : options.index,
+        dotfiles,
+        etag,
+        lastModified,
+        cacheControl,
+        precompressed: normalizeStaticPrecompressed(options.precompressed, "static files"),
+        range,
+        fallthrough: options.fallthrough !== false,
+        maxFileBytes,
+        allowedExtensions: Object.freeze([...(options.allowedExtensions ?? [])]),
+        deniedExtensions: Object.freeze([...(options.deniedExtensions ?? [])]),
+        contentType: Object.freeze({ ...(options.contentType ?? {}) }),
+    });
+}
+
+function normalizeSpaOptions(mount, options) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy app.spa options must be a plain object.");
+    }
+    validateStaticRequestPath(mount);
+    validateStaticRoot(options.root);
+    validateStaticSafeRelativePath(options.fallback, "fallback");
+    if (options.assetsPrefix !== undefined) {
+        validateStaticRequestPath(options.assetsPrefix);
+    }
+    if (options.cacheControl !== undefined && !isPlainObject(options.cacheControl)) {
+        throw new TypeError("Sloppy app.spa cacheControl must be a plain object.");
+    }
+    const maxFileBytes = options.maxFileBytes ?? 1024 * 1024;
+    if (!Number.isInteger(maxFileBytes) || maxFileBytes <= 0 || maxFileBytes > 128 * 1024 * 1024) {
+        throw new TypeError("Sloppy SPA maxFileBytes must be a positive bounded integer.");
+    }
+    return Object.freeze({
+        kind: "spa",
+        mount,
+        root: options.root,
+        fallback: options.fallback,
+        assetsPrefix: options.assetsPrefix,
+        cacheControl: Object.freeze({
+            html: normalizeStaticCacheControl(options.cacheControl?.html, "SPA html"),
+            assets: normalizeStaticCacheControl(options.cacheControl?.assets, "SPA assets"),
+        }),
+        precompressed: normalizeStaticPrecompressed(options.precompressed, "SPA"),
+        dotfiles: "deny",
+        etag: true,
+        lastModified: true,
+        range: true,
+        index: false,
+        maxFileBytes,
+    });
 }
 
 function validateStaticFilesOptions(options) {
     if (!isPlainObject(options)) {
         throw new TypeError("Sloppy app.useStaticFiles options must be a plain object.");
     }
-    validateStaticRequestPath(options.requestPath);
-    validateStaticRoot(options.root);
-    if (options.cache !== undefined) {
-        if (!isPlainObject(options.cache)) {
-            throw new TypeError("Sloppy static files cache option must be a plain object.");
-        }
-        if (
-            options.cache.maxAgeSeconds !== undefined &&
-            (!Number.isInteger(options.cache.maxAgeSeconds) || options.cache.maxAgeSeconds < 0)
-        ) {
-            throw new TypeError("Sloppy static files cache.maxAgeSeconds must be a non-negative integer.");
-        }
-    }
+    return normalizeStaticFileOptions(options.requestPath, options, true);
 }
 
 function normalizeHealthCheck(check, index) {
@@ -956,6 +1074,7 @@ function createMetricsAwareServices(services, metricsRegistry) {
 
 function createApp(host) {
     const routes = [];
+    const staticAssets = [];
     const workerResources = [];
     const middleware = [];
     const middlewareSequence = { value: 0 };
@@ -1314,7 +1433,19 @@ function createApp(host) {
 
         useStaticFiles(options) {
             assertAppMutable();
-            validateStaticFilesOptions(options);
+            staticAssets.push(validateStaticFilesOptions(options));
+            return app;
+        },
+
+        staticFiles(mount, options) {
+            assertAppMutable();
+            staticAssets.push(normalizeStaticFileOptions(mount, options));
+            return app;
+        },
+
+        spa(mount, options) {
+            assertAppMutable();
+            staticAssets.push(normalizeSpaOptions(mount, options));
             return app;
         },
 
@@ -1716,6 +1847,10 @@ function createApp(host) {
             return Object.freeze(routes.map(snapshotRoute));
         },
 
+        __getStaticAssets() {
+            return Object.freeze(staticAssets.map((entry) => Object.freeze({ ...entry })));
+        },
+
         __getMetricsRegistry() {
             return metricsRegistry;
         },
@@ -1766,6 +1901,15 @@ function createApp(host) {
                             varyByUser: route.metadata.outputCache.varyByUser,
                         }))),
                 }),
+                staticAssets: Object.freeze(staticAssets.map((entry) => Object.freeze({
+                    kind: entry.kind,
+                    mount: entry.mount,
+                    root: entry.root,
+                    fallback: entry.fallback,
+                    cacheControl: entry.cacheControl,
+                    precompressed: entry.precompressed,
+                    range: entry.range,
+                }))),
                 errors: errorPolicyState.policy === null ? undefined : Object.freeze({
                     detail: errorPolicyState.policy.detail,
                     missingRoute: errorPolicyState.policy.missingRoute,

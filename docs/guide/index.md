@@ -5,7 +5,7 @@ Task-shaped walkthroughs that go beyond the API reference.
 - [Project layout](project-layout.md) — `sloppy.json`, `appsettings.json`, source structure
 - [Program Mode](program-mode.md) — console tools, args, context, output, and packages
 - [Templates](templates.md) — built-in starter shapes and smoke commands
-- [Static assets](static-assets.md) — serve project files through build-time static routes
+- [Static assets](static-assets.md) — serve project files and SPA fallbacks through build-time static routes
 - [Using installed packages](using-packages.md) — bundle compatible pure-JavaScript packages
 - [Native FFI](native-ffi.md) — typed, Plan-visible native C ABI calls
 - [TypeScript support](typescript.md) — what the compiler accepts today, what it rejects

@@ -265,11 +265,13 @@ Wrap handlers with `app.use(fn)` (every later route) or `group.use(fn)`
 
 ## Static files
 
-`app.useStaticFiles(options)` is a public alpha, pre-production build-time API.
+`app.staticFiles(mount, options)` and `app.spa(mount, options)` are public
+alpha, pre-production build-time APIs.
 
-Use [`app.useStaticFiles(options)`](static-files.md) to expose a
-project-relative directory as generated static `GET` routes. Static files are
-captured at build/package time, not looked up dynamically per request.
+Use [`app.staticFiles(...)`](static-files.md) to expose a project-relative
+directory and [`app.spa(...)`](static-files.md) to host a browser app with an
+HTML fallback. Static files are captured at build/package time, not looked up
+dynamically per request.
 
 ## What's not supported yet
 

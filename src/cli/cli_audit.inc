@@ -124,6 +124,7 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
 {
     size_t outer = 0U;
     size_t inner = 0U;
+    bool has_static_route = false;
 
     for (outer = 0U; outer < metadata->route_count; outer += 1U) {
         if (sl_cli_find_handler(metadata, metadata->routes[outer].handler_id) == NULL) {
@@ -220,6 +221,16 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
                 "route provider/effect metadata is available for future route analysis",
                 "optimization", findings, errors);
         }
+        for (size_t tag = 0U; tag < metadata->routes[outer].tag_count; tag += 1U) {
+            if (sl_cli_span_equal_cstr(metadata->routes[outer].tags[tag], "static")) {
+                has_static_route = true;
+            }
+        }
+    }
+    if (has_static_route) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_STATIC_ASSETS_VISIBLE",
+                          "static asset route metadata is Plan-visible", "staticAssets",
+                          findings, errors);
     }
 }
 
