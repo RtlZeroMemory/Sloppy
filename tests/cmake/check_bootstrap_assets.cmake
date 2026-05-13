@@ -3,6 +3,7 @@ set(required_bootstrap_assets
     app.js
     auth.js
     bootstrap.manifest.json
+    cache.js
     codec.js
     config.js
     crypto.js
@@ -48,6 +49,7 @@ set(required_bootstrap_assets
     node/util.js
     node/zlib.js
     providers/sqlite.js
+    redis.js
     results.js
     schema.js
     testservices.js

@@ -2,11 +2,10 @@
 
 `TestServices` is Sloppy's first-party disposable infrastructure for
 dependency-backed tests. It starts real Docker containers through the Docker
-CLI, waits for the matching Sloppy data provider to prove readiness, and gives
-`TestHost` a provider or environment map.
+CLI, waits for the matching Sloppy provider or client to prove readiness, and
+gives `TestHost` a provider, client, or environment map.
 Webhook outbox tests should use TestServices provider connections when proving
 PostgreSQL or SQL Server persistence beyond bootstrap fake-provider tests.
-
 It is experimental and opt-in. Default CI must not depend on Docker.
 
 ```ts
@@ -105,6 +104,43 @@ the PostgreSQL data provider bridge to be active, and `select 1` to succeed.
 If the provider bridge is missing, startup fails with
 `SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE`; it does not return a fake
 provider or silently use an in-memory database.
+
+## Redis
+
+```ts
+await using redis = await TestServices.redis({
+    image: "redis:7-alpine",
+    database: 0,
+    password: "sloppy",
+    startupTimeoutMs: 15000,
+});
+```
+
+Defaults:
+
+| Option | Default |
+| --- | --- |
+| `image` | `redis:7-alpine` |
+| `database` | `0` |
+| `password` | unset |
+| `startupTimeoutMs` | `30000` |
+
+The service exposes:
+
+- `url`
+- `connectionString`
+- `env()` with `REDIS_URL`, `Redis:Url`, and `Sloppy__Redis__main__url`
+- `client(name?, options?)`
+- `flush()`
+- `reset()`
+- `logs({ tail })`
+- `diagnostics()`
+- `dispose()` / async disposal
+
+Readiness requires the container to start, Docker port mapping to be visible,
+the Sloppy outbound network bridge to be active, and `PING` to succeed through
+the first-party Redis client. If the network bridge is missing, startup fails;
+it does not return a fake Redis service.
 
 ## SQL Server
 
@@ -243,8 +279,8 @@ $env:SLOPPY_TESTSERVICES = "1"
 
 Default CI should run the Sloppy artifact bootstrap contract test and report
 live container lanes as `SKIPPED` with the exact reason. Do not report
-PostgreSQL or SQL Server container behavior as `PASS` unless those containers
-actually started and provider readiness succeeded.
+PostgreSQL, SQL Server, or Redis container behavior as `PASS` unless those
+containers actually started and provider or client readiness succeeded.
 
 The bootstrap contract uses `sloppy run --artifacts` against
 `tests/integration/execution/testservices_runtime`. It verifies the runtime
@@ -255,10 +291,9 @@ Real container starts belong in a V8/native-provider lane.
 ## Limits
 
 - Requires Docker CLI and a reachable Docker daemon.
-- Requires the matching Sloppy data provider bridge for readiness.
+- Requires the matching Sloppy data provider bridge or Redis network bridge for
+  readiness.
 - SQL Server images are large and startup can be slow.
 - Container tests are slower than app-host tests.
-- Docker Compose, Redis, S3/MinIO, SMTP, and Kubernetes abstractions are not
-  part of this API. Rate-limit Redis tests use the fail-closed
-  `RateLimit.redis(...)` adapter until a first-party Redis TestServices lane
-  exists.
+- Docker Compose, S3/MinIO, SMTP, Kubernetes abstractions, Redis cluster,
+  Redis sentinel, Redis pub/sub, and Redis streams are not part of this API.

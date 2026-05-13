@@ -230,7 +230,7 @@ for required_directory in bin stdlib stdlib/sloppy templates examples docs; do
 done
 
 stdlib_root="$package_root/stdlib/sloppy"
-for asset in index.js app.js results.js schema.js data.js bootstrap.manifest.json internal/intrinsics.js; do
+for asset in index.js app.js results.js schema.js cache.js data.js redis.js bootstrap.manifest.json internal/intrinsics.js; do
   [[ -f "$stdlib_root/$asset" ]] || { echo "Package smoke missing stdlib asset: $asset" >&2; exit 1; }
 done
 

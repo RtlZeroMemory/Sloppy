@@ -33,8 +33,9 @@ for Base64/Base64Url/Hex/UTF-8/Binary roundtrips, invalid input diagnostics, and
 NUL preservation. This is default-safe fuzz/property evidence, not long fuzzing.
 The `examples.hello.api_shape`, `examples.ergonomics.api_shape`,
 `examples.modules_basic.api_shape`, `examples.data_foundation.api_shape`,
-`examples.sqlite_basic.api_shape`, `examples.time.api_shape`, `examples.crypto.api_shape`,
-`examples.net.api_shape`, `examples.os.api_shape`, and `examples.config.api_shape` CTest checks statically verify public examples use the current
+`examples.sqlite_basic.api_shape`, `examples.redis.api_shape`, `examples.time.api_shape`,
+`examples.crypto.api_shape`, `examples.net.api_shape`, `examples.os.api_shape`, and
+`examples.config.api_shape` CTest checks statically verify public examples use the current
 documented API shape without requiring Node, npm, compiler extraction, app-plan emission,
 JavaScript provider connections, external network access, or unrelated runtime behavior.
 

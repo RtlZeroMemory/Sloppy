@@ -44,6 +44,8 @@ configuration, services, validation, or data access.
 - [Capabilities](capabilities.md) — declaring database/provider capabilities
 - [Data](data.md) — `data.sqlite`, `data.postgres`, `data.sqlserver`, `sql\`…\`` templates
 - [ORM](orm.md) — **Experimental** — `sloppy/orm` tables, columns, schemas, CRUD, includes, and migrations
+- [Redis](redis.md) — first-party Redis client, pools, scripts, locks, diagnostics
+- [Cache](cache.md) — Redis-backed cache provider with tags and app-host service registration
 - [Workers](workers.md) — background services, work queues, cancellation
 - [Schema](schema.md) — value validation
 - [Filesystem](filesystem.md) — `sloppy/fs` files, directories, handles, watchers

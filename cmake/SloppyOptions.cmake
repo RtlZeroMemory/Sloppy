@@ -192,6 +192,7 @@ set(
     node/util.js
     node/zlib.js
     providers/sqlite.js
+    redis.js
     results.js
     schema.js
     testservices.js

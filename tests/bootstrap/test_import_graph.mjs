@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const modules = [
     "app.js",
+    "cache.js",
     "results.js",
     "schema.js",
     "testservices.js",
@@ -19,6 +20,7 @@ const modules = [
     "net.js",
     "os.js",
     "orm.js",
+    "redis.js",
     "time.js",
     "webhooks.js",
     "workers.js",

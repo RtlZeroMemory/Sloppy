@@ -145,6 +145,18 @@ Webhook metrics should use event name, outcome, status class, attempt bucket,
 and storage provider labels. Do not use full endpoint URLs, payload fields,
 secrets, tenants, or user identifiers as metric labels.
 
+## Redis metrics
+
+Redis clients publish safe client metrics into the default registry and expose
+a client-local `metrics()` snapshot:
+
+- `redis.commands.total`
+- `redis.command.duration`
+- pool active, idle, and queued counts
+
+Redis labels are limited to client name, command, and outcome. Raw Redis keys,
+URLs, passwords, tokens, and command arguments must not be metric labels.
+
 ## HTTP client metrics
 
 Named clients created through `Http.client(...)` expose a client-local metrics

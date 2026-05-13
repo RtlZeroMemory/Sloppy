@@ -3,13 +3,16 @@ import { Random } from "./crypto.js";
 import { data, Migrations } from "./data.js";
 import { File } from "./fs.js";
 import { Process as SloppyProcess } from "./os.js";
+import { Redis } from "./redis.js";
 
 const DEFAULT_POSTGRES_IMAGE = "postgres:17";
 const DEFAULT_SQLSERVER_IMAGE = "mcr.microsoft.com/mssql/server:2022-latest";
+const DEFAULT_REDIS_IMAGE = "redis:7-alpine";
 const DEFAULT_SQLSERVER_ODBC_DRIVER = "ODBC Driver 17 for SQL Server";
 const LOCALHOST = "127.0.0.1";
 const POSTGRES_PORT = 5432;
 const SQLSERVER_PORT = 1433;
+const REDIS_PORT = 6379;
 const DEFAULT_STARTUP_TIMEOUT_MS = 30000;
 const DEFAULT_SQLSERVER_STARTUP_TIMEOUT_MS = 60000;
 const DEFAULT_STOP_TIMEOUT_MS = 10000;
@@ -70,6 +73,14 @@ function normalizePort(value, fallback, subject) {
     return value;
 }
 
+function normalizeRedisDatabase(value, fallback) {
+    const selected = value ?? fallback;
+    if (!Number.isInteger(selected) || selected < 0 || selected > 15) {
+        throw new TypeError("Sloppy TestServices Redis database must be from 0 to 15.");
+    }
+    return selected;
+}
+
 function normalizeNonEmptyString(value, fallback, subject) {
     const selected = value ?? fallback;
     if (typeof selected !== "string" || selected.length === 0 || selected.includes("\0")) {
@@ -79,7 +90,19 @@ function normalizeNonEmptyString(value, fallback, subject) {
 }
 
 function randomHex(length) {
-    return Array.from(Random.bytes(length), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    try {
+        return Array.from(Random.bytes(length), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    } catch {
+        const bytes = new Uint8Array(length);
+        if (globalThis.crypto?.getRandomValues !== undefined) {
+            globalThis.crypto.getRandomValues(bytes);
+        } else {
+            for (let index = 0; index < bytes.length; index += 1) {
+                bytes[index] = Math.floor(Math.random() * 256);
+            }
+        }
+        return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
 }
 
 function randomContainerName(kind) {
@@ -99,6 +122,7 @@ function redactWithSecrets(value, secrets) {
     }
     text = data.postgres.redactConnectionString(text);
     text = data.sqlserver.redactConnectionString(text);
+    text = Redis._redactUrl(text);
     return text;
 }
 
@@ -482,6 +506,45 @@ function normalizedSqlServerOptions(options = {}) {
         rmTimeoutMs,
         keepContainerOnFailure: options.keepContainerOnFailure === true,
         migrations: options.migrations,
+        dockerBackend: options.dockerBackend,
+        docker: options.docker,
+    });
+}
+
+function normalizedRedisOptions(options = {}) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy TestServices.redis options must be a plain object.");
+    }
+    const image = normalizeNonEmptyString(options.image, DEFAULT_REDIS_IMAGE, "Redis image");
+    const hostPort = normalizePort(options.hostPort, undefined, "Redis hostPort");
+    const startupTimeoutMs = normalizeTimeout(options.startupTimeoutMs, DEFAULT_STARTUP_TIMEOUT_MS, "Redis startupTimeoutMs");
+    const readinessTimeoutMs = normalizeTimeout(options.readinessTimeoutMs, startupTimeoutMs, "Redis readinessTimeoutMs");
+    const stopTimeoutMs = normalizeTimeout(options.stopTimeoutMs, DEFAULT_STOP_TIMEOUT_MS, "Redis stopTimeoutMs");
+    const dockerTimeoutMs = normalizeTimeout(options.dockerTimeoutMs, undefined, "Redis dockerTimeoutMs");
+    const pullTimeoutMs = normalizeTimeout(options.pullTimeoutMs, undefined, "Redis pullTimeoutMs");
+    const rmTimeoutMs = normalizeTimeout(options.rmTimeoutMs, undefined, "Redis rmTimeoutMs");
+    const database = normalizeRedisDatabase(options.database, 0);
+    const password = options.password === undefined
+        ? undefined
+        : normalizeNonEmptyString(options.password, undefined, "Redis password");
+    const name = options.containerName === undefined
+        ? randomContainerName("redis")
+        : normalizeNonEmptyString(options.containerName, undefined, "Redis containerName");
+    return Object.freeze({
+        kind: "redis",
+        image,
+        database,
+        password,
+        host: LOCALHOST,
+        containerName: name,
+        hostPort,
+        startupTimeoutMs,
+        readinessTimeoutMs,
+        stopTimeoutMs,
+        dockerTimeoutMs,
+        pullTimeoutMs,
+        rmTimeoutMs,
+        keepContainerOnFailure: options.keepContainerOnFailure === true,
         dockerBackend: options.dockerBackend,
         docker: options.docker,
     });
@@ -925,6 +988,211 @@ async function startService(kind, rawOptions) {
     }
 }
 
+function redisUrl(options, host, port) {
+    const auth = options.password === undefined ? "" : `:${encodeURIComponent(options.password)}@`;
+    return `redis://${auth}${host}:${port}/${options.database}`;
+}
+
+function redisContainerCreateArgs(options) {
+    const publish = options.hostPort === undefined
+        ? `${LOCALHOST}::${REDIS_PORT}`
+        : `${LOCALHOST}:${options.hostPort}:${REDIS_PORT}`;
+    const args = [
+        "create",
+        "--name",
+        options.containerName,
+        "-p",
+        publish,
+        options.image,
+    ];
+    if (options.password !== undefined) {
+        args.push("redis-server", "--requirepass", options.password);
+    }
+    return args;
+}
+
+async function waitForRedisReady(state, url, options) {
+    const startedAt = Date.now();
+    state.startupState = "waiting";
+    while (Date.now() - startedAt < options.readinessTimeoutMs) {
+        const remainingMs = options.readinessTimeoutMs - (Date.now() - startedAt);
+        state.readinessAttempts += 1;
+        let client;
+        try {
+            client = Redis.client("testservices-readiness", {
+                url,
+                database: options.database,
+                connectTimeoutMs: Math.min(1000, Math.max(1, remainingMs)),
+                commandTimeoutMs: Math.min(1000, Math.max(1, remainingMs)),
+                pool: { maxConnections: 1, pendingQueueLimit: 1 },
+            });
+            await client.ping();
+            state.startupState = "ready";
+            state.timings.readyAt = new Date().toISOString();
+            return;
+        } catch (error) {
+            state.lastReadinessError = String(error?.message ?? error);
+            const retryDelayMs = Math.min(500, Math.max(0, options.readinessTimeoutMs - (Date.now() - startedAt)));
+            if (retryDelayMs > 0) {
+                await sleep(retryDelayMs);
+            }
+        } finally {
+            await client?.dispose?.().catch(() => {});
+        }
+    }
+    throw new Error(`Redis readiness timed out after ${options.readinessTimeoutMs}ms: ${state.lastReadinessError ?? "no readiness result"}`);
+}
+
+function createRedisService(options, backend, state, url, port) {
+    const ownedClients = new Set();
+    let disposed = false;
+    state.port = port;
+    const service = {
+        kind: "redis",
+        id: state.containerId,
+        image: options.image,
+        host: LOCALHOST,
+        port,
+        url,
+        connectionString: url,
+        async start() {
+            return service;
+        },
+        async stop() {
+            await service.dispose();
+        },
+        client(name = "test") {
+            const client = Redis.client(name, {
+                url,
+                database: options.database,
+                connectTimeoutMs: 2000,
+                commandTimeoutMs: 2000,
+                pool: { maxConnections: 2, pendingQueueLimit: 8 },
+            });
+            ownedClients.add(client);
+            return client;
+        },
+        async flush() {
+            const client = service.client("testservices-flush");
+            try {
+                await client.command("FLUSHDB");
+            } finally {
+                await client.dispose();
+                ownedClients.delete(client);
+            }
+        },
+        async reset() {
+            await service.flush();
+        },
+        env(prefix = undefined) {
+            return envWithPrefix({
+                REDIS_HOST: LOCALHOST,
+                REDIS_PORT: String(port),
+                REDIS_DATABASE: String(options.database),
+                REDIS_PASSWORD: options.password,
+                REDIS_URL: url,
+                "Redis:Url": url,
+                "Sloppy__Redis__main__url": url,
+            }, prefix);
+        },
+        async logs(logOptions = {}) {
+            const tail = normalizePort(logOptions.tail, DEFAULT_LOG_TAIL, "logs tail");
+            const logs = await dockerLogs(backend, state.containerId, tail, options);
+            state.logTail = redactWithSecrets(logs, state.secrets);
+            return state.logTail;
+        },
+        diagnostics() {
+            return safeObject({
+                kind: "redis",
+                image: options.image,
+                containerId: state.containerId?.slice(0, 12),
+                containerName: options.containerName,
+                host: LOCALHOST,
+                port,
+                url,
+                database: options.database,
+                startupState: state.startupState,
+                readinessAttempts: state.readinessAttempts,
+                lastReadinessError: state.lastReadinessError,
+                cleanupErrors: state.cleanupErrors,
+                logTail: state.logTail,
+                timings: state.timings,
+            }, state.secrets);
+        },
+        async dispose() {
+            if (disposed) {
+                return;
+            }
+            state.startupState = "disposing";
+            for (const client of ownedClients) {
+                await client.dispose().catch(() => {});
+            }
+            ownedClients.clear();
+            await removeContainer(backend, state.containerId, options, state);
+            disposed = true;
+            state.startupState = "disposed";
+            state.timings.disposedAt = new Date().toISOString();
+        },
+    };
+    if (ASYNC_DISPOSE !== undefined) {
+        service[ASYNC_DISPOSE] = service.dispose;
+    }
+    return Object.freeze(service);
+}
+
+async function startRedisService(rawOptions) {
+    const options = normalizedRedisOptions(rawOptions);
+    const backend = dockerBackend(options);
+    const state = createDiagnosticState("redis", options.image, options.containerName, [options.password].filter(Boolean));
+    try {
+        await dockerRequire({ dockerBackend: backend });
+        await ensureImage(backend, options.image, options);
+        const create = await dockerRunOk(backend, redisContainerCreateArgs(options), {
+            timeoutMs: options.dockerTimeoutMs ?? 30000,
+            maxStdoutBytes: 64 * 1024,
+            maxStderrBytes: 64 * 1024,
+        });
+        state.containerId = create.stdout.trim();
+        state.startupState = "starting";
+        state.timings.startedAt = new Date().toISOString();
+        await dockerRunOk(backend, ["start", state.containerId], {
+            timeoutMs: options.dockerTimeoutMs ?? 30000,
+            maxStdoutBytes: 64 * 1024,
+            maxStderrBytes: 64 * 1024,
+        });
+        const inspected = await inspectContainer(backend, state.containerId, REDIS_PORT, options);
+        const url = redisUrl(options, LOCALHOST, inspected.port);
+        await waitForRedisReady(state, url, options);
+        return createRedisService(options, backend, state, url, inspected.port);
+    } catch (error) {
+        state.startupState = "failed";
+        state.lastReadinessError = String(error?.message ?? error);
+        state.logTail = await dockerLogs(backend, state.containerId, DEFAULT_LOG_TAIL, options);
+        if (!options.keepContainerOnFailure) {
+            await removeContainer(backend, state.containerId, options, state).catch(() => {});
+        }
+        if (error?.code === "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE") {
+            throw error;
+        }
+        throw new Error(`SLOPPY_E_TESTSERVICES_STARTUP_FAILED: Redis TestServices container did not become ready.
+
+Image:
+  ${options.image}
+
+Container:
+  ${state.containerId === undefined ? options.containerName : `${options.containerName} (${state.containerId.slice(0, 12)})`}
+
+Mapped port:
+  ${state.port ?? "unknown"}
+
+Reason:
+  ${redactWithSecrets(state.lastReadinessError, state.secrets)}
+
+Docker logs tail:
+${state.logTail.length === 0 ? "  <empty>" : redactWithSecrets(state.logTail, state.secrets)}`, { cause: error });
+    }
+}
+
 const TestServices = Object.freeze({
     docker: Object.freeze({
         available: dockerAvailable,
@@ -935,6 +1203,9 @@ const TestServices = Object.freeze({
     },
     sqlServer(options = {}) {
         return startService("sqlserver", options);
+    },
+    redis(options = {}) {
+        return startRedisService(options);
     },
 });
 

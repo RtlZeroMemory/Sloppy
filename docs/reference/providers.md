@@ -5,6 +5,7 @@ Current provider kinds are:
 - `sqlite`
 - `postgres`
 - `sqlserver`
+- `redis` for the first-party Redis client and Redis-backed cache provider
 
 ## Provider Surfaces
 
@@ -17,8 +18,9 @@ the compiler before every runtime path is available.
 | Static provider handle | `app.provider("sqlite:main")` | SQLite generated bridge path; non-SQLite static provider handles are diagnostic-only in current fixtures |
 | Typed handler injection | `Sqlite<"main">`, `Postgres<"main">`, `SqlServer<"main">` | Compiler metadata and generated injection wrappers exist; runtime execution depends on active bridge, config, and live service setup |
 | Runtime data API | `data.sqlite`, `data.postgres`, `data.sqlserver` from `sloppy/data` | Provider-specific runtime APIs with V8/native/live requirements |
+| Runtime Redis API | `Redis.client(...)`, `Cache.redis(...)` from `sloppy` | First-party RESP2 Redis client over the Sloppy network bridge; cache provider is Redis-backed only |
 | Migrations | `Migrations` from `sloppy/data`, `sloppy db status`, `sloppy db migrate` | SQLite, PostgreSQL, and SQL Server migration execution; PostgreSQL/SQL Server are optional and require live provider configuration only when used |
-| TestServices | `TestServices.postgres()`, `TestServices.sqlServer()` | Experimental Docker-backed real dependency tests; opt-in and provider-bridge-gated |
+| TestServices | `TestServices.postgres()`, `TestServices.sqlServer()`, `TestServices.redis()` | Experimental Docker-backed real dependency tests; opt-in and provider/client-bridge-gated |
 | Native and service checks | provider native tests and `test-live-*.ps1` scripts | SQLite embedded by default; PostgreSQL/SQL Server dependency and service checks are opt-in |
 | V8 provider bridge checks | `conformance.<provider>.bridge_live` | Exercises JavaScript provider calls through a V8-enabled runtime |
 
@@ -80,6 +82,19 @@ at request time. They do not embed connection-string values in `app.js` or
 
 ## Runtime Open Contracts
 
+### Redis
+
+`Redis.client(name, options)` requires a Redis URL and the Sloppy outbound
+network bridge:
+
+- `url`: `redis://` or `rediss://`
+- optional `password`: string or `Redis.Secret`
+- optional `database`: integer `0..15`
+- optional bounded pool and timeout options
+
+`Cache.redis(...)` builds on this client. It does not provide a fake cache or
+memory fallback when Redis is unavailable.
+
 ### SQLite
 
 `data.sqlite.open(options)` requires:
@@ -115,6 +130,11 @@ Provider APIs require active runtime bridge namespaces under `globalThis.__slopp
 - sqlite: `globalThis.__sloppy.data.sqlite`
 - postgres: `globalThis.__sloppy.data.postgres`
 - sqlserver: `globalThis.__sloppy.data.sqlserver`
+
+Redis APIs require active runtime bridge namespaces under `globalThis.__sloppy.net`:
+
+- `connect` for `redis://`
+- `connectTls` for `rediss://`
 
 If unavailable, calls fail with `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` and redacted diagnostics.
 
@@ -170,6 +190,11 @@ not return a fake provider and does not fall back to in-memory data.
 Artifact/package tests can pass `service.env()` to `TestHost.fromArtifacts`
 or `TestHost.fromPackage`; the runtime that consumes that environment still
 needs the provider bridge and driver support.
+
+`TestServices.redis()` starts a real Redis container, waits for `PING` through
+the first-party Redis client, and exposes `client()`, `env()`, `flush()`, and
+`reset()`. If the Redis network bridge is unavailable, service startup fails;
+the helper does not provide an in-memory substitute.
 
 ## Result Modes
 

@@ -762,11 +762,12 @@ function disposeOverrideValues(values) {
     return Promise.all(pending).then(() => undefined);
 }
 
-function createServiceOverlay(baseServices, serviceOverrides, providerOverrides, cacheOverrides, httpClientOverrides) {
+function createServiceOverlay(baseServices, serviceOverrides, providerOverrides, cacheOverrides, httpClientOverrides, redisOverrides) {
     const serviceMap = normalizeOverrideMap(serviceOverrides, "service");
     const httpOverrideMap = createTestHttpServiceOverrides(httpClientOverrides);
     const providerMap = normalizeOverrideMap(providerOverrides, "provider");
     const cacheMap = normalizeOverrideMap(cacheOverrides, "cache");
+    const redisMap = normalizeOverrideMap(redisOverrides, "redis");
     const merged = new Map(Object.entries(serviceMap));
     const httpOverrides = new Map(Object.entries(httpOverrideMap));
     for (const [name, provider] of Object.entries(providerMap)) {
@@ -775,6 +776,12 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides,
         }
         merged.set(name, provider);
         merged.set(`data.${name}`, provider);
+    }
+    for (const [name, redis] of Object.entries(redisMap)) {
+        if (redis === null || typeof redis !== "object") {
+            throw new TypeError(`Sloppy TestHost redis override '${name}' must be an object.`);
+        }
+        merged.set(`redis.${name}`, redis);
     }
     for (const [name, cache] of Object.entries(cacheMap)) {
         if (!isCache(cache)) {
@@ -803,8 +810,9 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides,
                 if (httpOverrides.has(token)) {
                     return httpOverrides.get(token);
                 }
-                if (merged.has(token)) {
-                    return merged.get(token);
+                const tokenKey = token?.__sloppyRedisToken ?? token;
+                if (merged.has(tokenKey)) {
+                    return merged.get(tokenKey);
                 }
                 return scope.get(token);
             },
@@ -816,8 +824,9 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides,
                 if (httpOverrides.has(token)) {
                     return httpOverrides.get(token);
                 }
-                if (merged.has(token)) {
-                    return merged.get(token);
+                const tokenKey = token?.__sloppyRedisToken ?? token;
+                if (merged.has(tokenKey)) {
+                    return merged.get(tokenKey);
                 }
                 return scope.tryGet(token);
             },
@@ -836,8 +845,9 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides,
             if (httpOverrides.has(token)) {
                 return httpOverrides.get(token);
             }
-            if (merged.has(token)) {
-                return merged.get(token);
+            const tokenKey = token?.__sloppyRedisToken ?? token;
+            if (merged.has(tokenKey)) {
+                return merged.get(tokenKey);
             }
             return baseServices.get(token);
         },
@@ -849,8 +859,9 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides,
             if (httpOverrides.has(token)) {
                 return httpOverrides.get(token);
             }
-            if (merged.has(token)) {
-                return merged.get(token);
+            const tokenKey = token?.__sloppyRedisToken ?? token;
+            if (merged.has(tokenKey)) {
+                return merged.get(tokenKey);
             }
             return baseServices.tryGet(token);
         },
@@ -3010,7 +3021,7 @@ function createTestHost(app, options = {}) {
     let drainWaiters = [];
     const hostState = Object.freeze({
         config: createConfigOverlay(app.config, options.config, options.secrets),
-        services: createServiceOverlay(app.services, options.services, options.providers, options.caches, options.httpClients),
+        services: createServiceOverlay(app.services, options.services, options.providers, options.caches, options.httpClients, options.redis ?? options.redisClients),
         clock: options.clock,
         diagnostics,
         metrics,

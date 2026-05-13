@@ -79,6 +79,10 @@ import {
     SloppyCacheError,
 } from "../../stdlib/sloppy/cache.js";
 import {
+    Redis as RedisSubpath,
+    SloppyRedisError as RedisSubpathError,
+} from "../../stdlib/sloppy/redis.js";
+import {
     column,
     orm,
     relation,
@@ -99,6 +103,8 @@ import {
     SloppyCacheError as RootSloppyCacheError,
     RateLimit,
     Realtime,
+    Redis,
+    SloppyRedisError,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
     SloppyRealtimeError,
@@ -149,6 +155,7 @@ const documentedSubpathExports = {
     "sloppy/webhooks": [Webhooks, SloppyWebhookError, TestWebhooks],
     "sloppy/ffi": [t, unsafeFfi],
     "sloppy/cache": [CacheSubpath, SloppyCacheError],
+    "sloppy/redis": [RedisSubpath, RedisSubpathError],
     "sloppy/orm": [orm, table, column, relation],
 };
 
@@ -164,6 +171,12 @@ assert.equal(RootSloppyCacheError, SloppyCacheError);
 assert.equal(typeof Cache.memory, "function");
 assert.equal(typeof Cache.hybrid, "function");
 assert.equal(typeof Cache.token, "function");
+assert.equal(typeof Cache.redis, "function");
+assert.equal(Redis, RedisSubpath);
+assert.equal(SloppyRedisError, RedisSubpathError);
+assert.equal(typeof Redis.client, "function");
+assert.equal(typeof Redis.locks, "function");
+assert.equal(typeof SloppyRedisError, "function");
 assert.equal(RootHttp, Http);
 assert.equal(RootHttpClientFactory, HttpClientFactory);
 assert.equal(RootHttpError, HttpError);

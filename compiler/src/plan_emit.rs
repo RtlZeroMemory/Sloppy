@@ -2248,6 +2248,26 @@ pub(crate) fn emit_plan_with_route_artifact(
             "message": "Checksums.crc32 is visible in a security-looking context; use Hash or Hmac for security or attacker-resistance"
         }));
     }
+    if app.uses_cache_runtime {
+        required_features.push("stdlib.cache".to_string());
+        value["strongPlan"]["evidence"]["cache"] = json!(true);
+        value["features"]["cache"] = json!(true);
+    }
+    if app.uses_redis_runtime {
+        required_features.push("stdlib.redis".to_string());
+        required_features.push("stdlib.net".to_string());
+        value["strongPlan"]["evidence"]["redis"] = json!(true);
+        value["features"]["redis"] = json!(true);
+        value["redis"] = json!({
+            "enabled": true,
+            "clients": []
+        });
+        doctor_checks.push(json!({
+            "id": "stdlib.redis.contract",
+            "status": "warn",
+            "message": "Redis is Plan-visible; verify URL, timeout, pool, and health configuration at runtime without exposing secrets"
+        }));
+    }
     if app.uses_net_runtime {
         required_features.push("stdlib.net".to_string());
         value["strongPlan"]["evidence"]["network"] = json!(true);

@@ -13,10 +13,12 @@ stdlib/sloppy/
   app.js
   results.js
   schema.js
+  cache.js
   testing.js
   testservices.js
   data.js
   orm.js
+  redis.js
   fs.js
   http.js
   net.js
@@ -76,6 +78,10 @@ lib/sloppy/bootstrap/sloppy/
   one structured entry per completed app-host request through the configured logger.
 - `health.js` and `metrics.js` provide the first-party operations backend used by
   `app.health()` and `app.management(...)`.
+- `redis.js` provides the first-party RESP2 Redis client, scripts, locks, bounded
+  pooling, metrics, diagnostics, and redaction over the Sloppy network bridge.
+- `cache.js` provides the Redis-backed cache provider used by `Cache.redis(...)`
+  and app-host cache services.
 - `schema.js` provides the current `Schema` validation metadata surface for
   strings, numbers, integers, booleans, arrays, enums, literals, optional,
   nullable, defaulted fields, object shapes, and request body validation
@@ -90,9 +96,9 @@ lib/sloppy/bootstrap/sloppy/
   `tests/bootstrap/test_prealpha_control_plane_dogfood.mjs` imports the
   `examples/prealpha-control-plane` route modules through this host.
 - `testservices.js` provides experimental `TestServices`, the opt-in Docker-backed
-  PostgreSQL and SQL Server test service layer. It uses `sloppy/os` process
-  APIs for Docker CLI lifecycle, `sloppy/data` provider bridges for readiness
-  and SQL helpers, and redacted diagnostics/cleanup for TestHost integration.
+  PostgreSQL, SQL Server, and Redis test service layer. It uses `sloppy/os` process
+  APIs for Docker CLI lifecycle, `sloppy/data` provider bridges or the Redis client
+  for readiness, and redacted diagnostics/cleanup for TestHost integration.
 - `http.js` provides the first-party outbound HTTP factory: named clients,
   typed clients, resilience policies, service registration metadata, TestHost
   mocks, metrics, diagnostics, and health snapshots over the low-level

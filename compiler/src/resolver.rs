@@ -25,6 +25,7 @@ pub(crate) enum ImportKind {
     SlopNet,
     SlopHttp,
     SlopWebhooks,
+    SlopRedis,
     SlopOs,
     SlopOrm,
     SlopWorkers,
@@ -138,6 +139,9 @@ pub(crate) fn classify_import_with_mode(
     }
     if specifier == "sloppy/webhooks" {
         return ImportKind::SlopWebhooks;
+    }
+    if specifier == "sloppy/redis" {
+        return ImportKind::SlopRedis;
     }
     if specifier == "sloppy/os" {
         return ImportKind::SlopOs;
@@ -805,6 +809,10 @@ mod tests {
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/webhooks"),
             ImportKind::SlopWebhooks
+        );
+        assert_eq!(
+            classify_import(Path::new("app.js"), "sloppy/redis"),
+            ImportKind::SlopRedis
         );
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/os"),
