@@ -1938,7 +1938,13 @@ static SlStatus sl_plan_parse_route_health(SlPlanParseContext* ctx, yyjson_val* 
     }
     check_count = yyjson_arr_size(checks);
     if (check_count == 0U) {
-        return sl_status_ok();
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid route health checks",
+                                  sizeof("invalid route health checks") - 1U),
+            sl_plan_parse_literal("route health checks must not be empty when present",
+                                  sizeof("route health checks must not be empty when present") -
+                                      1U));
     }
     status = sl_plan_parse_alloc_array(ctx, check_count, sizeof(SlStr), _Alignof(SlStr),
                                        (void**)&parsed_checks);

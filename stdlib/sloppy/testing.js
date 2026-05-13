@@ -912,6 +912,13 @@ function createTestHost(app) {
         }
     }
 
+    function ignoreMetricError(callback) {
+        try {
+            callback();
+        } catch {
+        }
+    }
+
     function finishRequest() {
         activeRequests -= 1;
         if (closed && activeRequests === 0) {
@@ -982,7 +989,9 @@ function createTestHost(app) {
                 method: normalizedMethod,
                 route: match.route.pattern,
             });
-            metricRegistry?.gauge("http.requests.active", { description: "HTTP requests currently active in the app host." }).inc(metricLabels);
+            ignoreMetricError(() => {
+                metricRegistry?.gauge("http.requests.active", { description: "HTTP requests currently active in the app host." }).inc(metricLabels);
+            });
             const started = nowMs();
             try {
                 try {
@@ -1002,8 +1011,13 @@ function createTestHost(app) {
                     throw error;
                 }
             } finally {
-                metricRegistry?.gauge("http.requests.active").dec(metricLabels);
-                await context.services.dispose();
+                try {
+                    ignoreMetricError(() => {
+                        metricRegistry?.gauge("http.requests.active").dec(metricLabels);
+                    });
+                } finally {
+                    await context.services.dispose();
+                }
             }
         } finally {
             finishRequest();

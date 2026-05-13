@@ -1,3 +1,6 @@
+import * as fs from "node:fs/promises";
+import * as net from "node:net";
+
 import { ProviderHealth } from "./data.js";
 import { Results } from "./results.js";
 
@@ -330,9 +333,24 @@ function createHealthRegistry(options = undefined) {
             const selected = [...checks.values()].filter((check) => checkMatchesMode(check, mode, tags));
             const entries = {};
             const checksByName = new Map(selected.map((check) => [check.name, check]));
-            for (const check of selected) {
-                const result = await runOneCheck(check, context);
-                entries[check.name] = result;
+            const settled = await Promise.allSettled(selected.map((check) => runOneCheck(check, context)));
+            for (let index = 0; index < selected.length; index += 1) {
+                const check = selected[index];
+                const result = settled[index];
+                entries[check.name] = result.status === "fulfilled"
+                    ? result.value
+                    : Object.freeze({
+                        name: check.name,
+                        status: "unhealthy",
+                        message: String(result.reason?.message ?? "health check failed"),
+                        errorCode: "SLOPPY_E_HEALTH_CHECK_FAILED",
+                        durationMs: 0,
+                        checkedAtUtc: safeDate(),
+                        tags: check.tags,
+                        critical: check.critical,
+                        timeoutMs: check.timeoutMs,
+                        cached: false,
+                    });
             }
             const status = aggregateStatus(entries, checksByName);
             return Object.freeze({
@@ -456,7 +474,6 @@ function diskCheck(options = undefined) {
         throw new TypeError("Health.disk path must be a non-empty string.");
     }
     return async () => {
-        const fs = await import("node:fs/promises");
         await fs.access(targetPath);
         if (typeof fs.statfs === "function" && options.minFreeBytes !== undefined) {
             const stats = await fs.statfs(targetPath);
@@ -494,7 +511,6 @@ function tcpCheck(host, port, options = undefined) {
         throw new TypeError("Health.tcp requires a host string and TCP port.");
     }
     return async () => {
-        const net = await import("node:net");
         const timeoutMs = normalizeTimeoutMs(options?.timeoutMs ?? DEFAULT_TIMEOUT_MS);
         return await new Promise((resolve) => {
             const socket = net.createConnection({ host, port });

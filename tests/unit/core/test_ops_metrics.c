@@ -217,6 +217,42 @@ static int test_prometheus_label_values_are_escaped(void)
     return 0;
 }
 
+static int test_json_label_control_chars_are_escaped_by_codepoint(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlOpsMetricsRegistry* registry = NULL;
+    SlOpsMetricLabel labels[1] = {
+        {sl_str_from_cstr("value"), sl_str_from_parts("line\n\t\r", 7U)},
+    };
+    SlOpsMetricLabel nul_labels[1] = {
+        {sl_str_from_cstr("value"), sl_str_from_parts("nul\0byte", 8U)},
+    };
+    SlStringBuilder json = {0};
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_ops_metrics_registry_init(&arena, NULL, &registry), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_ops_metrics_counter_inc(registry, sl_str_from_cstr("requests"), labels, 1U, 1.0),
+            SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_ops_metrics_counter_inc(registry, sl_str_from_cstr("requests"), nul_labels, 1U, 1.0),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_init_arena(&json, &arena, 1024U, 8192U), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_ops_metrics_render_json(registry, &json), SL_STATUS_OK) != 0)
+    {
+        return 50;
+    }
+    if (!str_contains(sl_string_builder_view(&json), "line\\u000a\\u0009\\u000d") ||
+        !str_contains(sl_string_builder_view(&json), "nul\\u0000byte") ||
+        str_contains(sl_string_builder_view(&json), "\\u001f"))
+    {
+        return 51;
+    }
+    return 0;
+}
+
 int main(void)
 {
     int result = test_counter_gauge_histogram_and_renderers();
@@ -236,5 +272,9 @@ int main(void)
     if (result != 0) {
         return result;
     }
-    return test_prometheus_label_values_are_escaped();
+    result = test_prometheus_label_values_are_escaped();
+    if (result != 0) {
+        return result;
+    }
+    return test_json_label_control_chars_are_escaped_by_codepoint();
 }

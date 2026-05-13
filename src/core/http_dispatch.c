@@ -3552,7 +3552,8 @@ static void sl_http_dispatch_record_metrics(SlOpsMetricsRegistry* metrics, SlStr
                                             SlHttpRouteDispatchMode mode, SlStatus status,
                                             const SlHttpRequestHead* request,
                                             const SlEngineResult* result, uint64_t elapsed_ns,
-                                            bool native_json_validation)
+                                            bool validate_mismatch, bool native_json_validation,
+                                            bool generic_json_request)
 {
     char status_code_buffer[SL_STRING_FORMAT_U64_CAPACITY];
     SlStr status_code = sl_str_empty();
@@ -3621,7 +3622,7 @@ static void sl_http_dispatch_record_metrics(SlOpsMetricsRegistry* metrics, SlStr
         sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
             metrics, sl_str_from_cstr("routing.compiled.hits"), route_labels, 2U, 1.0));
     }
-    if (mode == SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE && !sl_status_is_ok(status)) {
+    if (mode == SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE && validate_mismatch) {
         sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
             metrics, sl_str_from_cstr("routing.validate.mismatches"), route_labels, 2U, 1.0));
     }
@@ -3629,7 +3630,7 @@ static void sl_http_dispatch_record_metrics(SlOpsMetricsRegistry* metrics, SlStr
         sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
             metrics, sl_str_from_cstr("json.native.request.hits"), route_labels, 2U, 1.0));
     }
-    else if (request != NULL && request->body.length != 0U) {
+    else if (generic_json_request) {
         sl_http_dispatch_ignore_metric_status(sl_ops_metrics_counter_inc(
             metrics, sl_str_from_cstr("json.generic.request.hits"), route_labels, 2U, 1.0));
     }
@@ -3652,6 +3653,8 @@ static SlStatus sl_http_dispatch_request_recorded(SlArena* arena, SlEngine* engi
     SlStatus status;
     SlStatus metric_status;
     bool native_json_validation = false;
+    bool generic_json_request = false;
+    bool validate_mismatch = false;
 
     if (metrics == NULL) {
         return sl_http_dispatch_request_core(arena, engine, plan, dispatch_table, request, seed,
@@ -3667,10 +3670,15 @@ static SlStatus sl_http_dispatch_request_recorded(SlArena* arena, SlEngine* engi
         metric_status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding,
                                                     &method_mismatch, NULL, NULL);
         if (sl_status_is_ok(metric_status) && binding != NULL && binding->pattern != NULL) {
+            SlHttpDispatchJsonMode json_mode = sl_http_dispatch_json_mode();
+
             route_pattern = binding->pattern->source;
             validation_route = sl_http_dispatch_find_validation_route(plan, binding);
             native_json_validation =
-                sl_http_dispatch_route_uses_native_json_validation(validation_route);
+                sl_http_dispatch_route_uses_native_json_validation(validation_route) &&
+                json_mode != SL_HTTP_DISPATCH_JSON_GENERIC;
+            generic_json_request = !native_json_validation && request->body.length != 0U &&
+                                   sl_http_dispatch_route_expects_json_body(validation_route);
         }
         else if (method_mismatch) {
             route_pattern = sl_str_from_cstr("method_mismatch");
@@ -3679,12 +3687,16 @@ static SlStatus sl_http_dispatch_request_recorded(SlArena* arena, SlEngine* engi
 
     status = sl_http_dispatch_request_core(arena, engine, plan, dispatch_table, request, seed,
                                            out_result, out_diag);
+    validate_mismatch = dispatch_table->dispatch_mode == SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE &&
+                        out_diag != NULL && out_diag->code == SL_DIAG_ROUTE_VALIDATE_MISMATCH &&
+                        !sl_status_is_ok(status);
     sl_http_dispatch_ignore_metric_status(sl_ops_metrics_gauge_add(
         metrics, sl_str_from_cstr("http.requests.active"), NULL, 0U, -1.0));
     sl_http_dispatch_ignore_metric_status(sl_platform_monotonic_time_ns(&end_ns));
-    sl_http_dispatch_record_metrics(
-        metrics, route_pattern, dispatch_table->dispatch_mode, status, request, out_result,
-        end_ns >= start_ns ? end_ns - start_ns : 0U, native_json_validation);
+    sl_http_dispatch_record_metrics(metrics, route_pattern, dispatch_table->dispatch_mode, status,
+                                    request, out_result,
+                                    end_ns >= start_ns ? end_ns - start_ns : 0U, validate_mismatch,
+                                    native_json_validation, generic_json_request);
     return status;
 }
 

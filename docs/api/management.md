@@ -1,6 +1,8 @@
 # Management
 
 `app.management()` installs an opt-in actuator-style backend endpoint group.
+This surface is alpha and intended for controlled pre-alpha operations
+environments.
 
 ```ts
 import { Sloppy } from "sloppy";
@@ -28,6 +30,11 @@ Management endpoints are disabled by default. Calling `app.management()` adds:
 
 The `protect` hook applies to the management endpoint group. Return `true` to
 allow a request; any other result returns `403`.
+
+Compiler-visible `app.management(...)` metadata is intentionally static and
+does not support `protect` hooks. Use the bootstrap app host when management
+endpoints must be protected in-process, or keep compiler-generated unprotected
+management routes limited to test-only audit fixtures.
 
 ## Info
 

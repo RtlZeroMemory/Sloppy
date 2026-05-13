@@ -3997,8 +3997,8 @@ fn app_health_and_management_extract_routes_and_ops_metadata() {
 const app = Sloppy.create();
 app.health()
   .check("self", Health.self(), { tags: ["live", "ready", "startup"], critical: true })
-  .check("runtime", Health.runtime(), { tags: ["ready", "startup"], timeoutMs: 1000 })
-  .check("custom", () => ({ status: "degraded" }), { tags: ["ready"], critical: false })
+  .check("runtime", Health.runtime(), { tags: ["ready", "startup"] })
+  .check("custom", () => ({ status: "degraded" }), { tags: ["ready"], critical: true, degradedIsUnhealthy: true })
   .expose({ health: "/health", live: "/live", ready: "/ready", startup: "/startup" });
 app.management({ path: "/_sloppy", health: true, metrics: true, info: true, runtime: true });
 export default app;
@@ -4030,6 +4030,13 @@ export default app;
 
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("sloppy_management_info"));
+    assert!(emitted_js.source.contains("degradedIsUnhealthy: true"));
+    assert!(emitted_js
+        .source
+        .contains("__sloppy_health_check.critical && __sloppy_check_status === \"degraded\""));
+    assert!(emitted_js.source.contains(
+        "!__sloppy_health_check.critical && __sloppy_aggregate_status === \"unhealthy\""
+    ));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,
@@ -4055,6 +4062,36 @@ export default app;
         .unwrap()
         .iter()
         .any(|check| check["id"] == "ops.management.protection"));
+}
+
+#[test]
+fn app_health_rejects_silently_ignored_options_and_unsupported_builtins() {
+    for source in [
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.health().check("slow", Health.self(), { tags: ["ready"], timeoutMs: 1000 }).expose();
+export default app;
+"#,
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.health().check("cached", Health.self(), { tags: ["ready"], cacheMs: 1000 }).expose();
+export default app;
+"#,
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.health().check("config", Health.config(["Required"]), { tags: ["ready"] }).expose();
+export default app;
+"#,
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.mapHealthChecks({ checks: [{ name: "cached", check: () => true, cacheMs: 1000 }] });
+export default app;
+"#,
+    ] {
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("unsupported compiler-visible health feature should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS");
+    }
 }
 
 #[test]

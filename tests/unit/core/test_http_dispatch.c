@@ -3554,6 +3554,198 @@ cleanup:
     return result_code;
 }
 
+static int test_dispatch_json_metrics_respect_dispatch_mode(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlOpsMetricsRegistry* metrics = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStringBuilder prom = {0};
+    char* original = NULL;
+    SlStatus status;
+    int result_code = 0;
+
+    route.native_response_kind = sl_str_from_cstr("json");
+    route.native_response_status = 200U;
+    route.native_response_body = sl_str_from_cstr("{\"ok\":true}");
+    route.native_response_content_type = sl_str_from_cstr("application/json");
+
+    if (copy_test_env_value("SLOPPY_JSON_DISPATCH", &original) != 0 ||
+        set_test_env_value("SLOPPY_JSON_DISPATCH", "generic") != 0)
+    {
+        free(original);
+        return 185;
+    }
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /users HTTP/1.1\r\nHost: example\r\nContent-Type: application/json\r\n"
+                      "Content-Length: 62\r\n\r\n"
+                      "{\"name\":\"Ada\",\"email\":\"ada@example.com\",\"password\":\"longpass\"}",
+                      &request) != 0 ||
+        expect_status(sl_ops_metrics_registry_init(&arena, NULL, &metrics), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        result_code = 186;
+        goto cleanup;
+    }
+    table.dispatch.metrics = metrics;
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_init_arena(&prom, &arena, 2048U, 32768U), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_ops_metrics_render_prometheus(metrics, &prom), SL_STATUS_OK) != 0)
+    {
+        result_code = 187;
+        goto cleanup;
+    }
+    if (str_contains(sl_string_builder_view(&prom), "json_native_request_hits") ||
+        !str_contains(sl_string_builder_view(&prom), "json_generic_request_hits"))
+    {
+        result_code = 188;
+        goto cleanup;
+    }
+
+cleanup:
+    if (restore_test_env_value("SLOPPY_JSON_DISPATCH", original) != 0 && result_code == 0) {
+        result_code = 189;
+    }
+    free(original);
+    sl_engine_destroy(engine);
+    return result_code;
+}
+
+static int test_dispatch_metrics_do_not_classify_non_json_body_as_generic_json(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlOpsMetricsRegistry* metrics = NULL;
+    SlPlanHandler handler = {.id = 1U, .export_name = sl_str_from_cstr("__sloppy_handler")};
+    SlPlanRoute route = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStringBuilder prom = {0};
+    SlStatus status;
+    int result_code = 0;
+
+    set_native_text_route(&route, "POST", "/submit", 1U, "ok");
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /submit HTTP/1.1\r\nHost: example\r\nContent-Type: text/plain\r\n"
+                      "Content-Length: 3\r\n\r\nabc",
+                      &request) != 0 ||
+        expect_status(sl_ops_metrics_registry_init(&arena, NULL, &metrics), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        result_code = 190;
+        goto cleanup;
+    }
+    table.dispatch.metrics = metrics;
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_init_arena(&prom, &arena, 2048U, 32768U), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_ops_metrics_render_prometheus(metrics, &prom), SL_STATUS_OK) != 0)
+    {
+        result_code = 191;
+        goto cleanup;
+    }
+    if (str_contains(sl_string_builder_view(&prom), "json_generic_request_hits")) {
+        result_code = 192;
+        goto cleanup;
+    }
+
+cleanup:
+    sl_engine_destroy(engine);
+    return result_code;
+}
+
+static int test_validate_metrics_ignore_non_mismatch_failures(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlOpsMetricsRegistry* metrics = NULL;
+    SlHttpRequestHead request = {0};
+    SlHttpRouteTable table = {0};
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding bindings[1] = {0};
+    SlPlanSchema schemas[1] = {0};
+    SlPlanSchemaProperty properties[3] = {0};
+    SlPlanSchemaNode property_nodes[3] = {0};
+    SlPlan plan = validation_plan(&handler, &route, bindings, schemas, properties, property_nodes);
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStringBuilder prom = {0};
+    SlStatus status;
+    int result_code = 0;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena,
+                      "POST /users HTTP/1.1\r\nHost: example\r\nContent-Type: text/plain\r\n"
+                      "Content-Length: 3\r\n\r\nabc",
+                      &request) != 0 ||
+        expect_status(sl_ops_metrics_registry_init(&arena, NULL, &metrics), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        result_code = 193;
+        goto cleanup;
+    }
+    table.dispatch.metrics = metrics;
+    table.dispatch.dispatch_mode = SL_HTTP_ROUTE_DISPATCH_MODE_VALIDATE;
+    diag = (SlDiag){0};
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    if (sl_status_is_ok(status) || diag.code == SL_DIAG_ROUTE_VALIDATE_MISMATCH ||
+        expect_status(sl_string_builder_init_arena(&prom, &arena, 2048U, 32768U), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_ops_metrics_render_prometheus(metrics, &prom), SL_STATUS_OK) != 0)
+    {
+        result_code = 194;
+        goto cleanup;
+    }
+    if (str_contains(sl_string_builder_view(&prom), "routing_validate_mismatches")) {
+        result_code = 195;
+        goto cleanup;
+    }
+
+cleanup:
+    sl_engine_destroy(engine);
+    return result_code;
+}
+
 static int test_named_route_url_generation_validates_param_set(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -3698,6 +3890,9 @@ int main(void)
         HTTP_DISPATCH_TEST(test_native_static_text_response_skips_engine),
         HTTP_DISPATCH_TEST(test_compiled_and_classic_dispatch_agree_in_validate_mode),
         HTTP_DISPATCH_TEST(test_dispatch_records_native_metrics_by_route_pattern),
+        HTTP_DISPATCH_TEST(test_dispatch_json_metrics_respect_dispatch_mode),
+        HTTP_DISPATCH_TEST(test_dispatch_metrics_do_not_classify_non_json_body_as_generic_json),
+        HTTP_DISPATCH_TEST(test_validate_metrics_ignore_non_mismatch_failures),
         HTTP_DISPATCH_TEST(test_named_route_url_generation_validates_param_set),
     };
     size_t index = 0U;

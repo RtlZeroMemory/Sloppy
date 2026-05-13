@@ -558,6 +558,9 @@ function normalizeOpsPath(path, subject) {
 }
 
 function joinOpsPath(root, child) {
+    if (root === "/") {
+        return child.startsWith("/") ? child : `/${child}`;
+    }
     return child === "/" ? root : `${root}${child}`;
 }
 

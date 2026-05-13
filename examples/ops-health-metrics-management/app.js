@@ -1,4 +1,4 @@
-import { Health, Results, Sloppy } from "../../stdlib/sloppy/index.js";
+import { Health, Results, Sloppy } from "sloppy";
 
 const app = Sloppy.create();
 

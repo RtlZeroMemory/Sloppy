@@ -1,7 +1,9 @@
 # Health
 
 `Health` provides first-party liveness, readiness, startup, and detailed health
-checks for the bootstrap app host.
+checks for the bootstrap app host. This operations API is alpha: endpoint
+shapes are usable for pre-alpha deployments, but they can still change before a
+stable release.
 
 ```ts
 import { Health, Sloppy } from "sloppy";
@@ -36,7 +38,9 @@ Top-level aggregation is:
 
 - any critical `unhealthy` check makes the response `unhealthy`;
 - any non-critical `unhealthy` check makes the response `degraded`;
-- any `degraded` check makes the response `degraded`;
+- any critical `degraded` check with `degradedIsUnhealthy: true` makes the
+  response `unhealthy`;
+- any other `degraded` check makes the response `degraded`;
 - otherwise the response is `healthy`.
 
 The response contains deterministic JSON:
@@ -69,6 +73,18 @@ The response contains deterministic JSON:
 Health output redacts secret-looking keys such as `password`, `secret`, `token`,
 `cookie`, `authorization`, `apiKey`, and `connectionString`.
 
+## Check Options
+
+`app.health().check(name, check, options)` accepts:
+
+- `tags`: mode selectors such as `live`, `ready`, `startup`, and `health`;
+- `critical`: `false` converts that check's `unhealthy` result into aggregate
+  `degraded`;
+- `timeoutMs`: app-host timeout for one check;
+- `cacheMs`: app-host cache duration for one check result;
+- `degradedIsUnhealthy`: for critical checks, treats `degraded` as aggregate
+  `unhealthy`.
+
 ## Built-In Checks
 
 `Health.self()` reports that the process is alive.
@@ -93,6 +109,21 @@ when the host exposes `process.memoryUsage()`.
 
 `Health.http(url, options)` and `Health.tcp(host, port, options)` provide
 bounded HTTP and TCP dependency probes.
+
+## Compiler Visibility
+
+The bootstrap app host supports every built-in listed above.
+
+Compiler-generated health routes intentionally expose a smaller static surface:
+inline check functions plus zero-argument `Health.self()`, `Health.runtime()`,
+`Health.memory()`, and `Health.openApi()`. Compiler-visible check options are
+`tags`, `critical`, and `degradedIsUnhealthy`.
+
+The compiler rejects app-host-only built-ins such as `Health.config(...)`,
+`Health.data(...)`, `Health.disk(...)`, `Health.http(...)`,
+`Health.tcp(...)`, `Health.cache(...)`, and `Health.storage(...)` with
+`SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS`. It also rejects compiler-visible
+`timeoutMs` and `cacheMs` instead of silently dropping them.
 
 ## Endpoint Semantics
 

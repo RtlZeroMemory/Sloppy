@@ -1,7 +1,9 @@
 # Operations Reference
 
 Sloppy's first-party operations layer covers health, readiness, liveness,
-startup, metrics, and opt-in management endpoints.
+startup, metrics, and opt-in management endpoints. The health, metrics, and
+management APIs are alpha and should be treated as pre-stable operations
+surfaces.
 
 ## Public APIs
 
@@ -74,6 +76,11 @@ timeouts, pool active/idle state, pool exhaustion, and queue depth.
 Do not expose detailed health, info, runtime, or metrics endpoints directly to
 the public internet. Use `app.management({ protect })` or an external ingress
 policy.
+
+Compiler-generated management metadata cannot express a `protect` hook. Keep
+those unprotected routes to test-only audit fixtures, or use the bootstrap
+app-host `app.management({ protect })` API for recommended in-process
+protection.
 
 Operations output redacts common secret-bearing keys. Application-specific
 checks should still avoid returning sensitive raw values.

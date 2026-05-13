@@ -281,6 +281,7 @@ struct HealthCheck {
     readiness: bool,
     startup: bool,
     critical: bool,
+    degraded_is_unhealthy: bool,
     tags: Vec<String>,
 }
 
@@ -10668,6 +10669,7 @@ fn health_check_from_chain_call(
     let check_source = health_chain_check_source(path, source, check_argument)?;
     let mut tags = Vec::new();
     let mut critical = true;
+    let mut degraded_is_unhealthy = false;
     if let Some(options_argument) = call.arguments.get(2) {
         let Some(object) = object_argument(options_argument) else {
             return Err(Diagnostic::new(
@@ -10722,7 +10724,25 @@ fn health_check_from_chain_call(
                     };
                     critical = value.value;
                 }
-                "timeoutMs" | "cacheMs" | "degradedIsUnhealthy" => {}
+                "degradedIsUnhealthy" => {
+                    let Expression::BooleanLiteral(value) = &property.value else {
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                            "health check degradedIsUnhealthy flag must be a boolean literal",
+                        )
+                        .with_path(path)
+                        .with_span(property.value.span()));
+                    };
+                    degraded_is_unhealthy = value.value;
+                }
+                "timeoutMs" | "cacheMs" => {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        format!("compiler-generated health does not support health check option '{key}'"),
+                    )
+                    .with_path(path)
+                    .with_span(property.span));
+                }
                 _ => {
                     return Err(Diagnostic::new(
                         "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
@@ -10742,6 +10762,7 @@ fn health_check_from_chain_call(
         readiness: tags.iter().any(|tag| tag == "ready"),
         startup: tags.iter().any(|tag| tag == "startup"),
         critical,
+        degraded_is_unhealthy,
         tags,
     })
 }
@@ -10770,7 +10791,7 @@ fn health_chain_check_source(
             if receiver != "Health" || !call.arguments.is_empty() {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
-                    "compiler-visible built-in health checks support only zero-argument Health.self(), Health.runtime(), Health.memory(), and Health.openApi()",
+                    "compiler-visible built-in health checks support only zero-argument Health.self(), Health.runtime(), Health.memory(), and Health.openApi(); richer Health.* checks are app-host-only",
                 )
                 .with_path(path)
                 .with_span(call.span));
@@ -11111,6 +11132,7 @@ fn health_check_from_array_element(
             readiness: true,
             startup: false,
             critical: true,
+            degraded_is_unhealthy: false,
             tags: Vec::new(),
         }),
         ArrayExpressionElement::FunctionExpression(function) => {
@@ -11127,6 +11149,7 @@ fn health_check_from_array_element(
                 readiness: true,
                 startup: false,
                 critical: true,
+                degraded_is_unhealthy: false,
                 tags: Vec::new(),
             })
         }
@@ -11153,6 +11176,7 @@ fn health_check_from_object(
     let mut readiness = true;
     let mut startup = false;
     let mut critical = true;
+    let mut degraded_is_unhealthy = false;
     let mut tags = Vec::new();
 
     for property in &object.properties {
@@ -11261,6 +11285,27 @@ fn health_check_from_object(
                 };
                 critical = value.value;
             }
+            "degradedIsUnhealthy" => {
+                let Expression::BooleanLiteral(value) = &property.value else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        "health check degradedIsUnhealthy flag must be a boolean literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                degraded_is_unhealthy = value.value;
+            }
+            "timeoutMs" | "cacheMs" => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    format!(
+                        "compiler-generated health does not support health check option '{key}'"
+                    ),
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
             "tags" => {
                 tags = route_tags_from_expression(&property.value)
                     .map_err(|diagnostic| diagnostic.with_path(path))?;
@@ -11311,6 +11356,7 @@ fn health_check_from_object(
         readiness,
         startup,
         critical,
+        degraded_is_unhealthy,
         tags,
     })
 }
@@ -11594,6 +11640,7 @@ fn management_routes_from_options(
                     readiness: true,
                     startup: true,
                     critical: true,
+                    degraded_is_unhealthy: false,
                     tags: vec![
                         "live".to_string(),
                         "ready".to_string(),
@@ -11607,6 +11654,7 @@ fn management_routes_from_options(
                     readiness: true,
                     startup: true,
                     critical: true,
+                    degraded_is_unhealthy: false,
                     tags: vec!["ready".to_string(), "startup".to_string()],
                 },
                 HealthCheck {
@@ -11616,6 +11664,7 @@ fn management_routes_from_options(
                     readiness: false,
                     startup: false,
                     critical: false,
+                    degraded_is_unhealthy: false,
                     tags: vec!["health".to_string()],
                 },
             ],
@@ -11853,16 +11902,21 @@ fn health_handler_source(checks: Vec<&HealthCheck>) -> String {
         .map(|check| {
             let name = serde_json::to_string(&check.name).unwrap_or_else(|_| "\"\"".to_string());
             let critical = if check.critical { "true" } else { "false" };
+            let degraded_is_unhealthy = if check.degraded_is_unhealthy {
+                "true"
+            } else {
+                "false"
+            };
             let tags = serde_json::to_string(&check.tags).unwrap_or_else(|_| "[]".to_string());
             format!(
-                "{{ name: {name}, check: {}, critical: {critical}, tags: {tags} }}",
+                "{{ name: {name}, check: {}, critical: {critical}, degradedIsUnhealthy: {degraded_is_unhealthy}, tags: {tags} }}",
                 check.check_source
             )
         })
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "async function(ctx) {{ const __sloppy_health_started = Date.now(); const __sloppy_health_checks = [{entries}]; const __sloppy_health_results = []; let __sloppy_health_status = \"healthy\"; for (const __sloppy_health_check of __sloppy_health_checks) {{ const __sloppy_check_started = Date.now(); try {{ const __sloppy_health_value = await __sloppy_health_check.check(ctx); let __sloppy_check_status = \"healthy\"; if (__sloppy_health_value === false) __sloppy_check_status = \"unhealthy\"; else if (__sloppy_health_value && typeof __sloppy_health_value === \"object\") {{ if (__sloppy_health_value.status === \"degraded\" || __sloppy_health_value.status === \"unhealthy\") __sloppy_check_status = __sloppy_health_value.status; else if (__sloppy_health_value.ok === false) __sloppy_check_status = \"unhealthy\"; }} if (__sloppy_check_status === \"unhealthy\") __sloppy_health_status = \"unhealthy\"; else if (__sloppy_check_status === \"degraded\" && __sloppy_health_status === \"healthy\") __sloppy_health_status = \"degraded\"; __sloppy_health_results.push({{ name: __sloppy_health_check.name, status: __sloppy_check_status, critical: __sloppy_health_check.critical, tags: __sloppy_health_check.tags, durationMs: Date.now() - __sloppy_check_started, checkedAtUtc: new Date().toISOString() }}); }} catch {{ __sloppy_health_status = \"unhealthy\"; __sloppy_health_results.push({{ name: __sloppy_health_check.name, status: \"unhealthy\", critical: __sloppy_health_check.critical, tags: __sloppy_health_check.tags, durationMs: Date.now() - __sloppy_check_started, checkedAtUtc: new Date().toISOString() }}); }} }} const __sloppy_health_body = {{ status: __sloppy_health_status, durationMs: Date.now() - __sloppy_health_started, checkedAtUtc: new Date().toISOString(), checks: __sloppy_health_results }}; return __sloppy_health_status === \"unhealthy\" ? Results.status(503, __sloppy_health_body) : Results.ok(__sloppy_health_body); }}"
+        "async function(ctx) {{ const __sloppy_health_started = Date.now(); const __sloppy_health_checks = [{entries}]; const __sloppy_health_results = []; let __sloppy_health_rank = 0; for (const __sloppy_health_check of __sloppy_health_checks) {{ const __sloppy_check_started = Date.now(); let __sloppy_check_status = \"healthy\"; try {{ const __sloppy_health_value = await __sloppy_health_check.check(ctx); if (__sloppy_health_value === false) __sloppy_check_status = \"unhealthy\"; else if (__sloppy_health_value && typeof __sloppy_health_value === \"object\") {{ if (__sloppy_health_value.status === \"degraded\" || __sloppy_health_value.status === \"unhealthy\") __sloppy_check_status = __sloppy_health_value.status; else if (__sloppy_health_value.ok === false) __sloppy_check_status = \"unhealthy\"; }} }} catch {{ __sloppy_check_status = \"unhealthy\"; }} let __sloppy_aggregate_status = __sloppy_check_status; if (!__sloppy_health_check.critical && __sloppy_aggregate_status === \"unhealthy\") __sloppy_aggregate_status = \"degraded\"; if (__sloppy_health_check.critical && __sloppy_check_status === \"degraded\" && __sloppy_health_check.degradedIsUnhealthy === true) __sloppy_aggregate_status = \"unhealthy\"; const __sloppy_aggregate_rank = __sloppy_aggregate_status === \"unhealthy\" ? 2 : (__sloppy_aggregate_status === \"degraded\" ? 1 : 0); if (__sloppy_aggregate_rank > __sloppy_health_rank) __sloppy_health_rank = __sloppy_aggregate_rank; __sloppy_health_results.push({{ name: __sloppy_health_check.name, status: __sloppy_check_status, critical: __sloppy_health_check.critical, tags: __sloppy_health_check.tags, durationMs: Date.now() - __sloppy_check_started, checkedAtUtc: new Date().toISOString() }}); }} const __sloppy_health_status = __sloppy_health_rank === 2 ? \"unhealthy\" : (__sloppy_health_rank === 1 ? \"degraded\" : \"healthy\"); const __sloppy_health_body = {{ status: __sloppy_health_status, durationMs: Date.now() - __sloppy_health_started, checkedAtUtc: new Date().toISOString(), checks: __sloppy_health_results }}; return __sloppy_health_status === \"unhealthy\" ? Results.status(503, __sloppy_health_body) : Results.ok(__sloppy_health_body); }}"
     )
 }
 

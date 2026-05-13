@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:88f0e3115d47d76012ca4b9405d924af71c9817943ff52efd129d56831afd490",
+    "hash": "sha256:8e5c99a9dc5ad5ba7d14ee7898f1484caafbb0d169a9cdd6459aa3ea96bcef30",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },

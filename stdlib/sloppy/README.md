@@ -25,6 +25,8 @@ stdlib/sloppy/
   crypto.js
   os.js
   workers.js
+  health.js
+  metrics.js
   internal/
     capabilities.js
     config.js

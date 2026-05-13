@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 
 import { Health, Metrics, Results, Sloppy, Testing } from "../../stdlib/sloppy/index.js";
-import { app as exampleApp } from "../../examples/ops-health-metrics-management/app.js";
 
 function names(routes) {
     return routes.map((route) => `${route.method} ${route.pattern}`);
@@ -69,6 +68,20 @@ function names(routes) {
 }
 
 {
+    const health = Health.createRegistry();
+    health
+        .check("slow-a", () => new Promise(() => {}), { tags: ["ready"], timeoutMs: 40 })
+        .check("slow-b", () => new Promise(() => {}), { tags: ["ready"], timeoutMs: 40 })
+        .check("slow-c", () => new Promise(() => {}), { tags: ["ready"], timeoutMs: 40 });
+    const started = Date.now();
+    const ready = await health.evaluate("ready");
+    const elapsedMs = Date.now() - started;
+    assert.equal(ready.status, "unhealthy");
+    assert.equal(Object.keys(ready.checks).join(","), "slow-a,slow-b,slow-c");
+    assert.equal(elapsedMs < 110, true);
+}
+
+{
     const app = Sloppy.create();
     app.management();
     const registry = app.__getHealthRegistry();
@@ -120,6 +133,23 @@ function names(routes) {
 }
 
 {
+    const exampleApp = Sloppy.create();
+    const ordersCreated = exampleApp.metrics.counter("orders_created_total", {
+        description: "Orders accepted by the example app.",
+    });
+    exampleApp.health()
+        .check("self", Health.self(), { tags: ["live", "ready", "startup"] })
+        .check("memory", Health.memory(), { tags: ["health"], critical: false, cacheMs: 1000 })
+        .expose();
+    exampleApp.post("/orders", () => {
+        ordersCreated.inc({ route: "/orders" });
+        return Results.accepted({ accepted: true });
+    });
+    exampleApp.management({
+        path: "/_sloppy",
+        protect: (ctx) => ctx.request.headers.get("x-ops-key") === "local-dev-key",
+    });
+
     const host = Testing.createHost(exampleApp);
     assert.equal((await host.get("/live")).status, 200);
     assert.equal((await host.post("/orders")).status, 202);
@@ -183,4 +213,41 @@ function names(routes) {
     assert.equal(app.__getPlanContributions().ops.managementExposed, true);
     await host.close();
     assert.equal(app.__getLifecycle().shuttingDown, true);
+}
+
+{
+    const app = Sloppy.create();
+    app.management({ path: "/" });
+
+    assert.deepEqual(names(app.__getRoutes()), [
+        "GET /health",
+        "GET /live",
+        "GET /ready",
+        "GET /startup",
+        "GET /metrics",
+        "GET /metrics.json",
+        "GET /info",
+        "GET /runtime",
+    ]);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    let disposed = 0;
+    builder.services.addScoped("request.cleanup", () => ({
+        dispose() {
+            disposed += 1;
+        },
+    }));
+    const app = builder.build();
+    app.get("/cleanup", (ctx) => {
+        ctx.services.get("request.cleanup");
+        return Results.ok({ ok: true });
+    });
+    app.__getMetricsRegistry().counter("http.requests.active");
+
+    const host = Testing.createHost(app);
+    assert.equal((await host.get("/cleanup")).status, 200);
+    assert.equal(disposed, 1);
+    await host.close();
 }
