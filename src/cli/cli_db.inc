@@ -585,13 +585,132 @@ static int sl_db_load_applied(SlArena* arena, SlSqliteConnection* connection,
 
 static bool sl_db_sql_script_has_sql(const char* sql, size_t length)
 {
+    bool line_comment = false;
+    bool block_comment = false;
     for (size_t index = 0U; index < length; index += 1U) {
         char ch = sql[index];
+        if (line_comment) {
+            if (ch == '\r' || ch == '\n') {
+                line_comment = false;
+            }
+            continue;
+        }
+        if (block_comment) {
+            if (ch == '*' && index + 1U < length && sql[index + 1U] == '/') {
+                block_comment = false;
+                index += 1U;
+            }
+            continue;
+        }
+        if (ch == '-' && index + 1U < length && sql[index + 1U] == '-') {
+            line_comment = true;
+            index += 1U;
+            continue;
+        }
+        if (ch == '/' && index + 1U < length && sql[index + 1U] == '*') {
+            block_comment = true;
+            index += 1U;
+            continue;
+        }
         if (ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n') {
             return true;
         }
     }
     return false;
+}
+
+static char sl_db_ascii_lower(char ch)
+{
+    if (ch >= 'A' && ch <= 'Z') {
+        return (char)(ch - 'A' + 'a');
+    }
+    return ch;
+}
+
+static bool sl_db_sql_word_equal(const char* text, size_t start, size_t end, const char* expected,
+                                 size_t expected_length)
+{
+    if (end < start || end - start != expected_length) {
+        return false;
+    }
+    for (size_t index = 0U; index < expected_length; index += 1U) {
+        if (sl_db_ascii_lower(text[start + index]) != expected[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static size_t sl_db_sql_skip_space(const char* text, size_t length, size_t index)
+{
+    while (index < length) {
+        char ch = text[index];
+        if (ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n') {
+            break;
+        }
+        index += 1U;
+    }
+    return index;
+}
+
+static size_t sl_db_sql_read_word_end(const char* text, size_t length, size_t index)
+{
+    while (index < length) {
+        char ch = text[index];
+        if (!((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+              (ch >= '0' && ch <= '9') || ch == '_'))
+        {
+            break;
+        }
+        index += 1U;
+    }
+    return index;
+}
+
+static bool sl_db_sql_statement_is_trigger(const char* text, size_t length)
+{
+    size_t start = sl_db_sql_skip_space(text, length, 0U);
+    size_t end = sl_db_sql_read_word_end(text, length, start);
+    if (!sl_db_sql_word_equal(text, start, end, "create", sizeof("create") - 1U)) {
+        return false;
+    }
+    start = sl_db_sql_skip_space(text, length, end);
+    end = sl_db_sql_read_word_end(text, length, start);
+    if (sl_db_sql_word_equal(text, start, end, "temp", sizeof("temp") - 1U) ||
+        sl_db_sql_word_equal(text, start, end, "temporary", sizeof("temporary") - 1U))
+    {
+        start = sl_db_sql_skip_space(text, length, end);
+        end = sl_db_sql_read_word_end(text, length, start);
+    }
+    return sl_db_sql_word_equal(text, start, end, "trigger", sizeof("trigger") - 1U);
+}
+
+static bool sl_db_sql_statement_ends_with_end(const char* text, size_t length)
+{
+    size_t end = length;
+    while (end > 0U) {
+        char ch = text[end - 1U];
+        if (ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n') {
+            break;
+        }
+        end -= 1U;
+    }
+    if (end == 0U) {
+        return false;
+    }
+    {
+        size_t start = end;
+        while (start > 0U) {
+            char ch = text[start - 1U];
+            if (!((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+                  (ch >= '0' && ch <= '9') || ch == '_'))
+            {
+                break;
+            }
+            start -= 1U;
+        }
+        return sl_db_sql_word_equal(text, start, end, "end", sizeof("end") - 1U);
+    }
 }
 
 static SlStatus sl_db_sqlite_transaction_exec_script(SlArena* arena, SlSqliteTransaction* tx,
@@ -600,6 +719,8 @@ static SlStatus sl_db_sqlite_transaction_exec_script(SlArena* arena, SlSqliteTra
     const char* text = sql.ptr;
     size_t statement_start = 0U;
     bool in_string = false;
+    bool line_comment = false;
+    bool block_comment = false;
     char quote = '\0';
 
     if (text == NULL) {
@@ -610,6 +731,19 @@ static SlStatus sl_db_sqlite_transaction_exec_script(SlArena* arena, SlSqliteTra
         char ch = '\0';
         if (!at_end) {
             ch = text[index];
+        }
+        if (!at_end && line_comment) {
+            if (ch == '\r' || ch == '\n') {
+                line_comment = false;
+            }
+            continue;
+        }
+        if (!at_end && block_comment) {
+            if (ch == '*' && index + 1U < sql.length && text[index + 1U] == '/') {
+                block_comment = false;
+                index += 1U;
+            }
+            continue;
         }
         if (!at_end && in_string) {
             if (ch == quote) {
@@ -622,6 +756,16 @@ static SlStatus sl_db_sqlite_transaction_exec_script(SlArena* arena, SlSqliteTra
             }
             continue;
         }
+        if (!at_end && ch == '-' && index + 1U < sql.length && text[index + 1U] == '-') {
+            line_comment = true;
+            index += 1U;
+            continue;
+        }
+        if (!at_end && ch == '/' && index + 1U < sql.length && text[index + 1U] == '*') {
+            block_comment = true;
+            index += 1U;
+            continue;
+        }
         if (!at_end && (ch == '\'' || ch == '"')) {
             in_string = true;
             quote = ch;
@@ -629,6 +773,12 @@ static SlStatus sl_db_sqlite_transaction_exec_script(SlArena* arena, SlSqliteTra
         }
         if (at_end || ch == ';') {
             size_t statement_length = index - statement_start;
+            if (!at_end && sl_db_sql_statement_is_trigger(text + statement_start,
+                                                          statement_length) &&
+                !sl_db_sql_statement_ends_with_end(text + statement_start, statement_length))
+            {
+                continue;
+            }
             if (sl_db_sql_script_has_sql(text + statement_start, statement_length)) {
                 SlStatus status = sl_sqlite_transaction_exec(
                     arena, tx, sl_str_from_parts(text + statement_start, statement_length), NULL,

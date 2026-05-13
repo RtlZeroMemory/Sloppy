@@ -81,16 +81,16 @@ function Wait-SqlServerHostConnection {
     throw "UNAVAILABLE: SQL Server host ODBC connection did not become ready before timeout."
 }
 
-if (-not $NoDocker) {
-    Assert-DockerAvailable
-    docker compose -f $composeFile up -d
-
-    Wait-SqlServerHostConnection -Database "master"
-    Invoke-SqlServerHostQuery -Database "master" -Query "if db_id(N'sloppy_test') is null create database sloppy_test"
-    Wait-SqlServerHostConnection -Database "sloppy_test"
-}
-
 try {
+    if (-not $NoDocker) {
+        Assert-DockerAvailable
+        docker compose -f $composeFile up -d
+
+        Wait-SqlServerHostConnection -Database "master"
+        Invoke-SqlServerHostQuery -Database "master" -Query "if db_id(N'sloppy_test') is null create database sloppy_test"
+        Wait-SqlServerHostConnection -Database "sloppy_test"
+    }
+
     & (Join-Path $PSScriptRoot "dev.ps1") build -Preset $Preset
     ctest --test-dir (Join-Path $repoRoot "build\$Preset") --output-on-failure -R "data\.sqlserver\.live_provider|conformance\.sqlserver\.(native_live|bridge_live)"
 }

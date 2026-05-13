@@ -99,6 +99,17 @@ if(NOT json_result EQUAL 0 OR
     message(FATAL_ERROR "sloppy orm migration status JSON did not report current/applied\nstdout:\n${json_stdout}\nstderr:\n${json_stderr}")
 endif()
 
+file(WRITE "${work_dir}/migrations/0002_users_trigger.sql" "create trigger users_ai after insert on users begin\n  -- semicolons in trigger comments must stay inside the trigger body;\n  update users set email = lower(new.email) where id = new.id;\nend;\n")
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration apply "${work_dir}/compiled" --provider main
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE trigger_apply_result
+    OUTPUT_VARIABLE trigger_apply_stdout
+    ERROR_VARIABLE trigger_apply_stderr)
+if(NOT trigger_apply_result EQUAL 0 OR NOT trigger_apply_stdout MATCHES "\\[applied\\] 0002_users_trigger\\.sql")
+    message(FATAL_ERROR "sloppy orm migration apply did not apply SQLite trigger migration\nstdout:\n${trigger_apply_stdout}\nstderr:\n${trigger_apply_stderr}")
+endif()
+
 file(APPEND "${work_dir}/migrations/0001_create_users.sql" "\n-- tamper\n")
 execute_process(
     COMMAND "${SLOPPY_CLI}" orm migration status "${work_dir}/compiled" --provider main
