@@ -39,6 +39,7 @@ struct SlV8NetRequest;
 struct SlV8OsRequest;
 struct SlV8WorkerRequest;
 struct SlV8JsWorker;
+struct SlEngineWebSocketSession;
 
 struct SlV8SourceMapLineState
 {
@@ -276,6 +277,7 @@ struct SlV8Engine
     SlProviderInstanceExecutor sqlite_executor = {};
     std::array<SlProviderExecutorSlot, 32U> sqlite_slots = {};
     bool sqlite_executor_initialized = false;
+    std::vector<SlEngineWebSocketSession*> websocket_sessions;
 };
 
 bool sl_v8_runtime_feature_active(const SlV8Engine* backend, SlRuntimeFeatureId id);
@@ -320,6 +322,7 @@ void sl_v8_workers_dispose(SlV8Engine* backend);
 bool sl_v8_install_ffi_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                   v8::Local<v8::Object> sloppy);
 void sl_v8_ffi_dispose(SlV8Engine* backend);
+void sl_v8_websocket_dispose(SlV8Engine* backend);
 
 bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                      v8::Local<v8::Object> data);

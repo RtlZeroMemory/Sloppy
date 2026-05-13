@@ -17,6 +17,7 @@
 #include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+#include <string.h>
 #include <uv.h>
 
 #define SL_HTTP2_PREFACE_BYTES 24U
@@ -314,6 +315,12 @@ static SlStatus sl_http_transport_normalize_config(const SlHttpTransportConfig* 
         config.on_request_ready_user = input->on_request_ready_user;
         config.dispatch = input->dispatch;
         config.dispatch_user = input->dispatch_user;
+        config.websocket_upgrade = input->websocket_upgrade;
+        config.websocket_upgrade_user = input->websocket_upgrade_user;
+        config.websocket_open = input->websocket_open;
+        config.websocket_open_user = input->websocket_open_user;
+        config.websocket_frame = input->websocket_frame;
+        config.websocket_frame_user = input->websocket_frame_user;
     }
 
     if (config.max_request_wire_body_bytes == 0U) {
@@ -905,6 +912,8 @@ static SlStatus sl_http_transport_http2_flush_output(SlHttpTransportConnection* 
 static SlStatus sl_http_transport_http2_receive(SlHttpTransportConnection* connection,
                                                 SlBytes bytes, SlDiag* out_diag);
 static void sl_http_transport_fail_and_close(SlHttpTransportConnection* connection, SlDiag* diag);
+static SlStatus sl_http_transport_write_error_response(SlHttpTransportConnection* connection,
+                                                       uint16_t status_code, SlDiag* out_diag);
 
 static bool sl_http_transport_request_terminal(SlHttpRequestState state)
 {
@@ -1276,11 +1285,53 @@ static void sl_http_transport_reset_request_state(SlHttpTransportConnection* con
     connection->close_after_write = false;
     connection->keep_alive_after_write = false;
     connection->streaming_response = false;
+    connection->websocket_upgraded = false;
+    connection->websocket_selected_protocol = sl_str_empty();
     connection->active_response = (SlHttpResponse){0};
     connection->stream_readable_adapter = (SlHttpResponseStreamReadable){0};
     connection->stream_readable = (SlReadableStream){0};
     connection->stream_chunks_written = 0U;
     connection->stream_final_written = false;
+    connection->websocket_message_count = 0U;
+    connection->websocket_user_state = NULL;
+}
+
+static void sl_http_transport_begin_websocket_frame_mode(SlHttpTransportConnection* connection)
+{
+    if (connection == NULL) {
+        return;
+    }
+    if (connection->body_reader_started && !connection->body_reader_finished) {
+        sl_http_request_body_reader_close(&connection->body_reader, NULL);
+    }
+    if (connection->request_started) {
+        sl_http_request_close(&connection->request, NULL);
+    }
+    sl_arena_reset(&connection->request_arena);
+    sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_ARENA_RESETS, 1U);
+    sl_byte_builder_init_fixed(&connection->accumulation_builder, connection->accumulation,
+                               connection->accumulation_capacity);
+    connection->request = (SlHttpRequestLifecycle){0};
+    connection->body_reader = (SlHttpBodyReader){0};
+    connection->accumulation_length = 0U;
+    connection->response_length = 0U;
+    connection->head_length = 0U;
+    connection->expected_body_length = 0U;
+    connection->request_content_type = sl_str_empty();
+    connection->request_started = false;
+    connection->request_is_chunked = false;
+    connection->body_reader_started = false;
+    connection->body_reader_finished = false;
+    connection->write_started = false;
+    connection->write_completed = false;
+    connection->keep_alive_after_write = false;
+    connection->streaming_response = false;
+    connection->active_response = (SlHttpResponse){0};
+    connection->stream_readable_adapter = (SlHttpResponseStreamReadable){0};
+    connection->stream_readable = (SlReadableStream){0};
+    connection->stream_chunks_written = 0U;
+    connection->stream_final_written = false;
+    connection->websocket_message_count = 0U;
 }
 
 static SlStatus sl_http_transport_builder_append_cstr(SlByteBuilder* builder, const char* text)
@@ -2375,6 +2426,48 @@ static void sl_http_transport_complete_write(SlHttpPlatformConnection* platform,
         return;
     }
 
+    if (connection->websocket_upgraded) {
+        SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+        bool completed_upgrade_request = false;
+        connection->write_completed = true;
+        if (connection->request_started &&
+            !sl_http_transport_request_terminal(connection->request.state))
+        {
+            if (status != 0) {
+                sl_http_connection_fail(&connection->core, NULL);
+                sl_http_request_fail(&connection->request, NULL);
+                sl_http_transport_connection_close(connection, NULL);
+                return;
+            }
+            sl_http_request_complete(&connection->request, NULL);
+            completed_upgrade_request = true;
+        }
+        if (status != 0 || connection->close_after_write ||
+            connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING)
+        {
+            sl_http_transport_connection_close(connection, NULL);
+            return;
+        }
+        if (completed_upgrade_request) {
+            connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_UPGRADED;
+            if (server != NULL && server->config.websocket_open != NULL) {
+                SlStatus open_status = server->config.websocket_open(
+                    connection, &connection->request_arena, &connection->request, &diag,
+                    server->config.websocket_open_user);
+                if (!sl_status_is_ok(open_status)) {
+                    sl_http_transport_fail_and_close(connection, &diag);
+                    return;
+                }
+                if (connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE) {
+                    return;
+                }
+            }
+            sl_http_transport_begin_websocket_frame_mode(connection);
+        }
+        connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_UPGRADED;
+        return;
+    }
+
     if (connection->streaming_response && status == 0 && !connection->stream_final_written) {
         if (!sl_status_is_ok(sl_http_transport_write_stream_next(connection, NULL))) {
             if (connection->request_started) {
@@ -3264,6 +3357,126 @@ static SlStatus sl_http_transport_try_h2c_upgrade(SlHttpTransportConnection* con
     return sl_http_transport_h2c_upgrade_response(connection, http2_bytes, out_diag);
 }
 
+static bool sl_http_transport_request_is_websocket_upgrade(SlHttpTransportConnection* connection)
+{
+    SlHttpRequestHead* head = connection == NULL ? NULL : &connection->request.head;
+    SlStr upgrade = {0};
+
+    if (head == NULL) {
+        return false;
+    }
+    if (!sl_http_transport_header_value(head, sl_str_from_cstr("Upgrade"), &upgrade)) {
+        return false;
+    }
+    return sl_str_equal_ci_ascii(sl_http_transport_trim_ascii_space(upgrade),
+                                 sl_str_from_cstr("websocket"));
+}
+
+static SlStatus
+sl_http_transport_write_websocket_handshake(SlHttpTransportConnection* connection,
+                                            const SlWebSocketHandshakeResult* result,
+                                            SlDiag* out_diag)
+{
+    SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+
+    if (connection == NULL || result == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (result->http_status != 101U) {
+        return sl_http_transport_write_error_response(connection, result->http_status, out_diag);
+    }
+    if (connection->request.state == SL_HTTP_REQUEST_STATE_DISPATCHING) {
+        SlStatus status = sl_http_request_begin_write(&connection->request, out_diag);
+        if (!sl_status_is_ok(status)) {
+            sl_http_transport_store_diag(connection, out_diag);
+            return status;
+        }
+    }
+    if (result->response_bytes.ptr == NULL || result->response_bytes.length == 0U) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_SERIALIZATION_FAILED,
+            SL_STATUS_INVALID_ARGUMENT,
+            sl_http_transport_literal("WebSocket handshake response is empty",
+                                      sizeof("WebSocket handshake response is empty") - 1U),
+            sl_http_transport_literal("accepted upgrades must produce a 101 response",
+                                      sizeof("accepted upgrades must produce a 101 response") -
+                                          1U));
+    }
+    if (result->response_bytes.length > UINT_MAX ||
+        (server != NULL && result->response_bytes.length > server->config.max_pending_write_bytes))
+    {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_BACKPRESSURE, SL_STATUS_CAPACITY_EXCEEDED,
+            sl_http_transport_literal("WebSocket handshake exceeded pending write cap",
+                                      sizeof("WebSocket handshake exceeded pending write cap") -
+                                          1U),
+            sl_http_transport_literal("101 response bytes must fit the pending write cap",
+                                      sizeof("101 response bytes must fit the pending write cap") -
+                                          1U));
+    }
+
+    connection->response_length = result->response_bytes.length;
+    connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE;
+    connection->websocket_upgraded = true;
+    connection->websocket_selected_protocol = result->selected_protocol;
+    connection->keep_alive_after_write = false;
+    connection->close_after_write = false;
+    return sl_http_transport_start_write_bytes(connection, result->response_bytes, out_diag);
+}
+
+static SlStatus sl_http_transport_try_websocket_upgrade(SlHttpTransportConnection* connection,
+                                                        bool* out_upgraded, SlDiag* out_diag)
+{
+    SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+    SlWebSocketHandshakeResult result = {0};
+    SlDiag upgrade_diag = {0};
+    SlStatus status;
+
+    if (out_upgraded != NULL) {
+        *out_upgraded = false;
+    }
+    if (connection == NULL || server == NULL || out_upgraded == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!sl_http_transport_request_is_websocket_upgrade(connection)) {
+        return sl_status_ok();
+    }
+    *out_upgraded = true;
+    status = sl_http_request_begin_dispatch(&connection->request, out_diag);
+    if (!sl_status_is_ok(status)) {
+        sl_http_transport_store_diag(connection, out_diag);
+        return status;
+    }
+    connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_DISPATCHING;
+    if (server->config.websocket_upgrade == NULL) {
+        sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_UNSUPPORTED_BODY, SL_STATUS_UNSUPPORTED,
+            sl_http_transport_literal("WebSocket Upgrade is not configured",
+                                      sizeof("WebSocket Upgrade is not configured") - 1U),
+            sl_http_transport_literal("configure a WebSocket upgrade callback before listening",
+                                      sizeof("configure a WebSocket upgrade callback before "
+                                             "listening") -
+                                          1U));
+        return sl_http_transport_write_error_response(connection, 501U, out_diag);
+    }
+
+    status = server->config.websocket_upgrade(connection, &connection->request_arena,
+                                              &connection->request, &result, &upgrade_diag,
+                                              server->config.websocket_upgrade_user);
+    if (!sl_status_is_ok(status)) {
+        uint16_t safe_status = sl_http_transport_status_for_failure(status, &upgrade_diag);
+        sl_http_transport_store_diag(connection, &upgrade_diag);
+        result.http_status = safe_status;
+    }
+    else if (result.http_status == 0U) {
+        result.http_status = 500U;
+    }
+    if (result.http_status != 101U && upgrade_diag.code != SL_DIAG_NONE) {
+        sl_http_transport_store_diag(connection, &upgrade_diag);
+    }
+    return sl_http_transport_write_websocket_handshake(connection, &result, out_diag);
+}
+
 static size_t sl_http_transport_find_header_end(SlBytes bytes)
 {
     size_t index = 0U;
@@ -3746,6 +3959,13 @@ static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* c
         bool h2c_upgraded = false;
         status = sl_http_transport_try_h2c_upgrade(connection, &h2c_upgraded, out_diag);
         if (!sl_status_is_ok(status) || h2c_upgraded) {
+            return status;
+        }
+    }
+    {
+        bool websocket_upgraded = false;
+        status = sl_http_transport_try_websocket_upgrade(connection, &websocket_upgraded, out_diag);
+        if (!sl_status_is_ok(status) || websocket_upgraded) {
             return status;
         }
     }
@@ -5156,6 +5376,195 @@ SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connectio
     return sl_status_ok();
 }
 
+SlStatus sl_http_transport_websocket_send(SlHttpTransportConnection* connection,
+                                          const SlWebSocketFrameWriteOptions* options,
+                                          SlDiag* out_diag)
+{
+    SlByteBuilder builder = {0};
+    SlStatus status;
+
+    sl_http_transport_clear_diag(out_diag);
+    if (connection == NULL || options == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!connection->websocket_upgraded ||
+        connection->state != SL_HTTP_TRANSPORT_CONNECTION_STATE_UPGRADED)
+    {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_APP_LIFECYCLE, SL_STATUS_INVALID_STATE,
+            sl_http_transport_literal("WebSocket frame write state is invalid",
+                                      sizeof("WebSocket frame write state is invalid") - 1U),
+            sl_http_transport_literal("send frames only after the HTTP Upgrade is complete",
+                                      sizeof("send frames only after the HTTP Upgrade is "
+                                             "complete") -
+                                          1U));
+    }
+    status = sl_byte_builder_init_fixed(&builder, connection->response_storage,
+                                        connection->response_storage_size);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_websocket_write_frame(&builder, options, out_diag);
+    if (!sl_status_is_ok(status)) {
+        sl_http_transport_store_diag(connection, out_diag);
+        return status;
+    }
+    connection->response_length = sl_byte_builder_length(&builder);
+    connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE;
+    connection->write_started = true;
+    connection->write_completed = false;
+    return sl_http_transport_start_write_bytes(
+        connection, sl_bytes_from_parts(connection->response_storage, connection->response_length),
+        out_diag);
+}
+
+static SlStatus sl_http_transport_websocket_send_close(SlHttpTransportConnection* connection,
+                                                       uint16_t close_code, SlDiag* out_diag)
+{
+    unsigned char payload[2];
+    SlWebSocketFrameWriteOptions options = {0};
+
+    payload[0] = (unsigned char)((close_code >> 8U) & 0xFFU);
+    payload[1] = (unsigned char)(close_code & 0xFFU);
+    options.fin = true;
+    options.opcode = SL_WEBSOCKET_OPCODE_CLOSE;
+    options.payload = sl_bytes_from_parts(payload, sizeof(payload));
+    connection->close_after_write = true;
+    return sl_http_transport_websocket_send(connection, &options, out_diag);
+}
+
+static SlStatus sl_http_transport_websocket_dispatch_frame(SlHttpTransportConnection* connection,
+                                                           const SlWebSocketFrame* frame,
+                                                           SlDiag* out_diag)
+{
+    SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+    SlStatus status;
+
+    if (connection == NULL || frame == NULL || server == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (frame->opcode == SL_WEBSOCKET_OPCODE_PING) {
+        SlWebSocketFrameWriteOptions options = {0};
+        options.fin = true;
+        options.opcode = SL_WEBSOCKET_OPCODE_PONG;
+        options.payload = frame->payload;
+        return sl_http_transport_websocket_send(connection, &options, out_diag);
+    }
+    if (frame->opcode == SL_WEBSOCKET_OPCODE_CLOSE) {
+        SlWebSocketFrameWriteOptions options = {0};
+        if (server->config.websocket_frame != NULL) {
+            SlStatus callback_status =
+                server->config.websocket_frame(connection, &connection->request_arena, frame,
+                                               out_diag, server->config.websocket_frame_user);
+            if (!sl_status_is_ok(callback_status)) {
+                return callback_status;
+            }
+        }
+        options.fin = true;
+        options.opcode = SL_WEBSOCKET_OPCODE_CLOSE;
+        options.payload = frame->payload;
+        connection->close_after_write = true;
+        return sl_http_transport_websocket_send(connection, &options, out_diag);
+    }
+    if (frame->opcode == SL_WEBSOCKET_OPCODE_PONG) {
+        return sl_status_ok();
+    }
+    if (!frame->fin || frame->opcode == SL_WEBSOCKET_OPCODE_CONTINUATION) {
+        return sl_http_transport_websocket_send_close(connection, 1003U, out_diag);
+    }
+    if (server->config.websocket_frame == NULL) {
+        return sl_http_transport_websocket_send_close(connection, 1003U, out_diag);
+    }
+
+    status = server->config.websocket_frame(connection, &connection->request_arena, frame, out_diag,
+                                            server->config.websocket_frame_user);
+    if (!sl_status_is_ok(status)) {
+        return sl_http_transport_websocket_send_close(connection, 1011U, out_diag);
+    }
+    connection->websocket_message_count += 1U;
+    return sl_status_ok();
+}
+
+static SlStatus sl_http_transport_websocket_receive(SlHttpTransportConnection* connection,
+                                                    SlBytes bytes, SlDiag* out_diag)
+{
+    SlHttpTransportServer* server = sl_http_transport_connection_server(connection);
+    SlStatus status;
+
+    if (connection == NULL || server == NULL || (bytes.ptr == NULL && bytes.length != 0U)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE) {
+        return sl_http_transport_connection_diag(
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_BACKPRESSURE, SL_STATUS_INVALID_STATE,
+            sl_http_transport_literal("WebSocket frame arrived while a write is pending",
+                                      sizeof("WebSocket frame arrived while a write is pending") -
+                                          1U),
+            sl_http_transport_literal("the native transport serializes WebSocket writes",
+                                      sizeof("the native transport serializes WebSocket writes") -
+                                          1U));
+    }
+    status = sl_http_transport_append_bytes(connection, bytes, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    while (connection->accumulation_length != 0U) {
+        SlWebSocketFrameParseOptions options = {0};
+        SlWebSocketFrameParseResult parsed = {0};
+        SlBytes accumulated =
+            sl_bytes_from_parts(connection->accumulation, connection->accumulation_length);
+        uint16_t close_code = 1002U;
+        size_t remaining = 0U;
+
+        sl_arena_reset(&connection->request_arena);
+        options.require_mask = true;
+        options.max_payload_bytes = server->config.parse.max_body_length;
+        status = sl_websocket_parse_frame(&connection->request_arena, accumulated, &options,
+                                          &parsed, out_diag);
+        if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
+            return sl_status_ok();
+        }
+        if (!sl_status_is_ok(status)) {
+            if (parsed.close_code != 0U) {
+                close_code = parsed.close_code;
+            }
+            return sl_http_transport_websocket_send_close(connection, close_code, out_diag);
+        }
+        if (parsed.consumed == 0U || parsed.consumed > connection->accumulation_length) {
+            return sl_http_transport_connection_diag(
+                connection, out_diag, SL_DIAG_INVALID_HTTP_REQUEST, SL_STATUS_INTERNAL,
+                sl_http_transport_literal("WebSocket frame parser made no progress",
+                                          sizeof("WebSocket frame parser made no progress") - 1U),
+                sl_http_transport_literal("frame parsing must consume a complete frame",
+                                          sizeof("frame parsing must consume a complete frame") -
+                                              1U));
+        }
+        remaining = connection->accumulation_length - parsed.consumed;
+        if (remaining != 0U) {
+            for (size_t index = 0U; index < remaining; index += 1U) {
+                connection->accumulation[index] = connection->accumulation[parsed.consumed + index];
+            }
+        }
+        connection->accumulation_length = remaining;
+        sl_byte_builder_init_fixed(&connection->accumulation_builder, connection->accumulation,
+                                   connection->accumulation_capacity);
+        status = sl_byte_builder_append_bytes(
+            &connection->accumulation_builder,
+            sl_bytes_from_parts(connection->accumulation, connection->accumulation_length));
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_http_transport_websocket_dispatch_frame(connection, &parsed.frame, out_diag);
+        if (!sl_status_is_ok(status) ||
+            connection->state == SL_HTTP_TRANSPORT_CONNECTION_STATE_WRITING_RESPONSE)
+        {
+            return status;
+        }
+    }
+    return sl_status_ok();
+}
+
 SlStatus sl_http_transport_connection_feed_test(SlHttpTransportConnection* connection,
                                                 SlBytes bytes, SlDiag* out_diag)
 {
@@ -5168,6 +5577,9 @@ SlStatus sl_http_transport_connection_feed_test(SlHttpTransportConnection* conne
     }
     if (connection->http2_mode) {
         return sl_http_transport_http2_receive(connection, bytes, out_diag);
+    }
+    if (connection->websocket_upgraded) {
+        return sl_http_transport_websocket_receive(connection, bytes, out_diag);
     }
     if (connection->state != SL_HTTP_TRANSPORT_CONNECTION_STATE_ACCEPTED &&
         connection->state != SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE &&

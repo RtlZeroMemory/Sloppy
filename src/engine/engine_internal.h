@@ -41,6 +41,14 @@ SlStatus sl_engine_v8_validate_registered_handlers(SlEngine* engine, const SlPla
 SlStatus sl_engine_v8_call_registered_handler_with_context(
     SlEngine* engine, SlArena* arena, SlHandlerId handler_id,
     const SlHttpRequestContext* request_context, SlEngineResult* out_result, SlDiag* out_diag);
+SlStatus sl_engine_v8_call_registered_websocket_handler_with_context(
+    SlEngine* engine, SlArena* arena, SlHandlerId handler_id,
+    const SlHttpRequestContext* request_context, const SlEngineWebSocketBridge* bridge,
+    SlEngineWebSocketSession** out_session, SlDiag* out_diag);
+SlStatus sl_engine_v8_websocket_receive(SlEngine* engine, SlEngineWebSocketSession* session,
+                                        const SlWebSocketFrame* frame, SlDiag* out_diag);
+SlStatus sl_engine_v8_websocket_close(SlEngine* engine, SlEngineWebSocketSession* session,
+                                      uint16_t code, SlStr reason, SlDiag* out_diag);
 #endif
 
 #ifdef __cplusplus

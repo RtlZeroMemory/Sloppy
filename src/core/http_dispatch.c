@@ -277,6 +277,19 @@ static SlStatus sl_http_dispatch_unsupported_method(SlArena* arena, SlDiag* out_
         SL_STATUS_UNSUPPORTED);
 }
 
+static SlStatus sl_http_dispatch_websocket_requires_upgrade(SlArena* arena, SlDiag* out_diag)
+{
+    return sl_http_dispatch_write_diag(
+        arena, out_diag, SL_DIAG_INVALID_HTTP_REQUEST,
+        sl_http_dispatch_literal("WebSocket route requires an HTTP Upgrade request",
+                                 sizeof("WebSocket route requires an HTTP Upgrade request") - 1U),
+        sl_http_dispatch_literal("send Upgrade: websocket with the required WebSocket headers",
+                                 sizeof("send Upgrade: websocket with the required WebSocket "
+                                        "headers") -
+                                     1U),
+        SL_STATUS_INVALID_ARGUMENT);
+}
+
 static bool sl_http_plan_route_is_runnable(const SlPlanRoute* route)
 {
     return route != NULL && sl_plan_route_method_runnable(route->method);
@@ -2989,6 +3002,72 @@ sl_http_dispatch_find_route(SlArena* arena, const SlHttpDispatchTable* dispatch_
                                                 out_has_route_match);
 }
 
+SlStatus sl_http_dispatch_match_route(SlArena* arena, const SlPlan* plan,
+                                      const SlHttpDispatchTable* dispatch_table,
+                                      const SlHttpRequestHead* request,
+                                      SlHttpDispatchRouteMatch* out_match, SlDiag* out_diag)
+{
+    const SlHttpRouteBinding* binding = NULL;
+    SlRouteMatch route_match = {0};
+    bool method_mismatch = false;
+    bool has_route_match = false;
+    SlStatus status;
+
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+    if (out_match != NULL) {
+        *out_match = (SlHttpDispatchRouteMatch){0};
+    }
+    if (arena == NULL || plan == NULL || dispatch_table == NULL || request == NULL ||
+        out_match == NULL)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_http_dispatch_validate_table(dispatch_table);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_http_dispatch_request_method_runnable(request->method)) {
+        return sl_http_dispatch_unsupported_method(arena, out_diag);
+    }
+    if (request->path.length == 0U || request->path.ptr == NULL || request->path.ptr[0] != '/') {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding, &method_mismatch,
+                                         &route_match, &has_route_match);
+    if (!sl_status_is_ok(status)) {
+        if (sl_status_code(status) == SL_STATUS_INTERNAL) {
+            return sl_http_dispatch_write_diag(
+                arena, out_diag, SL_DIAG_ROUTE_VALIDATE_MISMATCH,
+                sl_http_dispatch_literal("compiled and classic route dispatch disagreed",
+                                         sizeof("compiled and classic route dispatch disagreed") -
+                                             1U),
+                sl_http_dispatch_literal("rebuild route artifacts or force classic dispatch for "
+                                         "triage",
+                                         sizeof("rebuild route artifacts or force classic dispatch "
+                                                "for triage") -
+                                             1U),
+                SL_STATUS_INTERNAL);
+        }
+        return status;
+    }
+
+    out_match->binding = binding;
+    out_match->method_mismatch = method_mismatch;
+    out_match->route_match = route_match;
+    out_match->has_route_match = has_route_match;
+    if (binding != NULL) {
+        if (binding->route_index >= plan->route_count) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        out_match->route = &plan->routes[binding->route_index];
+    }
+    return sl_status_ok();
+}
+
 typedef struct SlHttpDispatchContextNeeds
 {
     bool route_params;
@@ -3353,6 +3432,12 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
                               ? SL_HTTP_PROFILE_COUNTER_CLASSIC_ROUTE_HITS
                               : SL_HTTP_PROFILE_COUNTER_NATIVE_ROUTE_HITS,
                           1U);
+
+    if (binding->route_index < plan->route_count &&
+        sl_plan_route_is_websocket(&plan->routes[binding->route_index]))
+    {
+        return sl_http_dispatch_websocket_requires_upgrade(arena, out_diag);
+    }
 
     if (dispatch_table->handler_cache_trusted && dispatch_table->plan == plan &&
         binding->handler != NULL && binding->handler->id == binding->handler_id &&

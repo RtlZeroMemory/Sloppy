@@ -130,9 +130,9 @@ directly model:
   produced: `mode`, `routesTotal`, `routesIncluded`, `routesOmitted`,
   `operationsComplete`, `operationsPartial`, and `missing`.
 - `x-slop-realtime` / `x-slop-transport` (experimental) — realtime route
-  metadata for SSE and WebSocket-intent routes. WebSocket operations still
-  represent the current unavailable runtime path unless native upgrade
-  execution is added later.
+  metadata for SSE and WebSocket routes. Standard OpenAPI does not model
+  WebSocket message flow, so WebSocket operations remain metadata carriers
+  rather than ordinary HTTP response contracts.
 
 These fields are stable across builds for a given source/compiler pair,
 suitable for diffing.

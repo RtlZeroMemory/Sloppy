@@ -174,6 +174,7 @@
         sloppy_add_http_transport_case(conformance.transport.https_loopback https_loopback)
         sloppy_add_http_transport_case(conformance.transport.http2_h2c http2_h2c)
         sloppy_add_http_transport_case(conformance.transport.http2_h2c_upgrade http2_h2c_upgrade)
+        sloppy_add_http_transport_case(conformance.transport.websocket_upgrade websocket_upgrade)
         sloppy_add_http_transport_case(conformance.transport.http2_tls_alpn http2_tls_alpn)
         sloppy_add_http_transport_case(conformance.transport.https_tls_negative https_tls_negative)
         sloppy_add_http_transport_case(conformance.transport.shutdown_cancel shutdown_cancel)
@@ -192,6 +193,7 @@
         conformance.http.default_dispatch PROPERTIES LABELS "conformance;http")
     sloppy_add_c_unit_test(
         core_http_response core.http.response tests/unit/core/test_http_response.c)
+    sloppy_add_c_unit_test(core_websocket core.websocket tests/unit/core/test_websocket.c)
     sloppy_add_c_unit_test(core_json_profile core.json_profile tests/unit/core/test_json_profile.c)
     sloppy_add_c_unit_test(core_json_writer core.json_writer tests/unit/core/test_json_writer.c)
     sloppy_add_c_unit_test(core_route_pattern core.route.pattern tests/unit/core/test_route.c)
@@ -314,6 +316,9 @@
         tests/fuzz/fuzz_memory_primitives.c memory-primitives)
     sloppy_add_fuzz_seed_replay(
         fuzz_seed_stream fuzz.stream.seed_replay tests/fuzz/fuzz_stream.c stream)
+    sloppy_add_fuzz_seed_replay(
+        fuzz_seed_websocket_frame fuzz.websocket_frame.seed_replay
+        tests/fuzz/fuzz_websocket_frame.c websocket-frame)
     sloppy_add_libfuzzer_target(fuzz_plan_parse_libfuzzer tests/fuzz/fuzz_plan_parse.c)
     sloppy_add_libfuzzer_target(fuzz_route_pattern_libfuzzer tests/fuzz/fuzz_route_pattern.c)
     sloppy_add_libfuzzer_target(fuzz_http2_frame_libfuzzer tests/fuzz/fuzz_http2_frame.c)
@@ -330,6 +335,7 @@
     sloppy_add_libfuzzer_target(
         fuzz_memory_primitives_libfuzzer tests/fuzz/fuzz_memory_primitives.c)
     sloppy_add_libfuzzer_target(fuzz_stream_libfuzzer tests/fuzz/fuzz_stream.c)
+    sloppy_add_libfuzzer_target(fuzz_websocket_frame_libfuzzer tests/fuzz/fuzz_websocket_frame.c)
     sloppy_add_c_unit_test(
         data_common_contract data.common.contract tests/unit/data/test_data_common.c)
     add_test(NAME conformance.data.common_contract COMMAND $<TARGET_FILE:data_common_contract>)

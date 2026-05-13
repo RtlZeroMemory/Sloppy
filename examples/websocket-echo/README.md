@@ -1,7 +1,9 @@
 # WebSocket Echo
 
-App-host WebSocket echo endpoint with text, JSON, schema validation, origin
-policy, subprotocol selection, and message limits.
+WebSocket echo endpoint with text, JSON, schema validation, origin policy,
+subprotocol selection, and message limits.
 
-Use this example with `TestHost.create(app)`. Native `sloppy run` currently
-returns the documented WebSocket unavailable response.
+Use `TestHost.create(app)` for the full app-host behavior, including JSON
+validation, heartbeat, idle timeout, and queue limits. Native `sloppy run`
+supports HTTP/1.1 Upgrade plus text and binary frame delivery for the same
+route, but does not model the full TestHost helper surface.

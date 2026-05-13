@@ -9,6 +9,7 @@ use crate::diagnostic::Diagnostic;
 use crate::graph::{
     route_parameter_names, route_pattern_has_params, AuthSchemeMetadata, ConfigurationPackageEntry,
     DependencyGraph, ExtractedApp, ProjectKind, RequestBinding, ResponseMetadata,
+    WebSocketOriginsMetadata, WebSocketRouteOptionsMetadata,
 };
 use crate::hash::sha256_hex;
 use crate::route_artifact::{
@@ -252,6 +253,25 @@ fn route_json_response_plan(
 
 fn route_json_mode(value: &Value) -> &str {
     value.get("mode").and_then(Value::as_str).unwrap_or("none")
+}
+
+fn websocket_options_json(options: &WebSocketRouteOptionsMetadata) -> Value {
+    let origins = match &options.origins {
+        Some(WebSocketOriginsMetadata::Any) => json!("*"),
+        Some(WebSocketOriginsMetadata::List(origins)) => json!(origins),
+        None => Value::Null,
+    };
+    json!({
+        "protocols": &options.protocols,
+        "origins": origins,
+        "maxMessageBytes": options.max_message_bytes,
+        "maxSendQueueBytes": options.max_send_queue_bytes,
+        "heartbeatMs": options.heartbeat_ms,
+        "idleTimeoutMs": options.idle_timeout_ms,
+        "closeTimeoutMs": options.close_timeout_ms,
+        "slowClientPolicy": options.slow_client_policy.as_ref(),
+        "compression": options.compression.unwrap_or(false)
+    })
 }
 
 fn route_dispatch_json(
@@ -998,6 +1018,9 @@ pub(crate) fn emit_plan_with_route_artifact(
             if route.kind != "http" {
                 route_json["kind"] = json!(route.kind);
             }
+            if let Some(websocket) = &route.websocket {
+                route_json["websocket"] = websocket_options_json(websocket);
+            }
             if let Some(module) = &route.module {
                 route_json["module"] = json!(module);
             }
@@ -1119,6 +1142,7 @@ pub(crate) fn emit_plan_with_route_artifact(
                 || route.health.is_some()
                 || !route.middleware.is_empty()
                 || route.auth.is_some()
+                || route.websocket.is_some()
                 || route.cors.is_some()
                 || route.summary.is_some()
                 || route.description.is_some()

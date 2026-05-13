@@ -129,9 +129,11 @@ const ws = await host.websocket("/secure/ws")
     .connect();
 ```
 
-Artifact, package, and loopback hosts report
-`SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` with status `501` until a runtime
-lane supports real HTTP Upgrade and frame I/O.
+Artifact, package, and loopback TestHost modes report
+`SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` with status `501` unless the supplied
+runtime host exposes a WebSocket connector. Native `sloppy run` supports real
+HTTP/1.1 Upgrade and frame I/O for V8-backed routes, but those TestHost modes
+do not connect to it automatically.
 
 ## Metrics And Diagnostics
 
@@ -153,7 +155,18 @@ bodies, raw tokens, or user IDs.
 
 ## Runtime Support
 
-The app-host/TestHost lane supports the socket API above. Native `sloppy run`
-does not yet expose a long-lived upgraded socket to V8. Direct HTTP execution
-of a WebSocket route returns `501 SLOPPY_E_REALTIME_WEBSOCKET_UNAVAILABLE`, and
-TestHost runtime modes fail with the explicit unsupported diagnostic.
+The app-host/TestHost lane supports the full socket API above. Native
+`sloppy run` supports HTTP/1.1 Upgrade, `101` handshakes, text and binary frame
+delivery to V8, `sendText`, `sendJson`, `sendBytes`, close frames, and native
+ping-to-pong handling.
+
+Native runtime limits:
+
+- Direct non-Upgrade HTTP calls to a WebSocket route fail because the route
+  requires an Upgrade request.
+- Native handlers receive text and binary messages; app-host-only helpers such
+  as `message.json()`, `message.validate(...)`, ping messages, heartbeat
+  timers, idle timers, and bounded send queues remain TestHost behavior.
+- Protected native WebSocket routes fail closed until auth principal
+  materialization is attached to upgraded connections. Use TestHost for
+  protected WebSocket route behavior.

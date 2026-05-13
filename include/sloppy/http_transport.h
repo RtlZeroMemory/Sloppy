@@ -7,6 +7,7 @@
 #include "sloppy/http_response.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
+#include "sloppy/websocket.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -43,6 +44,18 @@ typedef SlStatus (*SlHttpTransportDispatchFn)(SlHttpTransportConnection* connect
                                               const SlHttpRequestLifecycle* request,
                                               SlHttpResponse* out_response, SlDiag* out_diag,
                                               void* user);
+typedef SlStatus (*SlHttpTransportWebSocketUpgradeFn)(SlHttpTransportConnection* connection,
+                                                      SlArena* arena,
+                                                      const SlHttpRequestLifecycle* request,
+                                                      SlWebSocketHandshakeResult* out_result,
+                                                      SlDiag* out_diag, void* user);
+typedef SlStatus (*SlHttpTransportWebSocketFrameFn)(SlHttpTransportConnection* connection,
+                                                    SlArena* arena, const SlWebSocketFrame* frame,
+                                                    SlDiag* out_diag, void* user);
+typedef SlStatus (*SlHttpTransportWebSocketOpenFn)(SlHttpTransportConnection* connection,
+                                                   SlArena* arena,
+                                                   const SlHttpRequestLifecycle* request,
+                                                   SlDiag* out_diag, void* user);
 
 typedef enum SlHttpTransportServerState
 {
@@ -67,7 +80,8 @@ typedef enum SlHttpTransportConnectionState
     SL_HTTP_TRANSPORT_CONNECTION_STATE_KEEP_ALIVE_IDLE = 7,
     SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSING = 8,
     SL_HTTP_TRANSPORT_CONNECTION_STATE_CLOSED = 9,
-    SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR = 10
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_ERROR = 10,
+    SL_HTTP_TRANSPORT_CONNECTION_STATE_UPGRADED = 11
 } SlHttpTransportConnectionState;
 
 typedef enum SlHttpTransportTlsBackend
@@ -137,6 +151,12 @@ typedef struct SlHttpTransportConfig
     void* on_request_ready_user;
     SlHttpTransportDispatchFn dispatch;
     void* dispatch_user;
+    SlHttpTransportWebSocketUpgradeFn websocket_upgrade;
+    void* websocket_upgrade_user;
+    SlHttpTransportWebSocketOpenFn websocket_open;
+    void* websocket_open_user;
+    SlHttpTransportWebSocketFrameFn websocket_frame;
+    void* websocket_frame_user;
     /*
      * Appended capacity fields preserve the existing public config prefix layout.
      * Raw body bytes retained after the request head while waiting for a complete request.
@@ -183,6 +203,7 @@ struct SlHttpTransportConnection
     bool close_after_write;
     bool keep_alive_after_write;
     bool streaming_response;
+    bool websocket_upgraded;
     bool http2_mode;
     bool http2_dispatcher_started;
     SlHttpResponse active_response;
@@ -191,6 +212,9 @@ struct SlHttpTransportConnection
     SlReadableStream stream_readable;
     size_t stream_chunks_written;
     bool stream_final_written;
+    SlStr websocket_selected_protocol;
+    size_t websocket_message_count;
+    void* websocket_user_state;
     SlDiag last_diag;
     bool slot_claimed;
 };
@@ -243,6 +267,9 @@ SlStatus sl_http_transport_server_dispose(SlHttpTransportServer* server, SlDiag*
 /* Closes an accepted connection exactly once. */
 SlStatus sl_http_transport_connection_close(SlHttpTransportConnection* connection,
                                             SlDiag* out_diag);
+SlStatus sl_http_transport_websocket_send(SlHttpTransportConnection* connection,
+                                          const SlWebSocketFrameWriteOptions* options,
+                                          SlDiag* out_diag);
 /*
  * Internal/test helper that feeds bytes through the same bounded accumulation path used by
  * the platform read callback. Request bytes move through normal lifecycle transitions;

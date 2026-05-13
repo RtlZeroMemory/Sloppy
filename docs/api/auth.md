@@ -150,8 +150,6 @@ app.get("/admin", () => Results.ok({ ok: true }))
 | `scope` / `scopes` | `string \| string[]` | User must have every listed scope. |
 | `role` | `string` | User must have the role. |
 | `roles` | `string[]` | User must have at least one role. |
-| `scope` | `string` | User must have the scope. JWT `scope` strings are split on spaces. |
-| `scopes` | `string[]` | User must have every listed scope. |
 | `claim` | `string` | User must have the claim. |
 | `policy` | `string` | Named policy must return `true`. |
 
