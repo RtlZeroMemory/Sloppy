@@ -216,7 +216,7 @@
             bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.orm bootstrap.stdlib.orm_runtime_classic
             bootstrap.stdlib.orm_runtime_classic_sync bootstrap.stdlib.orm_testhost
-            bootstrap.stdlib.testservices bootstrap.stdlib.cache_platform bootstrap.stdlib.codec
+            bootstrap.stdlib.testservices_runtime bootstrap.stdlib.cache_platform bootstrap.stdlib.codec
             bootstrap.stdlib.auth
             bootstrap.stdlib.ops_management bootstrap.stdlib.ops_properties bootstrap.stdlib.property
             bootstrap.stdlib.os
