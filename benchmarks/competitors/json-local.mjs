@@ -165,6 +165,38 @@ function expectedForScenario(scenario, requestIndex, text, status) {
     : { ok: false, reason: `route-table response did not contain ${expectedRoute}` };
 }
 
+function boundedPreview(value, limit = 512) {
+  const text = String(value ?? "");
+  return text.length <= limit ? text : `${text.slice(0, limit)}...`;
+}
+
+async function profileCounterPreview(server) {
+  if (!server?.profileOutPath) {
+    return "unavailable";
+  }
+  try {
+    const profile = JSON.parse(await fs.readFile(server.profileOutPath, "utf8"));
+    const counters = profile.counters ?? {};
+    return `nativeResponseHits=${counters.nativeResponseHits ?? "unavailable"}, v8HandlerCalls=${counters.v8HandlerCalls ?? "unavailable"}`;
+  } catch {
+    return "unavailable";
+  }
+}
+
+async function validationFailureMessage(scenario, phase, correctness, response, text, server) {
+  const contentType = response.headers.get("content-type") ?? "";
+  const stderrPreview = typeof server?.stderrPreview === "function" ? server.stderrPreview() : "";
+  const counters = await profileCounterPreview(server);
+  return [
+    `${scenario} ${phase} failed: ${correctness.reason}`,
+    `HTTP status: ${response.status}`,
+    `content-type: ${contentType || "missing"}`,
+    `response body preview: ${boundedPreview(text)}`,
+    `Sloppy stderr preview: ${stderrPreview ? boundedPreview(stderrPreview) : "unavailable"}`,
+    `profile counters: ${counters}`,
+  ].join("\n");
+}
+
 function handleScenario(req, res) {
   if (req.method === "GET" && req.url === "/large") {
     const body = JSON.stringify({ items: largeList() });
@@ -350,6 +382,8 @@ async function startSloppyServer(mode, sloppyInfo, profile = null) {
   }
   return {
     baseUrl,
+    profileOutPath: profile?.outPath,
+    stderrPreview: () => stderr,
     close: () =>
       new Promise((resolve) => {
         child.once("exit", resolve);
@@ -396,7 +430,8 @@ async function issueScenarioRequest(baseUrl, scenario, index) {
   return await fetch(`${baseUrl}/route/${index % 1000}`);
 }
 
-async function runScenario(baseUrl, scenario) {
+async function runScenario(server, scenario) {
+  const baseUrl = typeof server === "string" ? server : server.baseUrl;
   let bytes = 0;
   let checksum = 0n;
   for (let i = 0; i < warmupIterations; i += 1) {
@@ -404,7 +439,7 @@ async function runScenario(baseUrl, scenario) {
     const text = await response.text();
     const correctness = expectedForScenario(scenario, i, text, response.status);
     if (!correctness.ok) {
-      throw new Error(`${scenario} warmup failed: ${correctness.reason}`);
+      throw new Error(await validationFailureMessage(scenario, "warmup", correctness, response, text, server));
     }
   }
   const start = performance.now();
@@ -413,7 +448,7 @@ async function runScenario(baseUrl, scenario) {
     const text = await response.text();
     const correctness = expectedForScenario(scenario, i, text, response.status);
     if (!correctness.ok) {
-      throw new Error(`${scenario} failed: ${correctness.reason}`);
+      throw new Error(await validationFailureMessage(scenario, "request", correctness, response, text, server));
     }
     bytes += Buffer.byteLength(text);
     checksum += BigInt(checksumText(text));
@@ -512,7 +547,7 @@ async function runRuntime(name, version, start) {
               scenario: rowName,
               outPath: profilePathFor(name, scenario, repeatIndex),
             });
-            const row = await runScenario(server.baseUrl, scenario);
+            const row = await runScenario(server, scenario);
             row.name = rowName;
             row.repeat = repeatIndex;
             rows.push(row);
@@ -542,7 +577,7 @@ async function runRuntime(name, version, start) {
     for (let repeatIndex = 1; repeatIndex <= repeat; repeatIndex += 1) {
       for (const scenario of scenarios) {
         try {
-          const row = await runScenario(server.baseUrl, scenario);
+          const row = await runScenario(server, scenario);
           row.name = `${runtimeRowPrefix(name)}.${scenarioRowSegment(scenario)}`;
           row.repeat = repeatIndex;
           rows.push(row);
