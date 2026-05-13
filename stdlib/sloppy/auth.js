@@ -422,7 +422,9 @@ async function apiKeyMiddleware(ctx, next, scheme) {
         const authorization = headerValue(ctx, AUTH_HEADER);
         if (typeof authorization === "string" && !/[\r\n,]/u.test(authorization)) {
             const prefix = `${scheme.authorizationScheme} `;
-            key = authorization.startsWith(prefix) ? authorization.slice(prefix.length) : undefined;
+            key = authorization.toLowerCase().startsWith(prefix.toLowerCase())
+                ? authorization.slice(prefix.length)
+                : undefined;
         }
     }
     if (key === undefined) {
@@ -610,7 +612,10 @@ async function verifyStoredSessionCookie(value, scheme) {
     }
     const nextIdleExpiresAt = scheme.idleTimeoutMs === undefined ? undefined : current + scheme.idleTimeoutMs;
     const touched = await scheme.store.touch(sessionId, current, nextIdleExpiresAt);
-    const active = touched ?? record;
+    const active = touched ?? await scheme.store.load(sessionId);
+    if (active === undefined || sessionRecordExpired(active, current)) {
+        return undefined;
+    }
     const user = userFromClaims(active.claims, scheme.principalScheme, scheme.name);
     return Object.freeze({
         user,

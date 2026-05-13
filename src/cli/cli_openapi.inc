@@ -443,9 +443,9 @@ static void sl_cli_openapi_emit_problem_response(FILE* out, uint64_t status, con
     sl_cli_write_u64(out, status);
     sl_cli_write_cstr(out, "\": { \"description\": ");
     sl_cli_json_escape(out, sl_cli_span_cstr(description));
-    sl_cli_write_cstr(out, ", \"content\": { \"application/problem+json\": { \"schema\": ");
-    sl_cli_openapi_emit_problem_schema(out);
-    sl_cli_write_cstr(out, " } } } }");
+    sl_cli_write_cstr(out,
+                      ", \"content\": { \"application/problem+json\": { \"schema\": { \"$ref\": "
+                      "\"#/components/schemas/SlopValidationProblem\" } } } }");
 }
 
 static void sl_cli_openapi_emit_response(FILE* out, const SlCliMetadata* metadata, uint64_t status,

@@ -27,8 +27,8 @@
         "parameters": [],
         "responses": {
           "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" },
-          "401": { "description": "authentication failed", "content": { "application/problem+json": { "schema": { "type": "object", "properties": { "status": { "type": "integer" }, "title": { "type": "string" }, "detail": { "type": "string" } } } } } } },
-          "403": { "description": "authorization failed", "content": { "application/problem+json": { "schema": { "type": "object", "properties": { "status": { "type": "integer" }, "title": { "type": "string" }, "detail": { "type": "string" } } } } } } }
+          "401": { "description": "authentication failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } },
+          "403": { "description": "authorization failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } }
         }
       }
     },
@@ -63,8 +63,8 @@
         "parameters": [],
         "responses": {
           "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" },
-          "401": { "description": "authentication failed", "content": { "application/problem+json": { "schema": { "type": "object", "properties": { "status": { "type": "integer" }, "title": { "type": "string" }, "detail": { "type": "string" } } } } } } },
-          "403": { "description": "authorization failed", "content": { "application/problem+json": { "schema": { "type": "object", "properties": { "status": { "type": "integer" }, "title": { "type": "string" }, "detail": { "type": "string" } } } } } } }
+          "401": { "description": "authentication failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } },
+          "403": { "description": "authorization failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } }
         }
       }
     }

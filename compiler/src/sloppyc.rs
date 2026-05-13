@@ -6543,7 +6543,7 @@ fn extract_expression_statement(
         return Ok(());
     }
 
-    if route_group_require_auth_call(path, &statement.expression, state)? {
+    if route_group_auth_call(path, &statement.expression, state)? {
         return Ok(());
     }
 
@@ -7434,14 +7434,7 @@ fn app_group_call<'a>(
                 current = &member.object;
             }
             "allowAnonymous" => {
-                merge_auth_requirement(
-                    &mut metadata.auth,
-                    AuthRequirementMetadata {
-                        required: false,
-                        allow_anonymous: true,
-                        ..AuthRequirementMetadata::default()
-                    },
-                );
+                merge_auth_requirement(&mut metadata.auth, anonymous_auth_requirement());
                 current = &member.object;
             }
             _ => break,
@@ -8994,7 +8987,7 @@ fn app_auth_policy_call(
     Ok(true)
 }
 
-fn route_group_require_auth_call(
+fn route_group_auth_call(
     path: &Path,
     expression: &Expression<'_>,
     state: &mut AppState,
@@ -9005,13 +8998,15 @@ fn route_group_require_auth_call(
     let Some((receiver, property)) = static_member_name(&call.callee) else {
         return Ok(false);
     };
-    if !matches!(property, "requireAuth" | "requiresAuth")
-        || !state.group_vars.contains_key(receiver)
-    {
+    if !state.group_vars.contains_key(receiver) {
         return Ok(false);
     }
-    let requirement = auth_requirement_from_call(call)
-        .map_err(|diagnostic| diagnostic.with_path(path).with_span(call.span))?;
+    let requirement = match property {
+        "requireAuth" | "requiresAuth" => auth_requirement_from_call(call)
+            .map_err(|diagnostic| diagnostic.with_path(path).with_span(call.span))?,
+        "allowAnonymous" => anonymous_auth_requirement(),
+        _ => return Ok(false),
+    };
     if let Some(group) = state.group_vars.get_mut(receiver) {
         group.auth = Some(requirement);
     }
@@ -12626,13 +12621,21 @@ fn extract_module_function_routes(
             Statement::ExpressionStatement(statement) => {
                 if let Expression::CallExpression(call) = &statement.expression {
                     if let Some((receiver, property)) = static_member_name(&call.callee) {
-                        if property == "requireAuth" && groups.contains_key(receiver) {
-                            let requirement = auth_requirement_from_call(call)
-                                .map_err(|diagnostic| diagnostic.with_path(path))?;
-                            if let Some(group) = groups.get_mut(receiver) {
-                                group.auth = Some(requirement);
+                        if groups.contains_key(receiver) {
+                            let requirement = match property {
+                                "requireAuth" | "requiresAuth" => Some(
+                                    auth_requirement_from_call(call)
+                                        .map_err(|diagnostic| diagnostic.with_path(path))?,
+                                ),
+                                "allowAnonymous" => Some(anonymous_auth_requirement()),
+                                _ => None,
+                            };
+                            if let Some(requirement) = requirement {
+                                if let Some(group) = groups.get_mut(receiver) {
+                                    group.auth = Some(requirement);
+                                }
+                                continue;
                             }
-                            continue;
                         }
                     }
                 }
@@ -13115,49 +13118,43 @@ fn route_metadata_chain<'a>(
                 current = &member.object;
             }
             "allowAnonymous" => {
+                merge_auth_requirement(&mut metadata.auth, anonymous_auth_requirement());
+                current = &member.object;
+            }
+            "authorize" => {
+                let policy = route_name_from_argument(call)?;
                 merge_auth_requirement(
                     &mut metadata.auth,
                     AuthRequirementMetadata {
-                        required: false,
-                        allow_anonymous: true,
+                        required: true,
+                        policy: Some(policy),
                         ..AuthRequirementMetadata::default()
                     },
                 );
                 current = &member.object;
             }
-            "authorize" => {
-                let policy = route_name_from_argument(call)?;
-                metadata
-                    .auth
-                    .get_or_insert_with(|| AuthRequirementMetadata {
-                        required: true,
-                        ..AuthRequirementMetadata::default()
-                    })
-                    .policy = Some(policy);
-                current = &member.object;
-            }
             "requiresScope" => {
                 let scopes = route_tags_from_arguments(call)?;
-                metadata
-                    .auth
-                    .get_or_insert_with(|| AuthRequirementMetadata {
+                merge_auth_requirement(
+                    &mut metadata.auth,
+                    AuthRequirementMetadata {
                         required: true,
+                        scopes,
                         ..AuthRequirementMetadata::default()
-                    })
-                    .scopes
-                    .extend(scopes);
+                    },
+                );
                 current = &member.object;
             }
             "requiresRole" => {
                 let roles = route_tags_from_arguments(call)?;
-                metadata
-                    .auth
-                    .get_or_insert_with(|| AuthRequirementMetadata {
+                merge_auth_requirement(
+                    &mut metadata.auth,
+                    AuthRequirementMetadata {
                         required: true,
+                        roles,
                         ..AuthRequirementMetadata::default()
-                    })
-                    .roles
-                    .extend(roles);
+                    },
+                );
                 current = &member.object;
             }
             "accepts" => {
@@ -13201,6 +13198,14 @@ fn merge_auth_requirement(
     extend_unique(&mut existing.claims, incoming.claims);
     if existing.policy.is_none() {
         existing.policy = incoming.policy;
+    }
+}
+
+fn anonymous_auth_requirement() -> AuthRequirementMetadata {
+    AuthRequirementMetadata {
+        required: false,
+        allow_anonymous: true,
+        ..AuthRequirementMetadata::default()
     }
 }
 

@@ -62,6 +62,7 @@ Registers a JWT bearer provider for `Authorization: Bearer <token>`.
 | `secret` | `string \| Config.required(...)` | HS256 signing secret. Use config references for app secrets. Compiler extraction requires `Config.required(...)`. |
 | `algorithms` | `string \| string[]?` | Algorithm allowlist. Defaults to `HS256`. `RS256` is supported only with static JWK keys and WebCrypto availability. |
 | `keys` | `object[]?` | Static key list for `kid` lookup. HS256 entries use `secret`; RS256 entries use a public JWK. |
+| `jwks` | `{ keys: object[] }?` | Local JWKS-shaped static key set. Equivalent to `keys` for token validation. |
 | `clockSkewSeconds` | `number?` | Integer leeway for `exp`, `nbf`, and future `iat` checks. Defaults to `0`. |
 
 JWT validation rejects malformed compact tokens, `alg: "none"`, algorithms not

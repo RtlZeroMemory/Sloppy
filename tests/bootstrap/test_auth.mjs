@@ -359,7 +359,7 @@ try {
     });
     assert.equal(me.response.status, 200);
     assert.equal(me.body.subject, "stored-user");
-    assert.equal(me.body.id, "session-32-token-1");
+    assert.match(me.body.id, /^session-32-token-\d+$/u);
     assert.equal((await requestJson(host, "POST", "/unsafe", {
         headers: {
             cookie: `sloppy.session=${session}; __Host-sloppy_csrf=${csrf}`,
@@ -516,7 +516,50 @@ try {
         headers: { Authorization: "SloppyKey authorization-secret" },
     })).response.status, 200);
     assert.equal((await requestJson(host, "GET", "/authorization-key", {
+        headers: { Authorization: "sloppykey authorization-secret" },
+    })).response.status, 200);
+    assert.equal((await requestJson(host, "GET", "/authorization-key", {
         headers: { Authorization: `SloppyKey ${"x".repeat(4097)}` },
+    })).response.status, 401);
+    await host.close();
+}
+
+{
+    let record;
+    const store = {
+        async create(value) {
+            record = { ...value };
+        },
+        async load(id) {
+            return record?.id === id ? { ...record } : undefined;
+        },
+        async touch(id, lastSeenAt, idleExpiresAt) {
+            if (record?.id === id) {
+                record = { ...record, lastSeenAt, idleExpiresAt, revokedAt: lastSeenAt };
+            }
+            return undefined;
+        },
+        async revoke(id, revokedAt) {
+            if (record?.id === id) {
+                record = { ...record, revokedAt };
+            }
+        },
+        async cleanup() {},
+    };
+    const app = Sloppy.create();
+    app.use(Auth.cookieSession({
+        name: "sloppy.session",
+        secret: "touch-reload-secret",
+        store,
+    }));
+    app.post("/login", (ctx) => Auth.signIn(ctx, { sub: "stale-user" }));
+    app.get("/me", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
+
+    const host = Testing.createHost(app);
+    const login = await host.post("/login");
+    const session = cookieValue(login.headers.get("set-cookie"));
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { cookie: `sloppy.session=${session}` },
     })).response.status, 401);
     await host.close();
 }

@@ -7103,6 +7103,12 @@ app.get("/me", () => Results.ok({ ok: true }))
   .requiresScope("users:read")
   .requiresRole("admin")
   .authorize("ops");
+app.get("/reprotected", () => Results.ok({ ok: true }))
+  .allowAnonymous()
+  .requiresScope("users:read");
+const group = app.group("/group").requireAuth();
+group.allowAnonymous();
+group.get("/open", () => Results.ok({ ok: true }));
 app.get("/public", () => Results.ok({ ok: true })).allowAnonymous();
 export default app;
 "#;
@@ -7121,6 +7127,27 @@ export default app;
     assert_eq!(protected.scopes, vec!["users:read"]);
     assert_eq!(protected.roles, vec!["admin"]);
     assert_eq!(protected.policy.as_deref(), Some("ops"));
+    let reprotected = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/reprotected")
+        .expect("reprotected route should exist")
+        .auth
+        .as_ref()
+        .expect("reprotected route auth should extract");
+    assert!(reprotected.required);
+    assert!(!reprotected.allow_anonymous);
+    assert_eq!(reprotected.scopes, vec!["users:read"]);
+    let group_open = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/group/open")
+        .expect("group route should exist")
+        .auth
+        .as_ref()
+        .expect("group route auth should extract");
+    assert!(!group_open.required);
+    assert!(group_open.allow_anonymous);
     let public = app
         .routes
         .iter()
@@ -7149,6 +7176,23 @@ export default app;
     assert_eq!(
         protected["auth"]["scopes"],
         serde_json::json!(["users:read"])
+    );
+    let reprotected = routes
+        .iter()
+        .find(|route| route["pattern"] == "/reprotected")
+        .expect("reprotected route should be emitted");
+    assert_eq!(reprotected["auth"]["required"], serde_json::json!(true));
+    assert_eq!(
+        reprotected["auth"]["scopes"],
+        serde_json::json!(["users:read"])
+    );
+    let group_open = routes
+        .iter()
+        .find(|route| route["pattern"] == "/group/open")
+        .expect("group route should be emitted");
+    assert_eq!(
+        group_open["auth"]["allowAnonymous"],
+        serde_json::json!(true)
     );
     let public = routes
         .iter()

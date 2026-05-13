@@ -183,10 +183,23 @@ static int sl_cli_parse_route_auth(yyjson_val* value, SlCliRoute* route)
         sl_cli_write_cstr(stderr, "sloppy: malformed metadata: route auth must be an object\n");
         return 1;
     }
-    required = yyjson_obj_get(auth, "required");
-    route->auth_required = required == NULL || yyjson_get_bool(required);
     allow_anonymous = yyjson_obj_get(auth, "allowAnonymous");
+    required = yyjson_obj_get(auth, "required");
+    if (required != NULL && !yyjson_is_bool(required)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: route auth.required must be a boolean\n");
+        return 1;
+    }
+    if (allow_anonymous != NULL && !yyjson_is_bool(allow_anonymous)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: route auth.allowAnonymous must be a boolean\n");
+        return 1;
+    }
     route->auth_allow_anonymous = allow_anonymous != NULL && yyjson_get_bool(allow_anonymous);
+    route->auth_required = required == NULL ? !route->auth_allow_anonymous : yyjson_get_bool(required);
+    if (route->auth_allow_anonymous) {
+        route->auth_required = false;
+    }
     route->auth_policy = sl_cli_json_span(auth, "policy");
     if (sl_cli_parse_route_auth_array(yyjson_obj_get(auth, "schemes"), route->auth_schemes,
                                       &route->auth_scheme_count, SL_CLI_MAX_ROUTE_AUTH_SCHEMES) !=

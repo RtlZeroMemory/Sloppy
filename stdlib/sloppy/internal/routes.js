@@ -628,7 +628,7 @@ function attachAuthHelpers(context) {
             return context.user?.hasClaim(name, value) === true;
         },
         async authorize(policy, resource = undefined) {
-            const name = typeof policy === "string" ? policy : stringPolicyName(policy);
+            const name = stringPolicyName(policy);
             const denied = authorizePolicy(context.__sloppyHost?.auth, name, context.user, context, resource);
             const result = denied !== null && typeof denied === "object" && typeof denied.then === "function"
                 ? await denied
