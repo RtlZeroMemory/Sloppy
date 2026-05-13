@@ -172,6 +172,21 @@ For a practical comparison, see
 
 ## What works today
 
+Sloppy ships a first-party backend stack in the runtime — no separate router,
+DI container, validation library, OpenAPI plugin, request-logging middleware,
+or test harness to wire up:
+
+- routing &amp; results, middleware, CORS, security headers, sessions, auth;
+- request IDs, request logging, request context, ProblemDetails;
+- config &amp; services, structured logging, health, metrics, management;
+- data providers (SQLite, PostgreSQL, SQL Server) and `sloppy db` migrations;
+- OpenAPI emission, static files, realtime &amp; WebSockets, webhooks, workers;
+- Program Mode for route-free tools and packaged app artifacts;
+- TestHost and TestServices for first-party integration testing.
+
+Surface-by-surface support and current alpha boundaries are tracked in
+[docs/reference/stability.md](docs/reference/stability.md).
+
 - **App and routing.** `Sloppy.create()`, route registration, route groups,
   controller-style classes, route parameters, query/header/body bindings, and
   generated route metadata.
@@ -193,8 +208,9 @@ For a practical comparison, see
 - **Network client.** `HttpClient` supports HTTP/1.1, explicit h2/h2c, pooled
   h2 multiplexing, and HTTPS `auto` ALPN selection where the private outbound
   TLS bridge is available.
-- **CLI tooling.** `sloppy create`, `build`, `dev`, `run`, `routes`, `deps`,
-  `capabilities`, `doctor`, `audit`, `openapi`, and `package`.
+- **CLI tooling.** `sloppy create`, `build`, `dev`, `run`, `package`, `routes`,
+  `health`, `metrics`, `deps`, `capabilities`, `doctor`, `audit`, `openapi`,
+  `db status|migrate`, and `orm migration add|script|status|apply`.
 - **Program Mode.** Route-free source files can compile to Program Plans with
   opaque metadata and a generated `main`/default/top-level entrypoint.
   `main(args, ctx)` receives arguments after `--` and a Program context.

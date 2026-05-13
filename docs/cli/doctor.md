@@ -34,7 +34,12 @@ health check.
 
 ## Text output
 
-Current text output uses status-prefixed lines:
+Current text output uses status-prefixed lines. The following example is from
+a **contributor source build without the V8 bridge enabled**, so it shows the
+`engine.v8` and Plan-extraction warnings you'd see during early bring-up. A
+supported npm platform package includes the runtime that executes handlers, so
+on those installs `engine.v8` is not warned about and `app.plan.*` rows reflect
+the artifact you point at:
 
 ```text
 Sloppy Doctor

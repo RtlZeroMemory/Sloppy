@@ -142,6 +142,33 @@ If a syntactic feature isn't covered by a fixture, treat it as
 unverified — file an issue or check the diagnostic if the compiler
 rejects it.
 
+## Editor support and IntelliSense
+
+For editor autocomplete, hover, and go-to-definition in an app workspace,
+install `@slopware/sloppy` as a development dependency:
+
+```sh
+npm install --save-dev @slopware/sloppy@alpha
+```
+
+The package ships TypeScript declarations (`.d.ts`) for the `sloppy` entry and
+supported subpath imports (currently `sloppy/data`, `sloppy/fs`, `sloppy/os`,
+and `sloppy/providers/sqlite`). Your editor picks them up through normal
+TypeScript module resolution against your project's `tsconfig.json`.
+
+TypeScript IntelliSense in your editor and Sloppy's compiler diagnostics are
+separate signals:
+
+- Editor IntelliSense comes from `tsc` and the TypeScript Language Service
+  using your `tsconfig.json`. It tells you about TypeScript types.
+- Sloppy diagnostics (`SLOPPYC_*`) come from `sloppyc` during `sloppy build`.
+  They tell you whether the compiler can extract a complete Plan from the
+  source.
+
+A dedicated Sloppy language server is not part of the current alpha. Treat
+editor IntelliSense as an authoring aid; treat `sloppy build` diagnostics as
+the contract.
+
 ## Imports
 
 ```ts

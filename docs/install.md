@@ -78,16 +78,32 @@ Linux x64:
 ```sh
 ./tools/unix/bootstrap.sh
 ./tools/unix/dev.sh doctor
-./tools/unix/dev.sh build-v8
 ./tools/unix/dev.sh configure --enable-v8
 ./tools/unix/dev.sh build
 ```
+
+`./tools/unix/dev.sh doctor` first tries to resolve an existing Sloppy-owned V8
+SDK at `.sdeps/v8/linux-x64` (or wherever `SLOPPY_V8_ROOT` points). If a usable
+SDK is already in place, `configure --enable-v8` and `build` pick it up
+directly.
+
+If no SDK is found, build it once with:
+
+```sh
+./tools/unix/dev.sh build-v8
+```
+
+`build-v8` is the advanced contributor fallback that produces the pinned V8 SDK
+from source. Re-run it only when the pinned V8 revision changes. After the
+first successful run the SDK is cached under `.sdeps/v8/`, and subsequent
+contributor builds just need `configure --enable-v8` + `build`.
 
 Full toolchain notes live in
 [Building from source](contributor/building-from-source.md).
 
 Source builds restore or use the V8 SDK artifact/cache before building a
-runtime that executes handlers.
+runtime that executes handlers. npm users do not need any of this — supported
+npm platform packages already include that runtime.
 
 ## Build a local archive
 
