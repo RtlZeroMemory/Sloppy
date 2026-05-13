@@ -24,6 +24,7 @@ exhaustive level — they're there for "I need every option" lookup.
 - [Validation](validation.md)
 - [Workers](workers.md)
 - [Native FFI](ffi.md)
+- [ORM](orm.md)
 - [Data API](data-api.md)
 - [Providers](providers.md)
 - [Diagnostics](diagnostics.md)
@@ -38,6 +39,6 @@ exhaustive level — they're there for "I need every option" lookup.
 ## Project
 
 - [Stability](stability.md) — schema versions, what's pinned and what isn't
-- [WebSockets](websockets.md) — current WebSocket lane support, metadata, limits, and unsupported runtime pieces
+- [WebSockets](websockets.md) — current WebSocket lane support, metadata, native Upgrade behavior, and limits
 - [Platform status](platform-status.md) — which platforms are supported, to what level
 - [Dependencies](dependencies.md) — optional native dependencies and when they matter

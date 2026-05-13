@@ -2,82 +2,98 @@ const __sloppyRuntime = globalThis.__sloppy_runtime;
 if (__sloppyRuntime === undefined) {
   throw new Error("Sloppy bootstrap runtime was not loaded");
 }
-const { Cache, Environment, Results, data } = __sloppyRuntime;
+const { Environment, Results, column, data, orm, relation, table } = __sloppyRuntime;
 
-async function postgresDelay(db, seconds = "0.05") {
-  await db.query(`select pg_sleep(${seconds})`, [], { timeoutMs: 1000 });
+const OrmTeams = table("sloppy_pg_orm_teams", {
+  id: column.int().primaryKey(),
+  name: column.text().notNull(),
+});
+
+const OrmUsers = table("sloppy_pg_orm_users", {
+  id: column.int().primaryKey(),
+  teamId: column.int().notNull().references(() => OrmTeams.id),
+  email: column.text().notNull(),
+  displayName: column.text().nullable(),
+  version: column.int().notNull().concurrencyToken(),
+});
+
+relation(OrmUsers, ({ one }) => ({
+  team: one(OrmTeams, {
+    local: OrmUsers.teamId,
+    foreign: OrmTeams.id,
+  }),
+}));
+
+relation(OrmTeams, ({ many }) => ({
+  users: many(OrmUsers, {
+    local: OrmTeams.id,
+    foreign: OrmUsers.teamId,
+  }),
+}));
+
+async function execStatements(db, sql) {
+  for (const statement of sql.split(";").map((item) => item.trim()).filter(Boolean)) {
+    await db.exec(statement);
+  }
 }
 
-async function postgresCacheEvidence(db) {
-  const cache = Cache.postgres(db, {
-    name: "main",
-    namespace: "pg_cache_a",
-    table: "sloppy_pg_cache_live",
-  });
-  const other = Cache.postgres(db, {
-    name: "other",
-    namespace: "pg_cache_b",
-    table: "sloppy_pg_cache_live",
-  });
-  await cache.clear({ dangerouslyClearAll: true });
+async function runOrmLane(db) {
+  await db.exec("drop table if exists sloppy_pg_orm_users");
+  await db.exec("drop table if exists sloppy_pg_orm_teams");
+  await execStatements(db, orm.migrations.script([OrmUsers, OrmTeams], { provider: "postgres" }));
+
+  await OrmTeams.insert(db, { id: 1, name: "Core" }).execute();
+  await OrmUsers.insert(db, {
+    id: 1,
+    teamId: 1,
+    email: "ada.orm@example.com",
+    displayName: "Ada",
+    version: 1,
+  }).execute();
+  const selected = await OrmUsers.findById(db, 1);
+  await OrmUsers.updateById(db, 1, { displayName: "Ada Byron" }, { expected: { version: 1 } });
+  let conflict = false;
   try {
-    await cache.set("alpha", { value: "one" });
-    const getOk = (await cache.get("alpha")).value === "one";
-    await cache.remove("alpha");
-    const removeOk = await cache.get("alpha") === undefined;
-
-    await cache.set("ttl", "expired", { ttlMs: 1 });
-    await postgresDelay(db);
-    const ttlExpired = await cache.get("ttl") === undefined;
-
-    await cache.set("slide", "ok", { slidingExpirationMs: 80 });
-    await postgresDelay(db, "0.03");
-    const slidingFirst = await cache.get("slide") === "ok";
-    await postgresDelay(db, "0.03");
-    const slidingSecond = await cache.get("slide") === "ok";
-    await postgresDelay(db, "0.12");
-    const slidingExpired = await cache.get("slide") === undefined;
-
-    await cache.set("tagged", "x", { tags: ["tag-a"] });
-    await cache.invalidateTag("tag-a");
-    const tagInvalidated = await cache.get("tagged") === undefined;
-
-    await cache.set("cleanup", "x", { ttlMs: 1 });
-    await postgresDelay(db);
-    await cache.cleanup();
-    const cleanupOk = await cache.get("cleanup") === undefined;
-
-    await cache.set("shared", "a");
-    await other.set("shared", "b");
-    const namespaceIsolation =
-      (await cache.get("shared")) === "a" && (await other.get("shared")) === "b";
-
-    await cache.set("hybrid", "pg");
-    const hybrid = Cache.hybrid("hybrid", {
-      memory: Cache.memory("front"),
-      distributed: cache,
-    });
-    const hybridFirst = await hybrid.get("hybrid") === "pg";
-    const hybridMemory = await hybrid.memory.get("hybrid") === "pg";
-    const hybridGets = hybrid.stats().gets >= 1;
-
-    return {
-      getOk,
-      removeOk,
-      ttlExpired,
-      slidingFirst,
-      slidingSecond,
-      slidingExpired,
-      tagInvalidated,
-      cleanupOk,
-      namespaceIsolation,
-      hybridFirst,
-      hybridMemory,
-      hybridGets,
-    };
-  } finally {
-    await cache.clear({ dangerouslyClearAll: true });
+    await OrmUsers.updateById(db, 1, { displayName: "Ada Again" }, { expected: { version: 1 } });
+  } catch (error) {
+    conflict = error?.code === "SLOPPY_ORM_CONCURRENCY_CONFLICT";
   }
+  const oneInclude = await orm.from(OrmUsers).where((u) => u.id.eq(1)).include((u) => u.team).singleOrDefault(db);
+  const manyInclude = await orm.from(OrmTeams).where((t) => t.id.eq(1)).include((t) => t.users, { strategy: "split" }).singleOrDefault(db);
+  try {
+    await orm.transaction(db, async (tx) => {
+      await OrmUsers.insert(tx, { id: 999, teamId: 1, email: "rollback.orm@example.com", displayName: null, version: 1 }).execute();
+      throw new Error("rollback");
+    });
+  } catch {
+  }
+  const rolledBack = await OrmUsers.findById(db, 999);
+  const raw = await orm.query(db, orm.sql.postgres`select count(*)::int as count from sloppy_pg_orm_users`);
+  for (let id = 2; id <= 132; id += 1) {
+    await OrmUsers.insert(db, { id, teamId: 1, email: `cursor-${id}@orm.example.com`, displayName: null, version: 1 }).execute();
+  }
+  let cursorCount = 0;
+  const ormCursor = await orm.from(OrmUsers).orderBy((u) => u.id.asc()).cursor(db, { batchSize: 32 });
+  try {
+    for await (const row of ormCursor) {
+      if (row.id > 0) {
+        cursorCount += 1;
+      }
+    }
+  } finally {
+    await ormCursor.close();
+  }
+  await OrmUsers.deleteById(db, 1, { expected: { version: 2 } });
+
+  return {
+    selectedEmail: selected.email,
+    conflict,
+    oneInclude: oneInclude.team.name,
+    manyIncludeCount: manyInclude.users.length,
+    rolledBack: rolledBack === null,
+    rawCount: raw[0].count,
+    cursorCount,
+  };
 }
 
 globalThis.__sloppy_handler_1 = async () => {
@@ -180,7 +196,7 @@ globalThis.__sloppy_handler_1 = async () => {
         postgresTimedOut = String(error && error.message ? error.message : error).includes("deadline was exceeded");
       }
       const users = await db.query("select id, name from sloppy_pg_bridge_cursor where name in ($1, $2) order by id", ["Ada", "Grace"]);
-      const cacheEvidence = await postgresCacheEvidence(db);
+      const ormLane = await runOrmLane(db);
       return Results.json({
         users,
         postgresTimedOut,
@@ -193,10 +209,12 @@ globalThis.__sloppy_handler_1 = async () => {
         poolPinned,
         afterCloseCount: afterClose.count,
         cursorTimedOut,
-        cacheEvidence,
+        ormLane,
       });
     } finally {
       try {
+        await db.exec("drop table if exists sloppy_pg_orm_users");
+        await db.exec("drop table if exists sloppy_pg_orm_teams");
         await db.exec("drop table if exists sloppy_pg_bridge_cursor");
       } catch {
       }

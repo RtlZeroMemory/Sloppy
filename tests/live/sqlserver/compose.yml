@@ -1,6 +1,6 @@
 services:
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: ${SLOPPY_SQLSERVER_IMAGE:-mcr.microsoft.com/mssql/server:2022-latest}
     container_name: sloppy-sqlserver-live
     environment:
       ACCEPT_EULA: "Y"

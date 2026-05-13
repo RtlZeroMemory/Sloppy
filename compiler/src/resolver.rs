@@ -25,6 +25,7 @@ pub(crate) enum ImportKind {
     SlopNet,
     SlopHttp,
     SlopOs,
+    SlopOrm,
     SlopWorkers,
     SlopFfi,
     SqliteProvider,
@@ -136,6 +137,9 @@ pub(crate) fn classify_import_with_mode(
     }
     if specifier == "sloppy/os" {
         return ImportKind::SlopOs;
+    }
+    if specifier == "sloppy/orm" {
+        return ImportKind::SlopOrm;
     }
     if specifier == "sloppy/workers" {
         return ImportKind::SlopWorkers;
@@ -797,6 +801,10 @@ mod tests {
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/os"),
             ImportKind::SlopOs
+        );
+        assert_eq!(
+            classify_import(Path::new("app.js"), "sloppy/orm"),
+            ImportKind::SlopOrm
         );
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/workers"),

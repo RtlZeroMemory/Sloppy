@@ -40,6 +40,11 @@
     (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8))
 #define SL_FEATURE_DEPS_FFI                                                                        \
     (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8))
+#define SL_FEATURE_DEPS_REALTIME                                                                   \
+    (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |             \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_HTTP) |                                                     \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) |                                          \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP))
 
 #ifdef SLOPPY_ENABLE_V8_BRIDGE
 #define SL_FEATURE_V8_AVAILABLE true
@@ -465,6 +470,12 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_node_compat_descriptor(id, SL_FEATURE_LIT("node.compat.zlib"),
                                                  SL_FEATURE_LIT("node:zlib compatibility shim"),
                                                  SL_FEATURE_LIT("sloppy/node/zlib"));
+    case SL_RUNTIME_FEATURE_RUNTIME_REALTIME:
+        return sl_feature_descriptor_make(
+            id, SL_RUNTIME_FEATURE_KIND_HTTP,
+            sl_feature_literal("runtime.realtime", sizeof("runtime.realtime") - 1U),
+            sl_feature_literal("realtime runtime", sizeof("realtime runtime") - 1U), sl_str_empty(),
+            sl_str_empty(), SL_FEATURE_DEPS_REALTIME, http && libuv, false, true);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
     case SL_RUNTIME_FEATURE_PROVIDER_POSTGRES:
     case SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER:
@@ -689,6 +700,9 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("node.compat.zlib"), SL_FEATURE_STR("node:zlib compatibility shim"),
          SL_FEATURE_STR("sloppy/node/zlib"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,
          false, true},
+        {SL_RUNTIME_FEATURE_RUNTIME_REALTIME, SL_RUNTIME_FEATURE_KIND_HTTP,
+         SL_FEATURE_STR("runtime.realtime"), SL_FEATURE_STR("realtime runtime"), SL_FEATURE_EMPTY,
+         SL_FEATURE_EMPTY, SL_FEATURE_DEPS_REALTIME, true, false, true},
         {SL_RUNTIME_FEATURE_STDLIB_CACHE, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.cache"), SL_FEATURE_STR("cache stdlib"),
          SL_FEATURE_STR("sloppy/cache"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_CACHE, true, false,

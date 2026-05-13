@@ -28,6 +28,7 @@
 #include "sloppy/container.h"
 
 #include <yyjson.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -167,6 +168,9 @@ static SlStatus sl_http_dispatch_write_diag(SlArena* arena, SlDiag* out_diag, Sl
 
 static bool sl_http_dispatch_power_of_two(size_t value);
 static bool sl_http_dispatch_binding_valid(const SlHttpRouteBinding* binding);
+static bool sl_http_dispatch_handler_is_current_plan_member(const SlPlan* plan,
+                                                            const SlPlanHandler* handler,
+                                                            SlHandlerId handler_id);
 
 #define SL_HTTP_DISPATCH_TABLE_METHOD_MASK 0x3fU
 #define SL_HTTP_DISPATCH_TABLE_VALIDATED_FLAG (1U << 31U)
@@ -219,7 +223,9 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
         }
         for (index = 0U; index < dispatch_table->route_count; index += 1U) {
             const SlHttpRouteBinding* binding = &dispatch_table->routes[index];
-            if (binding->handler == NULL || binding->handler->id != binding->handler_id) {
+            if (!sl_http_dispatch_handler_is_current_plan_member(
+                    dispatch_table->plan, binding->handler, binding->handler_id))
+            {
                 return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
             }
         }
@@ -235,6 +241,41 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
     }
 
     return sl_status_ok();
+}
+
+static bool sl_http_dispatch_handler_is_current_plan_member(const SlPlan* plan,
+                                                            const SlPlanHandler* handler,
+                                                            SlHandlerId handler_id)
+{
+    uintptr_t handlers_start = 0U;
+    uintptr_t handler_address = 0U;
+    uintptr_t offset = 0U;
+    size_t handlers_bytes = 0U;
+
+    if (plan == NULL || handler == NULL || plan->handlers == NULL || plan->handler_count == 0U ||
+        !sl_handler_id_valid(handler_id))
+    {
+        return false;
+    }
+    if (plan->handler_count > SIZE_MAX / sizeof(plan->handlers[0])) {
+        return false;
+    }
+
+    handlers_start = (uintptr_t)plan->handlers;
+    handler_address = (uintptr_t)handler;
+    handlers_bytes = plan->handler_count * sizeof(plan->handlers[0]);
+    if (UINTPTR_MAX - handlers_start < handlers_bytes || handler_address < handlers_start ||
+        handler_address >= handlers_start + handlers_bytes)
+    {
+        return false;
+    }
+
+    offset = handler_address - handlers_start;
+    if ((offset % sizeof(plan->handlers[0])) != 0U) {
+        return false;
+    }
+
+    return handler->id == handler_id && !sl_str_is_empty(handler->export_name);
 }
 
 static SlStatus sl_http_dispatch_missing_route(SlArena* arena, SlDiag* out_diag)
@@ -275,6 +316,19 @@ static SlStatus sl_http_dispatch_unsupported_method(SlArena* arena, SlDiag* out_
                    "OPTIONS") -
                 1U),
         SL_STATUS_UNSUPPORTED);
+}
+
+static SlStatus sl_http_dispatch_websocket_requires_upgrade(SlArena* arena, SlDiag* out_diag)
+{
+    return sl_http_dispatch_write_diag(
+        arena, out_diag, SL_DIAG_INVALID_HTTP_REQUEST,
+        sl_http_dispatch_literal("WebSocket route requires an HTTP Upgrade request",
+                                 sizeof("WebSocket route requires an HTTP Upgrade request") - 1U),
+        sl_http_dispatch_literal("send Upgrade: websocket with the required WebSocket headers",
+                                 sizeof("send Upgrade: websocket with the required WebSocket "
+                                        "headers") -
+                                     1U),
+        SL_STATUS_INVALID_ARGUMENT);
 }
 
 static bool sl_http_plan_route_is_runnable(const SlPlanRoute* route)
@@ -2989,6 +3043,72 @@ sl_http_dispatch_find_route(SlArena* arena, const SlHttpDispatchTable* dispatch_
                                                 out_has_route_match);
 }
 
+SlStatus sl_http_dispatch_match_route(SlArena* arena, const SlPlan* plan,
+                                      const SlHttpDispatchTable* dispatch_table,
+                                      const SlHttpRequestHead* request,
+                                      SlHttpDispatchRouteMatch* out_match, SlDiag* out_diag)
+{
+    const SlHttpRouteBinding* binding = NULL;
+    SlRouteMatch route_match = {0};
+    bool method_mismatch = false;
+    bool has_route_match = false;
+    SlStatus status;
+
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+    if (out_match != NULL) {
+        *out_match = (SlHttpDispatchRouteMatch){0};
+    }
+    if (arena == NULL || plan == NULL || dispatch_table == NULL || request == NULL ||
+        out_match == NULL)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_http_dispatch_validate_table(dispatch_table);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_http_dispatch_request_method_runnable(request->method)) {
+        return sl_http_dispatch_unsupported_method(arena, out_diag);
+    }
+    if (request->path.length == 0U || request->path.ptr == NULL || request->path.ptr[0] != '/') {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding, &method_mismatch,
+                                         &route_match, &has_route_match);
+    if (!sl_status_is_ok(status)) {
+        if (sl_status_code(status) == SL_STATUS_INTERNAL) {
+            return sl_http_dispatch_write_diag(
+                arena, out_diag, SL_DIAG_ROUTE_VALIDATE_MISMATCH,
+                sl_http_dispatch_literal("compiled and classic route dispatch disagreed",
+                                         sizeof("compiled and classic route dispatch disagreed") -
+                                             1U),
+                sl_http_dispatch_literal("rebuild route artifacts or force classic dispatch for "
+                                         "triage",
+                                         sizeof("rebuild route artifacts or force classic dispatch "
+                                                "for triage") -
+                                             1U),
+                SL_STATUS_INTERNAL);
+        }
+        return status;
+    }
+
+    out_match->binding = binding;
+    out_match->method_mismatch = method_mismatch;
+    out_match->route_match = route_match;
+    out_match->has_route_match = has_route_match;
+    if (binding != NULL) {
+        if (binding->route_index >= plan->route_count) {
+            return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        out_match->route = &plan->routes[binding->route_index];
+    }
+    return sl_status_ok();
+}
+
 typedef struct SlHttpDispatchContextNeeds
 {
     bool route_params;
@@ -3043,14 +3163,11 @@ static SlHttpDispatchContextNeeds sl_http_dispatch_context_needs(const SlPlanRou
             break;
         case SL_PLAN_REQUEST_BINDING_HEADER:
             needs.headers = true;
-            if (sl_str_is_empty(route->bindings[index].parameter)) {
-                needs.header_facade = true;
-            }
-            else {
-                needs.request = true;
-            }
+            needs.header_facade = true;
             break;
         case SL_PLAN_REQUEST_BINDING_BODY_JSON:
+            needs.body = true;
+            break;
         case SL_PLAN_REQUEST_BINDING_BODY_FORM:
         case SL_PLAN_REQUEST_BINDING_BODY_MULTIPART:
             needs.body = true;
@@ -3229,6 +3346,21 @@ static SlStatus sl_http_dispatch_native_response(const SlPlanRoute* route,
         }
         return sl_status_ok();
     }
+    if (sl_str_equal(route->native_response_kind, sl_str_from_cstr("empty"))) {
+        out_result->kind = SL_ENGINE_RESULT_NONE;
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
+        out_result->response = sl_http_response_empty(route->native_response_status);
+        return sl_status_ok();
+    }
+    if (sl_str_equal(route->native_response_kind, sl_str_from_cstr("problem"))) {
+        out_result->kind = SL_ENGINE_RESULT_ERROR;
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
+        out_result->response = sl_http_response_problem(route->native_response_status, body);
+        if (!sl_str_is_empty(route->native_response_content_type)) {
+            out_result->response.content_type = route->native_response_content_type;
+        }
+        return sl_status_ok();
+    }
 
     return sl_status_from_code(SL_STATUS_UNSUPPORTED);
 }
@@ -3354,22 +3486,39 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
                               : SL_HTTP_PROFILE_COUNTER_NATIVE_ROUTE_HITS,
                           1U);
 
-    if (dispatch_table->handler_cache_trusted && dispatch_table->plan == plan &&
-        binding->handler != NULL && binding->handler->id == binding->handler_id &&
-        !sl_str_is_empty(binding->handler->export_name))
+    if (binding->route_index < plan->route_count &&
+        sl_plan_route_is_websocket(&plan->routes[binding->route_index]))
     {
-        handler = binding->handler;
-        use_cached_handler = true;
+        return sl_http_dispatch_websocket_requires_upgrade(arena, out_diag);
     }
-    else {
-        status = sl_plan_find_handler_by_id(plan, binding->handler_id, &handler);
-        if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
-            return sl_http_dispatch_missing_handler(arena, out_diag);
-        }
 
-        if (!sl_status_is_ok(status)) {
-            return status;
+    {
+        uint64_t started_ns = sl_http_profile_now_ns();
+        if (dispatch_table->handler_cache_trusted && dispatch_table->plan == plan &&
+            sl_http_dispatch_handler_is_current_plan_member(plan, binding->handler,
+                                                            binding->handler_id))
+        {
+            handler = binding->handler;
+            use_cached_handler = true;
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_V8_HANDLER_CACHE_HITS, 1U);
         }
+        else {
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_V8_HANDLER_CACHE_MISSES, 1U);
+            status = sl_plan_find_handler_by_id(plan, binding->handler_id, &handler);
+            if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
+                sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_HANDLER_LOOKUP,
+                                             sl_http_profile_now_ns() - started_ns);
+                return sl_http_dispatch_missing_handler(arena, out_diag);
+            }
+
+            if (!sl_status_is_ok(status)) {
+                sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_HANDLER_LOOKUP,
+                                             sl_http_profile_now_ns() - started_ns);
+                return status;
+            }
+        }
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_HANDLER_LOOKUP,
+                                     sl_http_profile_now_ns() - started_ns);
     }
 
     validation_route = sl_http_dispatch_find_validation_route(plan, binding);
@@ -3500,6 +3649,8 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
                 validation_route->pattern);
             sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NATIVE_RESPONSE_ELIGIBLE, 1U);
             sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NATIVE_RESPONSE_HITS, 1U);
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NO_JS_RESPONSE_PLAN_HITS, 1U);
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NATIVE_STATIC_RESPONSE_HITS, 1U);
             started_ns = sl_http_profile_now_ns();
             status = sl_http_dispatch_native_response(validation_route, out_result);
             sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_NATIVE_RESPONSE_SELECTION,
@@ -3507,6 +3658,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
             return status;
         }
     }
+    sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NO_JS_RESPONSE_PLAN_MISSES, 1U);
 
     sl_http_dispatch_record_breadcrumb(
         SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_ENTER, SL_STATUS_OK,

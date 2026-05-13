@@ -16,6 +16,7 @@ stdlib/sloppy/
   testing.js
   testservices.js
   data.js
+  orm.js
   fs.js
   http.js
   net.js
@@ -78,11 +79,13 @@ lib/sloppy/bootstrap/sloppy/
   strings, numbers, integers, booleans, arrays, enums, literals, optional,
   nullable, defaulted fields, object shapes, and request body validation
   errors.
-- `testing.js` provides `TestHost`, `Testing.createHost`, fake clock helpers,
+- `testing.js` provides `TestHost`, `TestServices`, `Testing.createHost`, fake clock helpers,
   and test data helpers. App-host mode dispatches in memory through route
   handlers, middleware, results, CORS, health checks, and scoped services.
   Artifact/package modes call the Sloppy CLI so requests enter the native
-  runtime path. The dogfood proof in
+  runtime path. `TestServices` exposes honest live PostgreSQL and SQL Server
+  helpers that return `SKIPPED` service metadata when the env var or native
+  bridge is unavailable. The dogfood proof in
   `tests/bootstrap/test_prealpha_control_plane_dogfood.mjs` imports the
   `examples/prealpha-control-plane` route modules through this host.
 - `testservices.js` provides experimental `TestServices`, the opt-in Docker-backed
@@ -100,9 +103,14 @@ lib/sloppy/bootstrap/sloppy/
   PostgreSQL, and SQL Server bridge entry points when the V8 lane installs the matching
   provider bridge with Plan/capability metadata. SQL operation options accept `signal`,
   `deadline`, and `timeoutMs` for Slop-side pre-dispatch cancellation/deadline checks.
+- `orm.js` exposes the first-party table/column DSL, schemas, CRUD helpers,
+  query builder, relation includes, migration snapshot/diff helpers, raw SQL
+  escape hatch, cursor adapter, and ORM error classes. Public imports should
+  use `sloppy/orm`.
 - `internal/runtime-classic.js` is the V8-gated classic-script runtime asset loaded before
   generated artifacts. Generated code reads `globalThis.__sloppy_runtime` and registers
-  handlers through Sloppy-owned intrinsics.
+  handlers through Sloppy-owned intrinsics. The embedded ORM runtime is generated
+  from `schema.js` and `orm.js` by `tools/scripts/sync-orm-runtime-classic.mjs`.
 
 ## Boundaries
 
@@ -125,9 +133,6 @@ lib/sloppy/bootstrap/sloppy/
 - Public handler registration APIs will be documented when the runtime support lands.
 - Full compiler extraction and arbitrary import rewriting beyond the supported
   Sloppy/package resolver subset are compiler/runtime work.
-- ORM and schema-management behavior belong to future database provider work.
-  Current migrations are filename/hash ordered SQL files for SQLite,
-  PostgreSQL, and SQL Server.
 - Native plugins and full app lifecycle integration are planned separately.
 - Config file/environment/CLI loading inside the JS stdlib itself, secret managers,
   tracing exporters, async service factories, and native service graph
@@ -139,6 +144,9 @@ lib/sloppy/bootstrap/sloppy/
 - `docs/api/index.md`
 - `docs/api/testhost.md` — `TestHost`
 - `docs/api/testservices.md` — `TestServices`
+- `docs/api/orm.md` — `sloppy/orm`
+- `docs/reference/orm.md` — ORM reference
+- `docs/internals/orm-runtime.md` — ORM runtime embedding and compiler Plan metadata
 - `docs/api/filesystem.md` — `sloppy/fs`
 - `docs/api/network.md` — `sloppy/net`
 - `docs/api/http-client.md` — `Http` and `HttpClient`

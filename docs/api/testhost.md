@@ -110,6 +110,9 @@ await ws.close();
 The WebSocket builder supports `.header(...)`, `.headers(...)`, `.origin(...)`,
 `.protocols(...)`, `.bearer(...)`, `.apiKey(...)`, `.withJwt(...)`,
 `.withSession(...)`, `.asUser(...)`, and `.timeout(...)`.
+`.protocols(...)` validates each value as a WebSocket subprotocol token.
+`ws.expectJson(...)` accepts JSON messages and text messages containing JSON; it
+rejects binary, ping, pong, and close frames with a clear assertion error.
 
 Rejected handshakes use `expectRejected(status)`:
 
@@ -124,10 +127,10 @@ before the socket handler accepts. Origin and subprotocol policy are checked
 before the handler runs. Message size and send-queue limits are enforced by the
 in-memory socket.
 
-Artifact and package hosts do not claim WebSocket runtime support yet.
-`host.websocket(...).connect()` rejects with `501` and records
-`SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` unless a future runtime bridge
-provides real WebSocket support for that lane.
+Artifact and package hosts do not connect their WebSocket helper to native
+`sloppy run` yet. `host.websocket(...).connect()` rejects with `501` and
+records `SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` unless a supplied runtime
+host implements `websocketConnect`.
 
 ## Responses
 
@@ -185,7 +188,9 @@ const host = await TestHost.create(app, {
 Config and secret overrides are visible through `ctx.config` during app-host
 requests. Service overrides are resolved before the app's service provider for
 matching tokens. Provider overrides are exposed under both the provider name
-and `data.<name>` service token.
+and `data.<name>` service token. A provider named `main` is also available as
+`ctx.db`, which keeps app-host ORM tests close to the request-handler shape
+used by runtime provider injection.
 Cache overrides are exposed under `cache.<name>` service tokens and work with
 route `.outputCache(...)` in app-host tests.
 
@@ -308,7 +313,8 @@ them after dispatch.
 - `TestHost.create(app)` is an app-host test lane, not a native runtime lane.
 - Artifact and package one-off CLI mode starts `sloppy run --once` per request.
 - Loopback mode requires an artifact or package path.
-- WebSocket helpers are app-host only today. Artifact/package WebSockets use an
+- WebSocket helpers are app-host only unless the supplied runtime host provides
+  a `websocketConnect` implementation. Artifact/package WebSockets use an
   explicit unsupported diagnostic.
 - Multipart request builder sugar is not exposed yet.
 - Explicit multipart bytes plus a `Content-Type: multipart/form-data; boundary=...`

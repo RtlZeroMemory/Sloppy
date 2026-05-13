@@ -80,7 +80,7 @@
 #define SL_CLI_ARENA_BYTES 2097152U
 #define SL_CLI_DIAG_ARENA_BYTES 65536U
 #define SL_RUN_ARTIFACT_FILE_MAX_BYTES SL_CLI_FILE_MAX_BYTES
-#define SL_RUN_STDLIB_FILE_MAX_BYTES 524288U
+#define SL_RUN_STDLIB_FILE_MAX_BYTES 1048576U
 #define SL_CLI_FILE_READ_MAX_BYTES SL_RUN_ARTIFACT_FILE_MAX_BYTES
 #define SL_CLI_FILE_READ_ARENA_BYTES (SL_CLI_FILE_READ_MAX_BYTES + SL_CLI_FILE_READ_SCRATCH_BYTES)
 #define SL_RUN_FILE_READ_ARENA_BYTES                                                               \
@@ -123,6 +123,7 @@
 #include "cli/cli_create.inc"
 #include "cli/cli_package.inc"
 #include "cli/cli_db.inc"
+#include "cli/cli_orm.inc"
 #include "cli/cli_routes.inc"
 #include "cli/cli_ops.inc"
 #include "cli/cli_deps.inc"
@@ -188,6 +189,9 @@ int main(int argc, char** argv)
     }
     if (strcmp(options.command, "db") == 0) {
         return sl_cli_command_db(&options);
+    }
+    if (strcmp(options.command, "orm") == 0) {
+        return sl_cli_command_orm(&options);
     }
     if (strcmp(options.command, "audit") == 0) {
         return sl_cli_command_audit(&options);

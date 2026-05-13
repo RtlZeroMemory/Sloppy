@@ -32,6 +32,7 @@ pub(crate) struct Route {
     pub(crate) method: &'static str,
     pub(crate) kind: &'static str,
     pub(crate) pattern: String,
+    pub(crate) websocket: Option<WebSocketRouteOptionsMetadata>,
     pub(crate) framework_path: Option<String>,
     pub(crate) name: Option<String>,
     pub(crate) tags: Vec<String>,
@@ -58,6 +59,25 @@ pub(crate) struct Route {
     pub(crate) source: String,
     pub(crate) module: Option<String>,
     pub(crate) handler: Handler,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct WebSocketRouteOptionsMetadata {
+    pub(crate) protocols: Vec<String>,
+    pub(crate) origins: Option<WebSocketOriginsMetadata>,
+    pub(crate) max_message_bytes: Option<u64>,
+    pub(crate) max_send_queue_bytes: Option<u64>,
+    pub(crate) heartbeat_ms: Option<u64>,
+    pub(crate) idle_timeout_ms: Option<u64>,
+    pub(crate) close_timeout_ms: Option<u64>,
+    pub(crate) slow_client_policy: Option<String>,
+    pub(crate) compression: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum WebSocketOriginsMetadata {
+    Any,
+    List(Vec<String>),
 }
 
 #[derive(Debug, Clone)]
@@ -143,6 +163,10 @@ pub(crate) struct AppGraph {
     pub(crate) program_modules: Vec<ProgramModule>,
     pub(crate) uses_data_runtime: bool,
     pub(crate) uses_sql_runtime: bool,
+    pub(crate) uses_orm_runtime: bool,
+    pub(crate) orm_tables: Vec<Value>,
+    pub(crate) orm_relations: Vec<Value>,
+    pub(crate) orm_extraction_partial: bool,
     pub(crate) uses_migrations_runtime: bool,
     pub(crate) uses_provider_health_runtime: bool,
     pub(crate) source_files: Vec<SourceFile>,

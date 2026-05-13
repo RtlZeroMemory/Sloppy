@@ -212,14 +212,17 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_NODE_COMPAT_STREAM);
     const SlRuntimeFeatureDescriptor* ffi =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FFI);
+    const SlRuntimeFeatureDescriptor* realtime =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_RUNTIME_REALTIME);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 46) {
+    if (SL_RUNTIME_FEATURE_COUNT != 47) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || sqlserver == NULL || data == NULL || time == NULL ||
         crypto == NULL || codec == NULL || net == NULL || os == NULL || http_client == NULL ||
         fs == NULL || config == NULL || cache == NULL || node_path == NULL ||
-        node_fs_promises == NULL || node_assert == NULL || node_stream == NULL || ffi == NULL)
+        node_fs_promises == NULL || node_assert == NULL || node_stream == NULL || ffi == NULL ||
+        realtime == NULL)
     {
         return 61;
     }
@@ -378,6 +381,13 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         (node_stream->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_V8)) == 0U)
     {
         return 79;
+    }
+    if (!sl_str_equal(realtime->stable_id, sl_str_from_cstr("runtime.realtime")) ||
+        realtime->kind != SL_RUNTIME_FEATURE_KIND_HTTP || realtime->requires_v8_intrinsics ||
+        (realtime->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_HTTP)) == 0U ||
+        (realtime->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_TRANSPORT_LIBUV)) == 0U)
+    {
+        return 80;
     }
     return 0;
 }
@@ -1064,6 +1074,48 @@ static int test_minimal_route_activates_expected_features(void)
     return 0;
 }
 
+static int test_realtime_required_feature_activates_native_dependencies(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanHandler handlers[1];
+    SlPlanRoute routes[1];
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("runtime.realtime")}};
+    SlPlan plan = base_plan(handlers, routes);
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlRuntimeFeatureSet set = {0};
+    SlRuntimeFeatureId feature_id = SL_RUNTIME_FEATURE_COUNT;
+    SlDiag diag = {0};
+
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_id_from_str(sl_str_from_cstr("runtime.realtime"), &feature_id),
+            SL_STATUS_OK) != 0 ||
+        feature_id != SL_RUNTIME_FEATURE_RUNTIME_REALTIME)
+    {
+        return 1;
+    }
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 2;
+    }
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_RUNTIME_REALTIME) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_HTTP) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_TRANSPORT_LIBUV) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_APP) ||
+        diag.code != SL_DIAG_NONE)
+    {
+        return 3;
+    }
+    return 0;
+}
+
 static int test_sqlite_provider_metadata_activates_sqlite(void)
 {
     unsigned char diag_storage[2048];
@@ -1465,6 +1517,7 @@ int main(void)
         test_explicit_os_required_feature_activates_when_available,
         test_os_required_feature_activates_with_default_runtime_surface,
         test_minimal_route_activates_expected_features,
+        test_realtime_required_feature_activates_native_dependencies,
         test_sqlite_provider_metadata_activates_sqlite,
         test_unavailable_postgres_required_feature_fails,
         test_unknown_required_feature_fails_deterministically,

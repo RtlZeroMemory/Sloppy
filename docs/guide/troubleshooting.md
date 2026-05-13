@@ -156,7 +156,7 @@ the manifest path override can resolve the copied library.
 | 413    | Body exceeded the configured request limit      | Raise the configured server max-body-bytes   |
 | 415    | Unsupported `Content-Type`                      | Send a content type the route accepts        |
 | 500    | Handler threw or returned an unsupported result | Check the diagnostic on stderr               |
-| 501    | Transfer encoding or WebSocket execution unavailable | Use supported request framing; WebSocket route execution is unavailable today |
+| 501    | Unsupported transfer encoding or runtime lane | Use supported request framing; artifact/package WebSocket TestHost modes need a runtime connector |
 
 Validation failures return `400 application/problem+json` with path, code, and
 message fields. They do not include raw request body values.
@@ -171,11 +171,16 @@ sloppy build: static asset root escapes the project
 project directory such as `public/`, rebuild, and confirm the static route with
 `sloppy routes`.
 
-### Realtime WebSocket unavailable
+### WebSocket route requires Upgrade
 
-`app.ws(...)` emits route metadata and OpenAPI extensions, but native WebSocket
-handler execution is unavailable in the public alpha, pre-production runtime.
-SSE routes use the bounded streaming response path.
+`app.ws(...)` and `app.websocket(...)` routes are not ordinary HTTP response
+routes. Native `sloppy run` executes them only for valid HTTP/1.1 WebSocket
+Upgrade requests with the required WebSocket headers. Direct `GET` requests
+fail with a diagnostic that the route requires an Upgrade request.
+
+Protected native WebSocket routes fail closed until the auth principal bridge is
+attached to upgraded connections. Use app-host TestHost for protected WebSocket
+route coverage.
 
 ### `sloppy dev` does not restart the way I expected
 

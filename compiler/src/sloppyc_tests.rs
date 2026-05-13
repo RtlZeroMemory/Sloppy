@@ -15,6 +15,7 @@ use super::{
     command_from_args, config_key_is_diagnostic_sensitive, config_key_is_sensitive, extract,
     help_text, noncrypto_hash_security_context_visible, redact_config_value,
     route_pattern_supported, CliCommand, CompileOptions, ConfigurationModel,
+    WebSocketOriginsMetadata,
 };
 
 fn fixture_temp_dir(name: &str) -> PathBuf {
@@ -2111,6 +2112,10 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         program_modules: Vec::new(),
         uses_data_runtime: true,
         uses_sql_runtime: false,
+        uses_orm_runtime: false,
+        orm_tables: Vec::new(),
+        orm_relations: Vec::new(),
+        orm_extraction_partial: false,
         uses_migrations_runtime: false,
         uses_provider_health_runtime: false,
         source_files: Vec::new(),
@@ -3975,6 +3980,85 @@ export default app;
 }
 
 #[test]
+fn plain_object_and_throw_handlers_stay_on_registered_route_path() {
+    let source = r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+app.get("/plain-object", (ctx) => ({
+  ok: true,
+  method: ctx.request.method,
+}));
+app.get("/exception", () => {
+  throw new Error("bench exception");
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("plain object and throw handlers should extract");
+    let emitted_js = super::emit_app_js(&app);
+
+    assert_eq!(app.routes.len(), 2);
+    assert!(app.dynamic_routes.is_empty());
+    assert_eq!(
+        emitted_js
+            .source
+            .matches("globalThis.__sloppy_register_handler(")
+            .count(),
+        2
+    );
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(1, globalThis.__sloppy_handler_1);"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(2, globalThis.__sloppy_handler_2);"));
+}
+
+#[test]
+fn inline_json_primitive_handlers_match_runtime_contract() {
+    let source = r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+app.get("/object", () => ({ ok: true }));
+app.get("/array", () => [1, 2, 3]);
+app.get("/number", () => 42);
+app.get("/boolean", () => true);
+app.get("/null", () => null);
+app.get("/undefined", () => undefined);
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("JSON value handlers should extract");
+    let emitted_js = super::emit_app_js(&app);
+
+    assert_eq!(app.routes.len(), 6);
+    assert!(app.dynamic_routes.is_empty());
+    assert_eq!(
+        emitted_js
+            .source
+            .matches("globalThis.__sloppy_register_handler(")
+            .count(),
+        6
+    );
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(1, globalThis.__sloppy_handler_1);"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(2, globalThis.__sloppy_handler_2);"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(3, globalThis.__sloppy_handler_3);"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(4, globalThis.__sloppy_handler_4);"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(5, globalThis.__sloppy_handler_5);"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(6, globalThis.__sloppy_handler_6);"));
+}
+
+#[test]
 fn rejects_static_route_segments_with_stray_braces() {
     assert!(!route_pattern_supported("/foo{bar"));
     assert!(!route_pattern_supported("/a}b"));
@@ -4005,6 +4089,71 @@ export default app;
     assert_eq!(app.routes[7].pattern, "/problem");
     assert_eq!(app.routes[8].pattern, "/html");
     assert_eq!(app.routes[9].pattern, "/bytes");
+}
+
+#[test]
+fn static_status_and_problem_results_emit_native_response_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/empty", () => Results.status(204));
+app.get("/problem", () => Results.problem({ status: 400, title: "Static problem", code: "SLOPPY_E_STATIC_PROBLEM" }, { status: 400 }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan_text = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    let routes = plan["routes"]
+        .as_array()
+        .expect("plan routes should be an array");
+    let empty_route = routes
+        .iter()
+        .find(|route| route["pattern"] == serde_json::json!("/empty"))
+        .expect("empty route should be present");
+    let problem_route = routes
+        .iter()
+        .find(|route| route["pattern"] == serde_json::json!("/problem"))
+        .expect("problem route should be present");
+
+    assert_eq!(
+        empty_route["dispatch"]["executionKind"],
+        serde_json::json!("native-static-empty")
+    );
+    assert_eq!(
+        empty_route["nativeResponse"]["kind"],
+        serde_json::json!("empty")
+    );
+    assert_eq!(
+        empty_route["nativeResponse"]["status"],
+        serde_json::json!(204)
+    );
+    assert_eq!(
+        problem_route["dispatch"]["executionKind"],
+        serde_json::json!("native-static-problem")
+    );
+    assert_eq!(
+        problem_route["nativeResponse"]["kind"],
+        serde_json::json!("problem")
+    );
+    assert_eq!(
+        problem_route["nativeResponse"]["contentType"],
+        serde_json::json!("application/problem+json")
+    );
+    let problem_body: serde_json::Value =
+        serde_json::from_str(problem_route["nativeResponse"]["body"].as_str().unwrap())
+            .expect("problem body should parse");
+    assert_eq!(
+        problem_body["code"],
+        serde_json::json!("SLOPPY_E_STATIC_PROBLEM")
+    );
+    assert_eq!(problem_body["status"].as_f64(), Some(400.0));
+    assert_eq!(problem_body["title"], serde_json::json!("Static problem"));
 }
 
 #[test]
@@ -6888,6 +7037,313 @@ export default app;
 }
 
 #[test]
+fn sloppy_orm_import_emits_runtime_bindings() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { orm, table, column, relation } from "sloppy/orm";
+const Teams = table("teams", { id: column.uuid().primaryKey() });
+const Users = table("users", { id: column.uuid().primaryKey(), teamId: column.uuid().references(() => Teams.id) });
+relation(Users, ({ one }) => ({ team: one(Teams, { local: Users.teamId, foreign: Teams.id }) }));
+const app = Sloppy.create();
+app.mapGet("/", () => Results.json({ provider: Boolean(orm.from) }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("sloppy/orm runtime import should be recognized");
+    assert!(app.uses_orm_runtime);
+    assert!(app.uses_data_runtime);
+    assert!(app.uses_sql_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains(
+        "const { Results, data, sql, orm, table, column, relation, SloppyOrmError, SloppyOrmConcurrencyError } = __sloppyRuntime;"
+    ));
+    assert!(emitted_js.source.contains("const Teams = table(\"teams\""));
+    assert!(emitted_js.source.contains("relation(Users"));
+
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    assert_eq!(value["features"]["orm"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["orm"],
+        serde_json::json!(true)
+    );
+    assert_eq!(value["orm"]["mode"], serde_json::json!("runtime-dynamic"));
+    assert_eq!(
+        value["orm"]["extraction"]["status"],
+        serde_json::json!("static")
+    );
+    let tables = value["orm"]["tables"]
+        .as_array()
+        .expect("ORM tables should be an array");
+    assert!(tables.iter().any(|table| {
+        table["model"] == "Teams"
+            && table["name"] == "teams"
+            && table["columns"]
+                .as_array()
+                .expect("columns should be an array")
+                .iter()
+                .any(|column| column["name"] == "id" && column["primaryKey"] == true)
+    }));
+    assert!(tables.iter().any(|table| {
+        table["model"] == "Users"
+            && table["columns"]
+                .as_array()
+                .expect("columns should be an array")
+                .iter()
+                .any(|column| {
+                    column["name"] == "teamId"
+                        && column["reference"]["tableModel"] == "Teams"
+                        && column["reference"]["column"] == "id"
+                })
+    }));
+    let relations = value["orm"]["relations"]
+        .as_array()
+        .expect("ORM relations should be an array");
+    assert!(relations.iter().any(|relation| {
+        relation["tableModel"] == "Users"
+            && relation["name"] == "team"
+            && relation["kind"] == "one"
+            && relation["targetModel"] == "Teams"
+            && relation["local"]["tableModel"] == "Users"
+            && relation["local"]["column"] == "teamId"
+            && relation["foreign"]["tableModel"] == "Teams"
+            && relation["foreign"]["column"] == "id"
+    }));
+    assert!(value["doctorChecks"]
+        .as_array()
+        .expect("doctor checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "stdlib.orm.dynamic_metadata"));
+}
+
+#[test]
+fn sloppy_orm_table_diagnostics_include_valid_shape_hint() {
+    let cases = [
+        (
+            "missing column object",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table } from "sloppy/orm";
+const Users = table("users");
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "empty column object",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table } from "sloppy/orm";
+const Users = table("users", {});
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+    ];
+    for (name, source) in cases {
+        let diagnostic = extract(std::path::Path::new("app.ts"), source)
+            .expect_err(&format!("{name} should fail"));
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_ORM_TABLE");
+        let hint = diagnostic.hint.as_deref().expect("ORM table hint");
+        assert!(
+            hint.contains("const Users = table(\"users\""),
+            "{name} should include table shape hint"
+        );
+    }
+}
+
+#[test]
+fn sloppy_orm_dynamic_table_shapes_compile_with_partial_metadata() {
+    let cases = [
+        (
+            "computed table name",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column } from "sloppy/orm";
+const tableName = "users";
+const Users = table(tableName, { id: column.uuid().primaryKey() });
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "reused column object",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column } from "sloppy/orm";
+const Id = column.uuid().primaryKey();
+const Users = table("users", { id: Id });
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "factory column object",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column } from "sloppy/orm";
+function makeColumns() {
+  return { id: column.uuid().primaryKey() };
+}
+const Users = table("users", makeColumns());
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "column object variable",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column } from "sloppy/orm";
+const columns = { id: column.uuid().primaryKey() };
+const Users = table("users", columns);
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+    ];
+    for (name, source) in cases {
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .unwrap_or_else(|_| panic!("{name} should compile"));
+        let emitted_js = super::emit_app_js(&app);
+        assert!(
+            emitted_js.source.contains("const Users = table("),
+            "{name} should keep the runtime table declaration"
+        );
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+        assert_eq!(
+            value["orm"]["extraction"]["status"],
+            serde_json::json!("partial"),
+            "{name} should mark ORM metadata partial"
+        );
+    }
+}
+
+#[test]
+fn sloppy_orm_relation_diagnostics_include_valid_shape_hint() {
+    let cases = [
+        (
+            "missing callback",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column, relation } from "sloppy/orm";
+const Users = table("users", { id: column.uuid().primaryKey() });
+relation(Users);
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "dynamic relation table",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column, relation } from "sloppy/orm";
+const Users = table("users", { id: column.uuid().primaryKey() });
+relation(Users.name, ({ one }) => ({}));
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "invalid relation table expression",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column, relation } from "sloppy/orm";
+const Users = table("users", { id: column.uuid().primaryKey() });
+function pickTable() { return Users; }
+relation(pickTable(), ({ one }) => ({}));
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+    ];
+    for (name, source) in cases {
+        let diagnostic = extract(std::path::Path::new("app.ts"), source)
+            .expect_err(&format!("{name} should fail"));
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_ORM_RELATION");
+        let hint = diagnostic.hint.as_deref().expect("ORM relation hint");
+        assert!(
+            hint.contains("relation(Users, ({ one, many })"),
+            "{name} should include relation shape hint"
+        );
+    }
+}
+
+#[test]
+fn sloppy_orm_dynamic_relation_callback_compiles_with_partial_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { table, column, relation } from "sloppy/orm";
+const Users = table("users", { id: column.uuid().primaryKey() });
+const configure = ({ one }) => ({});
+relation(Users, configure);
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("runtime-valid relation callback variable should compile");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("relation(Users, configure);"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    assert_eq!(
+        value["orm"]["extraction"]["status"],
+        serde_json::json!("partial")
+    );
+}
+
+#[test]
+fn sloppy_orm_plan_ignores_table_and_relation_text_outside_ast_calls() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { table, column, relation } from "sloppy/orm";
+// const Ghost = table("ghosts", { id: column.uuid().primaryKey() });
+const template = `relation(Ghost, ({ one }) => ({ team: one(Teams, { local: Ghost.teamId, foreign: Teams.id }) }))`;
+const quoted = "table(\"quoted\", { id: column.uuid().primaryKey() })";
+const Users = table("users", { id: column.uuid().primaryKey() });
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("AST extraction should ignore inert text");
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    let tables = value["orm"]["tables"].as_array().expect("table array");
+    assert_eq!(tables.len(), 1);
+    assert_eq!(tables[0]["name"], "users");
+    assert!(value["orm"]["relations"]
+        .as_array()
+        .expect("relations")
+        .is_empty());
+}
+
+#[test]
 fn root_sloppy_sql_import_emits_data_runtime() {
     let source = r#"import { Sloppy, Results, sql } from "sloppy";
 const app = Sloppy.create();
@@ -8017,7 +8473,7 @@ export default app;
 }
 
 #[test]
-fn typed_framework_body_bindings_are_awaited_before_handler_entry() {
+fn typed_framework_sync_body_bindings_emit_sync_wrapper() {
     let source = r#"import { Sloppy, Results, Body } from "sloppy";
 type UserCreate = { name: string; email: string };
 const app = Sloppy.create();
@@ -8032,14 +8488,62 @@ export default app;
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js
         .source
+        .contains("globalThis.__sloppy_handler_1 = (ctx) =>"));
+    assert!(emitted_js.source.contains("ctx.body.json()"));
+    assert!(!emitted_js.source.contains("ctx.request.json()"));
+    assert!(emitted_js
+        .source
+        .contains("return __sloppy_typed_handler(__sloppy_framework_arg"));
+    assert!(!emitted_js
+        .source
         .contains("const __sloppy_args = await Promise.all(["));
-    assert!(emitted_js.source.contains("ctx.request.json()"));
+}
+
+#[test]
+fn typed_framework_header_bindings_use_header_facade() {
+    let source = r#"import { Sloppy, Results, Header } from "sloppy";
+const app = Sloppy.create();
+app.get("/trace", (trace: Header<"x-trace">) => Results.ok({ trace }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed header handler should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("ctx.header[__sloppy_framework_header_property(binding.name)]"));
+    assert!(emitted_js
+        .source
+        .contains("function __sloppy_framework_header_property(name)"));
+    assert!(!emitted_js
+        .source
+        .contains("ctx.request.headers.get(binding.name)"));
+}
+
+#[test]
+fn typed_framework_service_bindings_keep_async_scope_cleanup() {
+    let source = r#"import { Sloppy, Results, Service } from "sloppy";
+type Clock = { now: string };
+const app = Sloppy.create();
+app.services.addScoped("Clock", () => ({ now: "2026-05-13T00:00:00Z" }));
+app.get("/clock", (clock: Service<Clock>) => Results.ok({ now: clock.now }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed service handler should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_handler_1 = async (ctx) =>"));
+    assert!(emitted_js
+        .source
+        .contains("const __sloppy_args = await Promise.all(["));
     assert!(emitted_js
         .source
         .contains("return await __sloppy_typed_handler(...__sloppy_args);"));
-    assert!(!emitted_js
+    assert!(emitted_js
         .source
-        .contains("return await __sloppy_typed_handler(__sloppy_framework_arg"));
+        .contains("await __sloppy_scope.dispose();"));
 }
 
 #[test]
@@ -8658,12 +9162,15 @@ app.sse("/events", async (ctx, stream) => {
 const group = app.group("/live");
 group.websocket("/ws", async (ctx, socket) => {
     await socket.sendJson({ ok: true });
-}, { maxMessageBytes: 65536 }).requiresAuth().requiresScope("realtime");
+}, { protocols: ["sloppy.realtime"], maxMessageBytes: 64 * 1024, maxSendQueueBytes: 1024 * 1024, heartbeatMs: 15000, idleTimeoutMs: 30000, closeTimeoutMs: 5000, compression: false, slowClientPolicy: "close" }).requiresAuth().requiresScope("realtime").allowedOrigins(["https://app.example.com"]);
+app.ws("/option-first", { protocols: ["option.first"], origins: "*", maxMessageBytes: 4096 }, async (socket) => {
+    await socket.accept();
+});
 export default app;
 "#;
     let path = std::path::Path::new("realtime.js");
     let app = extract(path, source).expect("realtime app should extract");
-    assert_eq!(app.routes.len(), 2);
+    assert_eq!(app.routes.len(), 3);
     assert_eq!(app.routes[0].method, "GET");
     assert_eq!(app.routes[0].kind, "sse");
     assert!(app.routes[0]
@@ -8672,10 +9179,28 @@ export default app;
         .contains("Realtime.sse("));
     assert_eq!(app.routes[1].pattern, "/live/ws");
     assert_eq!(app.routes[1].kind, "websocket");
+    assert_eq!(
+        app.routes[1].websocket.as_ref().unwrap().protocols[0],
+        "sloppy.realtime"
+    );
+    assert!(matches!(
+        app.routes[1].websocket.as_ref().unwrap().origins,
+        Some(WebSocketOriginsMetadata::List(_))
+    ));
     assert!(app.routes[1]
         .handler
         .emitted_source
         .contains("Realtime.websocket("));
+    assert_eq!(app.routes[2].pattern, "/option-first");
+    assert_eq!(app.routes[2].kind, "websocket");
+    assert_eq!(
+        app.routes[2].websocket.as_ref().unwrap().protocols[0],
+        "option.first"
+    );
+    assert!(matches!(
+        app.routes[2].websocket.as_ref().unwrap().origins,
+        Some(WebSocketOriginsMetadata::Any)
+    ));
 
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("Results, Realtime"));
@@ -8689,12 +9214,71 @@ export default app;
     let value: serde_json::Value = serde_json::from_str(&plan).expect("plan should parse");
     assert_eq!(value["routes"][0]["kind"], "sse");
     assert_eq!(value["routes"][1]["kind"], "websocket");
+    assert_eq!(
+        value["routes"][1]["websocket"]["protocols"][0],
+        "sloppy.realtime"
+    );
+    assert_eq!(
+        value["routes"][1]["websocket"]["origins"][0],
+        "https://app.example.com"
+    );
+    assert_eq!(value["routes"][1]["websocket"]["maxMessageBytes"], 65536);
+    assert_eq!(
+        value["routes"][1]["websocket"]["maxSendQueueBytes"],
+        1048576
+    );
+    assert_eq!(value["routes"][1]["websocket"]["heartbeatMs"], 15000);
+    assert_eq!(value["routes"][1]["websocket"]["idleTimeoutMs"], 30000);
+    assert_eq!(value["routes"][1]["websocket"]["closeTimeoutMs"], 5000);
+    assert_eq!(value["routes"][1]["websocket"]["compression"], false);
+    assert_eq!(value["routes"][1]["websocket"]["slowClientPolicy"], "close");
+    assert_eq!(value["routes"][2]["websocket"]["origins"], "*");
     assert_eq!(value["routes"][1]["auth"]["scopes"][0], "realtime");
     assert_eq!(value["features"]["realtime"], true);
     assert!(value["requiredFeatures"]
         .as_array()
         .expect("requiredFeatures should be an array")
         .contains(&serde_json::json!("runtime.realtime")));
+}
+
+#[test]
+fn websocket_route_options_reject_unsupported_static_shapes() {
+    for source in [
+        r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+const options = { protocols: ["chat"] };
+app.ws("/ws", options, async (socket) => {
+    await socket.accept();
+});
+export default app;
+"#,
+        r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+app.websocket("/ws", async (ctx, socket) => {
+    await socket.accept();
+}, { protocols: ["bad token"] });
+export default app;
+"#,
+        r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+app.ws("/ws", { compression: true }, async (socket) => {
+    await socket.accept();
+});
+export default app;
+"#,
+        r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+const origin = "https://app.example.com";
+app.ws("/ws", async (socket) => {
+    await socket.accept();
+}).allowedOrigins(origin);
+export default app;
+"#,
+    ] {
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("unsupported websocket options should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS");
+    }
 }
 
 #[test]

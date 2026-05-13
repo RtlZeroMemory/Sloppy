@@ -70,8 +70,9 @@ unconstrained parameters and explicit kinds such as `int`, `uuid`, `alpha`, or
 `float` when present in the pattern.
 
 `kind` is `http` for ordinary routes, `sse` for server-sent event routes, and
-`websocket` for WebSocket route intent. WebSocket route metadata does not imply
-native upgrade execution in this alpha.
+`websocket` for WebSocket route intent. Native `sloppy run` executes WebSocket
+routes only through HTTP/1.1 Upgrade; direct non-Upgrade HTTP dispatch is not a
+normal route call.
 
 Each route also includes `jsonRequest` and `jsonResponse` objects. The text
 `JSON` column prints `req:<mode>/<materialization>` and

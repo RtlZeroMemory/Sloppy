@@ -1,6 +1,7 @@
 #include "sloppy/app_host.h"
 #include "sloppy/engine.h"
 #include "sloppy/fs.h"
+#include "sloppy/http_profile.h"
 #include "sloppy/logging.h"
 
 #include <stdbool.h>
@@ -159,6 +160,49 @@ static int restore_test_env(const char* key, const TestEnvValue* saved)
     return saved->had_value ? set_test_env(key, saved->value) : unset_test_env(key);
 }
 
+static int profile_json_contains_all(const char** expected, size_t expected_count)
+{
+    unsigned char storage[65536];
+    SlByteBuilder builder = {0};
+    SlBytes bytes = {0};
+    SlStr json = sl_str_empty();
+    size_t index = 0U;
+
+    if (!sl_status_is_ok(sl_byte_builder_init_fixed(&builder, storage, sizeof(storage))) ||
+        !sl_status_is_ok(sl_http_profile_write_json(&builder)))
+    {
+        return 1;
+    }
+    bytes = sl_byte_builder_view(&builder);
+    json = sl_str_from_parts((const char*)bytes.ptr, bytes.length);
+    for (index = 0U; index < expected_count; index += 1U) {
+        if (expect_str_contains(json, sl_str_from_cstr(expected[index])) != 0) {
+            fprintf(stderr, "missing profile fragment: %s\n%.*s\n", expected[index],
+                    (int)json.length, json.ptr == NULL ? "" : json.ptr);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int enable_http_profile(TestEnvValue* saved)
+{
+    if (capture_test_env("SLOPPY_HTTP_PROFILE", saved) != 0 ||
+        set_test_env("SLOPPY_HTTP_PROFILE", "1") != 0)
+    {
+        return 1;
+    }
+    sl_http_profile_reset();
+    return 0;
+}
+
+static int restore_http_profile(const TestEnvValue* saved)
+{
+    int result = restore_test_env("SLOPPY_HTTP_PROFILE", saved);
+    sl_http_profile_reset();
+    return result;
+}
+
 static unsigned long test_process_id(void)
 {
 #ifdef _WIN32
@@ -297,6 +341,58 @@ static SlEngineOptions v8_options(void)
     options.target_platform = sl_str_from_cstr(SL_PLAN_TARGET_PLATFORM_WINDOWS_X64);
     options.target_engine = sl_str_from_cstr(SL_PLAN_TARGET_ENGINE_V8);
     return options;
+}
+
+typedef struct TestWebSocketBridge
+{
+    size_t send_count;
+    SlWebSocketOpcode last_opcode;
+    unsigned char last_payload[128];
+    size_t last_payload_length;
+    size_t close_count;
+    uint16_t close_code;
+    char close_reason[32];
+    size_t close_reason_length;
+} TestWebSocketBridge;
+
+static SlStatus test_websocket_bridge_send(void* user, const SlWebSocketFrameWriteOptions* options,
+                                           SlDiag* out_diag)
+{
+    TestWebSocketBridge* bridge = (TestWebSocketBridge*)user;
+
+    (void)out_diag;
+    if (bridge == NULL || options == NULL || options->payload.length > sizeof(bridge->last_payload))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    bridge->send_count += 1U;
+    bridge->last_opcode = options->opcode;
+    bridge->last_payload_length = options->payload.length;
+    if (options->payload.length != 0U) {
+        memcpy(bridge->last_payload, options->payload.ptr, options->payload.length);
+    }
+    return sl_status_ok();
+}
+
+static SlStatus test_websocket_bridge_close(void* user, uint16_t code, SlStr reason,
+                                            SlDiag* out_diag)
+{
+    TestWebSocketBridge* bridge = (TestWebSocketBridge*)user;
+
+    (void)out_diag;
+    if (bridge == NULL || reason.length >= sizeof(bridge->close_reason)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    bridge->close_count += 1U;
+    bridge->close_code = code;
+    bridge->close_reason_length = reason.length;
+    if (reason.length != 0U) {
+        memcpy(bridge->close_reason, reason.ptr, reason.length);
+    }
+    bridge->close_reason[reason.length] = '\0';
+    return sl_status_ok();
 }
 
 static void init_sqlite_plan(SlPlan* plan, SlPlanDataProvider* provider,
@@ -1284,7 +1380,7 @@ static int test_registered_handler_throw_remaps_source_map_location(void)
     return 0;
 }
 
-static int test_unsupported_result_returns_call_diagnostic(void)
+static int test_plain_object_result_returns_json_response(void)
 {
     unsigned char engine_storage[8192];
     unsigned char result_storage[1024];
@@ -1317,15 +1413,16 @@ static int test_unsupported_result_returns_call_diagnostic(void)
 
     if (expect_status(sl_engine_call_function0(engine, &result_arena,
                                                sl_str_from_cstr("sloppy_object"), &result, &diag),
-                      SL_STATUS_UNSUPPORTED) != 0)
+                      SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         return 53;
     }
 
-    if (result.kind != SL_ENGINE_RESULT_NONE || diag.severity != SL_DIAG_SEVERITY_ERROR ||
-        diag.code != SL_DIAG_INVALID_HTTP_RESULT ||
-        expect_str_contains(diag.message, sl_str_from_cstr("unsupported result type")) != 0)
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE ||
+        result.response.status != 200U ||
+        expect_bytes_equal(result.response.body, "{\"ok\":true}") != 0)
     {
         sl_engine_destroy(engine);
         return 54;
@@ -1335,7 +1432,7 @@ static int test_unsupported_result_returns_call_diagnostic(void)
     return 0;
 }
 
-static int test_primitive_unsupported_results_return_diagnostics(void)
+static int test_primitive_results_follow_http_contract(void)
 {
     unsigned char engine_storage[8192];
     unsigned char result_storage[1024];
@@ -1362,7 +1459,11 @@ static int test_primitive_unsupported_results_return_diagnostics(void)
                                            "globalThis.sloppy_null = function () { return "
                                            "null; };"
                                            "globalThis.sloppy_number = function () { return "
-                                           "42; };"),
+                                           "42; };"
+                                           "globalThis.sloppy_boolean = function () { return "
+                                           "true; };"
+                                           "globalThis.sloppy_array = function () { return "
+                                           "[1, 2, 3]; };"),
                           &diag),
                       SL_STATUS_OK) != 0)
     {
@@ -1385,8 +1486,10 @@ static int test_primitive_unsupported_results_return_diagnostics(void)
     diag = (SlDiag){0};
     if (expect_status(sl_engine_call_function0(engine, &result_arena,
                                                sl_str_from_cstr("sloppy_null"), &result, &diag),
-                      SL_STATUS_UNSUPPORTED) != 0 ||
-        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT)
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON ||
+        result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE ||
+        result.response.status != 200U || expect_bytes_equal(result.response.body, "null") != 0)
     {
         sl_engine_destroy(engine);
         return 524;
@@ -1397,11 +1500,41 @@ static int test_primitive_unsupported_results_return_diagnostics(void)
     diag = (SlDiag){0};
     if (expect_status(sl_engine_call_function0(engine, &result_arena,
                                                sl_str_from_cstr("sloppy_number"), &result, &diag),
-                      SL_STATUS_UNSUPPORTED) != 0 ||
-        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT)
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON ||
+        result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE ||
+        result.response.status != 200U || expect_bytes_equal(result.response.body, "42") != 0)
     {
         sl_engine_destroy(engine);
         return 525;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_boolean"), &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON ||
+        result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE ||
+        result.response.status != 200U || expect_bytes_equal(result.response.body, "true") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 526;
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_array"), &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON ||
+        result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE ||
+        result.response.status != 200U || expect_bytes_equal(result.response.body, "[1,2,3]") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 527;
     }
 
     sl_engine_destroy(engine);
@@ -1456,6 +1589,12 @@ static int test_result_descriptor_negative_shapes_fail_safely(void)
                               "  const value = {}; value.self = value;"
                               "  return { __sloppyResult: true, kind: 'json', status: 200,"
                               "    contentType: 'application/json; charset=utf-8', body: value };"
+                              "};"
+                              "globalThis.sloppy_kind_without_marker = function () {"
+                              "  return { kind: 'json' };"
+                              "};"
+                              "globalThis.sloppy_false_marker = function () {"
+                              "  return { __sloppyResult: false };"
                               "};"),
                           &diag),
                       SL_STATUS_OK) != 0)
@@ -1486,6 +1625,8 @@ static int test_result_descriptor_negative_shapes_fail_safely(void)
     EXPECT_INVALID_RESULT("sloppy_text_non_string_body", SL_STATUS_INVALID_STATE, 536);
     EXPECT_INVALID_RESULT("sloppy_bytes_non_binary_body", SL_STATUS_INVALID_STATE, 537);
     EXPECT_INVALID_RESULT("sloppy_json_circular_body", SL_STATUS_INVALID_STATE, 538);
+    EXPECT_INVALID_RESULT("sloppy_kind_without_marker", SL_STATUS_UNSUPPORTED, 539);
+    EXPECT_INVALID_RESULT("sloppy_false_marker", SL_STATUS_UNSUPPORTED, 540);
 
 #undef EXPECT_INVALID_RESULT
 
@@ -1541,6 +1682,93 @@ static int test_promise_result_settles_text(void)
     }
 
     sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_profile_counts_top_level_return_type_once(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[2048];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+    TestEnvValue profile_env = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        enable_http_profile(&profile_env) != 0)
+    {
+        return 60;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        restore_http_profile(&profile_env);
+        return 61;
+    }
+
+    if (expect_status(sl_engine_eval_source(
+                          engine, sl_str_from_cstr("v8-profile-return-types.js"),
+                          sl_str_from_cstr(
+                              "globalThis.profileSyncReturn = function () { return { ok: true }; };"
+                              "globalThis.profilePromiseReturn = async function () { return { ok: "
+                              "true }; };"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        restore_http_profile(&profile_env);
+        return 62;
+    }
+
+    sl_http_profile_reset();
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("profileSyncReturn"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        restore_http_profile(&profile_env);
+        return 63;
+    }
+    {
+        const char* expected[] = {"\"syncReturns\": 1", "\"promiseReturns\": 0"};
+        if (profile_json_contains_all(expected, sizeof(expected) / sizeof(expected[0])) != 0) {
+            sl_engine_destroy(engine);
+            restore_http_profile(&profile_env);
+            return 64;
+        }
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    sl_http_profile_reset();
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("profilePromiseReturn"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        restore_http_profile(&profile_env);
+        return 65;
+    }
+    {
+        const char* expected[] = {"\"syncReturns\": 0", "\"promiseReturns\": 1"};
+        if (profile_json_contains_all(expected, sizeof(expected) / sizeof(expected[0])) != 0) {
+            sl_engine_destroy(engine);
+            restore_http_profile(&profile_env);
+            return 66;
+        }
+    }
+
+    sl_engine_destroy(engine);
+    if (restore_http_profile(&profile_env) != 0) {
+        return 67;
+    }
     return 0;
 }
 
@@ -4045,6 +4273,151 @@ static int test_request_context_metadata_objects_are_opt_in(void)
     return 0;
 }
 
+static int test_request_context_profile_counts_only_requested_facets(void)
+{
+    unsigned char engine_storage[16384];
+    unsigned char result_storage[4096];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpHeader headers[1];
+    SlHttpQueryParam query_params[1];
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = {0};
+    TestEnvValue profile_env = {0};
+
+    headers[0].name = sl_str_from_cstr("X-Trace");
+    headers[0].value = sl_str_from_cstr("trace-1");
+    request.headers = headers;
+    request.header_count = 1U;
+    query_params[0].name = sl_str_from_cstr("q");
+    query_params[0].value = sl_str_from_cstr("needle");
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0 ||
+        enable_http_profile(&profile_env) != 0)
+    {
+        return 438;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        restore_http_profile(&profile_env);
+        return 439;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-profile-facets.js"),
+                sl_str_from_cstr(
+                    "globalThis.profileNoCtx = function () { return 'ok'; };"
+                    "globalThis.profileQuery = function (ctx) { return ctx.query.q; };"
+                    "globalThis.profileHeader = function (ctx) { return ctx.header.xTrace; };"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        restore_http_profile(&profile_env);
+        return 440;
+    }
+
+    context = test_request_context(&request);
+    context.needs_route_params = false;
+    context.needs_query_params = false;
+    context.needs_headers = false;
+    context.needs_body = false;
+    context.needs_request = false;
+    context.needs_connection = false;
+    context.needs_signal = false;
+    context.needs_log = false;
+    context.needs_metadata = false;
+    sl_http_profile_reset();
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("profileNoCtx"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        restore_http_profile(&profile_env);
+        return 441;
+    }
+    {
+        const char* expected[] = {"\"ctxCreated\": 1",           "\"queryMaterialized\": 0",
+                                  "\"headersMaterialized\": 0",  "\"bodyFacadeMaterialized\": 0",
+                                  "\"bodyJsonMaterialized\": 0", "\"servicesMaterialized\": 0"};
+        if (profile_json_contains_all(expected, sizeof(expected) / sizeof(expected[0])) != 0) {
+            sl_engine_destroy(engine);
+            restore_http_profile(&profile_env);
+            return 442;
+        }
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    context.query_params = query_params;
+    context.query_param_count = 1U;
+    context.needs_query_params = true;
+    sl_http_profile_reset();
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("profileQuery"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        expect_str_equal(result.text, sl_str_from_cstr("needle")) != 0)
+    {
+        sl_engine_destroy(engine);
+        restore_http_profile(&profile_env);
+        return 443;
+    }
+    {
+        const char* expected[] = {"\"queryMaterialized\": 1", "\"headersMaterialized\": 0",
+                                  "\"bodyFacadeMaterialized\": 0", "\"bodyJsonMaterialized\": 0",
+                                  "\"servicesMaterialized\": 0"};
+        if (profile_json_contains_all(expected, sizeof(expected) / sizeof(expected[0])) != 0) {
+            sl_engine_destroy(engine);
+            restore_http_profile(&profile_env);
+            return 444;
+        }
+    }
+
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    context.needs_query_params = false;
+    context.query_params = NULL;
+    context.query_param_count = 0U;
+    context.needs_header_facade = true;
+    sl_http_profile_reset();
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("profileHeader"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        expect_str_equal(result.text, sl_str_from_cstr("trace-1")) != 0)
+    {
+        sl_engine_destroy(engine);
+        restore_http_profile(&profile_env);
+        return 445;
+    }
+    {
+        const char* expected[] = {"\"queryMaterialized\": 0", "\"headersMaterialized\": 1",
+                                  "\"bodyFacadeMaterialized\": 0", "\"bodyJsonMaterialized\": 0",
+                                  "\"servicesMaterialized\": 0"};
+        if (profile_json_contains_all(expected, sizeof(expected) / sizeof(expected[0])) != 0) {
+            sl_engine_destroy(engine);
+            restore_http_profile(&profile_env);
+            return 446;
+        }
+    }
+
+    sl_engine_destroy(engine);
+    if (restore_http_profile(&profile_env) != 0) {
+        return 447;
+    }
+    return 0;
+}
+
 static int test_request_context_preserves_binary_body_bytes(void)
 {
     unsigned char engine_storage[8192];
@@ -5193,8 +5566,8 @@ static int test_result_descriptor_inherited_core_fields_do_not_admit_descriptor(
     if (expect_status(sl_engine_call_function0(engine, &result_arena,
                                                sl_str_from_cstr("sloppy_inherited_core_fields"),
                                                &result, &diag),
-                      SL_STATUS_UNSUPPORTED) != 0 ||
-        result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_INVALID_HTTP_RESULT)
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_JSON || expect_bytes_equal(result.response.body, "{}") != 0)
     {
         sl_engine_destroy(engine);
         return 469;
@@ -6166,6 +6539,93 @@ static int test_registered_handler_receives_context(void)
     {
         sl_engine_destroy(engine);
         return 93;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
+static int test_registered_websocket_handler_echoes_native_message(void)
+{
+    unsigned char engine_storage[16384];
+    SlArena engine_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+    TestWebSocketBridge bridge_state = {0};
+    SlEngineWebSocketBridge bridge = {0};
+    SlEngineWebSocketSession* session = NULL;
+    const unsigned char payload[] = {'h', '\0', 'i'};
+    const unsigned char expected_echo[] = {'e', 'c', 'h', 'o', ':', 'h', '\0', 'i'};
+    SlWebSocketFrame frame = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0) {
+        return 94;
+    }
+
+    bridge.user = &bridge_state;
+    bridge.protocol = sl_str_from_cstr("sloppy.realtime");
+    bridge.send = test_websocket_bridge_send;
+    bridge.close = test_websocket_bridge_close;
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-websocket-register.js"),
+                sl_str_from_cstr(
+                    "__sloppy_register_handler(2, async function (ctx) {"
+                    "  const socket = ctx.__sloppyWebSocket;"
+                    "  if (socket.protocol !== 'sloppy.realtime') throw new Error('bad protocol');"
+                    "  await socket.accept();"
+                    "  const first = await socket.messages().next();"
+                    "  if (first.value.kind !== 'text') throw new Error('missing kind');"
+                    "  if (first.value.text.length !== 3) throw new Error('truncated text');"
+                    "  await socket.sendText('echo:' + first.value.text);"
+                    "  await socket.close(1001, 'bye');"
+                    "});"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 95;
+    }
+
+    if (expect_status(sl_engine_call_registered_websocket_handler_with_context(
+                          engine, &engine_arena, 2U, &context, &bridge, &session, &diag),
+                      SL_STATUS_OK) != 0 ||
+        session == NULL)
+    {
+        sl_engine_destroy(engine);
+        return 96;
+    }
+
+    frame.fin = true;
+    frame.opcode = SL_WEBSOCKET_OPCODE_TEXT;
+    frame.payload = sl_bytes_from_parts(payload, sizeof(payload));
+
+    if (expect_status(sl_engine_websocket_receive(engine, session, &frame, &diag), SL_STATUS_OK) !=
+        0)
+    {
+        sl_engine_destroy(engine);
+        return 97;
+    }
+
+    if (bridge_state.send_count != 1U || bridge_state.last_opcode != SL_WEBSOCKET_OPCODE_TEXT ||
+        bridge_state.last_payload_length != sizeof(expected_echo) ||
+        memcmp(bridge_state.last_payload, expected_echo, sizeof(expected_echo)) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 98;
+    }
+
+    if (bridge_state.close_count != 1U || bridge_state.close_code != 1001U ||
+        bridge_state.close_reason_length != strlen("bye") ||
+        memcmp(bridge_state.close_reason, "bye", strlen("bye")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 99;
     }
 
     sl_engine_destroy(engine);
@@ -7845,12 +8305,12 @@ int main(int argc, char** argv)
         return result;
     }
 
-    result = test_unsupported_result_returns_call_diagnostic();
+    result = test_plain_object_result_returns_json_response();
     if (result != 0) {
         return result;
     }
 
-    result = test_primitive_unsupported_results_return_diagnostics();
+    result = test_primitive_results_follow_http_contract();
     if (result != 0) {
         return result;
     }
@@ -7861,6 +8321,11 @@ int main(int argc, char** argv)
     }
 
     result = test_promise_result_settles_text();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_profile_counts_top_level_return_type_once();
     if (result != 0) {
         return result;
     }
@@ -8025,6 +8490,11 @@ int main(int argc, char** argv)
         return result;
     }
 
+    result = test_request_context_profile_counts_only_requested_facets();
+    if (result != 0) {
+        return result;
+    }
+
     result = test_request_context_preserves_binary_body_bytes();
     if (result != 0) {
         return result;
@@ -8151,6 +8621,11 @@ int main(int argc, char** argv)
     }
 
     result = test_registered_handler_receives_context();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_registered_websocket_handler_echoes_native_message();
     if (result != 0) {
         return result;
     }

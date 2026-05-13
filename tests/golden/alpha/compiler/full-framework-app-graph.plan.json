@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:b1066b4a52d15170bd7f74cefe99bc014d8afb61f4a62248415d7225f53bf691",
+    "hash": "sha256:34abe780b576d7a938a2d4e8f63c91b48afd74d5b470cbcbaff5df7c46478834",
     "id": "sloppyc-app-js",
     "path": "app.js"
   },
@@ -19,8 +19,13 @@
   ],
   "compilerVersion": "sloppyc-0.8.0",
   "completeness": {
-    "reasons": [],
-    "status": "complete"
+    "reasons": [
+      {
+        "code": "response-metadata-partial",
+        "message": "route response metadata is partial"
+      }
+    ],
+    "status": "partial"
   },
   "configReads": [
     {
@@ -231,6 +236,9 @@
     "dependencyGraph": true,
     "health": true,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
+    "nativeJsonDispatch": true,
+    "ops": true,
     "os": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
@@ -400,9 +408,101 @@
       }
     }
   ],
+  "ops": {
+    "health": {
+      "enabled": true,
+      "endpoints": [
+        {
+          "checks": [
+            "database",
+            "scheduler"
+          ],
+          "kind": "aggregate",
+          "method": "GET",
+          "name": "Health",
+          "path": "/status"
+        },
+        {
+          "checks": [
+            "scheduler"
+          ],
+          "kind": "liveness",
+          "method": "GET",
+          "name": "Health.Liveness",
+          "path": "/status/live"
+        },
+        {
+          "checks": [
+            "database"
+          ],
+          "kind": "readiness",
+          "method": "GET",
+          "name": "Health.Readiness",
+          "path": "/status/ready"
+        }
+      ]
+    },
+    "management": {
+      "enabled": false,
+      "endpoints": [],
+      "requiresProtection": false
+    },
+    "metrics": {
+      "json": false,
+      "prometheus": false
+    }
+  },
   "requiredFeatures": [
     "stdlib.os"
   ],
+  "routeDispatch": {
+    "artifact": {
+      "hash": "sha256:e51f156132cc916e88fa88316f1fc09380766f2817c3847ae44a1aa88dbdb311",
+      "kind": "slrt",
+      "path": "routes.slrt"
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [
+        "int"
+      ],
+      "exactStaticPaths": 12,
+      "parameterCandidateBuckets": 2,
+      "segmentTrieNodes": 8,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
+      ]
+    },
+    "endpointCount": 14,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 1
+    },
+    "json": {
+      "request": {
+        "fallback": 0,
+        "generic": 0,
+        "materialized": 1,
+        "native": 1
+      },
+      "response": {
+        "fallback": 0,
+        "generic": 6,
+        "native": 0
+      }
+    },
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 1,
+    "parameterRoutes": 2,
+    "routeCount": 14,
+    "staticRoutes": 12,
+    "urlGeneration": true,
+    "urlWriters": 8,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [
@@ -432,6 +532,13 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "effects": [
         {
           "access": "read",
@@ -448,6 +555,16 @@
         }
       ],
       "handlerId": 1,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "middleware": [
         {
@@ -490,6 +607,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 71,
@@ -502,6 +620,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -620,6 +739,13 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 2,
       "injections": [
         {
@@ -637,6 +763,19 @@
           "providerKind": null
         }
       ],
+      "jsonRequest": {
+        "materialization": "materialize-once",
+        "maxBodyBytes": 65536,
+        "maxDepth": 50,
+        "mode": "native-schema",
+        "schema": "ProjectCreateInput",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "POST",
       "middleware": [
         {
@@ -679,6 +818,7 @@
           "bodySchema": null,
           "helper": "created",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 6,
@@ -691,6 +831,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -782,6 +923,13 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 3,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
+      },
       "handlerId": 3,
       "injections": [
         {
@@ -792,6 +940,16 @@
           "providerKind": "sqlite"
         }
       ],
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "GET",
       "middleware": [
         {
@@ -834,6 +992,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 20,
@@ -846,6 +1005,7 @@
           "bodySchema": null,
           "helper": "notFound",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 42,
@@ -858,6 +1018,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -895,6 +1056,13 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 4,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 4,
       "health": {
         "checks": [
@@ -902,6 +1070,16 @@
           "scheduler"
         ],
         "kind": "aggregate"
+      },
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
       },
       "method": "GET",
       "middleware": [
@@ -945,6 +1123,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -957,6 +1136,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -969,6 +1149,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1001,12 +1182,29 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 5,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 5,
       "health": {
         "checks": [
           "scheduler"
         ],
         "kind": "liveness"
+      },
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
       },
       "method": "GET",
       "middleware": [
@@ -1050,6 +1248,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1062,6 +1261,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1074,6 +1274,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1106,12 +1307,29 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 6,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 6,
       "health": {
         "checks": [
           "database"
         ],
         "kind": "readiness"
+      },
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
       },
       "method": "GET",
       "middleware": [
@@ -1155,6 +1373,7 @@
           "bodySchema": null,
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1167,6 +1386,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 1,
@@ -1179,6 +1399,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1190,10 +1411,14 @@
       }
     },
     {
-      "bindings": [],
       "completeness": {
-        "reasons": [],
-        "status": "complete"
+        "reasons": [
+          {
+            "code": "response-metadata-partial",
+            "message": "route response metadata is partial"
+          }
+        ],
+        "status": "partial"
       },
       "cors": {
         "credentials": true,
@@ -1211,7 +1436,23 @@
         ],
         "preflight": false
       },
+      "dispatch": {
+        "endpointId": 7,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 7,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "GET",
       "middleware": [
         {
@@ -1265,14 +1506,37 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 8,
+        "executionKind": "native-static-text",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 8,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "GET",
       "module": "healthModule",
       "name": "Status.Ping",
+      "nativeResponse": {
+        "body": "pong",
+        "contentType": "text/plain; charset=utf-8",
+        "kind": "text",
+        "status": 200
+      },
       "pattern": "/status/ping",
       "response": {
         "helper": "text",
         "kind": "text",
+        "nativeBody": "pong",
         "status": 200
       },
       "responses": [
@@ -1280,6 +1544,7 @@
           "bodySchema": null,
           "helper": "text",
           "kind": "text",
+          "nativeBody": "pong",
           "partial": false,
           "source": {
             "column": 29,
@@ -1292,6 +1557,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1327,7 +1593,23 @@
         ],
         "preflight": true
       },
+      "dispatch": {
+        "endpointId": 9,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 9,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -1370,6 +1652,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1377,6 +1660,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1409,7 +1693,23 @@
         ],
         "preflight": true
       },
+      "dispatch": {
+        "endpointId": 10,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 10,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -1452,6 +1752,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1459,6 +1760,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1491,7 +1793,23 @@
         ],
         "preflight": true
       },
+      "dispatch": {
+        "endpointId": 11,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
+      },
       "handlerId": 11,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -1534,6 +1852,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1541,6 +1860,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1573,7 +1893,23 @@
         ],
         "preflight": true
       },
+      "dispatch": {
+        "endpointId": 12,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 12,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -1616,6 +1952,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1623,6 +1960,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1655,7 +1993,23 @@
         ],
         "preflight": true
       },
+      "dispatch": {
+        "endpointId": 13,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 13,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -1698,6 +2052,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1705,6 +2060,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1737,7 +2093,23 @@
         ],
         "preflight": true
       },
+      "dispatch": {
+        "endpointId": 14,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 14,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "OPTIONS",
       "middleware": [
         {
@@ -1780,6 +2152,7 @@
           "bodySchema": null,
           "helper": "status",
           "kind": "empty",
+          "nativeBody": null,
           "partial": false,
           "status": 204
         },
@@ -1787,6 +2160,7 @@
           "bodySchema": null,
           "helper": "problem",
           "kind": "problem",
+          "nativeBody": null,
           "partial": true,
           "status": 500
         }
@@ -1889,7 +2263,7 @@
     }
   ],
   "sourceMap": {
-    "hash": "sha256:67936af25763edfddd737237abe7d2ee47bccc54ee0807b783d480e756c5f3f4",
+    "hash": "sha256:1478b6cd9344bad7362d4638a9e23517af435a29105d73f1d90d343a4ad04cb1",
     "id": "sloppyc-app-js-map",
     "path": "app.js.map"
   },
@@ -1907,8 +2281,11 @@
       "effects": true,
       "ffi": false,
       "health": true,
+      "nativeJsonDispatch": true,
+      "ops": true,
       "os": true,
       "providers": true,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true
     },

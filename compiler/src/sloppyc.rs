@@ -8,12 +8,12 @@ use std::{
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    Argument, ArrayExpression, ArrayExpressionElement, BindingPattern, CallExpression,
-    ChainElement, ClassElement, Declaration, ExportAllDeclaration, ExportDefaultDeclaration,
-    ExportNamedDeclaration, Expression, ExpressionStatement, ForStatementInit, ImportDeclaration,
-    ImportDeclarationSpecifier, ImportOrExportKind, MethodDefinitionKind, ModuleExportName,
-    ObjectExpression, ObjectPropertyKind, PropertyKey, PropertyKind, Statement, TSLiteral,
-    TSSignature, TSType, TSTypeName, VariableDeclaration,
+    Argument, ArrayExpression, ArrayExpressionElement, BinaryOperator, BindingPattern,
+    CallExpression, ChainElement, ClassElement, Declaration, ExportAllDeclaration,
+    ExportDefaultDeclaration, ExportNamedDeclaration, Expression, ExpressionStatement,
+    ForStatementInit, ImportDeclaration, ImportDeclarationSpecifier, ImportOrExportKind,
+    MethodDefinitionKind, ModuleExportName, ObjectExpression, ObjectPropertyKind, PropertyKey,
+    PropertyKind, Statement, TSLiteral, TSSignature, TSType, TSTypeName, VariableDeclaration,
 };
 use oxc_codegen::Codegen;
 use oxc_parser::Parser;
@@ -269,6 +269,7 @@ struct RouteMetadata {
     openapi_override: Option<Value>,
     output_cache: Option<Value>,
     cache_headers: Option<Value>,
+    websocket: Option<WebSocketRouteOptionsMetadata>,
 }
 
 #[derive(Debug, Clone)]
@@ -398,6 +399,7 @@ struct AppState {
     results_imported: bool,
     data_imported: bool,
     sql_imported: bool,
+    orm_imported: bool,
     migrations_imported: bool,
     provider_health_imported: bool,
     schema_imported: bool,
@@ -433,6 +435,10 @@ struct AppState {
     provider_bindings: BTreeMap<String, ProviderBinding>,
     helper_sources: BTreeMap<String, String>,
     helper_effects: BTreeMap<String, FunctionEffectSummary>,
+    orm_metadata_sources: Vec<(u32, String)>,
+    orm_tables: Vec<Value>,
+    orm_relations: Vec<Value>,
+    orm_extraction_partial: bool,
     middleware: Vec<FrameworkMiddleware>,
     next_middleware_sequence: usize,
     cors_policy: Option<CorsPolicy>,
@@ -463,6 +469,7 @@ impl AppState {
             results_imported: false,
             data_imported: false,
             sql_imported: false,
+            orm_imported: false,
             migrations_imported: false,
             provider_health_imported: false,
             schema_imported: false,
@@ -498,6 +505,10 @@ impl AppState {
             provider_bindings: BTreeMap::new(),
             helper_sources: BTreeMap::new(),
             helper_effects: BTreeMap::new(),
+            orm_metadata_sources: Vec::new(),
+            orm_tables: Vec::new(),
+            orm_relations: Vec::new(),
+            orm_extraction_partial: false,
             middleware: Vec::new(),
             next_middleware_sequence: 0,
             cors_policy: None,
@@ -1026,6 +1037,7 @@ struct ModuleGraph {
     source_files: Vec<SourceFile>,
     uses_data_runtime: bool,
     uses_sql_runtime: bool,
+    uses_orm_runtime: bool,
     uses_migrations_runtime: bool,
     uses_provider_health_runtime: bool,
     uses_time_runtime: bool,
@@ -1077,6 +1089,7 @@ impl ModuleGraph {
             source_files: Vec::new(),
             uses_data_runtime: false,
             uses_sql_runtime: false,
+            uses_orm_runtime: false,
             uses_migrations_runtime: false,
             uses_provider_health_runtime: false,
             uses_time_runtime: false,
@@ -1555,6 +1568,10 @@ fn extract_program_with_metrics(
         program_modules: modules,
         uses_data_runtime: graph.uses_data_runtime,
         uses_sql_runtime: graph.uses_sql_runtime,
+        uses_orm_runtime: graph.uses_orm_runtime,
+        orm_tables: Vec::new(),
+        orm_relations: Vec::new(),
+        orm_extraction_partial: graph.uses_orm_runtime,
         uses_migrations_runtime: graph.uses_migrations_runtime,
         uses_provider_health_runtime: graph.uses_provider_health_runtime,
         source_files,
@@ -2395,6 +2412,7 @@ fn analyze_program_import(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
+        | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi
         | resolver::ImportKind::SqliteProvider => {
@@ -3089,6 +3107,7 @@ fn validate_program_stdlib_import(
         resolver::ImportKind::SlopNet => validate_module_sloppy_net_import(path, import),
         resolver::ImportKind::SlopHttp => validate_module_sloppy_http_import(path, import),
         resolver::ImportKind::SlopOs => validate_module_sloppy_os_import(path, import),
+        resolver::ImportKind::SlopOrm => validate_module_sloppy_orm_import(path, import),
         resolver::ImportKind::SlopWorkers => validate_module_sloppy_workers_import(path, import),
         resolver::ImportKind::SlopFfi => validate_module_sloppy_ffi_import(path, import),
         resolver::ImportKind::SqliteProvider => {
@@ -3589,6 +3608,7 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
+        | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi => "globalThis.__sloppy_runtime".to_string(),
         resolver::ImportKind::SqliteProvider => {
@@ -3857,6 +3877,7 @@ fn program_reexport_require_expr(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
+        | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi => Ok("globalThis.__sloppy_runtime".to_string()),
         resolver::ImportKind::SqliteProvider => {
@@ -4051,6 +4072,11 @@ fn mark_program_import(
         }
         resolver::ImportKind::SlopHttp => graph.uses_http_client_runtime = true,
         resolver::ImportKind::SlopOs => graph.uses_os_runtime = true,
+        resolver::ImportKind::SlopOrm => {
+            graph.uses_orm_runtime = true;
+            graph.uses_data_runtime = true;
+            graph.uses_sql_runtime = true;
+        }
         resolver::ImportKind::SlopWorkers => graph.uses_workers_runtime = true,
         resolver::ImportKind::SlopFfi => graph.uses_ffi_runtime = true,
         resolver::ImportKind::SlopStdlib => {
@@ -4357,12 +4383,23 @@ fn extract_entry(
         apply_problem_details_to_routes(path, &mut state.routes, descriptor)?;
     }
 
-    let helper_sources = state
-        .helper_sources
+    state
+        .orm_metadata_sources
+        .sort_by_key(|(source_start, _)| *source_start);
+    let mut helper_sources = state
+        .orm_metadata_sources
         .iter()
-        .filter(|(name, _)| helper_source_is_safe_for_top_level(state.helper_effects.get(*name)))
         .map(|(_, source)| source.clone())
-        .collect();
+        .collect::<Vec<_>>();
+    helper_sources.extend(
+        state
+            .helper_sources
+            .iter()
+            .filter(|(name, _)| {
+                helper_source_is_safe_for_top_level(state.helper_effects.get(*name))
+            })
+            .map(|(_, source)| source.clone()),
+    );
     let framework_needs_os_runtime = state.routes.iter().any(|route| {
         route.handler.bindings.iter().any(|binding| {
             binding.kind == "config"
@@ -4408,6 +4445,10 @@ fn extract_entry(
                         .any(|binding| binding.injection_kind.as_deref() == Some("provider"))
             }),
         uses_sql_runtime: state.sql_imported || graph.uses_sql_runtime,
+        uses_orm_runtime: state.orm_imported || graph.uses_orm_runtime,
+        orm_tables: state.orm_tables,
+        orm_relations: state.orm_relations,
+        orm_extraction_partial: state.orm_extraction_partial,
         uses_migrations_runtime: state.migrations_imported || graph.uses_migrations_runtime,
         uses_provider_health_runtime: state.provider_health_imported
             || graph.uses_provider_health_runtime,
@@ -4532,6 +4573,19 @@ fn sloppy_crypto_import_name_supported(name: &str) -> bool {
 
 fn sloppy_data_import_name_supported(name: &str) -> bool {
     matches!(name, "sql" | "Migrations" | "ProviderHealth")
+}
+
+fn sloppy_orm_import_name_supported(name: &str) -> bool {
+    matches!(
+        name,
+        "orm"
+            | "table"
+            | "column"
+            | "relation"
+            | "sql"
+            | "SloppyOrmError"
+            | "SloppyOrmConcurrencyError"
+    )
 }
 
 fn sloppy_sqlite_provider_import_name_supported(name: &str) -> bool {
@@ -4782,6 +4836,7 @@ enum SloppyStdlibImport {
     Net,
     Http,
     Os,
+    Orm,
     Workers,
     Ffi,
 }
@@ -4797,6 +4852,7 @@ impl SloppyStdlibImport {
             "sloppy/net" => Some(Self::Net),
             "sloppy/http" => Some(Self::Http),
             "sloppy/os" => Some(Self::Os),
+            "sloppy/orm" => Some(Self::Orm),
             "sloppy/workers" => Some(Self::Workers),
             "sloppy/ffi" => Some(Self::Ffi),
             _ => None,
@@ -4813,6 +4869,7 @@ impl SloppyStdlibImport {
             Self::Net => sloppy_net_import_name_supported(name),
             Self::Http => sloppy_http_import_name_supported(name),
             Self::Os => sloppy_os_import_name_supported(name),
+            Self::Orm => sloppy_orm_import_name_supported(name),
             Self::Workers => sloppy_workers_import_name_supported(name),
             Self::Ffi => sloppy_ffi_import_name_supported(name),
         }
@@ -4952,6 +5009,11 @@ fn mark_sloppy_root_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclar
                 graph.uses_data_runtime = true;
                 graph.uses_provider_health_runtime = true;
             }
+            "orm" | "table" | "column" | "relation" => {
+                graph.uses_orm_runtime = true;
+                graph.uses_data_runtime = true;
+                graph.uses_sql_runtime = true;
+            }
             "Http" | "HttpClientFactory" | "HttpError" | "SloppyHttpClientError" | "TestHttp" => {
                 graph.uses_http_client_runtime = true;
             }
@@ -5035,6 +5097,13 @@ fn validate_module_sloppy_data_import(
         "sloppy/data",
         sloppy_data_import_name_supported,
     )
+}
+
+fn validate_module_sloppy_orm_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(path, import, "sloppy/orm", sloppy_orm_import_name_supported)
 }
 
 fn validate_module_sloppy_sqlite_provider_import(
@@ -5887,6 +5956,11 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
         SloppyStdlibImport::Net => state.net_imported = true,
         SloppyStdlibImport::Http => state.http_client_imported = true,
         SloppyStdlibImport::Os => state.os_imported = true,
+        SloppyStdlibImport::Orm => {
+            state.orm_imported = true;
+            state.data_imported = true;
+            state.sql_imported = true;
+        }
         SloppyStdlibImport::Workers => state.workers_imported = true,
         SloppyStdlibImport::Ffi => state.ffi_imported = true,
     }
@@ -6189,6 +6263,16 @@ fn extract_import(
                         state.provider_health_imported = true;
                     }
                 }
+                ("orm", "orm")
+                | ("table", "table")
+                | ("column", "column")
+                | ("relation", "relation") => {
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.orm_imported = true;
+                        state.data_imported = true;
+                        state.sql_imported = true;
+                    }
+                }
                 ("schema", "schema") => state.schema_imported = true,
                 ("Schema", "Schema") => state.schema_imported = true,
                 _ if sloppy_root_import_name_supported(imported) && imported == local => {}
@@ -6279,6 +6363,10 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "sql"
             | "Migrations"
             | "ProviderHealth"
+            | "orm"
+            | "table"
+            | "column"
+            | "relation"
             | "schema"
             | "Schema"
             | "Email"
@@ -6395,6 +6483,12 @@ fn extract_variable_declaration(
             );
         } else if let Some(binding) = app_provider_lookup(init, state) {
             state.provider_bindings.insert(name.to_string(), binding);
+        } else if let Some(metadata_source) =
+            orm_table_declaration_source(path, source, name, init, state)?
+        {
+            state
+                .orm_metadata_sources
+                .push((declarator.span.start, metadata_source));
         } else if helper_initializer(init).is_some() {
             let Some(init_source) = source_slice(source, init.span()) else {
                 return Err(Diagnostic::new(
@@ -6700,6 +6794,10 @@ fn extract_expression_statement(
         return Ok(());
     }
 
+    if orm_relation_metadata_call(path, source, statement, state)? {
+        return Ok(());
+    }
+
     if let Some(registration) =
         app_service_registration_call(path, source, source_name, &statement.expression, state)?
     {
@@ -6881,6 +6979,7 @@ fn extract_expression_statement(
     state.routes.push(Route {
         method,
         kind,
+        websocket: contract_metadata.websocket.clone(),
         framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
         pattern: normalized_pattern,
         name: contract_metadata.name.clone(),
@@ -8787,6 +8886,7 @@ fn static_asset_route(
     Route {
         method: "GET",
         kind: "http",
+        websocket: None,
         framework_path: None,
         pattern: route_path,
         name: None,
@@ -10137,6 +10237,7 @@ fn app_map_controller_call(
         routes.push(Route {
             method,
             kind: "http",
+            websocket: None,
             framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
             pattern: normalized_pattern,
             name: contract_metadata.name.clone(),
@@ -10512,6 +10613,7 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
         routes.push(Route {
             method: "OPTIONS",
             kind: "http",
+            websocket: None,
             framework_path: None,
             pattern,
             name: None,
@@ -11994,6 +12096,7 @@ fn ops_route(
     Ok(Route {
         method: "GET",
         kind: "http",
+        websocket: None,
         framework_path: (normalized_pattern != framework_path).then(|| framework_path.to_string()),
         pattern: normalized_pattern,
         name: Some(name.to_string()),
@@ -12066,6 +12169,7 @@ fn health_route(
     Ok(Route {
         method: "GET",
         kind: "http",
+        websocket: None,
         framework_path: (normalized_pattern != spec.framework_path)
             .then(|| spec.framework_path.to_string()),
         pattern: normalized_pattern,
@@ -12407,6 +12511,7 @@ fn docs_route(input: DocsRouteInput<'_>) -> Result<Route, Diagnostic> {
     Ok(Route {
         method: "GET",
         kind: "http",
+        websocket: None,
         framework_path: None,
         pattern: input.framework_path.to_string(),
         name: Some(input.name.to_string()),
@@ -12569,6 +12674,284 @@ fn app_use_module_call(expression: &Expression<'_>, state: &AppState) -> Option<
         return None;
     };
     Some((identifier.name.as_str().to_string(), identifier.span))
+}
+
+fn orm_table_declaration_source(
+    path: &Path,
+    source: &str,
+    name: &str,
+    expression: &Expression<'_>,
+    state: &mut AppState,
+) -> Result<Option<String>, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(None);
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return Ok(None);
+    };
+    if callee.name.as_str() != "table" || !state.orm_imported {
+        return Ok(None);
+    }
+    if call.arguments.len() < 2 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ORM_TABLE",
+            "ORM table declarations require a literal table name and static column object",
+        )
+        .with_path(path)
+        .with_span(call.span)
+        .with_hint(orm_table_hint()));
+    }
+    let columns_argument = &call.arguments[1];
+    if let Argument::ObjectExpression(columns) = columns_argument {
+        if columns.properties.is_empty() {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_ORM_TABLE",
+                "ORM table declarations require a non-empty column object",
+            )
+            .with_path(path)
+            .with_span(argument_span(columns_argument).unwrap_or(call.span))
+            .with_hint(orm_table_hint()));
+        }
+    }
+    if let Some(metadata) =
+        orm_table_metadata_from_call(source_name_from_path(path), source, name, call)
+    {
+        state.orm_tables.push(metadata);
+    } else {
+        state.orm_extraction_partial = true;
+    }
+    let Some(init_source) = source_slice(source, expression.span()) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ORM_TABLE",
+            "ORM table declaration source could not be extracted",
+        )
+        .with_path(path)
+        .with_span(call.span)
+        .with_hint(orm_table_hint()));
+    };
+    Ok(Some(format!("const {name} = {init_source};")))
+}
+
+fn source_name_from_path(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("app")
+        .to_string()
+}
+
+fn orm_table_metadata_from_call(
+    source_name: String,
+    source: &str,
+    model: &str,
+    call: &CallExpression<'_>,
+) -> Option<Value> {
+    let table_name = string_argument(call.arguments.first()?)?;
+    let columns_object = object_argument(call.arguments.get(1)?)?;
+    let mut columns = Vec::new();
+    for property in &columns_object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return None;
+        };
+        if property.computed || property.method || property.shorthand {
+            return None;
+        }
+        let column_name = property_key_name(&property.key)?.to_string();
+        let column_expression = source_slice(source, property.value.span())?;
+        let column_type = orm_column_type_from_expression(&property.value)?;
+        columns.push(json!({
+            "name": column_name,
+            "type": column_type,
+            "primaryKey": orm_column_has_modifier(&property.value, "primaryKey"),
+            "nullable": orm_column_has_modifier(&property.value, "nullable"),
+            "notNull": orm_column_has_modifier(&property.value, "notNull"),
+            "unique": orm_column_has_modifier(&property.value, "unique"),
+            "index": orm_column_has_modifier(&property.value, "index"),
+            "private": orm_column_has_modifier(&property.value, "private"),
+            "softDelete": orm_column_has_modifier(&property.value, "softDelete"),
+            "concurrencyToken": orm_column_has_modifier(&property.value, "concurrencyToken"),
+            "default": orm_column_has_modifier(&property.value, "default"),
+            "defaultNow": orm_column_has_modifier(&property.value, "defaultNow"),
+            "generated": orm_column_has_modifier(&property.value, "generated"),
+            "reference": crate::plan_emit::parse_reference(&column_expression),
+        }));
+    }
+    Some(json!({
+        "model": model,
+        "name": table_name,
+        "source": source_name,
+        "columns": columns,
+    }))
+}
+
+fn orm_column_type_from_expression<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
+    let mut current = expression;
+    loop {
+        let Expression::CallExpression(call) = current else {
+            return None;
+        };
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            return None;
+        };
+        if let Expression::Identifier(object) = &member.object {
+            if object.name.as_str() == "column" {
+                let column_type = member.property.name.as_str();
+                return if orm_column_type_supported(column_type) {
+                    Some(column_type)
+                } else {
+                    None
+                };
+            }
+        }
+        current = &member.object;
+    }
+}
+
+fn orm_column_type_supported(column_type: &str) -> bool {
+    matches!(
+        column_type,
+        "text"
+            | "string"
+            | "int"
+            | "integer"
+            | "bigint"
+            | "number"
+            | "float"
+            | "decimal"
+            | "bool"
+            | "boolean"
+            | "uuid"
+            | "instant"
+            | "timestamp"
+            | "date"
+            | "json"
+            | "blob"
+            | "bytes"
+            | "enum"
+    )
+}
+
+fn orm_column_has_modifier(expression: &Expression<'_>, modifier: &str) -> bool {
+    let mut current = expression;
+    while let Expression::CallExpression(call) = current {
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            return false;
+        };
+        if member.property.name.as_str() == modifier {
+            return true;
+        }
+        current = &member.object;
+    }
+    false
+}
+
+fn orm_table_hint() -> &'static str {
+    "Use:\n  const Users = table(\"users\", {\n    id: column.uuid().primaryKey(),\n    teamId: column.uuid().references(() => Teams.id),\n  });"
+}
+
+fn orm_relation_hint() -> &'static str {
+    "Use:\n  relation(Users, ({ one, many }) => ({\n    team: one(Teams, {\n      local: Users.teamId,\n      foreign: Teams.id,\n    }),\n  }));"
+}
+
+fn orm_relation_metadata_call(
+    path: &Path,
+    source: &str,
+    statement: &ExpressionStatement<'_>,
+    state: &mut AppState,
+) -> Result<bool, Diagnostic> {
+    let expression = &statement.expression;
+    let Expression::CallExpression(call) = expression else {
+        return Ok(false);
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return Ok(false);
+    };
+    if callee.name.as_str() != "relation" {
+        return Ok(false);
+    }
+    if !state.orm_imported {
+        return Ok(false);
+    }
+    if call.arguments.len() < 2 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ORM_RELATION",
+            "ORM relation declarations require a table identifier and an inline callback",
+        )
+        .with_path(path)
+        .with_span(call.span)
+        .with_hint(orm_relation_hint()));
+    }
+    let Some(table_argument) = call.arguments.first() else {
+        return Ok(false);
+    };
+    if !matches!(table_argument, Argument::Identifier(_)) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ORM_RELATION",
+            "ORM relation declarations require a static table identifier",
+        )
+        .with_path(path)
+        .with_span(argument_span(table_argument).unwrap_or(call.span))
+        .with_hint(orm_relation_hint()));
+    }
+    let Some(callback_argument) = call.arguments.get(1) else {
+        return Ok(false);
+    };
+    let Some(statement_source) = source_slice(source, statement.span) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ORM_RELATION",
+            "ORM relation declaration source could not be extracted",
+        )
+        .with_path(path)
+        .with_span(statement.span)
+        .with_hint(orm_relation_hint()));
+    };
+    state
+        .orm_metadata_sources
+        .push((statement.span.start, statement_source.to_string()));
+    if matches!(
+        callback_argument,
+        Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
+    ) {
+        if let Some(callback_source) = source_slice(
+            source,
+            argument_span(callback_argument).unwrap_or(call.span),
+        ) {
+            if let Some(object_source) = crate::plan_emit::relation_object_source(&callback_source)
+            {
+                let Argument::Identifier(table_identifier) = table_argument else {
+                    unreachable!("table argument shape checked above");
+                };
+                for part in crate::plan_emit::split_top_level_properties(object_source) {
+                    let Some((relation_name, expression)) =
+                        crate::plan_emit::parse_property_name(part)
+                    else {
+                        state.orm_extraction_partial = true;
+                        continue;
+                    };
+                    let Some(mut relation) =
+                        crate::plan_emit::parse_relation_definition(relation_name, expression)
+                    else {
+                        state.orm_extraction_partial = true;
+                        continue;
+                    };
+                    if let Value::Object(ref mut object) = relation {
+                        object.insert(
+                            "tableModel".to_string(),
+                            json!(table_identifier.name.as_str()),
+                        );
+                        object.insert("source".to_string(), json!(source_name_from_path(path)));
+                    }
+                    state.orm_relations.push(relation);
+                }
+            } else {
+                state.orm_extraction_partial = true;
+            }
+        } else {
+            state.orm_extraction_partial = true;
+        }
+    } else {
+        state.orm_extraction_partial = true;
+    }
+    Ok(true)
 }
 
 fn app_service_registration_call(
@@ -14214,6 +14597,7 @@ fn extract_module_function_routes(
                 routes.push(Route {
                     method,
                     kind,
+                    websocket: contract_metadata.websocket.clone(),
                     framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
                     pattern: normalized_pattern,
                     name: contract_metadata.name.clone(),
@@ -14553,7 +14937,25 @@ fn route_call_parts<'a>(
         return Ok(None);
     };
     let (metadata, handler_arg) = if kind == "websocket" && call.arguments.len() == 3 {
-        (RouteMetadata::default(), &call.arguments[1])
+        if route_handler_argument(&call.arguments[1]) {
+            let metadata = RouteMetadata {
+                websocket: Some(websocket_options_from_argument(&call.arguments[2])?),
+                ..Default::default()
+            };
+            (metadata, &call.arguments[1])
+        } else {
+            let metadata = RouteMetadata {
+                websocket: Some(websocket_options_from_argument(&call.arguments[1])?),
+                ..Default::default()
+            };
+            (metadata, &call.arguments[2])
+        }
+    } else if kind == "websocket" {
+        let metadata = RouteMetadata {
+            websocket: Some(default_websocket_options()),
+            ..Default::default()
+        };
+        (metadata, &call.arguments[1])
     } else if call.arguments.len() == 3 {
         (
             route_metadata_from_options_argument(&call.arguments[1])?,
@@ -14570,6 +14972,350 @@ fn route_call_parts<'a>(
         metadata,
         handler_arg,
     )))
+}
+
+fn route_handler_argument(argument: &Argument<'_>) -> bool {
+    matches!(
+        argument,
+        Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
+    )
+}
+
+fn default_websocket_options() -> WebSocketRouteOptionsMetadata {
+    WebSocketRouteOptionsMetadata {
+        protocols: Vec::new(),
+        origins: None,
+        max_message_bytes: Some(64 * 1024),
+        max_send_queue_bytes: Some(1024 * 1024),
+        heartbeat_ms: None,
+        idle_timeout_ms: None,
+        close_timeout_ms: Some(5000),
+        slow_client_policy: Some("error".to_string()),
+        compression: Some(false),
+    }
+}
+
+fn merge_websocket_options(
+    existing: &mut WebSocketRouteOptionsMetadata,
+    incoming: WebSocketRouteOptionsMetadata,
+) {
+    if !incoming.protocols.is_empty() {
+        existing.protocols = incoming.protocols;
+    }
+    if incoming.origins.is_some() {
+        existing.origins = incoming.origins;
+    }
+    if incoming.max_message_bytes.is_some() {
+        existing.max_message_bytes = incoming.max_message_bytes;
+    }
+    if incoming.max_send_queue_bytes.is_some() {
+        existing.max_send_queue_bytes = incoming.max_send_queue_bytes;
+    }
+    if incoming.heartbeat_ms.is_some() {
+        existing.heartbeat_ms = incoming.heartbeat_ms;
+    }
+    if incoming.idle_timeout_ms.is_some() {
+        existing.idle_timeout_ms = incoming.idle_timeout_ms;
+    }
+    if incoming.close_timeout_ms.is_some() {
+        existing.close_timeout_ms = incoming.close_timeout_ms;
+    }
+    if incoming.slow_client_policy.is_some() {
+        existing.slow_client_policy = incoming.slow_client_policy;
+    }
+    if incoming.compression.is_some() {
+        existing.compression = incoming.compression;
+    }
+}
+
+fn websocket_options_from_argument(
+    argument: &Argument<'_>,
+) -> Result<WebSocketRouteOptionsMetadata, Diagnostic> {
+    let Some(object) = object_argument(argument) else {
+        let diagnostic = Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS",
+            "WebSocket options must be a static object literal",
+        );
+        return Err(with_argument_span(diagnostic, argument));
+    };
+    let mut options = default_websocket_options();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS",
+                "WebSocket options must use literal properties",
+            )
+            .with_span(object.span));
+        };
+        if property.computed {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS",
+                "WebSocket option names must be literal",
+            )
+            .with_span(property.span));
+        }
+        let Some(key) = property_key_name(&property.key) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS",
+                "WebSocket option names must be literal",
+            )
+            .with_span(property.span));
+        };
+        match key {
+            "protocols" => {
+                options.protocols = websocket_protocols_from_expression(&property.value)?;
+            }
+            "origins" => {
+                options.origins = Some(websocket_origins_from_expression(&property.value)?);
+            }
+            "maxMessageBytes" => {
+                options.max_message_bytes = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "maxSendQueueBytes" => {
+                options.max_send_queue_bytes =
+                    Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "heartbeatMs" => {
+                options.heartbeat_ms = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "idleTimeoutMs" => {
+                options.idle_timeout_ms = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "closeTimeoutMs" => {
+                options.close_timeout_ms = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "slowClientPolicy" => {
+                let Some(policy) = expression_string_literal(&property.value) else {
+                    return Err(websocket_options_diagnostic(
+                        "WebSocket slowClientPolicy must be 'error' or 'close'",
+                        property.value.span(),
+                    ));
+                };
+                if policy != "error" && policy != "close" {
+                    return Err(websocket_options_diagnostic(
+                        "WebSocket slowClientPolicy must be 'error' or 'close'",
+                        property.value.span(),
+                    ));
+                }
+                options.slow_client_policy = Some(policy.to_string());
+            }
+            "compression" => {
+                if !matches!(&property.value, Expression::BooleanLiteral(value) if !value.value) {
+                    return Err(websocket_options_diagnostic(
+                        "WebSocket compression must be the literal false",
+                        property.value.span(),
+                    ));
+                }
+                options.compression = Some(false);
+            }
+            _ => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS",
+                    format!("unsupported WebSocket option '{key}'"),
+                )
+                .with_span(property.span));
+            }
+        }
+    }
+    Ok(options)
+}
+
+fn websocket_protocols_from_expression(
+    expression: &Expression<'_>,
+) -> Result<Vec<String>, Diagnostic> {
+    let Expression::ArrayExpression(array) = expression else {
+        return Err(websocket_options_diagnostic(
+            "WebSocket protocols must be a string literal array",
+            expression.span(),
+        ));
+    };
+    let mut protocols = Vec::new();
+    for element in &array.elements {
+        let ArrayExpressionElement::StringLiteral(value) = element else {
+            return Err(websocket_options_diagnostic(
+                "WebSocket protocols must contain only string literals",
+                array.span,
+            ));
+        };
+        let protocol = value.value.as_str();
+        if !websocket_protocol_token_supported(protocol) {
+            return Err(websocket_options_diagnostic(
+                "WebSocket protocols must be non-empty WebSocket subprotocol tokens",
+                value.span,
+            ));
+        }
+        if !protocols.iter().any(|existing| existing == protocol) {
+            protocols.push(protocol.to_string());
+        }
+    }
+    Ok(protocols)
+}
+
+fn websocket_protocol_token_supported(value: &str) -> bool {
+    !value.is_empty()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'!' | b'#'
+                        | b'$'
+                        | b'%'
+                        | b'&'
+                        | b'\''
+                        | b'*'
+                        | b'+'
+                        | b'-'
+                        | b'.'
+                        | b'^'
+                        | b'_'
+                        | b'`'
+                        | b'|'
+                        | b'~'
+                )
+        })
+}
+
+fn websocket_origins_from_call(
+    call: &CallExpression<'_>,
+) -> Result<WebSocketOriginsMetadata, Diagnostic> {
+    if call.arguments.len() != 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS",
+            "allowedOrigins requires exactly one static origin argument",
+        )
+        .with_span(call.span));
+    }
+    websocket_origins_from_argument(&call.arguments[0])
+}
+
+fn websocket_origins_from_argument(
+    argument: &Argument<'_>,
+) -> Result<WebSocketOriginsMetadata, Diagnostic> {
+    match argument {
+        Argument::StringLiteral(value) => websocket_origin_string(value.value.as_str(), value.span),
+        Argument::ArrayExpression(array) => websocket_origin_array(array),
+        _ => {
+            let diagnostic = Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS",
+                "WebSocket origins must be '*', a string literal, or a string literal array",
+            );
+            Err(with_argument_span(diagnostic, argument))
+        }
+    }
+}
+
+fn websocket_origins_from_expression(
+    expression: &Expression<'_>,
+) -> Result<WebSocketOriginsMetadata, Diagnostic> {
+    match expression {
+        Expression::StringLiteral(value) => {
+            websocket_origin_string(value.value.as_str(), value.span)
+        }
+        Expression::ArrayExpression(array) => websocket_origin_array(array),
+        Expression::ParenthesizedExpression(parenthesized) => {
+            websocket_origins_from_expression(&parenthesized.expression)
+        }
+        _ => Err(websocket_options_diagnostic(
+            "WebSocket origins must be '*', a string literal, or a string literal array",
+            expression.span(),
+        )),
+    }
+}
+
+fn websocket_origin_string(
+    value: &str,
+    span: Span,
+) -> Result<WebSocketOriginsMetadata, Diagnostic> {
+    if value.is_empty() {
+        return Err(websocket_options_diagnostic(
+            "WebSocket origins must be non-empty strings",
+            span,
+        ));
+    }
+    if value == "*" {
+        return Ok(WebSocketOriginsMetadata::Any);
+    }
+    Ok(WebSocketOriginsMetadata::List(vec![value.to_string()]))
+}
+
+fn websocket_origin_array(
+    array: &ArrayExpression<'_>,
+) -> Result<WebSocketOriginsMetadata, Diagnostic> {
+    let mut origins = Vec::new();
+    for element in &array.elements {
+        let ArrayExpressionElement::StringLiteral(value) = element else {
+            return Err(websocket_options_diagnostic(
+                "WebSocket origins must contain only string literals",
+                array.span,
+            ));
+        };
+        let origin = value.value.as_str();
+        if origin.is_empty() {
+            return Err(websocket_options_diagnostic(
+                "WebSocket origins must be non-empty strings",
+                value.span,
+            ));
+        }
+        if origin == "*" && array.elements.len() != 1 {
+            return Err(websocket_options_diagnostic(
+                "WebSocket '*' origin cannot be combined with explicit origins",
+                value.span,
+            ));
+        }
+        if !origins.iter().any(|existing| existing == origin) {
+            origins.push(origin.to_string());
+        }
+    }
+    if origins.is_empty() {
+        return Err(websocket_options_diagnostic(
+            "WebSocket origins must not be an empty array",
+            array.span,
+        ));
+    }
+    if origins[0] == "*" {
+        Ok(WebSocketOriginsMetadata::Any)
+    } else {
+        Ok(WebSocketOriginsMetadata::List(origins))
+    }
+}
+
+fn websocket_positive_integer(expression: &Expression<'_>, name: &str) -> Result<u64, Diagnostic> {
+    let Some(value) = expression_positive_integer(expression) else {
+        return Err(websocket_options_diagnostic(
+            format!("WebSocket {name} must be a positive integer literal"),
+            expression.span(),
+        ));
+    };
+    Ok(value)
+}
+
+fn expression_positive_integer(expression: &Expression<'_>) -> Option<u64> {
+    match expression {
+        Expression::NumericLiteral(value) => {
+            if value.value > 0.0 && value.value.fract() == 0.0 && value.value <= u64::MAX as f64 {
+                Some(value.value as u64)
+            } else {
+                None
+            }
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_positive_integer(&parenthesized.expression)
+        }
+        Expression::BinaryExpression(binary) => {
+            let left = expression_positive_integer(&binary.left)?;
+            let right = expression_positive_integer(&binary.right)?;
+            match binary.operator {
+                BinaryOperator::Addition => left.checked_add(right),
+                BinaryOperator::Multiplication => left.checked_mul(right),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn websocket_options_diagnostic(message: impl Into<String>, span: Span) -> Diagnostic {
+    Diagnostic::new("SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS", message.into()).with_span(span)
 }
 
 fn route_method_from_property(property: &str) -> Option<&'static str> {
@@ -14673,6 +15419,13 @@ fn route_metadata_chain<'a>(
                         },
                     );
                 }
+                current = &member.object;
+            }
+            "allowedOrigins" => {
+                let origins = websocket_origins_from_call(call)?;
+                let mut websocket = metadata.websocket.unwrap_or_default();
+                websocket.origins = Some(origins);
+                metadata.websocket = Some(websocket);
                 current = &member.object;
             }
             "accepts" => {
@@ -14846,6 +15599,11 @@ fn merged_route_metadata(options: &RouteMetadata, fluent: &RouteMetadata) -> Rou
     }
     if fluent.cache_headers.is_some() {
         merged.cache_headers = fluent.cache_headers.clone();
+    }
+    if let Some(fluent_websocket) = &fluent.websocket {
+        let mut websocket = merged.websocket.unwrap_or_default();
+        merge_websocket_options(&mut websocket, fluent_websocket.clone());
+        merged.websocket = Some(websocket);
     }
     merged
 }
@@ -18039,7 +18797,7 @@ fn dedupe_response_metadata(responses: Vec<ResponseMetadata>) -> Vec<ResponseMet
 
 fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMetadata> {
     let (receiver, helper) = static_member_name(&call.callee)?;
-    let (status, kind) = match receiver {
+    let (status, mut kind) = match receiver {
         "Auth" => match helper {
             "signIn" => (200, "json"),
             "signOut" => (204, "empty"),
@@ -18058,12 +18816,15 @@ fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMeta
             "badRequest" => (400, "json"),
             "unauthorized" => (401, "json"),
             "notFound" => (404, "json"),
-            "problem" => (500, "problem"),
+            "problem" => (problem_result_code(call).unwrap_or(500), "problem"),
             "status" => (status_result_code(call)?, "json"),
             _ => return None,
         },
         _ => return None,
     };
+    if receiver == "Results" && helper == "status" && status_result_has_no_body(call) {
+        kind = "empty";
+    }
     Some(ResponseMetadata {
         helper: helper.to_string(),
         status,
@@ -18084,6 +18845,18 @@ fn native_response_body_from_call(helper: &str, call: &CallExpression<'_>) -> Op
                 return None;
             };
             Some(literal.value.to_string())
+        }
+        "noContent" => Some(String::new()),
+        "status" => {
+            if status_result_has_no_body(call) {
+                return Some(String::new());
+            }
+            let value = json_value_from_argument(call.arguments.get(1)?)?;
+            serde_json::to_string(&value).ok()
+        }
+        "problem" => {
+            let value = json_value_from_argument(call.arguments.first()?)?;
+            serde_json::to_string(&value).ok()
         }
         "json" | "ok" => {
             let value = json_value_from_argument(call.arguments.first()?)?;
@@ -18202,6 +18975,35 @@ fn status_result_code(call: &CallExpression<'_>) -> Option<u16> {
     let value = literal.value;
     if value.fract() == 0.0 && (100.0..=599.0).contains(&value) {
         Some(value as u16)
+    } else {
+        None
+    }
+}
+
+fn status_result_has_no_body(call: &CallExpression<'_>) -> bool {
+    call.arguments.len() == 1
+}
+
+fn problem_result_code(call: &CallExpression<'_>) -> Option<u16> {
+    if let Some(status) = call
+        .arguments
+        .get(1)
+        .and_then(json_value_from_argument)
+        .and_then(|value| value.get("status").and_then(json_http_status_value))
+    {
+        return Some(status);
+    }
+
+    call.arguments
+        .first()
+        .and_then(json_value_from_argument)
+        .and_then(|value| value.get("status").and_then(json_http_status_value))
+}
+
+fn json_http_status_value(value: &Value) -> Option<u16> {
+    let number = value.as_f64()?;
+    if number.fract() == 0.0 && (100.0..=599.0).contains(&number) {
+        Some(number as u16)
     } else {
         None
     }
@@ -19426,6 +20228,7 @@ fn handler_body_is_supported_arrow(
     function.body.statements.len() == 1
         && function.body.statements.first().is_some_and(|statement| {
             return_statement_returns_supported_result(statement, &roots, schema_names)
+                || statement_is_supported_throw(statement)
         })
 }
 
@@ -19443,6 +20246,7 @@ fn handler_body_is_supported_function(
     body.statements.len() == 1
         && body.statements.first().is_some_and(|statement| {
             return_statement_returns_supported_result(statement, &roots, schema_names)
+                || statement_is_supported_throw(statement)
         })
 }
 
@@ -19451,8 +20255,15 @@ fn return_statement_returns_supported_result(
     allowed_roots: &BTreeSet<String>,
     schema_names: &BTreeSet<String>,
 ) -> bool {
-    return_statement_result_call(statement)
+    if return_statement_result_call(statement)
         .is_some_and(|call| results_call_arguments_are_supported(call, allowed_roots, schema_names))
+    {
+        return true;
+    }
+
+    return_statement_expression(statement).is_some_and(|expression| {
+        expression_is_supported_handler_return_value(expression, allowed_roots, schema_names)
+    })
 }
 
 fn expression_statement_is_supported_result(
@@ -19460,8 +20271,33 @@ fn expression_statement_is_supported_result(
     allowed_roots: &BTreeSet<String>,
     schema_names: &BTreeSet<String>,
 ) -> bool {
-    expression_statement_result_call(statement)
+    if expression_statement_result_call(statement)
         .is_some_and(|call| results_call_arguments_are_supported(call, allowed_roots, schema_names))
+    {
+        return true;
+    }
+
+    expression_statement_expression(statement).is_some_and(|expression| {
+        expression_is_supported_handler_return_value(expression, allowed_roots, schema_names)
+    })
+}
+
+fn statement_is_supported_throw(statement: &Statement<'_>) -> bool {
+    matches!(statement, Statement::ThrowStatement(_))
+}
+
+fn return_statement_expression<'a>(statement: &'a Statement<'a>) -> Option<&'a Expression<'a>> {
+    let Statement::ReturnStatement(return_statement) = statement else {
+        return None;
+    };
+    return_statement.argument.as_ref()
+}
+
+fn expression_statement_expression<'a>(statement: &'a Statement<'a>) -> Option<&'a Expression<'a>> {
+    let Statement::ExpressionStatement(expression_statement) = statement else {
+        return None;
+    };
+    Some(&expression_statement.expression)
 }
 
 fn return_statement_result_call<'a>(
@@ -19850,6 +20686,25 @@ fn expression_is_inline_json_safe_value(
         ),
         Expression::StaticMemberExpression(member) => {
             static_member_root_name(&member.object).is_some_and(|root| allowed_roots.contains(root))
+        }
+        _ => false,
+    }
+}
+
+fn expression_is_supported_handler_return_value(
+    expression: &Expression<'_>,
+    allowed_roots: &BTreeSet<String>,
+    schema_names: &BTreeSet<String>,
+) -> bool {
+    expression_is_inline_json_safe_value(expression, allowed_roots, schema_names)
+        || expression_is_undefined_identifier(expression)
+}
+
+fn expression_is_undefined_identifier(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::Identifier(identifier) => identifier.name == "undefined",
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_is_undefined_identifier(&parenthesized.expression)
         }
         _ => false,
     }
@@ -20322,6 +21177,16 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     if app.uses_sql_runtime {
         runtime_exports.push("sql");
     }
+    if app.uses_orm_runtime {
+        runtime_exports.extend([
+            "orm",
+            "table",
+            "column",
+            "relation",
+            "SloppyOrmError",
+            "SloppyOrmConcurrencyError",
+        ]);
+    }
     if app.uses_time_runtime {
         runtime_exports.extend([
             "Time",
@@ -20489,7 +21354,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (binding.kind === \"body.json\") { return ctx.request.json(); }",
+            "  if (binding.kind === \"body.json\") { return ctx.body.json(); }",
         );
         push_generated_line(
             &mut output,
@@ -20538,7 +21403,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  else if (binding.kind === \"header\") { value = ctx.request.headers.get(binding.name); }",
+            "  else if (binding.kind === \"header\") { value = ctx.header[__sloppy_framework_header_property(binding.name)]; }",
         );
         push_generated_line(
             &mut output,
@@ -20550,6 +21415,40 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             &mut generated_line,
             "  return __sloppy_framework_coerce(value, binding);",
         );
+        push_generated_line(&mut output, &mut generated_line, "}");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_framework_header_property(name) {",
+        );
+        push_generated_line(&mut output, &mut generated_line, "  let output = \"\";");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  let uppercaseNext = false;",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  for (const ch of String(name)) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if (ch === \"-\") { uppercaseNext = output.length !== 0; continue; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    output += uppercaseNext ? ch.toUpperCase() : ch;",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    uppercaseNext = false;",
+        );
+        push_generated_line(&mut output, &mut generated_line, "  }");
+        push_generated_line(&mut output, &mut generated_line, "  return output;");
         push_generated_line(&mut output, &mut generated_line, "}");
         push_generated_line(
             &mut output,
@@ -21081,7 +21980,7 @@ fn emit_dynamic_web_app_js(source: &str, app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
+    output.push_str("const { Results, Realtime, Environment, data, sql, orm, table, column, relation, SloppyOrmError, SloppyOrmConcurrencyError, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
     output.push_str(
         r#"const __sloppy_framework_services = __createFrameworkServiceProvider();
 const __sloppy_framework_provider_configs = new Map([]);
@@ -21152,6 +22051,7 @@ function __sloppy_framework_injection(scope, binding) {
     });
   }
   const app = {
+    services: __sloppy_framework_services,
     get(pattern, handler) { return register("GET", pattern, handler); },
     post(pattern, handler) { return register("POST", pattern, handler); },
     put(pattern, handler) { return register("PUT", pattern, handler); },
@@ -21208,6 +22108,7 @@ function __sloppy_dynamic_match(pattern, path) {
 function __sloppy_dynamic_response(result) {
   if (typeof result === "string") { return { __sloppyResult: true, kind: "text", status: 200, contentType: "text/plain; charset=utf-8", body: result }; }
   if (result !== null && typeof result === "object" && result.__sloppyResult === true) { return result; }
+  if (result !== null && typeof result === "object" && result.kind === undefined && result.status === undefined && result.body === undefined) { return { __sloppyResult: true, kind: "json", status: 200, contentType: "application/json; charset=utf-8", body: result }; }
   const status = Number.isInteger(result?.status) ? result.status : 200;
   const kind = result?.kind ?? "text";
   if (kind === "empty") { return { __sloppyResult: true, kind: "empty", status, contentType: "text/plain; charset=utf-8", body: "" }; }
@@ -21581,6 +22482,9 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
             if route.kind != "http" {
                 route_json["kind"] = json!(route.kind);
             }
+            if let Some(websocket) = &route.websocket {
+                route_json["websocket"] = websocket_options_json(websocket);
+            }
             if let Some(framework_path) = &route.framework_path {
                 route_json["frameworkPath"] = json!(framework_path);
             }
@@ -21751,6 +22655,25 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
 
     let json = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string());
     format!("{json}\n")
+}
+
+fn websocket_options_json(options: &WebSocketRouteOptionsMetadata) -> Value {
+    let origins = match &options.origins {
+        Some(WebSocketOriginsMetadata::Any) => json!("*"),
+        Some(WebSocketOriginsMetadata::List(origins)) => json!(origins),
+        None => Value::Null,
+    };
+    json!({
+        "protocols": &options.protocols,
+        "origins": origins,
+        "maxMessageBytes": options.max_message_bytes,
+        "maxSendQueueBytes": options.max_send_queue_bytes,
+        "heartbeatMs": options.heartbeat_ms,
+        "idleTimeoutMs": options.idle_timeout_ms,
+        "closeTimeoutMs": options.close_timeout_ms,
+        "slowClientPolicy": options.slow_client_policy.as_ref(),
+        "compression": options.compression.unwrap_or(false)
+    })
 }
 
 fn generated_location_json(generated_line: usize, generated_column: usize) -> Value {

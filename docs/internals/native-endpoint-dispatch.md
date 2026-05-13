@@ -24,8 +24,9 @@ kinds before building the arena-owned native dispatch table from
 - named routes can generate native paths with percent-encoded parameter values
   and constraint roundtrip validation;
 - `Results.text("literal")`, `Results.json(<literal>)`, and
-  `Results.ok(<literal>)` handlers can execute as native static responses
-  without entering V8;
+  `Results.ok(<literal>)`, `Results.noContent()`, `Results.status(code)`
+  without a body, and supported literal `Results.problem(...)` handlers can
+  execute as native static responses without entering V8;
 - schema-backed JSON request bodies can be validated natively before the
   handler boundary when the route has a `jsonRequest` native schema plan;
 - static JSON response bodies use `jsonResponse` native static writer metadata;
@@ -67,7 +68,15 @@ native/generic/fallback counts. Fallback reasons are exposed per route through
 
 `routes[].dispatch` records the endpoint ID, dispatch strategy, and execution
 kind for each static Plan route. Execution kind is `v8-handler`,
-`native-static-text`, or `native-static-json`.
+`native-static-text`, `native-static-json`, `native-static-empty`, or
+`native-static-problem`.
+
+Native static response plans are eligible only when the compiler can prove the
+response body, status, and content type from the route body. Static JSON,
+static text, empty status responses such as `204`, and static problem responses
+can bypass handler lookup and V8 execution. Dynamic handlers, plain object
+returns, request-dependent values, and values that require runtime JavaScript
+execution stay on the registered V8 handler path.
 
 `routes[].jsonRequest` and `routes[].jsonResponse` record per-route JSON modes.
 Fallback reasons are part of the contract: if the route cannot use native JSON,

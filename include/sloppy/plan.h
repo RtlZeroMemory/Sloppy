@@ -18,7 +18,7 @@ extern "C" {
 
 #define SL_PLAN_VERSION_1 UINT32_C(1)
 #define SL_PLAN_CURRENT_VERSION SL_PLAN_VERSION_1
-#define SL_PLAN_INTERNAL_ABI_VERSION UINT32_C(3)
+#define SL_PLAN_INTERNAL_ABI_VERSION UINT32_C(4)
 
 #define SL_PLAN_TARGET_PLATFORM_WINDOWS_X64 "windows-x64"
 #define SL_PLAN_TARGET_PLATFORM_LINUX_X64 "linux-x64"
@@ -139,6 +139,42 @@ typedef struct SlPlanJsonResponsePlan
     SlStr content_type;
 } SlPlanJsonResponsePlan;
 
+typedef enum SlPlanWebSocketOriginPolicy
+{
+    SL_PLAN_WEBSOCKET_ORIGINS_NONE = 0,
+    SL_PLAN_WEBSOCKET_ORIGINS_ANY = 1,
+    SL_PLAN_WEBSOCKET_ORIGINS_LIST = 2
+} SlPlanWebSocketOriginPolicy;
+
+typedef enum SlPlanWebSocketSlowClientPolicy
+{
+    SL_PLAN_WEBSOCKET_SLOW_CLIENT_ERROR = 0,
+    SL_PLAN_WEBSOCKET_SLOW_CLIENT_CLOSE = 1
+} SlPlanWebSocketSlowClientPolicy;
+
+typedef struct SlPlanWebSocketOptions
+{
+    const SlStr* protocols;
+    size_t protocol_count;
+    const SlStr* origins;
+    size_t origin_count;
+    size_t max_message_bytes;
+    size_t max_send_queue_bytes;
+    size_t heartbeat_ms;
+    size_t idle_timeout_ms;
+    size_t close_timeout_ms;
+    SlPlanWebSocketOriginPolicy origin_policy;
+    SlPlanWebSocketSlowClientPolicy slow_client_policy;
+    bool compression;
+} SlPlanWebSocketOptions;
+
+typedef struct SlPlanAuthRequirement
+{
+    bool present;
+    bool required;
+    bool allow_anonymous;
+} SlPlanAuthRequirement;
+
 /*
  * Parsed Plan route metadata. Plan structs are exposed for Sloppy's current in-repo C
  * runtime boundary.
@@ -149,6 +185,7 @@ typedef struct SlPlanRoute
 {
     const struct SlPlanRequestBinding* bindings;
     size_t binding_count;
+    SlStr kind;
     SlStr method;
     SlStr pattern;
     SlStr name;
@@ -160,6 +197,8 @@ typedef struct SlPlanRoute
     size_t health_check_count;
     SlPlanJsonRequestPlan json_request;
     SlPlanJsonResponsePlan json_response;
+    SlPlanWebSocketOptions websocket;
+    SlPlanAuthRequirement auth;
     SlHandlerId handler_id;
     uint16_t native_response_status;
 } SlPlanRoute;
@@ -211,6 +250,11 @@ static inline void sl_plan_route_mark_bindings_empty(SlPlanRoute* route)
         route->bindings = SL_PLAN_ROUTE_EMPTY_BINDINGS;
         route->binding_count = 0U;
     }
+}
+
+static inline bool sl_plan_route_is_websocket(const SlPlanRoute* route)
+{
+    return route != NULL && sl_str_equal(route->kind, sl_str_from_cstr("websocket"));
 }
 
 typedef enum SlPlanSchemaKind

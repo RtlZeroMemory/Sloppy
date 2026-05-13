@@ -7,6 +7,16 @@ sloppy db status .sloppy --provider main
 sloppy db migrate .sloppy --provider main
 ```
 
+ORM projects can use the ORM migration vocabulary for the same status/apply
+engine, plus Plan-derived migration draft generation:
+
+```sh
+sloppy orm migration script .sloppy --provider main
+sloppy orm migration add CreateUsers .sloppy --provider main
+sloppy orm migration status .sloppy --provider main
+sloppy orm migration apply .sloppy --provider main
+```
+
 `sloppy db` reads provider metadata from `app.plan.json` and migration metadata
 from `sloppy.json`. When the target is a package directory, it reads
 `manifest.json` and uses the packaged migration files.

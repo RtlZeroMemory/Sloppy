@@ -30,9 +30,9 @@ behavior, longer name.
 
 `sse` and `ws` are experimental alpha helpers that register `GET` routes with
 realtime metadata. `sse` wraps the handler in the current bounded server-sent
-events stream shape. `ws` records WebSocket route intent and returns the current
-`501` unavailable response until native upgrade execution exists. The API shape
-is unstable and may change. See [Realtime](realtime.md).
+events stream shape. `ws` records WebSocket route intent and native `sloppy run`
+enters that handler for valid HTTP/1.1 WebSocket Upgrade requests. The API
+shape is unstable and may change. See [Realtime](realtime.md).
 
 `HEAD` and `OPTIONS` are not directly registrable verbs. Incoming `HEAD`
 requests match the corresponding `GET` route and return the same headers
@@ -278,4 +278,5 @@ captured at build/package time, not looked up dynamically per request.
 - Custom matchers beyond the documented `str`, `int`, `uuid`, `alpha`, and
   `float` path constraints
 - Per-route limits at the API surface (server-wide limits exist via config)
-- Native WebSocket upgrade execution
+- WebSocket fragmentation, compression, heartbeat timers, and protected native
+  WebSocket auth principal materialization

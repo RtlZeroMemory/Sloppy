@@ -76,6 +76,8 @@
     "capabilities": false,
     "dataProviders": false,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
+    "nativeJsonDispatch": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -138,6 +140,54 @@
   ],
   "kind": "web",
   "modules": [],
+  "routeDispatch": {
+    "artifact": {
+      "hash": "sha256:ad87949247eecaccba1701eac57d5496d90554ec6b27207db1013c9c12847f41",
+      "kind": "slrt",
+      "path": "routes.slrt"
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [
+        "int"
+      ],
+      "exactStaticPaths": 2,
+      "parameterCandidateBuckets": 3,
+      "segmentTrieNodes": 9,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
+      ]
+    },
+    "endpointCount": 5,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    },
+    "json": {
+      "request": {
+        "fallback": 0,
+        "generic": 0,
+        "materialized": 0,
+        "native": 0
+      },
+      "response": {
+        "fallback": 0,
+        "generic": 2,
+        "native": 2
+      }
+    },
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 3,
+    "parameterRoutes": 3,
+    "routeCount": 5,
+    "staticRoutes": 2,
+    "urlGeneration": true,
+    "urlWriters": 5,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [],
@@ -145,13 +195,37 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "native-static-json",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 1,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "contentType": "application/json",
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
       "method": "GET",
       "name": "Users.List",
+      "nativeResponse": {
+        "body": "[{\"id\":1.0}]",
+        "contentType": "application/json",
+        "kind": "json",
+        "status": 200
+      },
       "pattern": "/users",
       "response": {
         "helper": "json",
         "kind": "json",
+        "nativeBody": "[{\"id\":1.0}]",
         "status": 200
       },
       "source": {
@@ -166,13 +240,37 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "native-static-json",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 2,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "contentType": "application/json",
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
       "method": "POST",
       "name": "Users.Create",
+      "nativeResponse": {
+        "body": "{\"id\":2.0}",
+        "contentType": "application/json",
+        "kind": "json",
+        "status": 200
+      },
       "pattern": "/users",
       "response": {
         "helper": "json",
         "kind": "json",
+        "nativeBody": "{\"id\":2.0}",
         "status": 200
       },
       "source": {
@@ -193,7 +291,24 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 3,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
+      },
       "handlerId": 3,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "PUT",
       "name": "Users.Update",
       "pattern": "/users/{id:int}",
@@ -220,7 +335,24 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 4,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
+      },
       "handlerId": 4,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "PATCH",
       "name": "Users.Patch",
       "pattern": "/users/{id:int}",
@@ -241,13 +373,36 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 5,
+        "executionKind": "native-static-empty",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
+      },
       "handlerId": 5,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
       "method": "DELETE",
       "name": "Users.Delete",
+      "nativeResponse": {
+        "body": "",
+        "contentType": "text/plain; charset=utf-8",
+        "kind": "empty",
+        "status": 204
+      },
       "pattern": "/users/{id:int}",
       "response": {
         "helper": "noContent",
         "kind": "empty",
+        "nativeBody": "",
         "status": 204
       },
       "source": {
@@ -282,7 +437,9 @@
       "capabilities": false,
       "effects": false,
       "ffi": false,
+      "nativeJsonDispatch": true,
       "providers": false,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true
     },

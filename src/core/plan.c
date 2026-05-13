@@ -639,6 +639,57 @@ static SlStatus sl_plan_intern_route_health(SlArena* arena, SlInternTable* table
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_intern_str_array(SlArena* arena, SlInternTable* table, const SlStr** values,
+                                         size_t count)
+{
+    SlStr* copied = NULL;
+    SlStatus status;
+
+    if (values == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (count == 0U) {
+        *values = NULL;
+        return sl_status_ok();
+    }
+    if (*values == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status =
+        sl_plan_alloc_copy(arena, *values, count, sizeof(SlStr), _Alignof(SlStr), (void**)&copied);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (copied == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    for (size_t index = 0U; index < count; index += 1U) {
+        status = sl_plan_intern_required(table, copied[index], &copied[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    *values = copied;
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_intern_route_websocket(SlArena* arena, SlInternTable* table,
+                                               SlPlanRoute* route)
+{
+    SlStatus status;
+
+    if (route == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_plan_intern_str_array(arena, table, &route->websocket.protocols,
+                                      route->websocket.protocol_count);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_plan_intern_str_array(arena, table, &route->websocket.origins,
+                                    route->websocket.origin_count);
+}
+
 static SlStatus sl_plan_intern_routes(SlArena* arena, SlInternTable* table, SlPlan* staged)
 {
     SlPlanRoute* routes = NULL;
@@ -662,6 +713,10 @@ static SlStatus sl_plan_intern_routes(SlArena* arena, SlInternTable* table, SlPl
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
     }
     for (index = 0U; index < staged->route_count; index += 1U) {
+        status = sl_plan_intern_required(table, routes[index].kind, &routes[index].kind);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
         status = sl_plan_intern_required(table, routes[index].method, &routes[index].method);
         if (!sl_status_is_ok(status)) {
             return status;
@@ -715,6 +770,10 @@ static SlStatus sl_plan_intern_routes(SlArena* arena, SlInternTable* table, SlPl
             return status;
         }
         status = sl_plan_intern_route_health(arena, table, &routes[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_route_websocket(arena, table, &routes[index]);
         if (!sl_status_is_ok(status)) {
             return status;
         }

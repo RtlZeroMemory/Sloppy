@@ -15,6 +15,7 @@ const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
 const TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
 const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
+const WEBSOCKET_PROTOCOL_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
 const TESTHOST_BINARY_BODY = Symbol("sloppyTestHostBinaryBody");
 const TESTHOST_TEXT_BODY = Symbol("sloppyTestHostTextBody");
 const SECRET_REDACTION = "[REDACTED]";
@@ -1065,8 +1066,10 @@ function signalObject() {
 
 function createContext(app, hostState, method, targetParts, headers, route, matchedRoute, bodyKind, bodyBytes, options = undefined) {
     const request = createRequestObject(method, targetParts, headers, bodyKind, bodyBytes);
+    const services = hostState.services.createScope();
     const context = {
-        services: hostState.services.createScope(),
+        services,
+        db: services.tryGet("data.main") ?? services.tryGet("main"),
         capabilities: app.capabilities,
         config: hostState.config,
         log: app.log,
@@ -1964,6 +1967,13 @@ function createWebSocketMessage(kind, value) {
     });
 }
 
+function validateWebSocketProtocolToken(value) {
+    if (typeof value !== "string" || value.length === 0 || !WEBSOCKET_PROTOCOL_PATTERN.test(value)) {
+        throw new TypeError("Sloppy TestHost WebSocket protocols must be non-empty WebSocket subprotocol tokens.");
+    }
+    return value;
+}
+
 function websocketOriginsAllow(routeOptions, origin) {
     const origins = routeOptions.origins;
     if (origin === undefined || origin.length === 0 || origins === undefined || origins === "*") {
@@ -2045,7 +2055,15 @@ class TestWebSocket {
 
     async expectJson(expectedOrSchema, options = {}) {
         const message = await this._state.serverToClient.take(options.timeoutMs, "JSON message");
-        const value = message.kind === "json" ? message.json() : message.json();
+        if (message.kind !== "json" && message.kind !== "text") {
+            throw new Error(`Sloppy TestHost expected WebSocket JSON message, got '${message.kind}'.`);
+        }
+        let value;
+        try {
+            value = message.json();
+        } catch (error) {
+            throw new Error(`Sloppy TestHost expected WebSocket JSON message, got invalid text JSON: ${error.message}`);
+        }
         if (Schema.isSchema(expectedOrSchema)) {
             Schema.validate(value, expectedOrSchema);
         } else {
@@ -2185,7 +2203,7 @@ class WebSocketBuilder {
         if (!Array.isArray(values)) {
             throw new TypeError("Sloppy TestHost WebSocket protocols must be an array.");
         }
-        this._protocols = values.map(String);
+        this._protocols = values.map(validateWebSocketProtocolToken);
         if (this._protocols.length !== 0) {
             this.header("Sec-WebSocket-Protocol", this._protocols.join(", "));
         }
@@ -2631,6 +2649,7 @@ function createTestHost(app, options = {}) {
         let heartbeatTimer;
         let idleTimer;
         let acceptResolve;
+        let cleanedUp = false;
         const acceptedPromise = new Promise((resolve) => {
             acceptResolve = resolve;
         });
@@ -2667,6 +2686,17 @@ function createTestHost(app, options = {}) {
                 });
             },
         };
+        async function cleanupSocket() {
+            if (cleanedUp) {
+                return;
+            }
+            cleanedUp = true;
+            try {
+                await socketContext?.services?.dispose?.();
+            } finally {
+                finishSocket(state);
+            }
+        }
         const socket = {
             get ctx() {
                 return socketContext;
@@ -2808,18 +2838,24 @@ function createTestHost(app, options = {}) {
                 return undefined;
             },
         ).finally(async () => {
-            try {
-                await socketContext.services.dispose();
-            } finally {
-                finishSocket(state);
-            }
+            await cleanupSocket();
         });
 
         const timeoutMs = normalizedOptions.timeoutMs ?? 1000;
         let timer;
         const timeoutPromise = new Promise((_, reject) => {
             timer = setTimeout(() => {
-                reject(websocketReject(504, "SLOPPY_E_WEBSOCKET_ACCEPT_TIMEOUT", "WebSocket handler did not accept before timeout."));
+                diagnostics.record({
+                    code: "SLOPPY_E_WEBSOCKET_ACCEPT_TIMEOUT",
+                    subsystem: "websocket",
+                    severity: "warn",
+                    message: "WebSocket handler did not accept before timeout.",
+                    fields: { route: match.route.pattern },
+                });
+                state.close(1008, "accept timeout");
+                cleanupSocket().finally(() => {
+                    reject(websocketReject(504, "SLOPPY_E_WEBSOCKET_ACCEPT_TIMEOUT", "WebSocket handler did not accept before timeout."));
+                });
             }, timeoutMs);
         });
         try {

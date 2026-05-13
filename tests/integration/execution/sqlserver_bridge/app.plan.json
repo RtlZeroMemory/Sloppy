@@ -1,13 +1,12 @@
 {
   "bundle": {
-    "hash": "sha256:53d78da20bbc8c27b4fd356ffb3d1e356361001c4aea3c1f5d6ef99e71df45bf",
+    "hash": "sha256:9dd30c4186cd954ba508dfe54407f08cc5a487f1d895829330a26665a29d79cb",
     "id": "sqlserver-bridge-app-js",
     "path": "app.js"
   },
   "compilerVersion": "handwritten-data-sqlserver-bridge-fixture",
   "requiredFeatures": [
     "provider.sqlserver",
-    "stdlib.cache",
     "stdlib.os"
   ],
   "capabilities": [

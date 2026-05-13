@@ -1119,6 +1119,7 @@ SlStatus sl_v8_write_exception_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCo
                                     SlStr fallback_source_name, const char* fallback_message,
                                     SlStr hint)
 {
+    uint64_t started_ns = sl_http_profile_now_ns();
     std::string message = sl_v8_exception_message(isolate, try_catch, fallback_message);
     std::string source_name = sl_v8_message_source_name(isolate, try_catch, fallback_source_name);
     SlSourceSpan generated_span = sl_v8_exception_span(context, try_catch, source_name);
@@ -1139,8 +1140,12 @@ SlStatus sl_v8_write_exception_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCo
             sizeof("Malformed source map; reporting the generated JavaScript location.") - 1U);
     }
 
-    return sl_v8_write_diag_string_with_span(engine->arena, out_diag, code, failure_code, message,
-                                             span, final_hint, stack_summary);
+    SlStatus status = sl_v8_write_diag_string_with_span(engine->arena, out_diag, code, failure_code,
+                                                        message, span, final_hint, stack_summary);
+    sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_EXCEPTION_COUNT, 1U);
+    sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_EXCEPTION_MAPPING,
+                                 sl_http_profile_now_ns() - started_ns);
+    return status;
 }
 
 void sl_v8_microtask_drain_promise_hook(v8::PromiseHookType type, v8::Local<v8::Promise> promise,
@@ -1773,6 +1778,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     status = sl_v8_init_async_features(backend, arena);
     if (!sl_status_is_ok(status)) {
         sl_v8_ffi_dispose(backend);
+        sl_v8_websocket_dispose(backend);
         sl_resource_table_dispose(&backend->resources);
         delete backend;
         return sl_v8_reset_create_arena(arena, mark, status);
@@ -1937,6 +1943,7 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
             backend->fs_executor_initialized = false;
         }
         sl_v8_ffi_dispose(backend);
+        sl_v8_websocket_dispose(backend);
         sl_resource_table_dispose(&backend->resources);
         if (backend->async_loop != nullptr) {
             sl_v8_workers_dispose(backend);
@@ -2085,11 +2092,13 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
                                              v8::Local<v8::Value> js_result,
                                              const SlHttpRequestContext* request_context,
                                              const SlCancellationToken* cancellation,
-                                             SlEngineResult* out_result, SlDiag* out_diag);
+                                             SlEngineResult* out_result, SlDiag* out_diag,
+                                             bool count_return_type);
 
 static SlStatus sl_v8_write_promise_rejection_diag(SlEngine* engine, v8::Isolate* isolate,
                                                    v8::Local<v8::Value> reason, SlDiag* out_diag)
 {
+    uint64_t started_ns = sl_http_profile_now_ns();
     std::string message = "JavaScript handler Promise rejected";
     std::string reason_text = sl_v8_maybe_value_to_string(isolate, reason);
 
@@ -2101,19 +2110,24 @@ static SlStatus sl_v8_write_promise_rejection_diag(SlEngine* engine, v8::Isolate
     sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
                                 SL_STATUS_INVALID_STATE, 0U, 0U, 0U, 0U,
                                 sl_v8_literal("promise rejected", sizeof("promise rejected") - 1U));
-    return sl_v8_write_diag_string(
+    SlStatus status = sl_v8_write_diag_string(
         engine->arena, out_diag, SL_DIAG_V8_UNHANDLED_REJECTION, SL_STATUS_INVALID_STATE, message,
         sl_str_empty(),
         sl_v8_literal("Rejected async handlers produce a safe error response.",
                       sizeof("Rejected async handlers produce a safe error response.") - 1U));
+    sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_EXCEPTION_COUNT, 1U);
+    sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_EXCEPTION_MAPPING,
+                                 sl_http_profile_now_ns() - started_ns);
+    return status;
 }
 
 static SlStatus sl_v8_write_pending_promise_diag(SlEngine* engine, SlDiag* out_diag)
 {
+    uint64_t started_ns = sl_http_profile_now_ns();
     sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
                                 SL_STATUS_DEADLINE_EXCEEDED, 0U, 0U, 0U, 0U,
                                 sl_v8_literal("pending promise", sizeof("pending promise") - 1U));
-    return sl_v8_write_diag(
+    SlStatus status = sl_v8_write_diag(
         engine->arena, out_diag, SL_DIAG_ENGINE_PROMISE_PENDING, SL_STATUS_DEADLINE_EXCEEDED,
         sl_v8_literal("JavaScript handler Promise did not settle during bounded microtask drain",
                       sizeof("JavaScript handler Promise did not settle during bounded microtask "
@@ -2125,6 +2139,10 @@ static SlStatus sl_v8_write_pending_promise_diag(SlEngine* engine, SlDiag* out_d
                       sizeof("This V8 runtime drains Promise microtasks and native async "
                              "completions, but does not implement timers, fetch, or Node APIs.") -
                           1U));
+    sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_EXCEPTION_COUNT, 1U);
+    sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_EXCEPTION_MAPPING,
+                                 sl_http_profile_now_ns() - started_ns);
+    return status;
 }
 
 static SlStatus sl_v8_drain_native_async_until_promise_settles(
@@ -2182,15 +2200,21 @@ static SlStatus sl_v8_convert_promise_result(v8::Isolate* isolate, v8::Local<v8:
     }
 
     if (promise->State() == v8::Promise::kPending) {
+        uint64_t started_ns = sl_http_profile_now_ns();
         status = sl_v8_drain_microtasks(engine, isolate, context, out_diag);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_PROMISE_AWAIT,
+                                     sl_http_profile_now_ns() - started_ns);
         if (!sl_status_is_ok(status)) {
             return status;
         }
     }
 
     if (promise->State() == v8::Promise::kPending) {
+        uint64_t started_ns = sl_http_profile_now_ns();
         status = sl_v8_drain_native_async_until_promise_settles(engine, isolate, context, promise,
                                                                 cancellation, out_diag);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_PROMISE_AWAIT,
+                                     sl_http_profile_now_ns() - started_ns);
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -2210,7 +2234,7 @@ static SlStatus sl_v8_convert_promise_result(v8::Isolate* isolate, v8::Local<v8:
     }
 
     return sl_v8_convert_handler_result(isolate, context, engine, arena, promise->Result(),
-                                        request_context, cancellation, out_result, out_diag);
+                                        request_context, cancellation, out_result, out_diag, false);
 }
 
 extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena,
@@ -2306,7 +2330,7 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
     }
 
     return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, nullptr,
-                                        nullptr, out_result, out_diag);
+                                        nullptr, out_result, out_diag, true);
 }
 
 static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -2314,7 +2338,8 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
                                              v8::Local<v8::Value> js_result,
                                              const SlHttpRequestContext* request_context,
                                              const SlCancellationToken* cancellation,
-                                             SlEngineResult* out_result, SlDiag* out_diag)
+                                             SlEngineResult* out_result, SlDiag* out_diag,
+                                             bool count_return_type)
 {
     SlStatus cancel_status = sl_v8_check_cancelled(engine, cancellation, out_diag);
     if (!sl_status_is_ok(cancel_status)) {
@@ -2322,11 +2347,17 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
     }
 
     if (js_result->IsPromise()) {
+        if (count_return_type) {
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_PROMISE_RETURNS, 1U);
+        }
         return sl_v8_convert_promise_result(isolate, context, engine, arena,
                                             js_result.As<v8::Promise>(), request_context,
                                             cancellation, out_result, out_diag);
     }
 
+    if (count_return_type) {
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_SYNC_RETURNS, 1U);
+    }
     return sl_v8_convert_http_handler_result(isolate, context, engine, arena, js_result,
                                              request_context, out_result, out_diag);
 }
@@ -2451,7 +2482,7 @@ sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr 
         uint64_t started_ns = sl_http_profile_now_ns();
         status = sl_v8_convert_handler_result(isolate, context, engine, arena, js_result,
                                               request_context, request_context->cancellation,
-                                              out_result, out_diag);
+                                              out_result, out_diag, true);
         sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_RESULT_CONVERSION,
                                      sl_http_profile_now_ns() - started_ns);
     }
@@ -2583,7 +2614,7 @@ extern "C" SlStatus sl_engine_v8_call_registered_handler_with_context(
         uint64_t started_ns = sl_http_profile_now_ns();
         status = sl_v8_convert_handler_result(isolate, context, engine, arena, js_result,
                                               request_context, request_context->cancellation,
-                                              out_result, out_diag);
+                                              out_result, out_diag, true);
         sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_RESULT_CONVERSION,
                                      sl_http_profile_now_ns() - started_ns);
     }

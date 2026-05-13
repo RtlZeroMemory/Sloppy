@@ -1366,6 +1366,12 @@ static int sl_cli_validate_native_plan(const char* path, SlBytes json, SlArena* 
         else {
             sl_cli_write_cstr(stderr, "native Plan v1 validation failed");
         }
+        for (size_t index = 0U; index < diag.hint_count; index += 1U) {
+            if (!sl_str_is_empty(diag.hints[index])) {
+                sl_cli_write_cstr(stderr, "\n");
+                sl_cli_write_span(stderr, sl_cli_span_from_str(diag.hints[index]));
+            }
+        }
         sl_cli_write_cstr(stderr, "\n");
         return 1;
     }

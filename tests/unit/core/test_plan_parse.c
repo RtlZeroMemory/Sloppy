@@ -987,7 +987,8 @@ static int test_legacy_route_without_json_metadata_normalizes_json_modes(void)
     if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
         return 25;
     }
-    if (plan.route_count != 1U || plan.routes[0].json_request.mode != SL_PLAN_JSON_REQUEST_NONE ||
+    if (plan.route_count != 1U || !sl_str_equal(plan.routes[0].kind, sl_str_from_cstr("http")) ||
+        plan.routes[0].json_request.mode != SL_PLAN_JSON_REQUEST_NONE ||
         plan.routes[0].json_request.materialization != SL_PLAN_JSON_MATERIALIZATION_NONE ||
         plan.routes[0].json_response.mode != SL_PLAN_JSON_RESPONSE_NONE ||
         plan.routes[0].json_response.writer != SL_PLAN_JSON_WRITER_NONE)
@@ -995,6 +996,93 @@ static int test_legacy_route_without_json_metadata_normalizes_json_modes(void)
         return 26;
     }
     return 0;
+}
+
+static int test_websocket_route_metadata_parses(void)
+{
+    unsigned char arena_storage[TEST_ARENA_SIZE];
+    SlPlan plan = {0};
+    SlDiag diag = {0};
+    const SlPlanRoute* route = NULL;
+    SlStatus status = parse_inline_plan(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Realtime.Socket\"}],"
+        "\"routes\":[{\"kind\":\"websocket\",\"method\":\"GET\",\"pattern\":\"/ws\","
+        "\"handlerId\":1,\"websocket\":{\"protocols\":[\"sloppy.realtime\"],"
+        "\"origins\":[\"https://app.example.com\"],\"maxMessageBytes\":65536,"
+        "\"maxSendQueueBytes\":1048576,\"heartbeatMs\":15000,\"idleTimeoutMs\":30000,"
+        "\"closeTimeoutMs\":5000,\"slowClientPolicy\":\"close\",\"compression\":false},"
+        "\"auth\":{\"required\":true,\"allowAnonymous\":false,\"scopes\":[\"realtime\"]}}]}",
+        &plan, &diag, arena_storage, sizeof(arena_storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE) {
+        return 1;
+    }
+    if (plan.route_count != 1U) {
+        return 2;
+    }
+    route = &plan.routes[0];
+    if (!sl_plan_route_is_websocket(route) || route->websocket.protocol_count != 1U ||
+        route->websocket.protocols == NULL ||
+        !sl_str_equal(route->websocket.protocols[0], sl_str_from_cstr("sloppy.realtime")))
+    {
+        return 3;
+    }
+    if (route->websocket.origin_policy != SL_PLAN_WEBSOCKET_ORIGINS_LIST ||
+        route->websocket.origin_count != 1U || route->websocket.origins == NULL ||
+        !sl_str_equal(route->websocket.origins[0], sl_str_from_cstr("https://app.example.com")))
+    {
+        return 4;
+    }
+    if (route->websocket.max_message_bytes != 65536U ||
+        route->websocket.max_send_queue_bytes != 1048576U ||
+        route->websocket.heartbeat_ms != 15000U || route->websocket.idle_timeout_ms != 30000U ||
+        route->websocket.close_timeout_ms != 5000U ||
+        route->websocket.slow_client_policy != SL_PLAN_WEBSOCKET_SLOW_CLIENT_CLOSE ||
+        route->websocket.compression)
+    {
+        return 5;
+    }
+    if (!route->auth.present || !route->auth.required || route->auth.allow_anonymous) {
+        return 6;
+    }
+    return 0;
+}
+
+static int test_invalid_websocket_route_metadata_rejected(void)
+{
+    if (expect_inline_plan_failure(
+            "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+            "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+            "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+            "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+            "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+            "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+            "\"displayName\":\"Realtime.Socket\"}],"
+            "\"routes\":[{\"kind\":\"websocket\",\"method\":\"POST\",\"pattern\":\"/ws\","
+            "\"handlerId\":1}]}",
+            SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD,
+            "invalid app plan websocket metadata") != 0)
+    {
+        return 1;
+    }
+    return expect_inline_plan_failure(
+        "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+        "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+        "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+        "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+        "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+        "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+        "\"displayName\":\"Realtime.Socket\"}],"
+        "\"routes\":[{\"kind\":\"websocket\",\"method\":\"GET\",\"pattern\":\"/ws\","
+        "\"handlerId\":1,\"websocket\":{\"compression\":true}}]}",
+        SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD,
+        "invalid app plan websocket metadata");
 }
 
 static int test_route_health_metadata_parses(void)
@@ -1663,6 +1751,18 @@ int main(void)
     if (result != 0) {
         fprintf(stderr, "test_route_middleware_marks_context_needs_conservative failed: %d\n",
                 result);
+        return result;
+    }
+
+    result = test_websocket_route_metadata_parses();
+    if (result != 0) {
+        fprintf(stderr, "test_websocket_route_metadata_parses failed: %d\n", result);
+        return result;
+    }
+
+    result = test_invalid_websocket_route_metadata_rejected();
+    if (result != 0) {
+        fprintf(stderr, "test_invalid_websocket_route_metadata_rejected failed: %d\n", result);
         return result;
     }
 

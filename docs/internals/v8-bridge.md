@@ -121,12 +121,30 @@ V8-enabled build".
 
 ## Result conversion
 
-A handler returns a result descriptor (`Results.*`). The bridge:
+A handler may return a result descriptor (`Results.*`) or a plain JavaScript
+value. The bridge:
 
 1. Validates the descriptor shape (kind, status, headers, body).
 2. Copies any body bytes / strings into Sloppy-owned storage.
 3. Releases V8 handles for that response.
 4. Returns the descriptor through the C ABI.
+
+Strings convert to `200 text/plain`. Plain objects, arrays, finite numbers,
+booleans, and `null` convert to `200 application/json` by JSON stringifying the
+value and copying the bytes into the result arena. `undefined` is not a valid
+HTTP handler result.
+
+Descriptor-shape detection uses own properties only. A plain object with
+inherited fields such as `kind` stays on the plain JSON path. An object with own
+descriptor-shaped fields such as `__sloppyResult`, `kind`, `status`, `body`, or
+`bodyResult` must be a valid Sloppy descriptor or it fails closed. This keeps
+malformed descriptor objects from silently becoming JSON while avoiding
+prototype-chain surprises for ordinary objects.
+
+HTTP/V8 profile return counters count the top-level handler return once. A
+Promise-returning handler increments `promiseReturns`; converting the resolved
+value does not also increment `syncReturns`. A synchronous handler increments
+`syncReturns` and does not increment `promiseReturns`.
 
 If the descriptor is malformed (missing `kind`, bad status code, body
 type that doesn't match `kind`), the bridge returns a diagnostic and the

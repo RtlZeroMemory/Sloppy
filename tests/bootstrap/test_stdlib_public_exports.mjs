@@ -74,6 +74,12 @@ import {
     SloppyCacheError,
 } from "../../stdlib/sloppy/cache.js";
 import {
+    column,
+    orm,
+    relation,
+    table,
+} from "../../stdlib/sloppy/orm.js";
+import {
     Auth,
     BackgroundService as RootBackgroundService,
     Cache,
@@ -92,6 +98,10 @@ import {
     TestData,
     TestHost,
     TestServices,
+    column as RootColumn,
+    orm as RootOrm,
+    relation as RootRelation,
+    table as RootTable,
     unsafeFfi as RootUnsafeFfi,
     WorkQueue as RootWorkQueue,
     Worker as RootWorker,
@@ -127,6 +137,7 @@ const documentedSubpathExports = {
     ],
     "sloppy/ffi": [t, unsafeFfi],
     "sloppy/cache": [CacheSubpath, SloppyCacheError],
+    "sloppy/orm": [orm, table, column, relation],
 };
 
 for (const [specifier, exports] of Object.entries(documentedSubpathExports)) {
@@ -173,5 +184,9 @@ assert.equal(RootBackgroundService, BackgroundService);
 assert.equal(RootFfiTypes, t);
 assert.equal(RootUnsafeFfi, unsafeFfi);
 assert.equal(RootWorkQueue, WorkQueue);
+assert.equal(RootOrm, orm);
+assert.equal(RootTable, table);
+assert.equal(RootColumn, column);
+assert.equal(RootRelation, relation);
 assert.equal(RootWorkerPool, WorkerPool);
 assert.equal(RootWorker, Worker);

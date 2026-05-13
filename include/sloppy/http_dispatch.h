@@ -112,8 +112,29 @@ typedef struct SlHttpRouteTable
     size_t route_count;
 } SlHttpRouteTable;
 
+typedef struct SlHttpDispatchRouteMatch
+{
+    const SlHttpRouteBinding* binding;
+    const SlPlanRoute* route;
+    bool method_mismatch;
+    bool has_route_match;
+    SlRouteMatch route_match;
+} SlHttpDispatchRouteMatch;
+
 SlStatus sl_http_route_table_build(SlArena* arena, const SlPlan* plan, SlHttpRouteTable* out_table,
                                    SlDiag* out_diag);
+
+/*
+ * Matches a parsed request against native route metadata without invoking the handler.
+ *
+ * This is used by protocol upgrades that must complete route-level validation before a
+ * response is written. The returned binding and route borrow `dispatch_table`/`plan`, and
+ * captured route parameters borrow `arena`.
+ */
+SlStatus sl_http_dispatch_match_route(SlArena* arena, const SlPlan* plan,
+                                      const SlHttpDispatchTable* dispatch_table,
+                                      const SlHttpRequestHead* request,
+                                      SlHttpDispatchRouteMatch* out_match, SlDiag* out_diag);
 
 /*
  * Builds the HTTP Allow header value for a parsed request path against a dispatch table.

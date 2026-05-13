@@ -54,9 +54,64 @@
         "status": "ok"
       },
       {
+        "id": "sqlite.provider",
+        "message": "SQLite is embedded; SQLite providers do not require PostgreSQL, SQL Server, libpq, or ODBC",
+        "status": "ok"
+      },
+      {
         "id": "app.plan.completeness",
         "message": "Plan completeness is complete",
         "status": "ok"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Projects.List JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Projects.Create JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Projects.Get JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Apps.List JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Apps.Create JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Apps.Get JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Builds.Create JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Builds.List JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Deployments.Create JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Diagnostics.Recent JSON response fallback: dynamic-handler-result",
+        "status": "warn"
       },
       {
         "id": "optimization.native-json-candidate",

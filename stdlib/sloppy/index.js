@@ -9,6 +9,7 @@ export { t, unsafeFfi } from "./ffi.js";
 export { Directory, File, FileHandle, FileWatcher, Path } from "./fs.js";
 export { Health } from "./health.js";
 export { Metrics } from "./metrics.js";
+export { column, orm, relation, table } from "./orm.js";
 export {
     Http,
     HttpClientFactory,

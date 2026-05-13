@@ -1,9 +1,10 @@
 # HTTP runtime
 
 The HTTP layer accepts bytes from a socket, parses them into a Sloppy
-request, matches a route, dispatches a handler through the V8 bridge,
-and writes a response. HTTP/1.1 and HTTP/2 share the same route/handler
-model; protocol-specific code stays in the transport and adapter layers.
+request, matches a route, dispatches either a native response plan or a
+handler through the V8 bridge, and writes a response. HTTP/1.1 and HTTP/2 share
+the same route/handler model; protocol-specific code stays in the transport and
+adapter layers.
 
 ## Layout
 
@@ -54,6 +55,7 @@ sl_http_dispatch_dispatch          http_dispatch.c
    │  method match
    │  request_validation.c: body kind, JSON media type, body size
    │  Plan jsonRequest: schema-backed native JSON validation/reject when present
+   │  native no-JS response plan when the route is static and supported
    ▼
 build SlHttpContext                http_context.c
    │  route params, query (last-wins), headers, body helpers
@@ -81,9 +83,10 @@ HTTP/2 dispatcher; handlers do not see a different API.
 
 Realtime routes currently stay inside this route/response model. SSE handlers
 return bounded `Results.stream` descriptors with `text/event-stream` metadata.
-WebSocket route registrations are Plan-visible, but the native HTTP upgrade
-execution path is not implemented and generated handlers return `501`
-unavailable.
+WebSocket route registrations are Plan-visible. The native HTTP/1.1 Upgrade
+path validates WebSocket handshakes, writes `101 Switching Protocols`, moves
+the connection into frame mode, and delivers text/binary frames to V8-backed
+registered handlers.
 
 Native Core streams are the internal byte-flow vocabulary for bounded response
 descriptors, transport stream emission, HTTP/2 response body mapping, and
@@ -114,10 +117,22 @@ route metadata after artifact validation. Exact static routes are indexed by
 method and path. Parameter routes are matched through a method-specific native
 segment trie, with first-static-segment candidate buckets retained as an
 internal fallback for partial or manually constructed tables. Provably static
-`Results.text`, `Results.json`, and `Results.ok` literal handlers can return a
-native no-JS response. Static JSON bodies are represented as preencoded native
-response descriptors and written by the common response writer. Named Plan
-routes can generate native URLs with percent-encoded path parameters.
+`Results.text`, `Results.json`, `Results.ok`, `Results.noContent`,
+`Results.status(code)` without a body, and supported literal `Results.problem`
+handlers can return a native no-JS response. Static JSON and problem bodies are
+represented as preencoded native response descriptors and written by the common
+response writer. Empty static responses use the native no-body response path.
+Named Plan routes can generate native URLs with percent-encoded path
+parameters.
+
+Dynamic handlers still cross the V8 bridge. The dispatcher uses Plan-emitted
+handler metadata to materialize only the request facets the generated handler
+needs: route params, query params, header facade, body helpers, service scope,
+request facade, and cancellation signal are tracked independently. A header-only
+typed binding should not build the full request facade; a query-only binding
+should not build headers, body, or service materialization; body JSON bindings
+use the body helper instead of `request.json()` when the full request object is
+not otherwise needed.
 
 ## Body / content-type policy
 
@@ -241,12 +256,13 @@ HTTP/1.1 chunked frames under `max-pending-write-bytes` and
 `max-response-bytes`.
 
 Native static JSON responses use the fixed-response path with preencoded JSON
-bytes. Supported schema-backed dynamic JSON responses use the bounded native
-JSON response writer for objects, arrays, nested objects, strings, finite
-numbers, integers, booleans, nulls, nullable values, and optional object fields.
-Unsupported schema shapes remain explicit fallback. Live incremental JSON writer
-state is future work; bounded response descriptors and Core streams are the
-current native output surfaces.
+bytes. Native static problem responses use `application/problem+json`.
+Native static empty responses return no response body. Supported schema-backed
+dynamic JSON responses use the bounded native JSON response writer for objects,
+arrays, nested objects, strings, finite numbers, integers, booleans, nulls,
+nullable values, and optional object fields. Unsupported schema shapes remain
+explicit fallback. Live incremental JSON writer state is future work; bounded
+response descriptors and Core streams are the current native output surfaces.
 
 For HTTP/2, the dispatcher submits response HEADERS and DATA for the stream.
 HTTP/2 does not use HTTP/1.1 chunked framing or connection-specific headers.
@@ -335,8 +351,8 @@ connection draining) is the responsibility of an in-front reverse proxy.
 ## Not implemented
 
 - HTTP/3, gRPC, WebTransport.
-- Native WebSocket upgrade/runtime execution. WebSocket route intent is
-  Plan-visible, but the runtime returns the alpha unavailable response.
+- Native WebSocket fragmentation, compression, heartbeat timers, send-queue
+  backpressure policy, and protected-route principal materialization.
 - SSE is experimental/alpha and currently uses bounded `Results.stream`
   descriptors. HTTP/1.1 serialization is chunked, but handler execution still
   completes before the descriptor is submitted.

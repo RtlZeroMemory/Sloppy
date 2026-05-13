@@ -7,7 +7,6 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $composeFile = Join-Path $repoRoot "tests\live\sqlserver\compose.yml"
-$initSql = Join-Path $repoRoot "tests\live\sqlserver\init.sql"
 $container = "sloppy-sqlserver-live"
 $password = "Sloppy_Strong_Passw0rd!"
 $driver = "ODBC Driver 18 for SQL Server"
@@ -16,6 +15,9 @@ if (-not (Get-OdbcDriver -Name $driver -ErrorAction SilentlyContinue)) {
 }
 if (-not (Get-OdbcDriver -Name $driver -ErrorAction SilentlyContinue)) {
     throw "UNAVAILABLE: Microsoft ODBC Driver 18 or 17 for SQL Server is required for the SQL Server integration checks."
+}
+if ($driver -eq "ODBC Driver 17 for SQL Server" -and [string]::IsNullOrWhiteSpace($env:SLOPPY_SQLSERVER_IMAGE)) {
+    $env:SLOPPY_SQLSERVER_IMAGE = "mcr.microsoft.com/mssql/server:2019-latest"
 }
 $env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING = "Driver={$driver};Server=tcp:127.0.0.1,51433;Database=sloppy_test;UID=sa;PWD=$password;Encrypt=yes;TrustServerCertificate=yes;"
 $env:Sloppy__Providers__sqlserver__main__connectionString = $env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING
@@ -27,42 +29,42 @@ function Assert-DockerAvailable {
     docker info | Out-Null
 }
 
-function Invoke-SqlServerContainerQuery {
+function New-SqlServerConnectionString {
+    param([string]$Database)
+
+    return "Driver={$driver};Server=tcp:127.0.0.1,51433;Database=$Database;UID=sa;PWD=$password;Encrypt=yes;TrustServerCertificate=yes;"
+}
+
+function Invoke-SqlServerHostQuery {
     param(
-        [string]$Query,
-        [string]$InputFile = ""
+        [string]$Database,
+        [string]$Query
     )
 
-    $script = @'
-set -e
-if [ -x /opt/mssql-tools18/bin/sqlcmd ]; then
-  exec /opt/mssql-tools18/bin/sqlcmd "$@"
-fi
-exec /opt/mssql-tools/bin/sqlcmd "$@"
-'@
-
-    if ($InputFile.Length -gt 0) {
-        docker cp $InputFile "$($container):/tmp/sloppy-live-init.sql"
-        if ($LASTEXITCODE -ne 0) {
-            throw "SQL Server live init copy failed."
+    $connection = [System.Data.Odbc.OdbcConnection]::new((New-SqlServerConnectionString -Database $Database))
+    try {
+        $connection.Open()
+        $command = $connection.CreateCommand()
+        try {
+            $command.CommandText = $Query
+            [void]$command.ExecuteNonQuery()
         }
-        $sqlcmdArgs = @("-S", "localhost", "-U", "sa", "-P", $password, "-C", "-b", "-i", "/tmp/sloppy-live-init.sql")
-        docker exec $container /bin/bash -lc $script -- @sqlcmdArgs | Out-Null
+        finally {
+            $command.Dispose()
+        }
     }
-    else {
-        $sqlcmdArgs = @("-S", "localhost", "-U", "sa", "-P", $password, "-C", "-b", "-Q", $Query)
-        docker exec $container /bin/bash -lc $script -- @sqlcmdArgs | Out-Null
-    }
-    if ($LASTEXITCODE -ne 0) {
-        throw "SQL Server live query failed."
+    finally {
+        $connection.Dispose()
     }
 }
 
 function Wait-SqlServerHostConnection {
+    param([string]$Database = "sloppy_test")
+
     for ($attempt = 0; $attempt -lt 30; $attempt += 1) {
         $connection = $null
         try {
-            $connection = [System.Data.Odbc.OdbcConnection]::new($env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING)
+            $connection = [System.Data.Odbc.OdbcConnection]::new((New-SqlServerConnectionString -Database $Database))
             $connection.Open()
             return
         }
@@ -79,31 +81,16 @@ function Wait-SqlServerHostConnection {
     throw "UNAVAILABLE: SQL Server host ODBC connection did not become ready before timeout."
 }
 
-if (-not $NoDocker) {
-    Assert-DockerAvailable
-    docker compose -f $composeFile up -d
-
-    $ready = $false
-    for ($attempt = 0; $attempt -lt 90; $attempt += 1) {
-        try {
-            Invoke-SqlServerContainerQuery -Query "select(1)"
-            $ready = $true
-            break
-        }
-        catch {
-            Start-Sleep -Seconds 2
-        }
-    }
-
-    if (-not $ready) {
-        throw "SQL Server container did not become ready before timeout."
-    }
-
-    Invoke-SqlServerContainerQuery -Query "" -InputFile $initSql
-    Wait-SqlServerHostConnection
-}
-
 try {
+    if (-not $NoDocker) {
+        Assert-DockerAvailable
+        docker compose -f $composeFile up -d
+
+        Wait-SqlServerHostConnection -Database "master"
+        Invoke-SqlServerHostQuery -Database "master" -Query "if db_id(N'sloppy_test') is null create database sloppy_test"
+        Wait-SqlServerHostConnection -Database "sloppy_test"
+    }
+
     & (Join-Path $PSScriptRoot "dev.ps1") build -Preset $Preset
     ctest --test-dir (Join-Path $repoRoot "build\$Preset") --output-on-failure -R "data\.sqlserver\.live_provider|conformance\.sqlserver\.(native_live|bridge_live)"
 }
