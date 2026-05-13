@@ -4110,6 +4110,27 @@ fn helper_dependency_selection_orders_referenced_initializer_helpers() {
 }
 
 #[test]
+fn helper_dependency_selection_follows_calls_in_variable_initializers() {
+    let helper_sources = BTreeMap::from([
+        (
+            "findTodo".to_string(),
+            "async function findTodo(db, id) { return db.queryOne(\"select id from todos where id = ?\", [id]); }".to_string(),
+        ),
+        (
+            "updateTodo".to_string(),
+            "async function updateTodo(db, id) { const existing = await findTodo(db, id); return existing; }".to_string(),
+        ),
+    ]);
+
+    let selected =
+        super::helper_sources_referenced_by_handler("() => updateTodo(db, 1)", &helper_sources);
+
+    assert_eq!(selected.len(), 2);
+    assert!(selected[0].contains("async function findTodo"));
+    assert!(selected[1].contains("async function updateTodo"));
+}
+
+#[test]
 fn infers_provider_effects_inside_control_flow() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 import { sqlite } from "sloppy/providers/sqlite";
@@ -4479,6 +4500,193 @@ export default app;
         .handler
         .emitted_source
         .contains("function listUsers(db)"));
+}
+
+#[test]
+fn imported_route_helpers_include_private_same_module_dependencies() {
+    let root = fixture_temp_dir("imported-helper-private-dependencies");
+    fs::create_dir_all(root.join("routes")).expect("routes dir should be writable");
+    fs::write(
+        root.join("db.js"),
+        r#"export function ensureSchema(db) {
+  return db.exec("create table if not exists todos (id integer primary key, title text)", []);
+}
+function toTodo(row) {
+  return row === null ? null : { id: Number(row.id), title: String(row.title) };
+}
+export async function seedTodos(db) {
+  await ensureSchema(db);
+  await db.exec("insert into todos (id, title) select ?, ? where not exists (select 1 from todos where id = ?)", [1, "seed", 1]);
+}
+export async function listTodos(db) {
+  await seedTodos(db);
+  const rows = await db.query("select id, title from todos order by id", []);
+  return rows.map(toTodo);
+}
+export async function createTodo(db, title) {
+  await ensureSchema(db);
+  await db.exec("insert into todos (title) values (?)", [title]);
+  return toTodo(await db.queryOne("select id, title from todos where id = last_insert_rowid()", []));
+}
+export async function findTodo(db, id) {
+  await ensureSchema(db);
+  return toTodo(await db.queryOne("select id, title from todos where id = ?", [id]));
+}
+export async function updateTodo(db, id, title) {
+  const existing = await findTodo(db, id);
+  if (existing === null) {
+    return null;
+  }
+  await db.exec("update todos set title = ? where id = ?", [title, id]);
+  return findTodo(db, id);
+}
+"#,
+    )
+    .expect("db helper should be writable");
+    fs::write(
+        root.join("routes").join("todos.js"),
+        r#"import { Results } from "sloppy";
+import { createTodo, listTodos, updateTodo } from "../db.js";
+export function todosModule(app) {
+  const db = app.provider("sqlite:main");
+  app.get("/todos", async () => Results.json(await listTodos(db)));
+  app.post("/todos", async () => Results.created("/todos/1", await createTodo(db, "alpha")));
+  app.put("/todos/{id:int}", async (ctx) => Results.json(await updateTodo(db, ctx.route.id, "updated")));
+}
+"#,
+    )
+    .expect("route module should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+import { todosModule } from "./routes/todos.js";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+app.useModule(todosModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source)
+        .expect("private helper dependencies should be included in emitted route handlers");
+    let emitted = app
+        .routes
+        .iter()
+        .map(|route| route.handler.emitted_source.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(emitted.contains("function ensureSchema(db)"));
+    assert!(emitted.contains("function toTodo(row)"));
+    assert!(emitted.contains("async function seedTodos(db)"));
+    assert!(emitted.contains("async function listTodos(db)"));
+    assert!(emitted.contains("async function createTodo(db, title)"));
+    assert!(emitted.contains("async function findTodo(db, id)"));
+    assert!(emitted.contains("async function updateTodo(db, id, title)"));
+    assert!(emitted.contains("__sloppy_open_data_provider(\"sqlite\", \"data.main\")"));
+}
+
+#[test]
+fn imported_route_helpers_do_not_leak_unused_shadowed_private_helpers() {
+    let root = fixture_temp_dir("imported-helper-shadowed-private-helper");
+    fs::create_dir_all(root.join("routes")).expect("routes dir should be writable");
+    fs::write(
+        root.join("db.js"),
+        r#"function audit(db) {
+  return db.exec("insert into audit_log (message) values (?)", ["unused"]);
+}
+export function listTodos(db) {
+  return db.query("select id, title from todos order by id", []);
+}
+"#,
+    )
+    .expect("db helper should be writable");
+    fs::write(
+        root.join("routes").join("todos.js"),
+        r#"import { Results } from "sloppy";
+import { listTodos } from "../db.js";
+export function todosModule(app) {
+  const db = app.provider("sqlite:main");
+  app.get("/todos", () => {
+    const audit = () => "local";
+    audit();
+    return Results.json(listTodos(db));
+  });
+}
+"#,
+    )
+    .expect("route module should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+import { todosModule } from "./routes/todos.js";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+app.useModule(todosModule);
+export default app;
+"#;
+    let app = extract_temp_input(&root, source)
+        .expect("unused private imported helpers should not leak into route extraction");
+    assert_eq!(app.routes[0].handler.effects.len(), 1);
+    assert_eq!(app.routes[0].handler.effects[0].access, "read");
+    assert!(app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function listTodos(db)"));
+    assert!(!app.routes[0]
+        .handler
+        .emitted_source
+        .contains("function audit(db)"));
+}
+
+#[test]
+fn imported_route_helpers_reject_ambiguous_private_dependency_names() {
+    let root = fixture_temp_dir("imported-helper-ambiguous-private-dependency");
+    fs::create_dir_all(root.join("routes")).expect("routes dir should be writable");
+    fs::write(
+        root.join("todosRepository.js"),
+        r#"function toRow(row) {
+  return { id: Number(row.id), title: String(row.title) };
+}
+export function listTodos(db) {
+  return db.query("select id, title from todos order by id", []).map(toRow);
+}
+"#,
+    )
+    .expect("todos repository helper should be writable");
+    fs::write(
+        root.join("auditRepository.js"),
+        r#"function toRow(row) {
+  return { id: Number(row.id), message: String(row.message) };
+}
+export function listAudits(db) {
+  return db.query("select id, message from audit_log order by id", []).map(toRow);
+}
+"#,
+    )
+    .expect("audit repository helper should be writable");
+    fs::write(
+        root.join("routes").join("todos.js"),
+        r#"import { Results } from "sloppy";
+import { listAudits } from "../auditRepository.js";
+import { listTodos } from "../todosRepository.js";
+export function todosModule(app) {
+  const db = app.provider("sqlite:main");
+  app.get("/todos", () => Results.json(listTodos(db)));
+  app.get("/audits", () => Results.json(listAudits(db)));
+}
+"#,
+    )
+    .expect("route module should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+import { todosModule } from "./routes/todos.js";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+app.useModule(todosModule);
+export default app;
+"#;
+    let diagnostic = extract_temp_input(&root, source)
+        .expect_err("ambiguous private imported helper names should fail closed");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HELPER");
+    assert!(diagnostic
+        .message
+        .contains("ambiguous imported helper name \"toRow\""));
 }
 
 #[test]

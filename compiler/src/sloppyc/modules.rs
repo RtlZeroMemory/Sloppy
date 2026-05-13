@@ -196,12 +196,13 @@ pub(super) fn extract_relative_helper_import(
                         span: specifier.span,
                     };
                     for helper in extract_relative_helper_import(graph, &nested_import)? {
-                        helper_sources
-                            .entry(helper.name.clone())
-                            .or_insert(helper.source.clone());
-                        helper_effects
-                            .entry(helper.name.clone())
-                            .or_insert(helper.summary.clone());
+                        insert_imported_helper(
+                            &imported.path,
+                            specifier.span,
+                            &mut helper_sources,
+                            &mut helper_effects,
+                            &helper,
+                        )?;
                         helpers.push(helper);
                     }
                     resolve_helper_effect_callgraph(&mut helper_effects);
@@ -247,12 +248,13 @@ pub(super) fn extract_relative_helper_import(
                         span: specifier.span,
                     };
                     for helper in extract_relative_helper_import(graph, &package_import)? {
-                        helper_sources
-                            .entry(helper.name.clone())
-                            .or_insert(helper.source.clone());
-                        helper_effects
-                            .entry(helper.name.clone())
-                            .or_insert(helper.summary.clone());
+                        insert_imported_helper(
+                            &imported.path,
+                            specifier.span,
+                            &mut helper_sources,
+                            &mut helper_effects,
+                            &helper,
+                        )?;
                         helpers.push(helper);
                     }
                     resolve_helper_effect_callgraph(&mut helper_effects);
@@ -269,7 +271,162 @@ pub(super) fn extract_relative_helper_import(
         .with_span(import.source.span));
     }
 
-    let mut found = None::<ImportedHelper>;
+    for statement in &parsed.program.body {
+        match statement {
+            Statement::FunctionDeclaration(function) => {
+                let Some(identifier) = &function.id else {
+                    graph.visiting.remove(&imported.path);
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HELPER",
+                        "helper declarations must be named",
+                    )
+                    .with_path(&imported.path)
+                    .with_span(function.span));
+                };
+                let Some(helper_source) = source_slice(&source, function.span) else {
+                    graph.visiting.remove(&imported.path);
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HELPER",
+                        "helper source could not be extracted",
+                    )
+                    .with_path(&imported.path)
+                    .with_span(function.span));
+                };
+                let name = identifier.name.as_str().to_string();
+                let summary = helper_effects_from_function(
+                    function,
+                    &BTreeMap::new(),
+                    &helper_effects,
+                    &source,
+                    &source_name,
+                );
+                helper_sources.insert(name.clone(), helper_source);
+                helper_effects.insert(name, summary);
+                resolve_helper_effect_callgraph(&mut helper_effects);
+            }
+            Statement::VariableDeclaration(declaration) => {
+                for declarator in &declaration.declarations {
+                    let Some(init) = &declarator.init else {
+                        continue;
+                    };
+                    if helper_initializer(init).is_none() {
+                        continue;
+                    }
+                    let Some(name) = binding_identifier(&declarator.id) else {
+                        graph.visiting.remove(&imported.path);
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_HELPER",
+                            "helper declarations must use simple identifiers",
+                        )
+                        .with_path(&imported.path)
+                        .with_span(declarator.span));
+                    };
+                    let Some(init_source) = source_slice(&source, init.span()) else {
+                        graph.visiting.remove(&imported.path);
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_HELPER",
+                            "helper source could not be extracted",
+                        )
+                        .with_path(&imported.path)
+                        .with_span(init.span()));
+                    };
+                    let helper_source = format!("const {name} = {init_source};");
+                    let summary = helper_effects_from_initializer(
+                        init,
+                        &BTreeMap::new(),
+                        &helper_effects,
+                        &source,
+                        &source_name,
+                    );
+                    helper_sources.insert(name.to_string(), helper_source);
+                    helper_effects.insert(name.to_string(), summary);
+                    resolve_helper_effect_callgraph(&mut helper_effects);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    for statement in &parsed.program.body {
+        let Statement::ExportNamedDeclaration(export) = statement else {
+            continue;
+        };
+        match &export.declaration {
+            Some(Declaration::FunctionDeclaration(function)) => {
+                let Some(identifier) = &function.id else {
+                    graph.visiting.remove(&imported.path);
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HELPER",
+                        "helper declarations must be named",
+                    )
+                    .with_path(&imported.path)
+                    .with_span(function.span));
+                };
+                let Some(helper_source) = source_slice(&source, function.span) else {
+                    graph.visiting.remove(&imported.path);
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HELPER",
+                        "helper source could not be extracted",
+                    )
+                    .with_path(&imported.path)
+                    .with_span(function.span));
+                };
+                let name = identifier.name.as_str().to_string();
+                let summary = helper_effects_from_function(
+                    function,
+                    &BTreeMap::new(),
+                    &helper_effects,
+                    &source,
+                    &source_name,
+                );
+                helper_sources.insert(name.clone(), helper_source);
+                helper_effects.insert(name, summary);
+                resolve_helper_effect_callgraph(&mut helper_effects);
+            }
+            Some(Declaration::VariableDeclaration(declaration)) => {
+                for declarator in &declaration.declarations {
+                    let Some(init) = &declarator.init else {
+                        continue;
+                    };
+                    if helper_initializer(init).is_none() {
+                        continue;
+                    }
+                    let Some(name) = binding_identifier(&declarator.id) else {
+                        graph.visiting.remove(&imported.path);
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_HELPER",
+                            "helper declarations must use simple identifiers",
+                        )
+                        .with_path(&imported.path)
+                        .with_span(declarator.span));
+                    };
+                    let Some(init_source) = source_slice(&source, init.span()) else {
+                        graph.visiting.remove(&imported.path);
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_HELPER",
+                            "helper source could not be extracted",
+                        )
+                        .with_path(&imported.path)
+                        .with_span(init.span()));
+                    };
+                    let helper_source = format!("const {name} = {init_source};");
+                    let summary = helper_effects_from_initializer(
+                        init,
+                        &BTreeMap::new(),
+                        &helper_effects,
+                        &source,
+                        &source_name,
+                    );
+                    helper_sources.insert(name.to_string(), helper_source);
+                    helper_effects.insert(name.to_string(), summary);
+                    resolve_helper_effect_callgraph(&mut helper_effects);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut found = None::<(String, ImportedHelper)>;
     for statement in &parsed.program.body {
         let Statement::ExportNamedDeclaration(export) = statement else {
             continue;
@@ -299,11 +456,9 @@ pub(super) fn extract_relative_helper_import(
                     &source,
                     &source_name,
                 );
-                found = Some(imported_helper_with_alias(
-                    imported,
-                    export_name,
-                    source_text,
-                    summary,
+                found = Some((
+                    export_name.to_string(),
+                    imported_helper_with_alias(imported, export_name, source_text, summary),
                 ));
                 break;
             }
@@ -335,11 +490,9 @@ pub(super) fn extract_relative_helper_import(
                         &source,
                         &source_name,
                     );
-                    found = Some(imported_helper_with_alias(
-                        imported,
-                        export_name,
-                        source_text,
-                        summary,
+                    found = Some((
+                        export_name.to_string(),
+                        imported_helper_with_alias(imported, export_name, source_text, summary),
                     ));
                     break;
                 }
@@ -352,7 +505,7 @@ pub(super) fn extract_relative_helper_import(
     }
 
     graph.visiting.remove(&imported.path);
-    let Some(helper) = found else {
+    let Some((export_name, helper)) = found else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_MISSING_EXPORT",
             format!(
@@ -363,6 +516,19 @@ pub(super) fn extract_relative_helper_import(
         .with_path(&imported.path)
         .with_span(imported.span));
     };
+    for dependency in helper_dependency_names_in_order(&export_name, &helper_sources) {
+        if dependency == export_name {
+            continue;
+        }
+        let Some(source) = helper_sources.get(&dependency) else {
+            continue;
+        };
+        helpers.push(ImportedHelper {
+            name: dependency.clone(),
+            source: source.clone(),
+            summary: helper_effects.get(&dependency).cloned().unwrap_or_default(),
+        });
+    }
     helpers.push(helper);
     Ok(helpers)
 }
@@ -591,12 +757,13 @@ pub(super) fn extract_relative_module(
                         span: specifier.span,
                     };
                     for helper in extract_relative_helper_import(graph, &nested_import)? {
-                        imported_helper_sources
-                            .entry(helper.name.clone())
-                            .or_insert(helper.source);
-                        imported_helper_effects
-                            .entry(helper.name)
-                            .or_insert(helper.summary);
+                        insert_imported_helper(
+                            &imported.path,
+                            specifier.span,
+                            &mut imported_helper_sources,
+                            &mut imported_helper_effects,
+                            &helper,
+                        )?;
                     }
                     resolve_helper_effect_callgraph(&mut imported_helper_effects);
                 }
@@ -640,12 +807,13 @@ pub(super) fn extract_relative_module(
                             span: specifier.span,
                         };
                         for helper in extract_relative_helper_import(graph, &package_import)? {
-                            imported_helper_sources
-                                .entry(helper.name.clone())
-                                .or_insert(helper.source);
-                            imported_helper_effects
-                                .entry(helper.name)
-                                .or_insert(helper.summary);
+                            insert_imported_helper(
+                                &imported.path,
+                                specifier.span,
+                                &mut imported_helper_sources,
+                                &mut imported_helper_effects,
+                                &helper,
+                            )?;
                         }
                         resolve_helper_effect_callgraph(&mut imported_helper_effects);
                     }
@@ -850,6 +1018,33 @@ fn cached_module_routes(
         .with_span(imported.span));
     };
     Ok(module_export.clone())
+}
+
+fn insert_imported_helper(
+    path: &Path,
+    span: Span,
+    helper_sources: &mut BTreeMap<String, String>,
+    helper_effects: &mut BTreeMap<String, FunctionEffectSummary>,
+    helper: &ImportedHelper,
+) -> Result<(), Diagnostic> {
+    if let Some(existing_source) = helper_sources.get(&helper.name) {
+        if existing_source != &helper.source {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_HELPER",
+                format!("ambiguous imported helper name \"{}\"", helper.name),
+            )
+            .with_path(path)
+            .with_span(span)
+            .with_hint(
+                "Imported helper dependency names must be unique after extraction. Rename one helper or import through a wrapper with distinct helper names.",
+            ));
+        }
+        return Ok(());
+    }
+
+    helper_sources.insert(helper.name.clone(), helper.source.clone());
+    helper_effects.insert(helper.name.clone(), helper.summary.clone());
+    Ok(())
 }
 
 fn extract_module_function_routes(
@@ -1261,12 +1456,22 @@ pub(super) fn helper_sources_referenced_by_handler(
     handler_source: &str,
     helper_sources: &BTreeMap<String, String>,
 ) -> Vec<String> {
+    helper_names_referenced_by_source(handler_source, helper_sources)
+        .into_iter()
+        .filter_map(|name| helper_sources.get(&name).cloned())
+        .collect()
+}
+
+fn helper_names_referenced_by_source(
+    source: &str,
+    helper_sources: &BTreeMap<String, String>,
+) -> Vec<String> {
     let mut selected = BTreeSet::<String>::new();
     let mut visiting = BTreeSet::<String>::new();
     let mut ordered = Vec::<String>::new();
     for name in helper_sources.keys() {
-        if source_contains_identifier(handler_source, name) {
-            push_helper_source_with_dependencies(
+        if source_contains_identifier(source, name) {
+            push_helper_name_with_dependencies(
                 name,
                 helper_sources,
                 &mut selected,
@@ -1281,11 +1486,18 @@ pub(super) fn helper_sources_referenced_by_handler(
 pub(super) fn helper_sources_in_dependency_order(
     helper_sources: &BTreeMap<String, String>,
 ) -> Vec<String> {
+    helper_names_in_dependency_order(helper_sources)
+        .into_iter()
+        .filter_map(|name| helper_sources.get(&name).cloned())
+        .collect()
+}
+
+fn helper_names_in_dependency_order(helper_sources: &BTreeMap<String, String>) -> Vec<String> {
     let mut selected = BTreeSet::<String>::new();
     let mut visiting = BTreeSet::<String>::new();
     let mut ordered = Vec::<String>::new();
     for name in helper_sources.keys() {
-        push_helper_source_with_dependencies(
+        push_helper_name_with_dependencies(
             name,
             helper_sources,
             &mut selected,
@@ -1296,7 +1508,24 @@ pub(super) fn helper_sources_in_dependency_order(
     ordered
 }
 
-fn push_helper_source_with_dependencies(
+fn helper_dependency_names_in_order(
+    root: &str,
+    helper_sources: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let mut selected = BTreeSet::<String>::new();
+    let mut visiting = BTreeSet::<String>::new();
+    let mut ordered = Vec::<String>::new();
+    push_helper_name_with_dependencies(
+        root,
+        helper_sources,
+        &mut selected,
+        &mut visiting,
+        &mut ordered,
+    );
+    ordered
+}
+
+fn push_helper_name_with_dependencies(
     name: &str,
     helper_sources: &BTreeMap<String, String>,
     selected: &mut BTreeSet<String>,
@@ -1314,17 +1543,11 @@ fn push_helper_source_with_dependencies(
         if dependency == name || !helper_source_references(source, dependency) {
             continue;
         }
-        push_helper_source_with_dependencies(
-            dependency,
-            helper_sources,
-            selected,
-            visiting,
-            ordered,
-        );
+        push_helper_name_with_dependencies(dependency, helper_sources, selected, visiting, ordered);
     }
     visiting.remove(name);
     selected.insert(name.to_string());
-    ordered.push(source.clone());
+    ordered.push(name.to_string());
 }
 
 fn helper_source_references(source: &str, identifier: &str) -> bool {
@@ -1423,6 +1646,9 @@ fn variable_declaration_declares_identifier(
                         return true;
                     }
                     index = skip_initializer_to_next_declarator(source, index + 1);
+                    if index >= source.len() {
+                        return false;
+                    }
                     break;
                 }
                 b',' | b';' if depth == 0 => {
