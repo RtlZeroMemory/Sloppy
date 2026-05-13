@@ -59,6 +59,20 @@
     sloppy_add_cli_golden_test(
         sloppy.cli.health_json tests/golden/cli/health-json.json health --plan
         tests/fixtures/cli/ops.plan.json --format json)
+    sloppy_add_cli_nonzero_stderr_test(
+        sloppy.cli.health_malformed_kind
+        "route health kind must be a string" "SECRET_SHOULD_NOT_APPEAR" "SLOPPY_TEST_NOOP" "1"
+        health --plan tests/fixtures/cli/malformed-health-kind.plan.json --format text)
+    sloppy_add_cli_nonzero_stderr_test(
+        sloppy.cli.health_malformed_check_entry
+        "route health check entries must be strings" "SECRET_SHOULD_NOT_APPEAR"
+        "SLOPPY_TEST_NOOP" "1" health --plan
+        tests/fixtures/cli/malformed-health-check-entry.plan.json --format text)
+    sloppy_add_cli_nonzero_stderr_test(
+        sloppy.cli.health_empty_checks
+        "route health checks must not be empty" "SECRET_SHOULD_NOT_APPEAR" "SLOPPY_TEST_NOOP"
+        "1" health --plan tests/fixtures/cli/malformed-health-empty-checks.plan.json
+        --format text)
     sloppy_add_cli_golden_test(
         sloppy.cli.metrics_text tests/golden/cli/metrics-text.txt metrics --plan
         tests/fixtures/cli/ops.plan.json --format text)
@@ -254,6 +268,14 @@
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_clean_json tests/golden/cli/audit-clean-json.json audit --plan
         tests/fixtures/cli/route-metadata.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_metrics_json_only_text
+        tests/golden/cli/audit-metrics-json-only-text.txt audit --plan
+        tests/fixtures/cli/audit-metrics-json-only.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_metrics_json_only_json
+        tests/golden/cli/audit-metrics-json-only-json.json audit --plan
+        tests/fixtures/cli/audit-metrics-json-only.plan.json --format json)
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_filesystem_text tests/golden/cli/audit-filesystem-text.txt audit --plan
         tests/fixtures/cli/filesystem-policy.plan.json --format text)

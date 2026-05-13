@@ -236,6 +236,7 @@ static int sl_cli_parse_route_responses(yyjson_val* value, SlCliRoute* route)
 static int sl_cli_parse_route_health(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* health = yyjson_obj_get(value, "health");
+    yyjson_val* kind = NULL;
     yyjson_val* checks = NULL;
     yyjson_val* entry = NULL;
     yyjson_arr_iter iter;
@@ -245,6 +246,12 @@ static int sl_cli_parse_route_health(yyjson_val* value, SlCliRoute* route)
     }
     if (!yyjson_is_obj(health)) {
         sl_cli_write_cstr(stderr, "sloppy: malformed metadata: route health must be an object\n");
+        return 1;
+    }
+    kind = yyjson_obj_get(health, "kind");
+    if (kind != NULL && !yyjson_is_str(kind)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: route health kind must be a string\n");
         return 1;
     }
     route->health_kind = sl_cli_json_span(health, "kind");
@@ -257,10 +264,18 @@ static int sl_cli_parse_route_health(yyjson_val* value, SlCliRoute* route)
                           "sloppy: malformed metadata: route health checks must be an array\n");
         return 1;
     }
+    if (yyjson_arr_size(checks) == 0U) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: route health checks must not be empty\n");
+        return 1;
+    }
     yyjson_arr_iter_init(checks, &iter);
     while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
         if (!yyjson_is_str(entry)) {
-            continue;
+            sl_cli_write_cstr(
+                stderr,
+                "sloppy: malformed metadata: route health check entries must be strings\n");
+            return 1;
         }
         if (route->health_check_count >= SL_CLI_MAX_ROUTE_HEALTH_CHECKS) {
             sl_cli_write_cstr(stderr, "sloppy: too many route health checks in metadata\n");

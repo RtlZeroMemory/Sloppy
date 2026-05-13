@@ -1,0 +1,5 @@
+Sloppy Audit
+
+[warn] SLOPPY_AUDIT_OPS_HEALTH_MISSING Plan does not expose health endpoint metadata (ops.health)
+[warn] SLOPPY_AUDIT_OPS_MANAGEMENT_EXPOSED management endpoints expose detailed operational data and require a trusted network or protection hook (ops.management)
+[warn] SLOPPY_AUDIT_OPS_METRICS_JSON_MISSING Prometheus and JSON metrics metadata exposure is inconsistent (ops.metrics)

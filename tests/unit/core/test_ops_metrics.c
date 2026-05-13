@@ -17,12 +17,14 @@ static int expect_status(SlStatus status, SlStatusCode code)
 
 static bool str_contains(SlStr haystack, const char* needle)
 {
-    size_t needle_length = strlen(needle);
+    size_t needle_length = 0U;
     size_t index = 0U;
 
-    if (haystack.ptr == NULL || needle == NULL || needle_length == 0U ||
-        haystack.length < needle_length)
-    {
+    if (needle == NULL) {
+        return false;
+    }
+    needle_length = strlen(needle);
+    if (haystack.ptr == NULL || needle_length == 0U || haystack.length < needle_length) {
         return false;
     }
     for (index = 0U; index <= haystack.length - needle_length; index += 1U) {

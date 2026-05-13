@@ -596,9 +596,9 @@ static void sl_cli_audit_ops(const SlCliOptions* options, const SlCliMetadata* m
                           "trusted network or protection hook",
                           "ops.management", findings, errors);
     }
-    if (prometheus_metrics && !json_metrics) {
+    if (prometheus_metrics != json_metrics) {
         sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OPS_METRICS_JSON_MISSING",
-                          "Prometheus metrics are exposed without JSON metrics metadata",
+                          "Prometheus and JSON metrics metadata exposure is inconsistent",
                           "ops.metrics", findings, errors);
     }
 }

@@ -1028,11 +1028,14 @@ static int test_route_health_metadata_parses(void)
     if (route->health_check_count != 2U) {
         return 30;
     }
-    if (!sl_str_equal(route->health_checks[0], sl_str_from_cstr("self"))) {
+    if (route->health_checks == NULL) {
         return 31;
     }
-    if (!sl_str_equal(route->health_checks[1], sl_str_from_cstr("runtime"))) {
+    if (!sl_str_equal(route->health_checks[0], sl_str_from_cstr("self"))) {
         return 32;
+    }
+    if (!sl_str_equal(route->health_checks[1], sl_str_from_cstr("runtime"))) {
+        return 33;
     }
     return 0;
 }
