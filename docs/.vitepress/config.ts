@@ -3,7 +3,7 @@ import { defineConfig } from "vitepress";
 export default defineConfig({
   title: "Sloppy",
   description: "Compiler-first TypeScript runtime and application framework for serious backend apps.",
-  base: "/Slop/",
+  base: "/Sloppy/",
   cleanUrls: true,
   lastUpdated: true,
   srcExclude: ["skills/**"],
@@ -19,7 +19,7 @@ export default defineConfig({
       { text: "API", link: "/api/" },
       { text: "CLI", link: "/cli/" },
       { text: "Reference", link: "/reference/stability" },
-      { text: "GitHub", link: "https://github.com/RtlZeroMemory/Slop" }
+      { text: "GitHub", link: "https://github.com/RtlZeroMemory/Sloppy" }
     ],
     sidebar: [
       {
@@ -200,7 +200,7 @@ export default defineConfig({
       }
     ],
     socialLinks: [
-      { icon: "github", link: "https://github.com/RtlZeroMemory/Slop" }
+      { icon: "github", link: "https://github.com/RtlZeroMemory/Sloppy" }
     ],
     footer: {
       message: "Public alpha. APIs and artifact formats may still change between alpha revisions.",

@@ -23,7 +23,7 @@ hero:
       link: /api/
     - theme: alt
       text: GitHub
-      link: https://github.com/RtlZeroMemory/Slop
+      link: https://github.com/RtlZeroMemory/Sloppy
 
 features:
   - icon: ⚙️
@@ -133,33 +133,33 @@ sloppy run .sloppy --once GET /health
 
 <div class="sloppy-home">
   <div class="batteries">
-    <a class="battery" href="/Slop/api/routing"><span class="dot"></span>Routing &amp; Results</a>
-    <a class="battery" href="/Slop/api/middleware"><span class="dot"></span>Middleware pipeline</a>
-    <a class="battery" href="/Slop/guide/auth"><span class="dot"></span>Auth &amp; sessions</a>
-    <a class="battery" href="/Slop/api/cors"><span class="dot"></span>CORS &amp; security headers</a>
-    <a class="battery" href="/Slop/guide/rate-limiting"><span class="dot"></span>Rate limiting</a>
-    <a class="battery" href="/Slop/api/request-logging"><span class="dot"></span>Request logging &amp; context</a>
-    <a class="battery" href="/Slop/api/config"><span class="dot"></span>Config &amp; services</a>
-    <a class="battery" href="/Slop/api/logging"><span class="dot"></span>Structured logging</a>
-    <a class="battery" href="/Slop/api/data"><span class="dot"></span>Data providers &amp; migrations</a>
-    <a class="battery" href="/Slop/guide/data-streaming"><span class="dot"></span>Cursor-based data streaming</a>
-    <a class="battery" href="/Slop/api/orm"><span class="dot"></span>ORM &amp; migrations</a>
-    <a class="battery" href="/Slop/api/cache"><span class="dot"></span>Cache &amp; output cache</a>
-    <a class="battery" href="/Slop/api/redis"><span class="dot"></span>Redis client &amp; locks</a>
-    <a class="battery" href="/Slop/api/http-client"><span class="dot"></span>Named HTTP clients</a>
-    <a class="battery" href="/Slop/cli/openapi"><span class="dot"></span>OpenAPI emission</a>
-    <a class="battery" href="/Slop/api/health"><span class="dot"></span>Health, metrics &amp; management</a>
-    <a class="battery" href="/Slop/guide/static-assets"><span class="dot"></span>Static files</a>
-    <a class="battery" href="/Slop/api/realtime"><span class="dot"></span>Realtime &amp; WebSockets</a>
-    <a class="battery" href="/Slop/guide/webhooks"><span class="dot"></span>Webhooks</a>
-    <a class="battery" href="/Slop/guide/background-tasks"><span class="dot"></span>Background tasks &amp; jobs</a>
-    <a class="battery" href="/Slop/api/jobs"><span class="dot"></span>Durable scheduler</a>
-    <a class="battery" href="/Slop/guide/program-mode"><span class="dot"></span>Program Mode</a>
-    <a class="battery" href="/Slop/api/testing"><span class="dot"></span>TestHost &amp; TestServices</a>
+    <a class="battery" href="/Sloppy/api/routing"><span class="dot"></span>Routing &amp; Results</a>
+    <a class="battery" href="/Sloppy/api/middleware"><span class="dot"></span>Middleware pipeline</a>
+    <a class="battery" href="/Sloppy/guide/auth"><span class="dot"></span>Auth &amp; sessions</a>
+    <a class="battery" href="/Sloppy/api/cors"><span class="dot"></span>CORS &amp; security headers</a>
+    <a class="battery" href="/Sloppy/guide/rate-limiting"><span class="dot"></span>Rate limiting</a>
+    <a class="battery" href="/Sloppy/api/request-logging"><span class="dot"></span>Request logging &amp; context</a>
+    <a class="battery" href="/Sloppy/api/config"><span class="dot"></span>Config &amp; services</a>
+    <a class="battery" href="/Sloppy/api/logging"><span class="dot"></span>Structured logging</a>
+    <a class="battery" href="/Sloppy/api/data"><span class="dot"></span>Data providers &amp; migrations</a>
+    <a class="battery" href="/Sloppy/guide/data-streaming"><span class="dot"></span>Cursor-based data streaming</a>
+    <a class="battery" href="/Sloppy/api/orm"><span class="dot"></span>ORM &amp; migrations</a>
+    <a class="battery" href="/Sloppy/api/cache"><span class="dot"></span>Cache &amp; output cache</a>
+    <a class="battery" href="/Sloppy/api/redis"><span class="dot"></span>Redis client &amp; locks</a>
+    <a class="battery" href="/Sloppy/api/http-client"><span class="dot"></span>Named HTTP clients</a>
+    <a class="battery" href="/Sloppy/cli/openapi"><span class="dot"></span>OpenAPI emission</a>
+    <a class="battery" href="/Sloppy/api/health"><span class="dot"></span>Health, metrics &amp; management</a>
+    <a class="battery" href="/Sloppy/guide/static-assets"><span class="dot"></span>Static files</a>
+    <a class="battery" href="/Sloppy/api/realtime"><span class="dot"></span>Realtime &amp; WebSockets</a>
+    <a class="battery" href="/Sloppy/guide/webhooks"><span class="dot"></span>Webhooks</a>
+    <a class="battery" href="/Sloppy/guide/background-tasks"><span class="dot"></span>Background tasks &amp; jobs</a>
+    <a class="battery" href="/Sloppy/api/jobs"><span class="dot"></span>Durable scheduler</a>
+    <a class="battery" href="/Sloppy/guide/program-mode"><span class="dot"></span>Program Mode</a>
+    <a class="battery" href="/Sloppy/api/testing"><span class="dot"></span>TestHost &amp; TestServices</a>
   </div>
   <p class="batteries-note">
     Exact support boundaries and current alpha limits are tracked in the
-    <a href="/Slop/reference/stability">stability matrix</a>.
+    <a href="/Sloppy/reference/stability">stability matrix</a>.
   </p>
 </div>
 

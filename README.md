@@ -4,7 +4,7 @@
 
 # Sloppy
 
-[![CI](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml)
+[![CI](https://github.com/RtlZeroMemory/Sloppy/actions/workflows/ci.yml/badge.svg)](https://github.com/RtlZeroMemory/Sloppy/actions/workflows/ci.yml)
 [![npm alpha](https://img.shields.io/npm/v/@slopware/sloppy/alpha?label=npm%20alpha)](https://www.npmjs.com/package/@slopware/sloppy)
 ![public alpha](https://img.shields.io/badge/status-public%20alpha-yellow)
 ![license](https://img.shields.io/badge/license-see%20LICENSE-blue)
@@ -74,13 +74,13 @@ The GitHub Pages site is deployed from `main` by the Pages workflow. During
 review, or immediately after a docs change merges, the same source pages are
 available under [`docs/`](docs/README.md).
 
-- Docs site: <https://rtlzeromemory.github.io/Slop/>
-- Quickstart: <https://rtlzeromemory.github.io/Slop/quickstart>
-- Install: <https://rtlzeromemory.github.io/Slop/install>
-- Tutorials: <https://rtlzeromemory.github.io/Slop/tutorials/>
-- API reference: <https://rtlzeromemory.github.io/Slop/api/>
-- Sloppy vs Node/Bun/Deno: <https://rtlzeromemory.github.io/Slop/about/sloppy-vs-node-bun-deno>
-- Roadmap: <https://rtlzeromemory.github.io/Slop/roadmap>
+- Docs site: <https://rtlzeromemory.github.io/Sloppy/>
+- Quickstart: <https://rtlzeromemory.github.io/Sloppy/quickstart>
+- Install: <https://rtlzeromemory.github.io/Sloppy/install>
+- Tutorials: <https://rtlzeromemory.github.io/Sloppy/tutorials/>
+- API reference: <https://rtlzeromemory.github.io/Sloppy/api/>
+- Sloppy vs Node/Bun/Deno: <https://rtlzeromemory.github.io/Sloppy/about/sloppy-vs-node-bun-deno>
+- Roadmap: <https://rtlzeromemory.github.io/Sloppy/roadmap>
 
 ## Install
 
@@ -303,7 +303,7 @@ paper cuts.
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [Contributor docs](docs/contributor/index.md)
-- [Issues](https://github.com/RtlZeroMemory/Slop/issues)
+- [Issues](https://github.com/RtlZeroMemory/Sloppy/issues)
 - [Security policy](SECURITY.md)
 
 ## License

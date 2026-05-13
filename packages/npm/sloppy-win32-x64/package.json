@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RtlZeroMemory/Slop.git"
+    "url": "git+https://github.com/RtlZeroMemory/Sloppy.git"
   },
   "os": [
     "win32"
