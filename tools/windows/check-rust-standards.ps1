@@ -49,7 +49,8 @@ function Test-RustTestModuleFile {
         [string]$RelativePath
     )
 
-    return $RelativePath -match '(^|/)[^/]+_tests\.rs$'
+    return $RelativePath -match '(^|/)[^/]+_tests\.rs$' -or
+        $RelativePath -match '^compiler/src/sloppyc_tests/'
 }
 
 function Test-ArtifactOrderingSensitivePath {

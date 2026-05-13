@@ -67,3 +67,16 @@ partial or dynamic metadata with honest findings over a fatal diagnostic. Fatal
 diagnostics are for execution impossibility, invalid artifact shape,
 unsafe static-required declarations such as FFI, unsupported runtime features,
 or source that cannot be resolved or transformed.
+
+## Rust Compiler Code Contract
+
+Rust compiler work must keep `sloppyc` modular and reviewable. `sloppyc.rs`
+is an orchestration and compatibility entrypoint, not a dumping ground for new
+feature extraction, Program Mode lowering, Plan writers, generated JavaScript,
+or diagnostics helpers. Put new compiler work in a focused module with tests
+that prove the supported and rejected source shapes.
+
+Follow `docs/internals/compiler-standards.md` and
+`docs/contributor/rust-standards.md` for module size, extractor honesty,
+diagnostic stability, deterministic output, generated artifact, dependency,
+and test requirements.
