@@ -3,7 +3,7 @@
 Import the ORM from `sloppy/orm`:
 
 ```ts
-import { orm, table, column, relation, sql } from "sloppy/orm";
+import { orm, table, column, relation } from "sloppy/orm";
 ```
 
 ## Exports
@@ -69,8 +69,11 @@ One-side includes default to a left join. Collection includes default to split
 queries and attach frozen arrays. Filtered and limited collection includes stay
 split-query so parent rows are not multiplied.
 
-Use `{ strategy: "split" }` or `{ strategy: "join" }` to request a strategy
-where supported.
+Use `{ strategy: "split" }` or `{ strategy: "join" }` to request a strategy.
+Split includes are the supported collection strategy across SQLite,
+PostgreSQL, and SQL Server. Join includes are supported for one-side
+relations; collection joins are experimental and fall back to split-query
+behavior when a provider/runtime path cannot preserve parent row cardinality.
 
 ## Migrations
 

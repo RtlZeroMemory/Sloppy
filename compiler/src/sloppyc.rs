@@ -12597,9 +12597,7 @@ fn orm_table_declaration_source(
         .with_span(call.span)
         .with_hint(orm_table_hint()));
     }
-    let Some(columns_argument) = call.arguments.get(1) else {
-        return Ok(None);
-    };
+    let columns_argument = &call.arguments[1];
     if let Argument::ObjectExpression(columns) = columns_argument {
         if columns.properties.is_empty() {
             return Err(Diagnostic::new(

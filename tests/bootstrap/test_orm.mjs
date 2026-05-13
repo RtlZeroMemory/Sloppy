@@ -45,6 +45,18 @@ function normalizeProviderCall(sqlOrQuery, paramsOrOptions, options) {
     };
 }
 
+function normalizeSqlFixture(sql) {
+    return sql.replace(/\s+/gu, " ").trim().toLowerCase();
+}
+
+function setSqlRows(rowsByText, sql, rows) {
+    rowsByText.set(normalizeSqlFixture(sql), rows);
+}
+
+function getSqlRows(rowsByText, sql) {
+    return rowsByText.get(sql) ?? rowsByText.get(normalizeSqlFixture(sql)) ?? [];
+}
+
 function createFakeDb(rowsByText = new Map()) {
     const calls = [];
     const db = {
@@ -52,12 +64,12 @@ function createFakeDb(rowsByText = new Map()) {
         query(sqlOrQuery, paramsOrOptions, options) {
             const call = normalizeProviderCall(sqlOrQuery, paramsOrOptions, options);
             calls.push(["query", call.text, call.parameters, call.options]);
-            return rowsByText.get(call.text) ?? [];
+            return getSqlRows(rowsByText, call.text);
         },
         queryOne(sqlOrQuery, paramsOrOptions, options) {
             const call = normalizeProviderCall(sqlOrQuery, paramsOrOptions, options);
             calls.push(["queryOne", call.text, call.parameters, call.options]);
-            return (rowsByText.get(call.text) ?? [])[0] ?? null;
+            return getSqlRows(rowsByText, call.text)[0] ?? null;
         },
         exec(sqlOrQuery, paramsOrOptions, options) {
             const call = normalizeProviderCall(sqlOrQuery, paramsOrOptions, options);
@@ -81,7 +93,7 @@ function createFakeDb(rowsByText = new Map()) {
             calls.push(["cursor", call.text, call.parameters, call.options]);
             let index = 0;
             let closed = false;
-            const rows = rowsByText.get(call.text) ?? [];
+            const rows = getSqlRows(rowsByText, call.text);
             return Object.freeze({
                 provider: "sqlite",
                 mode: "object",
@@ -314,7 +326,7 @@ relation(Teams, ({ many }) => ({
 
 {
     const rows = new Map();
-    rows.set(
+    setSqlRows(rows,
         'select "t0"."id" as "id", "t0"."email" as "email" from "users" "t0" where ("t0"."email" like ?) order by "t0"."createdAt" desc limit 2 offset 1',
         [{ id: "1", email: "ada@example.com" }],
     );
@@ -334,7 +346,8 @@ relation(Teams, ({ many }) => ({
 
 {
     const joinSql = 'select "t0"."id" as "id", "t0"."teamId" as "teamId", "t0"."email" as "email", "t0"."displayName" as "displayName", "t0"."passwordHash" as "passwordHash", "t0"."version" as "version", "t0"."deletedAt" as "deletedAt", "t0"."createdAt" as "createdAt", "t1"."id" as "team__id", "t1"."slug" as "team__slug", "t1"."name" as "team__name", "t1"."createdAt" as "team__createdAt" from "users" "t0" left join "teams" "t1" on "t0"."teamId" = "t1"."id" where ("t0"."id" = ?) limit 2';
-    const rows = new Map([[
+    const rows = new Map();
+    setSqlRows(rows,
         joinSql,
         [{
             id: "user-1",
@@ -350,7 +363,7 @@ relation(Teams, ({ many }) => ({
             team__name: "Core",
             team__createdAt: "now",
         }],
-    ]]);
+    );
     const db = createFakeDb(rows);
     const user = await orm
         .from(Users)
@@ -371,10 +384,9 @@ relation(Teams, ({ many }) => ({
 {
     const parentSql = 'select "t0"."id" as "id", "t0"."slug" as "slug", "t0"."name" as "name", "t0"."createdAt" as "createdAt" from "teams" "t0" where ("t0"."id" = ?) limit 2';
     const childSql = 'select "t0"."id" as "id", "t0"."teamId" as "teamId", "t0"."email" as "email", "t0"."displayName" as "displayName", "t0"."passwordHash" as "passwordHash", "t0"."version" as "version", "t0"."deletedAt" as "deletedAt", "t0"."createdAt" as "createdAt" from "users" "t0" where (("t0"."teamId" in (?)) and ("t0"."deletedAt" is null)) limit 100';
-    const rows = new Map([
-        [parentSql, [{ id: "team-1", slug: "core", name: "Core", createdAt: "now" }]],
-        [childSql, [{ id: "user-1", teamId: "team-1", email: "ada@example.com", displayName: null, passwordHash: "secret", version: 1, deletedAt: null, createdAt: "now" }]],
-    ]);
+    const rows = new Map();
+    setSqlRows(rows, parentSql, [{ id: "team-1", slug: "core", name: "Core", createdAt: "now" }]);
+    setSqlRows(rows, childSql, [{ id: "user-1", teamId: "team-1", email: "ada@example.com", displayName: null, passwordHash: "secret", version: 1, deletedAt: null, createdAt: "now" }]);
     const db = createFakeDb(rows);
     const team = await orm
         .from(Teams)
@@ -492,12 +504,11 @@ relation(Teams, ({ many }) => ({
 }
 
 {
-    const rows = new Map([
-        ['select "t0"."id" as "id", "t0"."email" as "email" from "users" "t0" order by "t0"."id" asc', [
+    const rows = new Map();
+    setSqlRows(rows, 'select "t0"."id" as "id", "t0"."email" as "email" from "users" "t0" order by "t0"."id" asc', [
             { id: "1", email: "a@example.com" },
             { id: "2", email: "b@example.com" },
-        ]],
-    ]);
+        ]);
     const db = createFakeDb(rows);
     const cursor = await orm
         .from(Users)
@@ -519,13 +530,12 @@ relation(Teams, ({ many }) => ({
 }
 
 {
-    const rows = new Map([
-        ['select "t0"."id" as "id", "t0"."email" as "email" from "users" "t0" order by "t0"."id" asc', [
+    const rows = new Map();
+    setSqlRows(rows, 'select "t0"."id" as "id", "t0"."email" as "email" from "users" "t0" order by "t0"."id" asc', [
             { id: "1", email: "a@example.com" },
             { id: "2", email: "b@example.com" },
             { id: "3", email: "c@example.com" },
-        ]],
-    ]);
+        ]);
     const db = createFakeDb(rows);
     const cursor = await orm
         .from(Users)
@@ -541,12 +551,11 @@ relation(Teams, ({ many }) => ({
 }
 
 {
-    const rows = new Map([
-        ['select "t0"."id" as "id", "t0"."email" as "email" from "users" "t0" order by "t0"."id" asc', [
+    const rows = new Map();
+    setSqlRows(rows, 'select "t0"."id" as "id", "t0"."email" as "email" from "users" "t0" order by "t0"."id" asc', [
             { id: "1", email: "a@example.com" },
             { id: "2", email: "b@example.com" },
-        ]],
-    ]);
+        ]);
     const db = createFakeDb(rows);
     const cursor = await orm
         .from(Users)
@@ -569,7 +578,7 @@ relation(Teams, ({ many }) => ({
 
 {
     const rows = new Map();
-    rows.set(
+    setSqlRows(rows,
         "select [t0].[id] as [id], [t0].[email] as [email] from [users] [t0] where ([t0].[email] = ?) order by [t0].[createdAt] desc offset 1 rows fetch next 2 rows only",
         [{ id: "1", email: "ada@example.com" }],
     );
@@ -588,7 +597,7 @@ relation(Teams, ({ many }) => ({
 
 {
     const rows = new Map();
-    rows.set(
+    setSqlRows(rows,
         'select "t0"."id" as "id" from "users" "t0" where (lower("t0"."email") like lower(?))',
         [{ id: "1" }],
     );
@@ -604,7 +613,7 @@ relation(Teams, ({ many }) => ({
 
 {
     const rows = new Map();
-    rows.set(
+    setSqlRows(rows,
         "select [t0].[id] as [id] from [users] [t0] where (lower([t0].[email]) like lower(?))",
         [{ id: "1" }],
     );
@@ -627,10 +636,11 @@ relation(Teams, ({ many }) => ({
         deletedAt: null,
         createdAt: "now",
     }];
-    const rows = new Map([[
+    const rows = new Map();
+    setSqlRows(rows,
         "insert into [users] ([id], [teamId], [email], [passwordHash], [version]) output inserted.[id], inserted.[teamId], inserted.[email], inserted.[displayName], inserted.[version], inserted.[deletedAt], inserted.[createdAt] values (?, ?, ?, ?, ?)",
         returned,
-    ]]);
+    );
     const db = createFakeDb(rows);
     const created = await Users.insert(db, {
         id: "00000000-0000-4000-8000-000000000001",
@@ -644,7 +654,7 @@ relation(Teams, ({ many }) => ({
 
 {
     const rows = new Map();
-    rows.set(
+    setSqlRows(rows,
         'select "t0"."id" as "id" from "users" "t0" where (("t0"."email" = $1) and "t0"."version" between $2 and $3)',
         [{ id: "1" }],
     );

@@ -12,6 +12,50 @@ set(work_dir "${CMAKE_CURRENT_BINARY_DIR}/orm-migration-status-apply")
 file(REMOVE_RECURSE "${work_dir}")
 file(MAKE_DIRECTORY "${work_dir}")
 file(COPY "${SLOPPY_SOURCE_DIR}/tests/fixtures/cli/orm-migration/" DESTINATION "${work_dir}")
+file(READ "${SLOPPY_SOURCE_DIR}/tests/golden/cli/orm-migration-status-text.txt" status_text_expected)
+file(READ "${SLOPPY_SOURCE_DIR}/tests/golden/cli/orm-migration-status-json.json" status_json_expected)
+file(READ "${SLOPPY_SOURCE_DIR}/tests/golden/cli/orm-migration-apply-text.txt" apply_text_expected)
+file(READ "${SLOPPY_SOURCE_DIR}/tests/golden/cli/orm-migration-apply-json.json" apply_json_expected)
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration status "${work_dir}/compiled" --provider main
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE empty_status_result
+    OUTPUT_VARIABLE empty_status_stdout
+    ERROR_VARIABLE empty_status_stderr)
+if(NOT empty_status_result EQUAL 0 OR NOT empty_status_stdout STREQUAL status_text_expected)
+    message(FATAL_ERROR "sloppy orm migration status no-migrations output changed\nstdout:\n${empty_status_stdout}\nstderr:\n${empty_status_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration status "${work_dir}/compiled" --provider main --format json
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE empty_status_json_result
+    OUTPUT_VARIABLE empty_status_json_stdout
+    ERROR_VARIABLE empty_status_json_stderr)
+if(NOT empty_status_json_result EQUAL 0 OR NOT empty_status_json_stdout STREQUAL status_json_expected)
+    message(FATAL_ERROR "sloppy orm migration status no-migrations JSON output changed\nstdout:\n${empty_status_json_stdout}\nstderr:\n${empty_status_json_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration apply "${work_dir}/compiled" --provider main
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE empty_apply_result
+    OUTPUT_VARIABLE empty_apply_stdout
+    ERROR_VARIABLE empty_apply_stderr)
+if(NOT empty_apply_result EQUAL 0 OR NOT empty_apply_stdout STREQUAL apply_text_expected)
+    message(FATAL_ERROR "sloppy orm migration apply no-migrations output changed\nstdout:\n${empty_apply_stdout}\nstderr:\n${empty_apply_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration apply "${work_dir}/compiled" --provider main --format json
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE empty_apply_json_result
+    OUTPUT_VARIABLE empty_apply_json_stdout
+    ERROR_VARIABLE empty_apply_json_stderr)
+if(NOT empty_apply_json_result EQUAL 0 OR NOT empty_apply_json_stdout STREQUAL apply_json_expected)
+    message(FATAL_ERROR "sloppy orm migration apply no-migrations JSON output changed\nstdout:\n${empty_apply_json_stdout}\nstderr:\n${empty_apply_json_stderr}")
+endif()
 
 execute_process(
     COMMAND "${SLOPPY_CLI}" orm migration add CreateUsers "${work_dir}/compiled" --provider main

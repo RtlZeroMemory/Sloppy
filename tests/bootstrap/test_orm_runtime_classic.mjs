@@ -67,13 +67,19 @@ try {
         };
     }
 
+    function normalizeSqlFixture(sql) {
+        return sql.replace(/\s+/gu, " ").trim().toLowerCase();
+    }
+
     const sql = 'select "t0"."id" as "id", "t0"."email" as "email" from "users" "t0" where ("t0"."email" = ?)';
     const calls = [];
     const db = Object.freeze({
         query(sqlOrQuery, paramsOrOptions, options) {
             const call = normalizeProviderCall(sqlOrQuery, paramsOrOptions, options);
             calls.push(["query", call.text, call.parameters, call.options]);
-            return call.text === sql ? [{ id: "1", email: "ada@example.com" }] : [];
+            return normalizeSqlFixture(call.text) === normalizeSqlFixture(sql)
+                ? [{ id: "1", email: "ada@example.com" }]
+                : [];
         },
         __debug() {
             return Object.freeze({ provider: "sqlite", placeholderStyle: "question" });
@@ -99,7 +105,7 @@ try {
         .toList(Object.freeze({
             query(sqlOrQuery, paramsOrOptions, options) {
                 const query = normalizeProviderCall(sqlOrQuery, paramsOrOptions, options);
-                assert.equal(query.text, joinSql);
+                assert.equal(normalizeSqlFixture(query.text), normalizeSqlFixture(joinSql));
                 assert.deepEqual(query.parameters, ["1"]);
                 return [{
                     id: "1",

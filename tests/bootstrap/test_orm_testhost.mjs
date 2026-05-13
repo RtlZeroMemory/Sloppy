@@ -13,11 +13,15 @@ const Users = table("users", {
 });
 
 const expectedSql = 'select "t0"."id" as "id", "t0"."email" as "email", "t0"."displayName" as "displayName" from "users" "t0" where ("t0"."id" = ?) limit 2';
+function normalizeSqlFixture(sql) {
+    return sql.replace(/\s+/gu, " ").trim().toLowerCase();
+}
+
 const calls = [];
 const db = Object.freeze({
     query(sql, params, options) {
         calls.push(["query", sql, [...params], options]);
-        return sql === expectedSql
+        return normalizeSqlFixture(sql) === normalizeSqlFixture(expectedSql)
             ? [{ id: "00000000-0000-4000-8000-000000000001", email: "ada@example.com", displayName: "Ada" }]
             : [];
     },

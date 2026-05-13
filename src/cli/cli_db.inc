@@ -485,9 +485,8 @@ static int sl_db_read_migration_files(const char* base_path, const SlCliDbMigrat
     }
     status = sl_fs_list_directory(&arena, sl_str_from_cstr(directory), &list, NULL);
     if (!sl_status_is_ok(status)) {
-        sl_cli_write_error_with_value("sloppy db: migration directory is missing: ", directory,
-                                      "\n");
-        return 1;
+        *out_count = 0U;
+        return 0;
     }
     for (size_t entry_index = 0U; entry_index < list.count; entry_index += 1U) {
         SlBytes bytes = {0};
@@ -519,9 +518,8 @@ static int sl_db_read_migration_files(const char* base_path, const SlCliDbMigrat
         count += 1U;
     }
     if (count == 0U) {
-        sl_cli_write_error_with_value(
-            "sloppy db: migration directory has no .sql files: ", directory, "\n");
-        return 1;
+        *out_count = 0U;
+        return 0;
     }
     for (size_t outer = 0U; outer < count; outer += 1U) {
         for (size_t inner = outer + 1U; inner < count; inner += 1U) {
