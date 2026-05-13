@@ -957,9 +957,7 @@ fn extract_module_function_routes(
                             if let Some(init_source) = source_slice(source, init.span()) {
                                 let helper_source = format!("const {name} = {init_source};");
                                 helper_sources.insert(name.to_string(), helper_source);
-                                helper_effects
-                                    .entry(name.to_string())
-                                    .or_insert_with(FunctionEffectSummary::default);
+                                helper_effects.entry(name.to_string()).or_default();
                             }
                             schemas.push(schema);
                         }
@@ -1388,15 +1386,13 @@ fn source_declares_identifier(source: &[u8], identifier: &[u8]) -> bool {
                 index += 5;
                 continue;
             }
-            b'(' => {
-                if arrow_parameters_declare_identifier(source, index, identifier) {
-                    return true;
-                }
+            b'(' if arrow_parameters_declare_identifier(source, index, identifier) => {
+                return true;
             }
-            _ if is_js_identifier_start(source[index]) => {
-                if single_arrow_parameter_declares_identifier(source, index, identifier) {
-                    return true;
-                }
+            _ if is_js_identifier_start(source[index])
+                && single_arrow_parameter_declares_identifier(source, index, identifier) =>
+            {
+                return true;
             }
             _ => {}
         }

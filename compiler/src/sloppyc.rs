@@ -2216,10 +2216,7 @@ fn extract_variable_declaration(
                 if let Some(init_source) = source_slice(source, init.span()) {
                     let helper_source = format!("const {name} = {init_source};");
                     state.helper_sources.insert(name.to_string(), helper_source);
-                    state
-                        .helper_effects
-                        .entry(name.to_string())
-                        .or_insert_with(FunctionEffectSummary::default);
+                    state.helper_effects.entry(name.to_string()).or_default();
                 }
                 state.schemas.push(schema);
             } else if let Some((config_reads, helper_source)) =
@@ -2227,10 +2224,7 @@ fn extract_variable_declaration(
             {
                 state.config_reads.extend(config_reads);
                 state.helper_sources.insert(name.to_string(), helper_source);
-                state
-                    .helper_effects
-                    .entry(name.to_string())
-                    .or_insert_with(FunctionEffectSummary::default);
+                state.helper_effects.entry(name.to_string()).or_default();
             } else if let Some(config_reads) =
                 config_read_metadata(path, source, source_name, state, init)?
             {
@@ -2245,10 +2239,7 @@ fn extract_variable_declaration(
         {
             state.config_reads.extend(config_reads);
             state.helper_sources.insert(name.to_string(), helper_source);
-            state
-                .helper_effects
-                .entry(name.to_string())
-                .or_insert_with(FunctionEffectSummary::default);
+            state.helper_effects.entry(name.to_string()).or_default();
         } else if let Some(config_reads) =
             config_read_metadata(path, source, source_name, state, init)?
         {
