@@ -31,9 +31,7 @@ static bool sl_orm_append_quoted_identifier(SlStringBuilder* builder, SlCliDbPro
         return false;
     }
     for (; *cursor != '\0'; cursor += 1) {
-        if (*cursor == close &&
-            !sl_status_is_ok(sl_string_builder_append_char(builder, close)))
-        {
+        if (*cursor == close && !sl_status_is_ok(sl_string_builder_append_char(builder, close))) {
             return false;
         }
         if (!sl_status_is_ok(sl_string_builder_append_char(builder, *cursor))) {
@@ -52,8 +50,7 @@ static const char* sl_orm_sql_type(const char* type, SlCliDbProviderKind kind)
         if (strcmp(type, "text") == 0 || strcmp(type, "string") == 0 ||
             strcmp(type, "decimal") == 0 || strcmp(type, "uuid") == 0 ||
             strcmp(type, "instant") == 0 || strcmp(type, "timestamp") == 0 ||
-            strcmp(type, "date") == 0 || strcmp(type, "json") == 0 ||
-            strcmp(type, "enum") == 0)
+            strcmp(type, "date") == 0 || strcmp(type, "json") == 0 || strcmp(type, "enum") == 0)
         {
             return "text";
         }
@@ -72,9 +69,7 @@ static const char* sl_orm_sql_type(const char* type, SlCliDbProviderKind kind)
         return NULL;
     }
     if (kind == SL_CLI_DB_PROVIDER_POSTGRES) {
-        if (strcmp(type, "text") == 0 || strcmp(type, "string") == 0 ||
-            strcmp(type, "enum") == 0)
-        {
+        if (strcmp(type, "text") == 0 || strcmp(type, "string") == 0 || strcmp(type, "enum") == 0) {
             return "text";
         }
         if (strcmp(type, "int") == 0 || strcmp(type, "integer") == 0) {
@@ -110,9 +105,7 @@ static const char* sl_orm_sql_type(const char* type, SlCliDbProviderKind kind)
         return NULL;
     }
     if (kind == SL_CLI_DB_PROVIDER_SQLSERVER) {
-        if (strcmp(type, "text") == 0 || strcmp(type, "string") == 0 ||
-            strcmp(type, "json") == 0)
-        {
+        if (strcmp(type, "text") == 0 || strcmp(type, "string") == 0 || strcmp(type, "json") == 0) {
             return "nvarchar(max)";
         }
         if (strcmp(type, "int") == 0 || strcmp(type, "integer") == 0) {
@@ -197,8 +190,7 @@ static bool sl_orm_append_column_sql(SlStringBuilder* builder, yyjson_val* table
     const char* sql_type = sl_orm_column_sql_type(column, kind);
     yyjson_val* reference = yyjson_obj_get(column, "reference");
 
-    if (name == NULL || sql_type == NULL ||
-        !sl_orm_append_quoted_identifier(builder, kind, name) ||
+    if (name == NULL || sql_type == NULL || !sl_orm_append_quoted_identifier(builder, kind, name) ||
         !sl_status_is_ok(sl_string_builder_append_char(builder, ' ')) ||
         !sl_status_is_ok(sl_string_builder_append_cstr(builder, sql_type)))
     {
@@ -254,8 +246,7 @@ static bool sl_orm_append_index_name(SlStringBuilder* builder, SlCliDbProviderKi
         !sl_status_is_ok(sl_string_builder_append_cstr(&name_builder, table_name)) ||
         !sl_status_is_ok(sl_string_builder_append_char(&name_builder, '_')) ||
         !sl_status_is_ok(sl_string_builder_append_cstr(&name_builder, column_name)) ||
-        !sl_status_is_ok(sl_string_builder_view_with_nul(&name_builder, &view)) ||
-        view.ptr != name)
+        !sl_status_is_ok(sl_string_builder_view_with_nul(&name_builder, &view)) || view.ptr != name)
     {
         return false;
     }
@@ -279,8 +270,7 @@ static bool sl_orm_append_constraint_name(SlStringBuilder* builder, SlCliDbProvi
         !sl_status_is_ok(sl_string_builder_append_cstr(&name_builder, ref_table)) ||
         !sl_status_is_ok(sl_string_builder_append_char(&name_builder, '_')) ||
         !sl_status_is_ok(sl_string_builder_append_cstr(&name_builder, ref_column)) ||
-        !sl_status_is_ok(sl_string_builder_view_with_nul(&name_builder, &view)) ||
-        view.ptr != name)
+        !sl_status_is_ok(sl_string_builder_view_with_nul(&name_builder, &view)) || view.ptr != name)
     {
         return false;
     }
@@ -308,9 +298,8 @@ static bool sl_orm_append_min_width_u32(SlStringBuilder* builder, uint32_t value
     return sl_status_is_ok(sl_string_builder_append_u64(builder, value));
 }
 
-static bool sl_orm_append_table_sql(SlStringBuilder* builder, yyjson_val* tables,
-                                    yyjson_val* table, SlCliDbProviderKind kind, bool* emitted,
-                                    bool inline_references)
+static bool sl_orm_append_table_sql(SlStringBuilder* builder, yyjson_val* tables, yyjson_val* table,
+                                    SlCliDbProviderKind kind, bool* emitted, bool inline_references)
 {
     const char* table_name = sl_orm_json_cstr(table, "name");
     yyjson_val* columns = yyjson_obj_get(table, "columns");
@@ -421,8 +410,8 @@ static bool sl_orm_order_tables(SlArena* arena, yyjson_val* tables, yyjson_val**
                                               _Alignof(yyjson_val*), &item_slice)) ||
         !sl_status_is_ok(sl_arena_array_alloc(arena, table_count, sizeof(yyjson_val*),
                                               _Alignof(yyjson_val*), &ordered_slice)) ||
-        !sl_status_is_ok(sl_arena_array_alloc(arena, table_count, sizeof(bool), _Alignof(bool),
-                                              &emitted_slice)))
+        !sl_status_is_ok(
+            sl_arena_array_alloc(arena, table_count, sizeof(bool), _Alignof(bool), &emitted_slice)))
     {
         return false;
     }
@@ -497,7 +486,8 @@ static bool sl_orm_append_deferred_fk_sql(SlStringBuilder* builder, yyjson_val* 
         if (column_name == NULL || ref_table == NULL || ref_column == NULL) {
             return false;
         }
-        if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, *emitted_any ? "\n" : "\n\n")) ||
+        if (!sl_status_is_ok(
+                sl_string_builder_append_cstr(builder, *emitted_any ? "\n" : "\n\n")) ||
             !sl_status_is_ok(sl_string_builder_append_cstr(builder, "alter table ")) ||
             !sl_orm_append_quoted_identifier(builder, kind, table_name) ||
             !sl_status_is_ok(sl_string_builder_append_cstr(builder, " add constraint ")) ||
@@ -518,8 +508,8 @@ static bool sl_orm_append_deferred_fk_sql(SlStringBuilder* builder, yyjson_val* 
     return true;
 }
 
-static bool sl_orm_build_migration_script(SlArena* arena, yyjson_doc* doc,
-                                          SlCliDbProviderKind kind, SlCliSpan* out)
+static bool sl_orm_build_migration_script(SlArena* arena, yyjson_doc* doc, SlCliDbProviderKind kind,
+                                          SlCliSpan* out)
 {
     yyjson_val* root = yyjson_doc_get_root(doc);
     yyjson_val* orm = root == NULL ? NULL : yyjson_obj_get(root, "orm");
@@ -535,8 +525,8 @@ static bool sl_orm_build_migration_script(SlArena* arena, yyjson_doc* doc,
     if (out != NULL) {
         *out = (SlCliSpan){0};
     }
-    if (arena == NULL || out == NULL || tables == NULL ||
-        !yyjson_is_arr(tables) || yyjson_arr_size(tables) == 0U ||
+    if (arena == NULL || out == NULL || tables == NULL || !yyjson_is_arr(tables) ||
+        yyjson_arr_size(tables) == 0U ||
         !sl_status_is_ok(sl_string_builder_init_arena(&builder, arena, 4096U,
                                                       ((size_t)SL_CLI_ARENA_BYTES * 4U))))
     {
@@ -661,8 +651,8 @@ static bool sl_orm_slugify(char* buffer, size_t capacity, const char* name)
 }
 
 static int sl_orm_write_migration_file(const SlCliOptions* options,
-                                       const SlCliDbMigrationConfig* config,
-                                       const char* base_path, SlCliSpan script)
+                                       const SlCliDbMigrationConfig* config, const char* base_path,
+                                       SlCliSpan script)
 {
     char directory[SL_RUN_PATH_MAX_BYTES];
     char slug[128U];
@@ -675,8 +665,8 @@ static int sl_orm_write_migration_file(const SlCliOptions* options,
         return 1;
     }
     if (!sl_status_is_ok(sl_fs_create_directory(sl_str_from_cstr(directory), true, NULL))) {
-        sl_cli_write_error_with_value("sloppy orm: failed to create migration directory: ",
-                                      directory, "\n");
+        sl_cli_write_error_with_value(
+            "sloppy orm: failed to create migration directory: ", directory, "\n");
         return 1;
     }
     if (options->create_name == NULL || options->create_name[0] == '\0') {
@@ -697,14 +687,14 @@ static int sl_orm_write_migration_file(const SlCliOptions* options,
         SlStringBuilder file_name_builder = {0};
         SlStr file_name_view = {0};
 
-        if (!sl_status_is_ok(sl_string_builder_init_fixed(&file_name_builder, file_name,
-                                                          sizeof(file_name))) ||
+        if (!sl_status_is_ok(
+                sl_string_builder_init_fixed(&file_name_builder, file_name, sizeof(file_name))) ||
             !sl_orm_append_min_width_u32(&file_name_builder, next, 4U) ||
             !sl_status_is_ok(sl_string_builder_append_char(&file_name_builder, '_')) ||
             !sl_status_is_ok(sl_string_builder_append_cstr(&file_name_builder, slug)) ||
             !sl_status_is_ok(sl_string_builder_append_cstr(&file_name_builder, ".sql")) ||
-            !sl_status_is_ok(sl_string_builder_view_with_nul(&file_name_builder,
-                                                             &file_name_view)) ||
+            !sl_status_is_ok(
+                sl_string_builder_view_with_nul(&file_name_builder, &file_name_view)) ||
             file_name_view.ptr != file_name)
         {
             sl_cli_write_cstr(stderr, "sloppy orm: migration file path is too long\n");
@@ -720,10 +710,9 @@ static int sl_orm_write_migration_file(const SlCliOptions* options,
                                       "\n");
         return 1;
     }
-    if (!sl_status_is_ok(sl_fs_write_file(sl_str_from_cstr(file_path),
-                                          sl_bytes_from_parts(
-                                              (const unsigned char*)script.ptr, script.length),
-                                          false, NULL)))
+    if (!sl_status_is_ok(sl_fs_write_file(
+            sl_str_from_cstr(file_path),
+            sl_bytes_from_parts((const unsigned char*)script.ptr, script.length), false, NULL)))
     {
         sl_cli_write_error_with_value("sloppy orm: failed to write migration: ", file_path, "\n");
         return 1;
@@ -748,6 +737,7 @@ static int sl_cli_command_orm(const SlCliOptions* options)
     bool package_target = false;
     SlCliMetadata* metadata = sl_cli_scratch_metadata();
     unsigned char* json_storage = sl_cli_scratch_json_storage();
+    SlArena plan_arena = {0};
     static unsigned char script_arena_storage[SL_CLI_ARENA_BYTES * 4U];
     SlArena script_arena = {0};
     yyjson_doc* doc = NULL;
@@ -770,13 +760,19 @@ static int sl_cli_command_orm(const SlCliOptions* options)
             stderr, "sloppy orm: target must be an artifacts directory or package directory\n");
         return 1;
     }
-    if (sl_cli_load_metadata(plan_path, json_storage, NULL, false, &doc, metadata) != 0) {
+    if (sl_cli_init_scratch_plan_arena("orm", &plan_arena) != 0) {
+        return 1;
+    }
+    if (sl_cli_load_metadata(plan_path, json_storage, &plan_arena, true, &doc, metadata) != 0) {
+        if (doc != NULL) {
+            yyjson_doc_free(doc);
+        }
         return 1;
     }
     provider = sl_db_find_provider(metadata, options->db_provider);
     if (provider == NULL) {
-        sl_cli_write_error_with_value("sloppy orm: provider not found in Plan: ",
-                                      options->db_provider, "\n");
+        sl_cli_write_error_with_value(
+            "sloppy orm: provider not found in Plan: ", options->db_provider, "\n");
         yyjson_doc_free(doc);
         return 1;
     }
@@ -798,8 +794,8 @@ static int sl_cli_command_orm(const SlCliOptions* options)
         yyjson_doc_free(doc);
         return 1;
     }
-    if (!sl_status_is_ok(sl_arena_init(&script_arena, script_arena_storage,
-                                       sizeof(script_arena_storage))) ||
+    if (!sl_status_is_ok(
+            sl_arena_init(&script_arena, script_arena_storage, sizeof(script_arena_storage))) ||
         !sl_orm_build_migration_script(&script_arena, doc, provider_kind, &script))
     {
         sl_cli_write_cstr(

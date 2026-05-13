@@ -1337,6 +1337,110 @@ static int test_route_middleware_must_be_an_array(void)
         SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD, "invalid app plan field type");
 }
 
+static int test_route_auth_bool_fields_report_specific_hints(void)
+{
+    static const char* cases[][2] = {
+        {"\"auth\":{\"required\":\"true\"}", "routes[].auth.required must be a JSON boolean"},
+        {"\"auth\":{\"allowAnonymous\":\"false\"}",
+         "routes[].auth.allowAnonymous must be a JSON boolean"}};
+
+    for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); index += 1U) {
+        char json[1024];
+        unsigned char arena_storage[TEST_ARENA_SIZE];
+        SlPlan plan = {0};
+        SlDiag diag = {0};
+        SlStatus status;
+        int written = snprintf(
+            json, sizeof(json),
+            "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+            "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+            "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+            "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+            "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+            "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+            "\"displayName\":\"Home\"}],"
+            "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/health\",\"handlerId\":1,%s}]}",
+            cases[index][0]);
+
+        if (written < 0 || (size_t)written >= sizeof(json)) {
+            return 240 + (int)index;
+        }
+        status = parse_inline_plan(json, &plan, &diag, arena_storage, sizeof(arena_storage));
+        if (expect_status(status, SL_STATUS_INVALID_ARGUMENT) != 0 ||
+            diag.code != SL_DIAG_INVALID_PLAN_FIELD ||
+            !sl_str_equal(diag.message, sl_str_from_cstr("invalid app plan field type")) ||
+            diag.hint_count == 0U ||
+            !sl_str_equal(diag.hints[0], sl_str_from_cstr(cases[index][1])))
+        {
+            return 250 + (int)index;
+        }
+    }
+
+    return 0;
+}
+
+static int test_route_auth_bool_combinations_fail_closed(void)
+{
+    static const struct
+    {
+        const char* auth;
+        bool required;
+        bool allow_anonymous;
+    } valid_cases[] = {{"\"auth\":{\"required\":true,\"allowAnonymous\":false}", true, false},
+                       {"\"auth\":{\"required\":false,\"allowAnonymous\":true}", false, true},
+                       {"\"auth\":{\"allowAnonymous\":true}", false, true},
+                       {"\"auth\":{}", false, false}};
+
+    for (size_t index = 0U; index < sizeof(valid_cases) / sizeof(valid_cases[0]); index += 1U) {
+        char json[1024];
+        unsigned char arena_storage[TEST_ARENA_SIZE];
+        SlPlan plan = {0};
+        SlDiag diag = {0};
+        SlStatus status;
+        int written = snprintf(
+            json, sizeof(json),
+            "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+            "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+            "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+            "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+            "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+            "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+            "\"displayName\":\"Home\"}],"
+            "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/health\",\"handlerId\":1,%s}]}",
+            valid_cases[index].auth);
+
+        if (written < 0 || (size_t)written >= sizeof(json)) {
+            return 260 + (int)index;
+        }
+        status = parse_inline_plan(json, &plan, &diag, arena_storage, sizeof(arena_storage));
+        if (expect_status(status, SL_STATUS_OK) != 0 || diag.code != SL_DIAG_NONE ||
+            plan.route_count != 1U || !plan.routes[0].auth.present ||
+            plan.routes[0].auth.required != valid_cases[index].required ||
+            plan.routes[0].auth.allow_anonymous != valid_cases[index].allow_anonymous)
+        {
+            return 270 + (int)index;
+        }
+    }
+
+    if (expect_inline_plan_failure(
+            "{\"schemaVersion\":1,\"compilerVersion\":\"sloppyc-test\","
+            "\"runtimeMinimumVersion\":\"0.1.0\",\"stdlibVersion\":\"0.1.0\","
+            "\"target\":{\"platform\":\"windows-x64\",\"engine\":\"v8\"},"
+            "\"bundle\":{\"path\":\"app.js\",\"id\":\"app-js\",\"hash\":\"test\"},"
+            "\"sourceMap\":{\"path\":\"app.js.map\",\"id\":\"app-map\",\"hash\":\"test\"},"
+            "\"handlers\":[{\"id\":1,\"exportName\":\"__sloppy_handler_1\","
+            "\"displayName\":\"Home\"}],"
+            "\"routes\":[{\"method\":\"GET\",\"pattern\":\"/health\",\"handlerId\":1,"
+            "\"auth\":{\"required\":true,\"allowAnonymous\":true}}]}",
+            SL_STATUS_INVALID_ARGUMENT, SL_DIAG_INVALID_PLAN_FIELD,
+            "invalid app plan auth metadata") != 0)
+    {
+        return 280;
+    }
+
+    return 0;
+}
+
 static int test_invalid_fixture_matrix(void)
 {
     static const InvalidFixtureCase cases[] = {
@@ -1806,6 +1910,18 @@ int main(void)
     result = test_route_middleware_must_be_an_array();
     if (result != 0) {
         fprintf(stderr, "test_route_middleware_must_be_an_array failed: %d\n", result);
+        return result;
+    }
+
+    result = test_route_auth_bool_fields_report_specific_hints();
+    if (result != 0) {
+        fprintf(stderr, "test_route_auth_bool_fields_report_specific_hints failed: %d\n", result);
+        return result;
+    }
+
+    result = test_route_auth_bool_combinations_fail_closed();
+    if (result != 0) {
+        fprintf(stderr, "test_route_auth_bool_combinations_fail_closed failed: %d\n", result);
         return result;
     }
 

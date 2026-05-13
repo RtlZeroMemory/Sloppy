@@ -13,6 +13,7 @@
 #include "sloppy/fs.h"
 #include "sloppy/http_profile.h"
 #include "sloppy/json_profile.h"
+#include "sloppy/json_writer.h"
 
 #include <algorithm>
 #include <cmath>
@@ -3193,103 +3194,7 @@ bool http_v8_schema_response_supported(const SlPlanSchemaNode* schema)
 
 SlStatus http_v8_append_json_string(SlStringBuilder* builder, SlStr text)
 {
-    static const char hex[] = "0123456789abcdef";
-    size_t index = 0U;
-    bool profile_enabled = sl_json_profile_enabled();
-    uint64_t scan_start =
-        profile_enabled ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_SCAN)
-                        : 0U;
-    uint64_t write_start = 0U;
-    bool needs_escape = false;
-    SlStatus status;
-
-    for (index = 0U; index < text.length; index += 1U) {
-        unsigned char ch = (unsigned char)text.ptr[index];
-        if (ch == '"' || ch == '\\' || ch < 0x20U) {
-            needs_escape = true;
-            break;
-        }
-    }
-    if (profile_enabled) {
-        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_SCAN, scan_start);
-        sl_json_profile_counter_add(needs_escape
-                                        ? SL_JSON_PROFILE_COUNTER_STRINGS_ESCAPED
-                                        : SL_JSON_PROFILE_COUNTER_STRINGS_FAST_PATH_NO_ESCAPE,
-                                    1U);
-    }
-
-    write_start = profile_enabled
-                      ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE)
-                      : 0U;
-    if (!needs_escape) {
-        status = sl_string_builder_append_char(builder, '"');
-        if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_str(builder, text);
-        }
-        if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_char(builder, '"');
-        }
-        if (profile_enabled) {
-            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
-        }
-        return status;
-    }
-
-    status = sl_string_builder_append_char(builder, '"');
-    if (!sl_status_is_ok(status)) {
-        if (profile_enabled) {
-            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
-        }
-        return status;
-    }
-    for (index = 0U; index < text.length; index += 1U) {
-        unsigned char ch = (unsigned char)text.ptr[index];
-
-        if (ch == '"' || ch == '\\') {
-            status = sl_string_builder_append_char(builder, '\\');
-            if (sl_status_is_ok(status)) {
-                status = sl_string_builder_append_char(builder, (char)ch);
-            }
-        }
-        else if (ch == '\b') {
-            status = sl_string_builder_append_cstr(builder, "\\b");
-        }
-        else if (ch == '\f') {
-            status = sl_string_builder_append_cstr(builder, "\\f");
-        }
-        else if (ch == '\n') {
-            status = sl_string_builder_append_cstr(builder, "\\n");
-        }
-        else if (ch == '\r') {
-            status = sl_string_builder_append_cstr(builder, "\\r");
-        }
-        else if (ch == '\t') {
-            status = sl_string_builder_append_cstr(builder, "\\t");
-        }
-        else if (ch < 0x20U) {
-            status = sl_string_builder_append_cstr(builder, "\\u00");
-            if (sl_status_is_ok(status)) {
-                status = sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU]);
-            }
-            if (sl_status_is_ok(status)) {
-                status = sl_string_builder_append_char(builder, hex[ch & 0x0FU]);
-            }
-        }
-        else {
-            status = sl_string_builder_append_char(builder, (char)ch);
-        }
-        if (!sl_status_is_ok(status)) {
-            if (profile_enabled) {
-                sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
-            }
-            return status;
-        }
-    }
-    status = sl_string_builder_append_char(builder, '"');
-    if (profile_enabled) {
-        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
-    }
-    return status;
+    return sl_json_writer_append_escaped_string_profiled(builder, text);
 }
 
 SlStatus http_v8_append_v8_json_string(v8::Isolate* isolate, SlStringBuilder* builder,

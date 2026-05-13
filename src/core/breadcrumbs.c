@@ -1,6 +1,7 @@
 #include "sloppy/breadcrumbs.h"
 
 #include "sloppy/builder.h"
+#include "sloppy/json_writer.h"
 #include "sloppy/platform_thread.h"
 
 #include <stdbool.h>
@@ -284,51 +285,6 @@ size_t sl_breadcrumb_ring_snapshot(const SlBreadcrumbRing* ring, SlBreadcrumb* o
     return sl_breadcrumb_ring_snapshot_unlocked(ring, out_entries, capacity);
 }
 
-static SlStatus sl_breadcrumb_json_string(SlStringBuilder* builder, SlStr value)
-{
-    static const char hex[] = "0123456789abcdef";
-
-    SlStatus status = sl_string_builder_append_char(builder, '"');
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    for (size_t index = 0U; index < value.length; index += 1U) {
-        unsigned char ch = (unsigned char)value.ptr[index];
-        if (ch == '"' || ch == '\\') {
-            status = sl_string_builder_append_char(builder, '\\');
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-            status = sl_string_builder_append_char(builder, (char)ch);
-        }
-        else if (ch == '\n') {
-            status = sl_string_builder_append_cstr(builder, "\\n");
-        }
-        else if (ch == '\r') {
-            status = sl_string_builder_append_cstr(builder, "\\r");
-        }
-        else if (ch == '\t') {
-            status = sl_string_builder_append_cstr(builder, "\\t");
-        }
-        else if (ch < 0x20U) {
-            status = sl_string_builder_append_cstr(builder, "\\u00");
-            if (sl_status_is_ok(status)) {
-                status = sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU]);
-            }
-            if (sl_status_is_ok(status)) {
-                status = sl_string_builder_append_char(builder, hex[ch & 0x0FU]);
-            }
-        }
-        else {
-            status = sl_string_builder_append_char(builder, (char)ch);
-        }
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-    }
-    return sl_string_builder_append_char(builder, '"');
-}
-
 SlStatus sl_breadcrumb_ring_render_jsonl(SlArena* arena, const SlBreadcrumbRing* ring, SlStr* out)
 {
     SlStringBuilder builder = {0};
@@ -363,19 +319,22 @@ SlStatus sl_breadcrumb_ring_render_jsonl(SlArena* arena, const SlBreadcrumbRing*
             status = sl_string_builder_append_cstr(&builder, ",\"subsystem\":");
         }
         if (sl_status_is_ok(status)) {
-            status = sl_breadcrumb_json_string(&builder, sl_diag_subsystem_name(entry->subsystem));
+            status = sl_json_writer_append_escaped_string(&builder,
+                                                          sl_diag_subsystem_name(entry->subsystem));
         }
         if (sl_status_is_ok(status)) {
             status = sl_string_builder_append_cstr(&builder, ",\"event\":");
         }
         if (sl_status_is_ok(status)) {
-            status = sl_breadcrumb_json_string(&builder, sl_breadcrumb_event_name(entry->event));
+            status = sl_json_writer_append_escaped_string(&builder,
+                                                          sl_breadcrumb_event_name(entry->event));
         }
         if (sl_status_is_ok(status)) {
             status = sl_string_builder_append_cstr(&builder, ",\"status\":");
         }
         if (sl_status_is_ok(status)) {
-            status = sl_breadcrumb_json_string(&builder, sl_diag_status_code_name(entry->status));
+            status = sl_json_writer_append_escaped_string(&builder,
+                                                          sl_diag_status_code_name(entry->status));
         }
         if (sl_status_is_ok(status)) {
             status = sl_string_builder_append_cstr(&builder, ",\"requestId\":");
@@ -406,7 +365,7 @@ SlStatus sl_breadcrumb_ring_render_jsonl(SlArena* arena, const SlBreadcrumbRing*
                 status = sl_string_builder_append_cstr(&builder, ",\"detail\":");
             }
             if (sl_status_is_ok(status)) {
-                status = sl_breadcrumb_json_string(&builder, entry->detail);
+                status = sl_json_writer_append_escaped_string(&builder, entry->detail);
             }
         }
         if (sl_status_is_ok(status)) {

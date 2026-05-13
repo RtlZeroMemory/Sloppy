@@ -169,8 +169,7 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
                               "protected route has no auth scheme metadata", "auth", findings,
                               errors);
         }
-        if (!metadata->routes[outer].auth_required &&
-            metadata->routes[outer].docs_internal &&
+        if (!metadata->routes[outer].auth_required && metadata->routes[outer].docs_internal &&
             sl_cli_span_equal_cstr(metadata->routes[outer].docs_kind, "ui"))
         {
             sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_DOCS_ROUTE_PUBLIC",
@@ -208,8 +207,8 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
             {
                 if (metadata->routes[outer].rate_limit_partials[rate_index]) {
                     sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_RATE_LIMIT_PARTIAL",
-                                      "route rate-limit metadata is partial", "rateLimit",
-                                      findings, errors);
+                                      "route rate-limit metadata is partial", "rateLimit", findings,
+                                      errors);
                     emitted_partial = true;
                 }
             }
@@ -257,8 +256,8 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
     }
     if (has_static_route) {
         sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_STATIC_ASSETS_VISIBLE",
-                          "static asset route metadata is Plan-visible", "staticAssets",
-                          findings, errors);
+                          "static asset route metadata is Plan-visible", "staticAssets", findings,
+                          errors);
     }
 }
 
@@ -598,10 +597,11 @@ static void sl_cli_audit_os_capabilities(const SlCliOptions* options, const SlCl
     }
 
     if (has_os || has_env || has_process || has_signals) {
-        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_POLICY_VISIBLE",
-                          "OS capabilities are policy-visible for sloppy/os; no OS sandbox, "
-                          "environment values, native handles, or pid-as-handle capabilities are exposed",
-                          "capabilities", findings, errors);
+        sl_cli_audit_emit(
+            options, "note", "SLOPPY_AUDIT_OS_POLICY_VISIBLE",
+            "OS capabilities are policy-visible for sloppy/os; no OS sandbox, "
+            "environment values, native handles, or pid-as-handle capabilities are exposed",
+            "capabilities", findings, errors);
     }
     if (has_env) {
         sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_ENV_REDACTED",
@@ -609,9 +609,10 @@ static void sl_cli_audit_os_capabilities(const SlCliOptions* options, const SlCl
                           "capabilities", findings, errors);
     }
     if (has_process) {
-        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OS_PROCESS_EXPLICIT_ARGV",
-                          "process metadata includes current-process snapshots and explicit argv only",
-                          "capabilities", findings, errors);
+        sl_cli_audit_emit(
+            options, "note", "SLOPPY_AUDIT_OS_PROCESS_EXPLICIT_ARGV",
+            "process metadata includes current-process snapshots and explicit argv only",
+            "capabilities", findings, errors);
     }
     if (has_shell) {
         sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OS_SHELL_DENIED",
@@ -710,17 +711,10 @@ static void sl_cli_audit_cache(const SlCliOptions* options, const SlCliMetadata*
         if (route->output_cache_value != NULL) {
             has_output_cache = true;
             if (route->auth_required) {
-                yyjson_val* vary_by_user = yyjson_obj_get(route->output_cache_value, "varyByUser");
-                yyjson_val* shared =
-                    yyjson_obj_get(route->output_cache_value, "allowSharedAuthenticated");
-                bool has_user_partition = vary_by_user != NULL && yyjson_is_bool(vary_by_user) &&
-                                          yyjson_get_bool(vary_by_user);
-                bool has_shared_partition =
-                    shared != NULL && yyjson_is_bool(shared) && yyjson_get_bool(shared);
-                if (!has_user_partition) {
+                if (!route->output_cache_vary_by_user) {
                     has_auth_output_cache_without_user = true;
                 }
-                if (has_shared_partition) {
+                if (route->output_cache_allow_shared_authenticated) {
                     has_shared_auth_output_cache = true;
                 }
             }
@@ -834,8 +828,8 @@ static void sl_cli_audit_ops(const SlCliOptions* options, const SlCliMetadata* m
 
     if (health_routes == 0U && (management_routes > 0U || prometheus_metrics || json_metrics)) {
         sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OPS_HEALTH_MISSING",
-                          "Plan does not expose health endpoint metadata", "ops.health",
-                          findings, errors);
+                          "Plan does not expose health endpoint metadata", "ops.health", findings,
+                          errors);
     }
     if (management_routes > 0U) {
         sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OPS_MANAGEMENT_EXPOSED",

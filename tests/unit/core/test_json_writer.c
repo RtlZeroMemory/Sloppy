@@ -1,5 +1,7 @@
 #include "sloppy/json_writer.h"
 
+#include "sloppy/builder.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -77,6 +79,60 @@ static int test_escapes_required_json_string_bytes(void)
                    expect_bytes_equal(sl_json_writer_view(&writer),
                                       "\"line\\nquote\\\"slash\\\\\\u0001\"") != 0
                ? 11
+               : 0;
+}
+
+static int test_shared_escaped_string_builder_and_length_match(void)
+{
+    const char expected[] = "\"line\\nquote\\\"slash\\\\\\b\\f\\u0002\"";
+    const size_t expected_length = sizeof(expected) - 1U;
+    char storage[128];
+    SlStringBuilder builder = {0};
+    SlStr text = sl_str_from_cstr("line\nquote\"slash\\\b\f\x02");
+    size_t length = 0U;
+    SlStatus status = sl_json_writer_escaped_string_length(text, &length);
+
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 80;
+    }
+    status = sl_string_builder_init_fixed(&builder, storage, sizeof(storage));
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 81;
+    }
+    status = sl_json_writer_append_escaped_string(&builder, text);
+
+    return expect_status(status, SL_STATUS_OK) != 0 ||
+                   expect_true(length == expected_length) != 0 ||
+                   expect_true(sl_string_builder_view(&builder).length == expected_length) != 0 ||
+                   expect_true(memcmp(storage, expected, expected_length) == 0) != 0
+               ? 82
+               : 0;
+}
+
+static int test_codepoint_control_string_escape_mode(void)
+{
+    const char expected[] = "\"line\\u000a\\u0009\\u000d\\u0008\\u000c\\u0002\"";
+    const size_t expected_length = sizeof(expected) - 1U;
+    char storage[128];
+    SlStringBuilder builder = {0};
+    SlStr text = sl_str_from_cstr("line\n\t\r\b\f\x02");
+    size_t length = 0U;
+    SlStatus status = sl_json_writer_escaped_string_codepoint_controls_length(text, &length);
+
+    if (expect_status(status, SL_STATUS_OK) != 0 || expect_true(length == expected_length) != 0) {
+        return 90;
+    }
+    status = sl_string_builder_init_fixed(&builder, storage, sizeof(storage));
+
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return 91;
+    }
+    status = sl_json_writer_append_escaped_string_codepoint_controls(&builder, text);
+
+    return expect_status(status, SL_STATUS_OK) != 0 ||
+                   expect_true(sl_string_builder_view(&builder).length == expected_length) != 0 ||
+                   expect_true(memcmp(storage, expected, expected_length) == 0) != 0
+               ? 92
                : 0;
 }
 
@@ -222,6 +278,8 @@ int main(void)
 {
     int (*tests[])(void) = {test_writes_literals_strings_and_scalars,
                             test_escapes_required_json_string_bytes,
+                            test_shared_escaped_string_builder_and_length_match,
+                            test_codepoint_control_string_escape_mode,
                             test_no_escape_string_uses_json_quotes_only,
                             test_utf8_string_bytes_pass_through,
                             test_capacity_failure_preserves_prefix,

@@ -39,6 +39,30 @@ static int sl_cli_parse_handlers(yyjson_val* root, SlCliMetadata* metadata)
     return 0;
 }
 
+static int sl_cli_parse_optional_bool(yyjson_val* object, const char* field,
+                                      const char* error_message, bool* out)
+{
+    yyjson_val* value = NULL;
+
+    if (out != NULL) {
+        *out = false;
+    }
+    if (object == NULL || field == NULL || out == NULL) {
+        return 0;
+    }
+
+    value = yyjson_obj_get(object, field);
+    if (value == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_bool(value)) {
+        sl_cli_write_cstr(stderr, error_message);
+        return 1;
+    }
+    *out = yyjson_get_bool(value);
+    return 0;
+}
+
 static void sl_cli_parse_route_bindings(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* bindings = yyjson_obj_get(value, "bindings");
@@ -182,7 +206,7 @@ static int sl_cli_parse_route_contract_headers(yyjson_val* value, SlCliRoute* ro
     }
     yyjson_arr_iter_init(headers, &iter);
     while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
-        yyjson_val* required = NULL;
+        bool required = false;
         if (!yyjson_is_obj(entry)) {
             continue;
         }
@@ -193,9 +217,14 @@ static int sl_cli_parse_route_contract_headers(yyjson_val* value, SlCliRoute* ro
         route->header_names[route->header_count] = sl_cli_json_span(entry, "name");
         route->header_schemas[route->header_count] = sl_cli_json_span(entry, "schema");
         route->header_descriptions[route->header_count] = sl_cli_json_span(entry, "description");
-        required = yyjson_obj_get(entry, "required");
-        route->header_required[route->header_count] =
-            required != NULL && yyjson_is_bool(required) && yyjson_get_bool(required);
+        if (sl_cli_parse_optional_bool(
+                entry, "required",
+                "sloppy: malformed metadata: route header required must be a boolean\n",
+                &required) != 0)
+        {
+            return 1;
+        }
+        route->header_required[route->header_count] = required;
         route->header_count += 1U;
     }
     return 0;
@@ -228,8 +257,10 @@ static int sl_cli_parse_route_auth_array(yyjson_val* array, SlCliSpan* values, s
 static int sl_cli_parse_route_auth(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* auth = yyjson_obj_get(value, "auth");
-    yyjson_val* required = NULL;
-    yyjson_val* allow_anonymous = NULL;
+    bool required = false;
+    bool required_set = false;
+    bool allow_anonymous = false;
+    bool allow_anonymous_set = false;
 
     if (auth == NULL) {
         return 0;
@@ -238,27 +269,32 @@ static int sl_cli_parse_route_auth(yyjson_val* value, SlCliRoute* route)
         sl_cli_write_cstr(stderr, "sloppy: malformed metadata: route auth must be an object\n");
         return 1;
     }
-    allow_anonymous = yyjson_obj_get(auth, "allowAnonymous");
-    required = yyjson_obj_get(auth, "required");
-    if (required != NULL && !yyjson_is_bool(required)) {
-        sl_cli_write_cstr(stderr,
-                          "sloppy: malformed metadata: route auth.required must be a boolean\n");
+    required_set = yyjson_obj_get(auth, "required") != NULL;
+    allow_anonymous_set = yyjson_obj_get(auth, "allowAnonymous") != NULL;
+    if (sl_cli_parse_optional_bool(
+            auth, "required", "sloppy: malformed metadata: route auth.required must be a boolean\n",
+            &required) != 0)
+    {
         return 1;
     }
-    if (allow_anonymous != NULL && !yyjson_is_bool(allow_anonymous)) {
-        sl_cli_write_cstr(stderr,
-                          "sloppy: malformed metadata: route auth.allowAnonymous must be a boolean\n");
+    if (sl_cli_parse_optional_bool(
+            auth, "allowAnonymous",
+            "sloppy: malformed metadata: route auth.allowAnonymous must be a boolean\n",
+            &allow_anonymous) != 0)
+    {
         return 1;
     }
-    route->auth_allow_anonymous = allow_anonymous != NULL && yyjson_get_bool(allow_anonymous);
-    route->auth_required = required == NULL ? !route->auth_allow_anonymous : yyjson_get_bool(required);
-    if (route->auth_allow_anonymous) {
-        route->auth_required = false;
+    route->auth_allow_anonymous = allow_anonymous;
+    if (required_set && allow_anonymous_set && required && allow_anonymous) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: routes[].auth.required and "
+                                  "routes[].auth.allowAnonymous cannot both be true\n");
+        return 1;
     }
+    route->auth_required = required_set ? required : !route->auth_allow_anonymous;
     route->auth_policy = sl_cli_json_span(auth, "policy");
     if (sl_cli_parse_route_auth_array(yyjson_obj_get(auth, "schemes"), route->auth_schemes,
-                                      &route->auth_scheme_count, SL_CLI_MAX_ROUTE_AUTH_SCHEMES) !=
-        0)
+                                      &route->auth_scheme_count,
+                                      SL_CLI_MAX_ROUTE_AUTH_SCHEMES) != 0)
     {
         return 1;
     }
@@ -331,7 +367,7 @@ static int sl_cli_parse_route_rate_limits(yyjson_val* value, SlCliRoute* route)
 
     yyjson_arr_iter_init(rate_limits, &iter);
     while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
-        yyjson_val* partial = NULL;
+        bool partial = false;
         if (!yyjson_is_obj(entry)) {
             sl_cli_write_cstr(
                 stderr, "sloppy: malformed metadata: route rateLimit entries must be objects\n");
@@ -347,14 +383,14 @@ static int sl_cli_parse_route_rate_limits(yyjson_val* value, SlCliRoute* route)
         route->rate_limit_stores[route->rate_limit_count] = sl_cli_json_span(entry, "store");
         route->rate_limit_partitions[route->rate_limit_count] =
             sl_cli_json_span(entry, "partition");
-        partial = yyjson_obj_get(entry, "partial");
-        if (partial != NULL && !yyjson_is_bool(partial)) {
-            sl_cli_write_cstr(
-                stderr, "sloppy: malformed metadata: route rateLimit partial must be a boolean\n");
+        if (sl_cli_parse_optional_bool(
+                entry, "partial",
+                "sloppy: malformed metadata: route rateLimit partial must be a boolean\n",
+                &partial) != 0)
+        {
             return 1;
         }
-        route->rate_limit_partials[route->rate_limit_count] =
-            partial != NULL && yyjson_get_bool(partial);
+        route->rate_limit_partials[route->rate_limit_count] = partial;
         route->rate_limit_count += 1U;
     }
     return 0;
@@ -400,8 +436,7 @@ static int sl_cli_parse_route_health(yyjson_val* value, SlCliRoute* route)
     while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
         if (!yyjson_is_str(entry)) {
             sl_cli_write_cstr(
-                stderr,
-                "sloppy: malformed metadata: route health check entries must be strings\n");
+                stderr, "sloppy: malformed metadata: route health check entries must be strings\n");
             return 1;
         }
         if (route->health_check_count >= SL_CLI_MAX_ROUTE_HEALTH_CHECKS) {
@@ -509,23 +544,71 @@ static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
         route.output_cache_value = yyjson_obj_get(value, "outputCache");
         route.cache_headers = sl_cli_json_span(value, "cacheHeaders");
         route.cache_headers_value = yyjson_obj_get(value, "cacheHeaders");
+        if (route.output_cache_value != NULL && yyjson_is_null(route.output_cache_value)) {
+            route.output_cache_value = NULL;
+        }
+        if (route.cache_headers_value != NULL && yyjson_is_null(route.cache_headers_value)) {
+            route.cache_headers_value = NULL;
+        }
+        if (route.output_cache_value != NULL && !yyjson_is_obj(route.output_cache_value)) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: route outputCache must be an object\n");
+            return 1;
+        }
+        if (route.cache_headers_value != NULL && !yyjson_is_obj(route.cache_headers_value)) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: route cacheHeaders must be an object\n");
+            return 1;
+        }
+        if (route.output_cache_value != NULL &&
+            (sl_cli_parse_optional_bool(
+                 route.output_cache_value, "varyByUser",
+                 "sloppy: malformed metadata: route outputCache.varyByUser must be a boolean\n",
+                 &route.output_cache_vary_by_user) != 0 ||
+             sl_cli_parse_optional_bool(
+                 route.output_cache_value, "allowSharedAuthenticated",
+                 "sloppy: malformed metadata: route outputCache.allowSharedAuthenticated must be "
+                 "a boolean\n",
+                 &route.output_cache_allow_shared_authenticated) != 0))
         {
-            yyjson_val* docs_internal = yyjson_obj_get(value, "docsInternal");
+            return 1;
+        }
+        {
             yyjson_val* docs = yyjson_obj_get(value, "docs");
-            route.docs_internal =
-                docs_internal != NULL && yyjson_is_bool(docs_internal) &&
-                yyjson_get_bool(docs_internal);
+            if (sl_cli_parse_optional_bool(
+                    value, "docsInternal",
+                    "sloppy: malformed metadata: route docsInternal must be a boolean\n",
+                    &route.docs_internal) != 0)
+            {
+                return 1;
+            }
+            if (docs != NULL && yyjson_is_null(docs)) {
+                docs = NULL;
+            }
             if (docs != NULL && yyjson_is_obj(docs)) {
-                yyjson_val* strict = yyjson_obj_get(docs, "strict");
                 route.docs_kind = sl_cli_json_span(docs, "kind");
-                route.docs_strict =
-                    strict != NULL && yyjson_is_bool(strict) && yyjson_get_bool(strict);
+                if (sl_cli_parse_optional_bool(
+                        docs, "strict",
+                        "sloppy: malformed metadata: route docs.strict must be a boolean\n",
+                        &route.docs_strict) != 0)
+                {
+                    return 1;
+                }
+            }
+            else if (docs != NULL) {
+                sl_cli_write_cstr(stderr,
+                                  "sloppy: malformed metadata: route docs must be an object\n");
+                return 1;
             }
         }
         {
-            yyjson_val* deprecated = yyjson_obj_get(value, "deprecated");
-            route.deprecated =
-                deprecated != NULL && yyjson_is_bool(deprecated) && yyjson_get_bool(deprecated);
+            if (sl_cli_parse_optional_bool(
+                    value, "deprecated",
+                    "sloppy: malformed metadata: route deprecated must be a boolean\n",
+                    &route.deprecated) != 0)
+            {
+                return 1;
+            }
         }
         {
             yyjson_val* realtime = yyjson_obj_get(value, "realtime");
@@ -535,10 +618,10 @@ static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
                 route.realtime_channel = sl_cli_json_span(realtime, "channelExpression");
             }
         }
-        if (sl_cli_parse_route_span_array(value, "consumes", route.consumes,
-                                          &route.consume_count, SL_CLI_MAX_ROUTE_TAGS) != 0 ||
-            sl_cli_parse_route_span_array(value, "produces", route.produces,
-                                          &route.produce_count, SL_CLI_MAX_ROUTE_TAGS) != 0 ||
+        if (sl_cli_parse_route_span_array(value, "consumes", route.consumes, &route.consume_count,
+                                          SL_CLI_MAX_ROUTE_TAGS) != 0 ||
+            sl_cli_parse_route_span_array(value, "produces", route.produces, &route.produce_count,
+                                          SL_CLI_MAX_ROUTE_TAGS) != 0 ||
             sl_cli_parse_route_contract_headers(value, &route) != 0)
         {
             return 1;
@@ -752,28 +835,35 @@ static int sl_cli_parse_capabilities(yyjson_val* root, SlCliMetadata* metadata)
     return 0;
 }
 
-static void sl_cli_parse_schema_property(yyjson_val* property_value, SlCliSpan name,
-                                         SlCliSchema* schema)
+static int sl_cli_parse_schema_property(yyjson_val* property_value, SlCliSpan name,
+                                        SlCliSchema* schema)
 {
     SlCliSchemaProperty property = {0};
-    yyjson_val* optional = NULL;
     yyjson_val* items = NULL;
 
-    if (!yyjson_is_obj(property_value) || schema->property_count >= SL_CLI_MAX_SCHEMA_PROPERTIES) {
-        return;
+    if (!yyjson_is_obj(property_value)) {
+        return 0;
+    }
+    if (schema->property_count >= SL_CLI_MAX_SCHEMA_PROPERTIES) {
+        sl_cli_write_cstr(stderr, "sloppy: too many schema properties in metadata\n");
+        return 1;
     }
     property.name = name;
     property.kind = sl_cli_json_span(property_value, "kind");
     property.format = sl_cli_json_span(property_value, "format");
-    optional = yyjson_obj_get(property_value, "optional");
-    property.optional = optional != NULL && yyjson_is_bool(optional) && yyjson_get_bool(optional);
+    if (sl_cli_parse_optional_bool(property_value, "optional",
+                                   "schema property optional must be a boolean\n",
+                                   &property.optional) != 0 ||
+        sl_cli_parse_optional_bool(property_value, "nullable",
+                                   "schema property nullable must be a boolean\n",
+                                   &property.nullable) != 0)
     {
-        yyjson_val* nullable = yyjson_obj_get(property_value, "nullable");
+        return 1;
+    }
+    {
         yyjson_val* min = yyjson_obj_get(property_value, "min");
         yyjson_val* max = yyjson_obj_get(property_value, "max");
         property.literal_value = yyjson_obj_get(property_value, "value");
-        property.nullable =
-            nullable != NULL && yyjson_is_bool(nullable) && yyjson_get_bool(nullable);
         property.has_min = min != NULL && yyjson_is_num(min);
         property.has_max = max != NULL && yyjson_is_num(max);
         property.min_value = property.has_min ? yyjson_get_num(min) : 0.0;
@@ -785,9 +875,10 @@ static void sl_cli_parse_schema_property(yyjson_val* property_value, SlCliSpan n
     }
     schema->properties[schema->property_count] = property;
     schema->property_count += 1U;
+    return 0;
 }
 
-static void sl_cli_parse_schema_properties(yyjson_val* schema_value, SlCliSchema* schema)
+static int sl_cli_parse_schema_properties(yyjson_val* schema_value, SlCliSchema* schema)
 {
     yyjson_val* definition = yyjson_obj_get(schema_value, "definition");
     yyjson_val* properties = NULL;
@@ -796,16 +887,19 @@ static void sl_cli_parse_schema_properties(yyjson_val* schema_value, SlCliSchema
     yyjson_val* key = NULL;
 
     if (definition == NULL || !yyjson_is_obj(definition)) {
-        return;
+        return 0;
     }
     schema->kind = sl_cli_json_span(definition, "kind");
+    if (sl_cli_parse_optional_bool(definition, "nullable",
+                                   "schema definition nullable must be a boolean\n",
+                                   &schema->nullable) != 0)
     {
-        yyjson_val* nullable = yyjson_obj_get(definition, "nullable");
+        return 1;
+    }
+    {
         yyjson_val* min = yyjson_obj_get(definition, "min");
         yyjson_val* max = yyjson_obj_get(definition, "max");
         schema->literal_value = yyjson_obj_get(definition, "value");
-        schema->nullable =
-            nullable != NULL && yyjson_is_bool(nullable) && yyjson_get_bool(nullable);
         schema->has_min = min != NULL && yyjson_is_num(min);
         schema->has_max = max != NULL && yyjson_is_num(max);
         schema->min_value = schema->has_min ? yyjson_get_num(min) : 0.0;
@@ -817,7 +911,7 @@ static void sl_cli_parse_schema_properties(yyjson_val* schema_value, SlCliSchema
     }
     properties = yyjson_obj_get(definition, "properties");
     if (properties == NULL || !yyjson_is_obj(properties)) {
-        return;
+        return 0;
     }
     iter = yyjson_obj_iter_with(properties);
     while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
@@ -826,9 +920,14 @@ static void sl_cli_parse_schema_properties(yyjson_val* schema_value, SlCliSchema
         if (property_name == NULL) {
             continue;
         }
-        sl_cli_parse_schema_property(yyjson_obj_iter_get_val(key),
-                                     (SlCliSpan){property_name, yyjson_get_len(key)}, schema);
+        if (sl_cli_parse_schema_property(yyjson_obj_iter_get_val(key),
+                                         (SlCliSpan){property_name, yyjson_get_len(key)},
+                                         schema) != 0)
+        {
+            return 1;
+        }
     }
+    return 0;
 }
 
 static int sl_cli_parse_schemas(yyjson_val* root, SlCliMetadata* metadata)
@@ -859,7 +958,9 @@ static int sl_cli_parse_schemas(yyjson_val* root, SlCliMetadata* metadata)
         }
         schema.name = sl_cli_json_span(value, "name");
         sl_cli_parse_source(value, &schema.source_path, &schema.source_line, &schema.source_column);
-        sl_cli_parse_schema_properties(value, &schema);
+        if (sl_cli_parse_schema_properties(value, &schema) != 0) {
+            return 1;
+        }
         metadata->schemas[metadata->schema_count] = schema;
         metadata->schema_count += 1U;
     }
@@ -958,8 +1059,6 @@ static int sl_cli_parse_http_clients(yyjson_val* root, SlCliMetadata* metadata)
     yyjson_arr_iter_init(clients, &iter);
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         SlCliHttpClient client = {0};
-        yyjson_val* strict = NULL;
-
         if (!yyjson_is_obj(value)) {
             sl_cli_write_cstr(stderr, "sloppy: malformed HTTP client metadata\n");
             return 1;
@@ -974,8 +1073,12 @@ static int sl_cli_parse_http_clients(yyjson_val* root, SlCliMetadata* metadata)
             client.target = sl_cli_json_span(value, "targetKind");
         }
         client.base_url = sl_cli_json_span(value, "baseUrl");
-        strict = yyjson_obj_get(value, "strictNetwork");
-        client.strict_network = strict != NULL && yyjson_is_bool(strict) && yyjson_get_bool(strict);
+        if (sl_cli_parse_optional_bool(value, "strictNetwork",
+                                       "HTTP client strictNetwork must be a boolean\n",
+                                       &client.strict_network) != 0)
+        {
+            return 1;
+        }
         metadata->http_clients[metadata->http_client_count] = client;
         metadata->http_client_count += 1U;
     }
@@ -1011,9 +1114,6 @@ static int sl_cli_parse_config_requirements(yyjson_val* root, SlCliMetadata* met
     yyjson_arr_iter_init(requirements, &iter);
     while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
         SlCliConfigRequirement requirement = {0};
-        yyjson_val* required = NULL;
-        yyjson_val* secret = NULL;
-
         if (!yyjson_is_obj(value)) {
             sl_cli_write_cstr(stderr, "sloppy: malformed config requirement metadata\n");
             return 1;
@@ -1029,11 +1129,15 @@ static int sl_cli_parse_config_requirements(yyjson_val* root, SlCliMetadata* met
         requirement.source = sl_cli_json_span(value, "source");
         requirement.required_by = sl_cli_json_span(value, "requiredBy");
         requirement.redaction = sl_cli_json_span(value, "redaction");
-        required = yyjson_obj_get(value, "required");
-        secret = yyjson_obj_get(value, "secret");
-        requirement.required =
-            required != NULL && yyjson_is_bool(required) && yyjson_get_bool(required);
-        requirement.secret = secret != NULL && yyjson_is_bool(secret) && yyjson_get_bool(secret);
+        if (sl_cli_parse_optional_bool(value, "required",
+                                       "config requirement required must be a boolean\n",
+                                       &requirement.required) != 0 ||
+            sl_cli_parse_optional_bool(value, "secret",
+                                       "config requirement secret must be a boolean\n",
+                                       &requirement.secret) != 0)
+        {
+            return 1;
+        }
         if (sl_cli_span_empty(requirement.key) || sl_cli_span_empty(requirement.status)) {
             sl_cli_write_cstr(stderr, "sloppy: config requirement is missing key or status\n");
             return 1;
@@ -1295,7 +1399,7 @@ static int sl_cli_parse_ffi_metadata(yyjson_val* root, SlCliMetadata* metadata)
     return sl_cli_parse_ffi_structs(native, metadata);
 }
 
-static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadata)
+static int sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadata)
 {
     yyjson_val* dispatch = yyjson_obj_get(root, "routeDispatch");
     yyjson_val* artifact = NULL;
@@ -1304,11 +1408,13 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
     yyjson_val* json_metadata = NULL;
     yyjson_val* json_request = NULL;
     yyjson_val* json_response = NULL;
-    yyjson_val* url_generation = NULL;
-    yyjson_val* classic_available = NULL;
 
-    if (dispatch == NULL || !yyjson_is_obj(dispatch)) {
-        return;
+    if (dispatch == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_obj(dispatch)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: routeDispatch must be an object\n");
+        return 1;
     }
 
     metadata->route_dispatch.present = true;
@@ -1324,12 +1430,20 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
         sl_cli_json_uint_or_zero(dispatch, "nativeNoJsEndpoints");
     metadata->route_dispatch.url_writers = sl_cli_json_uint_or_zero(dispatch, "urlWriters");
 
-    url_generation = yyjson_obj_get(dispatch, "urlGeneration");
-    metadata->route_dispatch.url_generation =
-        url_generation != NULL && yyjson_is_bool(url_generation) && yyjson_get_bool(url_generation);
+    if (sl_cli_parse_optional_bool(dispatch, "urlGeneration",
+                                   "routeDispatch urlGeneration must be a boolean\n",
+                                   &metadata->route_dispatch.url_generation) != 0)
+    {
+        return 1;
+    }
 
     artifact = yyjson_obj_get(dispatch, "artifact");
-    if (artifact != NULL && yyjson_is_obj(artifact)) {
+    if (artifact != NULL && !yyjson_is_obj(artifact)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: routeDispatch.artifact must be an object\n");
+        return 1;
+    }
+    if (artifact != NULL) {
         metadata->route_dispatch.artifact_kind = sl_cli_json_span(artifact, "kind");
         metadata->route_dispatch.artifact_path = sl_cli_json_span(artifact, "path");
         metadata->route_dispatch.artifact_hash = sl_cli_json_span(artifact, "hash");
@@ -1337,7 +1451,12 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
     }
 
     stats = yyjson_obj_get(dispatch, "dispatchStats");
-    if (stats != NULL && yyjson_is_obj(stats)) {
+    if (stats != NULL && !yyjson_is_obj(stats)) {
+        sl_cli_write_cstr(
+            stderr, "sloppy: malformed metadata: routeDispatch.dispatchStats must be an object\n");
+        return 1;
+    }
+    if (stats != NULL) {
         metadata->route_dispatch.exact_static_paths =
             sl_cli_json_uint_or_zero(stats, "exactStaticPaths");
         metadata->route_dispatch.parameter_candidate_buckets =
@@ -1347,11 +1466,19 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
     }
 
     fallback = yyjson_obj_get(dispatch, "fallback");
-    if (fallback != NULL && yyjson_is_obj(fallback)) {
-        classic_available = yyjson_obj_get(fallback, "classicAvailable");
-        metadata->route_dispatch.classic_fallback_available = classic_available != NULL &&
-                                                              yyjson_is_bool(classic_available) &&
-                                                              yyjson_get_bool(classic_available);
+    if (fallback != NULL && !yyjson_is_obj(fallback)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: routeDispatch.fallback must be an object\n");
+        return 1;
+    }
+    if (fallback != NULL) {
+        if (sl_cli_parse_optional_bool(
+                fallback, "classicAvailable",
+                "routeDispatch fallback classicAvailable must be a boolean\n",
+                &metadata->route_dispatch.classic_fallback_available) != 0)
+        {
+            return 1;
+        }
         metadata->route_dispatch.dynamic_fallback_routes =
             sl_cli_json_uint_or_zero(fallback, "dynamicRoutes");
         metadata->route_dispatch.partial_fallback_routes =
@@ -1359,9 +1486,20 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
     }
 
     json_metadata = yyjson_obj_get(dispatch, "json");
-    if (json_metadata != NULL && yyjson_is_obj(json_metadata)) {
+    if (json_metadata != NULL && !yyjson_is_obj(json_metadata)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: routeDispatch.json must be an object\n");
+        return 1;
+    }
+    if (json_metadata != NULL) {
         json_request = yyjson_obj_get(json_metadata, "request");
-        if (json_request != NULL && yyjson_is_obj(json_request)) {
+        if (json_request != NULL && !yyjson_is_obj(json_request)) {
+            sl_cli_write_cstr(
+                stderr,
+                "sloppy: malformed metadata: routeDispatch.json.request must be an object\n");
+            return 1;
+        }
+        if (json_request != NULL) {
             metadata->route_dispatch.json_request_native_routes =
                 sl_cli_json_uint_or_zero(json_request, "native");
             metadata->route_dispatch.json_request_generic_routes =
@@ -1372,7 +1510,13 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
                 sl_cli_json_uint_or_zero(json_request, "materialized");
         }
         json_response = yyjson_obj_get(json_metadata, "response");
-        if (json_response != NULL && yyjson_is_obj(json_response)) {
+        if (json_response != NULL && !yyjson_is_obj(json_response)) {
+            sl_cli_write_cstr(
+                stderr,
+                "sloppy: malformed metadata: routeDispatch.json.response must be an object\n");
+            return 1;
+        }
+        if (json_response != NULL) {
             metadata->route_dispatch.json_response_native_routes =
                 sl_cli_json_uint_or_zero(json_response, "native");
             metadata->route_dispatch.json_response_generic_routes =
@@ -1381,6 +1525,7 @@ static void sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadat
                 sl_cli_json_uint_or_zero(json_response, "fallback");
         }
     }
+    return 0;
 }
 
 static int sl_cli_parse_plan_kind(yyjson_val* root, SlCliMetadata* metadata)
@@ -1485,11 +1630,11 @@ static int sl_cli_load_metadata(const char* path, unsigned char* json_storage, S
         sl_cli_parse_http_clients(root, out_metadata) != 0 ||
         sl_cli_parse_config_requirements(root, out_metadata) != 0 ||
         sl_cli_parse_auth_metadata(root, out_metadata) != 0 ||
-        sl_cli_parse_ffi_metadata(root, out_metadata) != 0)
+        sl_cli_parse_ffi_metadata(root, out_metadata) != 0 ||
+        sl_cli_parse_route_dispatch(root, out_metadata) != 0)
     {
         return 1;
     }
-    sl_cli_parse_route_dispatch(root, out_metadata);
 
     return 0;
 }

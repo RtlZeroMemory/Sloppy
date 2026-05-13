@@ -1,5 +1,6 @@
 #include "sloppy/http_profile.h"
 
+#include "sloppy/json_writer.h"
 #include "sloppy/platform_time.h"
 #include "sloppy/string.h"
 
@@ -224,59 +225,8 @@ void sl_http_profile_count(SlHttpProfileCounter counter, uint64_t amount)
 
 static SlStatus sl_http_profile_append_json_string(SlByteBuilder* builder, const char* text)
 {
-    static const char hex[] = "0123456789abcdef";
-    const unsigned char* cursor = (const unsigned char*)text;
-    SlStatus status = sl_byte_builder_append_byte(builder, (unsigned char)'"');
-
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    if (cursor == NULL) {
-        cursor = (const unsigned char*)"";
-    }
-    while (*cursor != '\0') {
-        unsigned char ch = *cursor;
-        if (ch == '"' || ch == '\\') {
-            status = sl_byte_builder_append_byte(builder, (unsigned char)'\\');
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-            status = sl_byte_builder_append_byte(builder, ch);
-        }
-        else if (ch == '\b') {
-            status = sl_byte_builder_append_bytes(
-                builder, sl_bytes_from_parts((const unsigned char*)"\\b", 2U));
-        }
-        else if (ch == '\f') {
-            status = sl_byte_builder_append_bytes(
-                builder, sl_bytes_from_parts((const unsigned char*)"\\f", 2U));
-        }
-        else if (ch == '\n') {
-            status = sl_byte_builder_append_bytes(
-                builder, sl_bytes_from_parts((const unsigned char*)"\\n", 2U));
-        }
-        else if (ch == '\r') {
-            status = sl_byte_builder_append_bytes(
-                builder, sl_bytes_from_parts((const unsigned char*)"\\r", 2U));
-        }
-        else if (ch == '\t') {
-            status = sl_byte_builder_append_bytes(
-                builder, sl_bytes_from_parts((const unsigned char*)"\\t", 2U));
-        }
-        else if (ch < 0x20U) {
-            unsigned char escaped[6] = {
-                '\\', 'u', '0', '0', (unsigned char)hex[ch >> 4U], (unsigned char)hex[ch & 0x0FU]};
-            status = sl_byte_builder_append_bytes(builder, sl_bytes_from_parts(escaped, 6U));
-        }
-        else {
-            status = sl_byte_builder_append_byte(builder, ch);
-        }
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-        cursor += 1U;
-    }
-    return sl_byte_builder_append_byte(builder, (unsigned char)'"');
+    return sl_json_writer_append_escaped_string_bytes(
+        builder, text == NULL ? sl_str_empty() : sl_str_from_cstr(text));
 }
 
 static SlStatus sl_http_profile_append_cstr(SlByteBuilder* builder, const char* text)

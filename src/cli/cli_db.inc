@@ -489,8 +489,8 @@ static int sl_db_read_migration_files(const char* base_path, const SlCliDbMigrat
             *out_count = 0U;
             return 0;
         }
-        sl_cli_write_error_with_value("sloppy db: failed to read migration directory: ",
-                                      directory, "\n");
+        sl_cli_write_error_with_value("sloppy db: failed to read migration directory: ", directory,
+                                      "\n");
         return 1;
     }
     for (size_t entry_index = 0U; entry_index < list.count; entry_index += 1U) {
@@ -662,8 +662,8 @@ static size_t sl_db_sql_read_word_end(const char* text, size_t length, size_t in
 {
     while (index < length) {
         char ch = text[index];
-        if (!((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
-              (ch >= '0' && ch <= '9') || ch == '_'))
+        if (!((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+              ch == '_'))
         {
             break;
         }
@@ -778,8 +778,8 @@ static SlStatus sl_db_sqlite_transaction_exec_script(SlArena* arena, SlSqliteTra
         }
         if (at_end || ch == ';') {
             size_t statement_length = index - statement_start;
-            if (!at_end && sl_db_sql_statement_is_trigger(text + statement_start,
-                                                          statement_length) &&
+            if (!at_end &&
+                sl_db_sql_statement_is_trigger(text + statement_start, statement_length) &&
                 !sl_db_sql_statement_ends_with_end(text + statement_start, statement_length))
             {
                 continue;
@@ -1154,6 +1154,7 @@ static int sl_cli_command_db(const SlCliOptions* options)
     bool package_target = false;
     SlCliMetadata* metadata = sl_cli_scratch_metadata();
     unsigned char* json_storage = sl_cli_scratch_json_storage();
+    SlArena plan_arena = {0};
     yyjson_doc* doc = NULL;
     SlCliDbMigrationConfig migration_config = {0};
     SlCliDbMigrationFile files[128U] = {0};
@@ -1178,7 +1179,13 @@ static int sl_cli_command_db(const SlCliOptions* options)
             stderr, "sloppy db: target must be an artifacts directory or package directory\n");
         return 1;
     }
-    if (sl_cli_load_metadata(plan_path, json_storage, NULL, false, &doc, metadata) != 0) {
+    if (sl_cli_init_scratch_plan_arena("db", &plan_arena) != 0) {
+        return 1;
+    }
+    if (sl_cli_load_metadata(plan_path, json_storage, &plan_arena, true, &doc, metadata) != 0) {
+        if (doc != NULL) {
+            yyjson_doc_free(doc);
+        }
         return 1;
     }
     provider = sl_db_find_provider(metadata, options->db_provider);

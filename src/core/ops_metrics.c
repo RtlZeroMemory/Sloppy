@@ -1,6 +1,7 @@
 #include "sloppy/ops_metrics.h"
 
 #include "sloppy/checked_math.h"
+#include "sloppy/json_writer.h"
 
 #include <stdbool.h>
 
@@ -483,37 +484,7 @@ SlStatus sl_ops_metrics_histogram_observe(SlOpsMetricsRegistry* registry, SlStr 
 
 static SlStatus sl_ops_metrics_append_json_string(SlStringBuilder* builder, SlStr value)
 {
-    static const char hex[] = "0123456789abcdef";
-    size_t index = 0U;
-    SlStatus status = sl_string_builder_append_char(builder, '"');
-
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    for (index = 0U; index < value.length; index += 1U) {
-        char ch = value.ptr[index];
-
-        if (ch == '"' || ch == '\\') {
-            status = sl_string_builder_append_char(builder, '\\');
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-        }
-        if ((unsigned char)ch < 0x20U) {
-            unsigned char code = (unsigned char)ch;
-            char escaped[7] = {'\\', 'u', '0', '0', hex[(code >> 4U) & 0x0FU], hex[code & 0x0FU],
-                               '\0'};
-
-            status = sl_string_builder_append_cstr(builder, escaped);
-        }
-        else {
-            status = sl_string_builder_append_char(builder, ch);
-        }
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-    }
-    return sl_string_builder_append_char(builder, '"');
+    return sl_json_writer_append_escaped_string_codepoint_controls(builder, value);
 }
 
 static SlStatus sl_ops_metrics_append_f64(SlStringBuilder* builder, double value)
