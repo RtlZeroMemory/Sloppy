@@ -667,6 +667,27 @@ app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), path
 app.get("/", () => Results.ok({ ok: true })).requireAuth();
 export default app;
 "#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+const sameSite = "strict";
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), sameSite }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+const ttl = 60;
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), maxAgeSeconds: ttl }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+const ttl = 60;
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), maxAge: ttl }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
     ] {
         let diagnostic = extract(std::path::Path::new("app.ts"), source)
             .expect_err("unsupported static auth metadata should fail closed");

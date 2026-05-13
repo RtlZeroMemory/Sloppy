@@ -112,9 +112,20 @@ pub(super) fn app_use_auth_provider_call(
                 .to_string();
             let secure = object_bool_property_value(options, "secure").unwrap_or(true);
             let http_only = object_bool_property_value(options, "httpOnly").unwrap_or(true);
-            let same_site = object_string_property_value(options, "sameSite")
-                .unwrap_or("lax")
-                .to_ascii_lowercase();
+            let same_site = if let Some(same_site) =
+                object_string_property_value(options, "sameSite")
+            {
+                same_site.to_ascii_lowercase()
+            } else if let Some(same_site_expr) = object_property_expression(options, "sameSite") {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_AUTH",
+                    "Auth.cookieSession sameSite must be a static string for compiler extraction",
+                )
+                .with_path(path)
+                .with_span(same_site_expr.span()));
+            } else {
+                "lax".to_string()
+            };
             if !matches!(same_site.as_str(), "lax" | "strict" | "none") {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_AUTH",
@@ -148,9 +159,32 @@ pub(super) fn app_use_auth_provider_call(
             } else {
                 None
             };
-            let max_age_seconds = object_integer_property_value(options, "maxAgeSeconds")
-                .or_else(|| object_integer_property_value(options, "maxAge"))
-                .or_else(|| if store.is_none() { Some(86_400) } else { None });
+            let max_age_seconds = if let Some(max_age_seconds) =
+                object_integer_property_value(options, "maxAgeSeconds")
+            {
+                Some(max_age_seconds)
+            } else if let Some(max_age_expr) = object_property_expression(options, "maxAgeSeconds")
+            {
+                return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_AUTH",
+                        "Auth.cookieSession maxAgeSeconds must be a static integer for compiler extraction",
+                    )
+                    .with_path(path)
+                    .with_span(max_age_expr.span()));
+            } else if let Some(max_age) = object_integer_property_value(options, "maxAge") {
+                Some(max_age)
+            } else if let Some(max_age_expr) = object_property_expression(options, "maxAge") {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_AUTH",
+                    "Auth.cookieSession maxAge must be a static integer for compiler extraction",
+                )
+                .with_path(path)
+                .with_span(max_age_expr.span()));
+            } else if store.is_none() {
+                Some(86_400)
+            } else {
+                None
+            };
             let idle_timeout_ms = object_integer_property_value(options, "idleTimeoutMs")
                 .or_else(|| object_integer_property_value(options, "idleTimeout"));
             let absolute_timeout_ms = object_integer_property_value(options, "absoluteTimeoutMs")
