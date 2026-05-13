@@ -142,12 +142,18 @@ sloppy run .sloppy --once GET /health
     <a class="battery" href="/Slop/api/config"><span class="dot"></span>Config &amp; services</a>
     <a class="battery" href="/Slop/api/logging"><span class="dot"></span>Structured logging</a>
     <a class="battery" href="/Slop/api/data"><span class="dot"></span>Data providers &amp; migrations</a>
+    <a class="battery" href="/Slop/guide/data-streaming"><span class="dot"></span>Cursor-based data streaming</a>
+    <a class="battery" href="/Slop/api/orm"><span class="dot"></span>ORM &amp; migrations</a>
+    <a class="battery" href="/Slop/api/cache"><span class="dot"></span>Cache &amp; output cache</a>
+    <a class="battery" href="/Slop/api/redis"><span class="dot"></span>Redis client &amp; locks</a>
+    <a class="battery" href="/Slop/api/http-client"><span class="dot"></span>Named HTTP clients</a>
     <a class="battery" href="/Slop/cli/openapi"><span class="dot"></span>OpenAPI emission</a>
     <a class="battery" href="/Slop/api/health"><span class="dot"></span>Health, metrics &amp; management</a>
     <a class="battery" href="/Slop/guide/static-assets"><span class="dot"></span>Static files</a>
     <a class="battery" href="/Slop/api/realtime"><span class="dot"></span>Realtime &amp; WebSockets</a>
     <a class="battery" href="/Slop/guide/webhooks"><span class="dot"></span>Webhooks</a>
     <a class="battery" href="/Slop/guide/background-tasks"><span class="dot"></span>Background tasks &amp; jobs</a>
+    <a class="battery" href="/Slop/api/jobs"><span class="dot"></span>Durable scheduler</a>
     <a class="battery" href="/Slop/guide/program-mode"><span class="dot"></span>Program Mode</a>
     <a class="battery" href="/Slop/api/testing"><span class="dot"></span>TestHost &amp; TestServices</a>
   </div>
@@ -191,12 +197,14 @@ app package, and proves the package can run outside the source checkout.
   `node-compat`.
 - **CLI:** `create`, `build`, `dev`, `run`, `package`, `routes`, `health`,
   `metrics`, `deps`, `capabilities`, `doctor`, `audit`, `openapi`,
-  `db status|migrate`, and `orm migration add|script|status|apply`.
+  `db status|migrate`, `orm migration add|script|status|apply`, and
+  `jobs` for SQLite scheduler table administration.
 - **Runtime:** Web handler execution and Program Mode entrypoint execution on
   Windows x64, Linux x64 glibc, macOS arm64, and macOS x64 alpha packages.
 - **HTTP:** HTTP/1.1, opt-in TLS, and HTTP/2 over TLS ALPN plus h2c.
 - **Stdlib:** app host, routing, results, services, config, logging, data,
-  workers, filesystem, network, OS, time, crypto, codec, and schema.
+  ORM, cache, Redis, jobs, workers, filesystem, network, HTTP clients, OS,
+  time, crypto, codec, and schema.
 
 ## Why Sloppy?
 

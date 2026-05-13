@@ -155,7 +155,8 @@ Sloppy explores a different shape:
   process.
 
 Current web-app features include routing, Results, middleware, CORS, health
-checks, JWT/API-key/session auth, config metadata, OpenAPI, SQLite/migrations,
+checks, JWT/API-key/session auth, config metadata, OpenAPI, data providers,
+ORM, cache, Redis, outbound HTTP clients, background jobs,
 package/dependency graph inspection, and Plan-based audit/doctor commands.
 
 The developer experience is closer to ASP.NET Core Minimal APIs than to an
@@ -179,8 +180,11 @@ or test harness to wire up:
 - routing &amp; results, middleware, CORS, security headers, sessions, auth;
 - request IDs, request logging, request context, ProblemDetails;
 - config &amp; services, structured logging, health, metrics, management;
-- data providers (SQLite, PostgreSQL, SQL Server) and `sloppy db` migrations;
-- OpenAPI emission, static files, realtime &amp; WebSockets, webhooks, workers;
+- data providers (SQLite, PostgreSQL, SQL Server), cursors, ORM, and `sloppy db` migrations;
+- memory/provider/Redis-backed cache, output cache, and cache headers;
+- first-party Redis client, Redis-backed cache, and Redis locks;
+- named and typed HTTP clients with TestHost mocks and resilience policy;
+- OpenAPI emission, static files, realtime &amp; WebSockets, webhooks, workers, durable jobs;
 - Program Mode for route-free tools and packaged app artifacts;
 - TestHost and TestServices for first-party integration testing.
 
@@ -202,7 +206,18 @@ Surface-by-surface support and current alpha boundaries are tracked in
 - **Data providers.** SQLite is embedded and has the strongest end-to-end path.
   PostgreSQL and SQL Server are optional provider features with metadata,
   provider-specific diagnostics, and opt-in live lanes for apps that use those
-  databases.
+  databases. Cursor APIs support incremental reads without materializing the
+  whole result set.
+- **Cache and Redis.** Sloppy includes bounded memory cache, provider-backed
+  distributed caches, Redis-backed cache, output cache metadata, a first-party
+  Redis client, and Redis single-key locks. Redis runtime use requires a Redis
+  server and the Sloppy outbound network bridge.
+- **Durable jobs.** `sloppy/jobs` provides provider-backed jobs, retries,
+  worker leases, recurring five-field UTC cron schedules, distributed locks,
+  and a SQLite admin CLI.
+- **Outbound HTTP.** `Http` provides named and typed clients, generated clients
+  from OpenAPI, retry/circuit-breaker/bulkhead policy, service registration,
+  and TestHost mocks over the lower-level `HttpClient` transport.
 - **HTTP runtime.** HTTP/1.1, bounded keep-alive, opt-in TLS, and experimental
   HTTP/2 over TLS ALPN plus h2c prior knowledge and Upgrade handling.
 - **Network client.** `HttpClient` supports HTTP/1.1, explicit h2/h2c, pooled
@@ -210,7 +225,8 @@ Surface-by-surface support and current alpha boundaries are tracked in
   TLS bridge is available.
 - **CLI tooling.** `sloppy create`, `build`, `dev`, `run`, `package`, `routes`,
   `health`, `metrics`, `deps`, `capabilities`, `doctor`, `audit`, `openapi`,
-  `db status|migrate`, and `orm migration add|script|status|apply`.
+  `db status|migrate`, `orm migration add|script|status|apply`, and `jobs`
+  SQLite scheduler administration.
 - **Program Mode.** Route-free source files can compile to Program Plans with
   opaque metadata and a generated `main`/default/top-level entrypoint.
   `main(args, ctx)` receives arguments after `--` and a Program context.
@@ -219,8 +235,8 @@ Surface-by-surface support and current alpha boundaries are tracked in
   supported on the alpha npm platform packages and source builds configured
   with handler execution support.
 - **Stdlib.** App host, routing, results, config, services, logging,
-  capabilities, data, schema, filesystem, network, OS, process boundary, time,
-  crypto, codec, and workers.
+  capabilities, data, ORM, cache, Redis, jobs, schema, filesystem, network,
+  HTTP clients, OS, process boundary, time, crypto, codec, and workers.
 - **Templates and examples.** `api`, `minimal-api`, `program`, `cli`,
   `package-api`, and `node-compat` templates, plus source examples under
   [`examples/`](examples/README.md).

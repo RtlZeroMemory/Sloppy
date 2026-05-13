@@ -13,12 +13,14 @@ Task-shaped walkthroughs that go beyond the API reference.
 - [Content negotiation](content-negotiation.md) — JSON policy, request `Content-Type`, `Accept`, and response media types
 - [The Plan model](plan-model.md) — what `app.plan.json` is and why it exists
 - [SQLite walkthrough](sqlite.md) — a small CRUD app from scratch
+- [Data streaming](data-streaming.md) — cursor reads, ORM cursor export, and response streaming boundaries
 - [Database migrations](migrations.md) — configure, apply, package, and inspect schema migrations
 - [PostgreSQL](postgres.md) — live-provider setup boundaries and health checks
 - [SQL Server](sqlserver.md) — ODBC setup boundaries and health checks
 - [Authentication](auth.md) — experimental route protection with JWT bearer tokens, API keys, roles, and policies
 - [Error handling](error-handling.md) — problem responses, typed mappings, request IDs, and redacted logs
 - [Realtime updates](realtime.md) — model SSE routes and current WebSocket limits
+- [Background tasks](background-tasks.md) — in-process work, durable jobs, and recurring schedules
 - [Request logging](request-logging.md) — add request IDs and structured request logs
 - [Cookies](cookies.md) — read request cookies and append `Set-Cookie` headers
 - [Form bodies and uploads](uploads.md) — handle urlencoded forms and multipart files

@@ -26,6 +26,7 @@ sloppy --version
 | [`sloppy doctor`](doctor.md) | Inspect Sloppy artifacts and Plan-visible metadata       |
 | [`sloppy db`](db.md)         | Inspect and apply configured database migrations         |
 | [`sloppy orm`](orm.md)       | Generate, inspect, and apply ORM migrations               |
+| [`sloppy jobs`](jobs.md)     | Inspect and operate SQLite durable scheduler tables       |
 | [`sloppy audit`](audit.md)   | Run security/compliance checks against a Plan            |
 | [`sloppy openapi`](openapi.md) | Generate an OpenAPI document from a Plan               |
 | [`sloppyc`](sloppyc.md)      | Run the compiler directly                                |

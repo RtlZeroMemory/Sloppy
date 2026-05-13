@@ -1,24 +1,25 @@
-# Background tasks
+# Background tasks and scheduling
 
 This page covers the way Sloppy apps run work alongside HTTP request handling:
-long-running services, queued jobs, and worker isolates. The runtime primitives
-live in `sloppy/workers`; the public Core APIs are documented at
-[Workers](../api/workers.md) and the reference table at
-[Reference / Workers](../reference/workers.md).
+long-running services, queued jobs, periodic schedules, and worker isolates.
+The in-process primitives live in `sloppy/workers` and `sloppy/time`. Durable
+jobs and recurring schedules live in `sloppy/jobs`.
 
 Pick the primitive that matches the shape of the work:
 
 | Primitive | When to use |
 | --- | --- |
-| `BackgroundService` | App-lifetime tasks (cleanup loops, periodic flushes, drains) |
+| `BackgroundService` | App-lifetime tasks (cleanup loops, drains, manual schedules) |
+| `Time.every(intervalMs, handler)` | Periodic scheduled task with `pause`/`resume`/`stop`, overlap protection, and `FakeClock` testability |
+| `Time.interval(intervalMs)` | `for await` ticks at a fixed cadence, with `stop()` and an optional max tick count |
 | `WorkQueue` | Bounded queued jobs with concurrency, retry, and backpressure |
+| `Jobs.create({ storage })` | Provider-backed durable jobs, retries, recurring cron schedules, worker leases, and admin metadata |
 | `WorkerPool` | CPU-bound or untrusted work offloaded to a bounded set of worker isolates |
 | `Worker.start(...)` | A single explicit worker isolate from a module path |
 
-> Scheduled / cron-style jobs are not a separate public API in this alpha. Use
-> a `BackgroundService` that sleeps with `Time.delay(ms, { signal })`, or a
-> `WorkQueue` that you enqueue from your own trigger. A scheduler surface is
-> tracked separately and is not promised here.
+Use `Time.every` for lightweight interval work inside one process. Use
+`sloppy/jobs` when work must survive restarts, be claimed by multiple workers,
+or run from a recurring cron schedule.
 
 ## Background services
 
@@ -60,6 +61,128 @@ App shutdown does not yet auto-call `service.stop(...)`. If you need a clean
 stop, hold a reference and call `service.stop(...)` from your shutdown path
 (for example, a process-level signal handler). Track this surface against the
 [stability matrix](../reference/stability.md#feature-matrix).
+
+## Scheduled tasks
+
+`Time.every(intervalMs, handler, options?)` from `sloppy/time` runs a handler
+on a periodic in-process schedule. The schedule is an interval, not a cron
+expression, and it is not durable storage. For wall-clock or calendar schedules
+that should survive process restarts, use the durable Jobs scheduler.
+
+```ts
+import { Sloppy, Results } from "sloppy";
+import { Time } from "sloppy/time";
+
+const app = Sloppy.create();
+
+const job = Time.every(60_000, async (ctx) => {
+    // ctx.signal, ctx.run, ctx.skippedRuns, ctx.startedAt, ctx.scheduledAt
+    await rotateAuditFiles(ctx.signal);
+}, {
+    immediate: false,   // skip an initial run at t=0
+    noOverlap: true,    // skip ticks while the previous run is still active
+});
+
+app.mapPost("/audit/pause",  () => { job.pause();  return Results.noContent(); });
+app.mapPost("/audit/resume", () => { job.resume(); return Results.noContent(); });
+```
+
+Handle methods and state:
+
+| Member | Purpose |
+| --- | --- |
+| `job.pause()` | pause scheduling without stopping the job |
+| `job.resume()` | resume after `pause()` |
+| `job.stop(reason?)` | cancel the job and resolve the internal loop |
+| `job.running` | `true` while a handler invocation is in flight |
+| `job.stopped` | `true` after `stop()` or after `maxRuns` is reached |
+| `job.skippedRuns` | count of ticks skipped because a previous run was still active |
+| `job.lastError` | the last error a handler threw (handlers are isolated; one failure does not stop the schedule) |
+| `job.nextRun` | a `Date` for the next scheduled invocation (or `null` after stop) |
+
+Options accepted by `Time.every`:
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `immediate` | `false` | run a tick at `t=0` instead of waiting one interval |
+| `noOverlap` | `true` | skip a tick if the previous handler is still running |
+| `maxRuns` | unbounded | stop the schedule after this many successful starts |
+| `missedRunPolicy` | `"skip"` | only `"skip"` is supported in this alpha |
+| `signal` | none | external cancellation signal |
+| `clock` | system clock | inject `Time.fakeClock(...)` for deterministic tests |
+
+For a pull-style schedule (you drive each tick yourself), use
+`Time.interval(intervalMs, options?)` — it is an async iterable that yields
+`{ index, at, scheduledAt }` ticks and exposes `stop()`:
+
+```ts
+const ticker = Time.interval(1000, { maxTicks: 60 });
+for await (const tick of ticker) {
+    // tick.index is 1-based; tick.at is a Date
+    if (shouldStop()) {
+        ticker.stop();
+    }
+}
+```
+
+### Test schedules deterministically
+
+`Time.fakeClock(...)` advances time on demand, so schedules can be tested
+without sleeping in real time:
+
+```ts
+import { Time } from "sloppy/time";
+
+const clock = Time.fakeClock({ now: new Date("2026-01-01T00:00:00Z") });
+let runs = 0;
+
+const job = Time.every(60_000, () => { runs += 1; }, { clock, immediate: true });
+
+await clock.advanceMs(60_000);
+// runs === 2 (one immediate, one after the first interval)
+await job.stop();
+```
+
+## Durable jobs and recurring schedules
+
+`sloppy/jobs` stores job state in a Sloppy data provider. It is the right tool
+for email delivery, webhook delivery, synchronization, cleanup, reports, and
+other work that needs retries, leases, recurring schedules, or operator
+visibility.
+
+```ts
+import { Jobs } from "sloppy/jobs";
+import { data, schema } from "sloppy";
+
+const db = data.sqlite.open({ path: "./app.db", access: "readwrite" });
+const jobs = Jobs.create({ storage: Jobs.storage.sqlite(db) });
+
+await jobs.storage.init();
+
+jobs.define("send-email", {
+    queue: "emails",
+    input: schema.object({ to: schema.string().email() }),
+    retries: { maxAttempts: 5, backoff: "exponential", initialDelayMs: 1000 },
+    timeoutMs: 30000,
+}, async (ctx, input) => {
+    await sendEmail(input, { signal: ctx.signal });
+});
+
+await jobs.enqueue("send-email", { to: "ada@example.test" }, {
+    idempotencyKey: "welcome:ada",
+});
+
+await jobs.recurring("nightly-cleanup", "cleanup", {}, {
+    cron: "0 2 * * *",
+    timezone: "UTC",
+    misfirePolicy: "run-once",
+});
+```
+
+Recurring jobs use five-field UTC cron expressions. Workers register and
+heartbeat in durable storage, claim due jobs with provider-specific locking,
+and record attempts and events. See [Jobs](../api/jobs.md) for the API and
+[sloppy jobs](../cli/jobs.md) for SQLite scheduler administration.
 
 ## Work queues
 
@@ -204,7 +327,10 @@ The full code list lives in `stdlib/sloppy/workers.js`.
 - `examples/workers-js-isolate` — single `Worker.start` isolate
 - `examples/workers-shutdown` — drain-vs-cancel `stop()` behavior
 - `examples/core-worker-time` — workers with cancellation and deadlines
+- `examples/jobs-basic` — SQLite durable jobs, idempotency, redaction, worker run-once
+- `examples/jobs-recurring` — recurring cron schedules and manual ticks
+- `examples/jobs-concurrency-*` — provider-backed claim and lease behavior
 
 See [Workers](../api/workers.md) for the full API surface and
-[Reference / Workers](../reference/workers.md) for the matrix. Current support
-boundaries are tracked in the [stability matrix](../reference/stability.md).
+[Jobs](../api/jobs.md) for durable scheduling. Current support boundaries are
+tracked in the [stability matrix](../reference/stability.md).

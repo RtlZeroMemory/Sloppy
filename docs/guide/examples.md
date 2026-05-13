@@ -41,6 +41,43 @@ repository.
 | [`framework-sqlite-crud`](#framework-sqlite-crud) | Typed-handler SQLite CRUD with provider injection |
 | [`framework-postgres-crud`](#framework-postgres-crud) | Same shape, PostgreSQL provider (needs a live database) |
 | [`framework-sqlserver-crud`](#framework-sqlserver-crud) | Same shape, SQL Server provider (needs a live database) |
+| `orm-basic` | First-party `sloppy/orm` model, CRUD, relations, and migration script shape |
+| `orm-relations-includes` | One-join and collection split-query includes |
+| `orm-cursor-export` | ORM cursor export to NDJSON chunks without materializing all rows |
+| `orm-migrations` | Compiler-emitted ORM metadata and migration CLI output |
+
+Guide: [Data streaming](data-streaming.md). APIs: [Data](../api/data.md) and
+[ORM](../api/orm.md).
+
+## Cache, Redis, and HTTP clients
+
+| Example | Shows |
+| --- | --- |
+| `cache-basic` | Memory cache, cache-aside reads, schema validation, tag invalidation |
+| `cache-output-api` | Route output cache and HTTP cache headers |
+| `cache-hybrid-postgres` | Memory-fronted PostgreSQL distributed cache |
+| `redis-basic` | First-party Redis client, values, scripts, diagnostics, health |
+| `redis-cache` | Redis-backed cache provider with tags and service registration |
+| `redis-locks` | Redis single-key lease shape |
+| `http-client-typed` | Typed named client registered through services |
+| `http-client-generated` | OpenAPI-to-typed-client generation |
+| `http-client-resilience` | Retry, circuit-breaker, bulkhead, and pool options |
+| `http-client-testhost` | `TestHttp.mock()` with TestHost outbound overrides |
+
+APIs: [Cache](../api/cache.md), [Redis](../api/redis.md), and
+[HTTP Client](../api/http-client.md).
+
+## Durable jobs
+
+| Example | Shows |
+| --- | --- |
+| `jobs-basic` | SQLite durable queue, idempotency, redaction, worker run-once |
+| `jobs-recurring` | Five-field UTC cron schedules and manual recurring ticks |
+| `jobs-postgres-worker` | PostgreSQL-backed worker shape |
+| `jobs-sqlserver-worker` | SQL Server-backed worker shape |
+| `jobs-concurrency`, `jobs-concurrency-sqlite`, `jobs-concurrency-step` | Provider-backed claim and lease behavior |
+
+Guide: [Background tasks](background-tasks.md). API: [Jobs](../api/jobs.md).
 
 ## Validation
 
@@ -245,6 +282,9 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `config-secrets-redaction` | Config redaction fixture |
 | `config-strict-mode` | Config strict-mode fixture |
 | `configured-api` | Compiler/config conformance fixture |
+| `cache-basic` | Memory cache API-shape fixture |
+| `cache-hybrid-postgres` | Hybrid cache example, live-provider gated |
+| `cache-output-api` | Output cache API-shape fixture |
 | `core-config-secrets` | Core integration fixture |
 | `core-fs-time-codec` | Core integration fixture |
 | `core-network-time-codec` | Core integration fixture |
@@ -273,6 +313,19 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `hello` | Smallest hello-app fixture used by app-host shape checks |
 | `hello-minimal` | Minimal runnable example |
 | `http-client-basic` | HTTP client API-shape fixture |
+| `http-client-generated` | OpenAPI-to-typed-client documentation example |
+| `http-client-resilience` | HTTP client resilience documentation example |
+| `http-client-testhost` | HTTP client TestHost mock documentation example |
+| `http-client-testhost-package-mock` | HTTP client package TestHost mock documentation example |
+| `http-client-typed` | Typed HTTP client documentation example |
+| `jobs-basic` | Durable jobs SQLite example |
+| `jobs-concurrency` | Durable jobs concurrency example, live-provider gated |
+| `jobs-concurrency-sqlite` | Durable jobs SQLite concurrency example |
+| `jobs-concurrency-step` | Durable jobs process-step concurrency example |
+| `jobs-postgres-worker` | Durable jobs PostgreSQL worker example, live-provider gated |
+| `jobs-recurring` | Durable recurring jobs example |
+| `jobs-sqlserver-worker` | Durable jobs SQL Server worker example, live-provider gated |
+| `jobs-stress` | Durable jobs stress example |
 | `modules-api` | Compiler module conformance fixture |
 | `modules-basic` | Module API-shape fixture |
 | `net-deadline-cancel` | Network cancellation fixture |
@@ -282,6 +335,11 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `net-tcp-echo` | TCP echo API-shape fixture |
 | `net-tcp-server` | TCP server API-shape fixture |
 | `os-runtime-api` | OS API-shape fixture |
+| `orm-basic` | ORM documentation example |
+| `orm-cursor-export` | ORM cursor export documentation example |
+| `orm-migrations` | ORM migration tooling fixture |
+| `orm-relations-includes` | ORM relations/include documentation example |
+| `orm-testservices` | ORM TestServices documentation example |
 | `postgres-basic` | PostgreSQL provider fixture, live-provider gated |
 | `control-plane` | Larger app-style coverage example for routing, data, diagnostics, and tooling |
 | `rate-limit-auth` | Authenticated-user rate-limit example |
@@ -289,6 +347,9 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `rate-limit-redis` | Distributed rate-limit adapter declaration (fails closed on `main`) |
 | `rate-limit-testhost` | Rate-limit windows under `FakeClock` |
 | `rate-limit-websocket` | WebSocket upgrade rate limiting |
+| `redis-basic` | Redis client example, live-provider gated |
+| `redis-cache` | Redis-backed cache example, live-provider gated |
+| `redis-locks` | Redis lock example, live-provider gated |
 | `request-context` | Curated request context example |
 | `sqlite-basic` | SQLite provider fixture |
 | `sqlserver-basic` | SQL Server provider fixture, live-provider gated |

@@ -42,10 +42,11 @@ configuration, services, validation, or data access.
 - [Config](config.md) — `addObject`, typed getters, secrets, binding
 - [Logging](logging.md) — levels, sinks
 - [Capabilities](capabilities.md) — declaring database/provider capabilities
-- [Data](data.md) — `data.sqlite`, `data.postgres`, `data.sqlserver`, `sql\`…\`` templates
+- [Data](data.md) — `data.sqlite`, `data.postgres`, `data.sqlserver`, SQL templates, and cursors
 - [ORM](orm.md) — **Experimental** — `sloppy/orm` tables, columns, schemas, CRUD, includes, and migrations
 - [Redis](redis.md) — first-party Redis client, pools, scripts, locks, diagnostics
-- [Cache](cache.md) — Redis-backed cache provider with tags and app-host service registration
+- [Cache](cache.md) — memory, provider-backed, Redis-backed, hybrid, and output caches
+- [Jobs](jobs.md) — durable jobs, recurring schedules, worker leases, retries, and scheduler admin
 - [Workers](workers.md) — background services, work queues, cancellation
 - [Schema](schema.md) — value validation
 - [Filesystem](filesystem.md) — `sloppy/fs` files, directories, handles, watchers
