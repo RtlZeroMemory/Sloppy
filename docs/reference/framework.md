@@ -5,7 +5,7 @@ This page documents the current JavaScript framework surface from `stdlib/sloppy
 ## Imports
 
 Root runtime exports come from `sloppy` (for example `Sloppy`, `Router`, `Results`,
-`ProblemDetails`, `RequestId`, `RequestLogging`, `Testing`, `schema`, `data`, and
+`ProblemDetails`, `RequestId`, `RequestLogging`, `Testing`, experimental `TestServices`, `schema`, `data`, and
 `sql`).
 
 Provider descriptor registration currently has one runtime module:
@@ -21,7 +21,7 @@ represent. Literal route registration, groups, controllers, middleware, CORS,
 health checks, ProblemDetails, request IDs, request logging, services, config,
 and typed handler bindings are compiler surfaces where documented. Dynamic
 shapes are rejected at build time with `SLOPPYC_E_*` diagnostics. `Testing`
-remains an app-host test helper and is not compiler input.
+and experimental `TestServices` remain test helpers and are not compiler input.
 
 ## Sloppy Object
 
@@ -418,6 +418,6 @@ Use `sloppy run --once` for compiled artifacts, Plan validation, native
 dispatch, V8 handler execution, generated typed bindings, provider bridges, and
 package/runtime layout checks.
 
-Do not import `Testing` from compiler input. `sloppyc` rejects that import with
-`SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT`; use it from JavaScript tests around the
-app-host surface.
+Do not import `Testing` or `TestServices` from compiler input. `sloppyc`
+rejects those imports with `SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT`; use them
+from JavaScript tests around the app-host or dependency-backed test surfaces.

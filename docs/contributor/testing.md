@@ -28,6 +28,7 @@ default lane plus a few mandatory ones; the rest are opt-in.
 | libFuzzer seed replay| Deterministic seed replay; default-safe replay in normal tests, instrumented Windows replay on main/schedule/manual/labels |
 | Advanced static analysis | CodeQL for analysis-relevant paths; clang-tidy/analyzer on main/schedule/manual/labels |
 | Live providers       | PostgreSQL/SQL Server against real services            |
+| TestServices         | Experimental Docker-backed PostgreSQL/SQL Server through first-party `TestServices` |
 | Stress / torture     | Long-running pressure, races, drains                   |
 | Benchmark            | Measurement only; never correctness                    |
 
@@ -116,6 +117,28 @@ Required wherever a contract can reject input or clean up resources:
 
 A test that asserts "function returned `SL_STATUS_ERROR`" without
 checking the diagnostic code or the cleanup behavior is incomplete.
+
+## TestServices
+
+`TestServices` is the experimental first-party Docker-backed dependency lane for
+PostgreSQL and SQL Server integration tests. Default CI runs the Sloppy
+artifact bootstrap contract without starting containers. Real containers
+require an explicit gate such as:
+
+```powershell
+$env:SLOPPY_TESTSERVICES = "1"
+```
+
+Report this lane separately from the existing live-provider lane. A skipped
+container lane must say the exact reason: Docker CLI missing, Docker daemon
+unreachable, provider bridge unavailable, SQL Server driver unavailable, or
+the gate not set. Do not turn those skips into a PostgreSQL or SQL Server
+`PASS`.
+
+Use `TestServices` when a test needs to prove dependency behavior through
+Docker lifecycle, readiness, migrations, seed data, reset, diagnostics, and
+cleanup. Use `TestData` or fake providers for pure app-host logic that does
+not need a real database.
 
 ## Fuzz, sanitizers, benchmarks
 

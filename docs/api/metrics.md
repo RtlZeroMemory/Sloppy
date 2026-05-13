@@ -103,3 +103,34 @@ the native registry:
 - `db.pool.idle`
 - `db.pool.exhausted`
 - `db.queue.depth`
+
+## HTTP client metrics
+
+Named clients created through `Http.client(...)` expose a client-local metrics
+snapshot:
+
+```ts
+const snapshot = ctx.services.get("http.billing").metrics();
+```
+
+HTTP client factory counters include:
+
+- `http.client.requests.total`
+- `http.client.errors.total`
+- `http.client.retries.total`
+
+The snapshot also includes pool counters from the low-level `HttpClient`
+transport:
+
+- connections created
+- connections reused
+- idle closes
+- pool wait count
+- pool rejected count
+- active requests
+- idle connections
+- queued requests
+
+Client labels are bounded to client name, method, route template, status,
+status class, and outcome. Do not use raw full URLs, user IDs, request IDs,
+tokens, or query strings as HTTP client metric labels.

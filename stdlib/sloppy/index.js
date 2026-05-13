@@ -10,6 +10,13 @@ export { Health } from "./health.js";
 export { Metrics } from "./metrics.js";
 export { column, orm, relation, table } from "./orm.js";
 export {
+    Http,
+    HttpClientFactory,
+    HttpError,
+    SloppyHttpClientError,
+    TestHttp,
+} from "./http.js";
+export {
     HttpClient,
     LocalEndpoint,
     NamedPipe,

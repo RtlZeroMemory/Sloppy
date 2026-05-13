@@ -2,10 +2,12 @@ import { Base64Url, Text } from "./codec.js";
 import { Hmac, Random, Secret } from "./crypto.js";
 import { data, Migrations } from "./data.js";
 import { Directory, File } from "./fs.js";
+import { createTestHttpServiceOverrides, TestHttp } from "./http.js";
 import { HttpClient, TcpListener } from "./net.js";
 import { Process as SloppyProcess, System as SloppySystem } from "./os.js";
 import { RAW_JSON_BODY, serializeJson } from "./results.js";
 import { Schema, validationProblem } from "./schema.js";
+import { TestServices } from "./testservices.js";
 
 const SUPPORTED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
@@ -730,10 +732,12 @@ function disposeOverrideValues(values) {
     return Promise.all(pending).then(() => undefined);
 }
 
-function createServiceOverlay(baseServices, serviceOverrides, providerOverrides) {
+function createServiceOverlay(baseServices, serviceOverrides, providerOverrides, httpClientOverrides) {
     const serviceMap = normalizeOverrideMap(serviceOverrides, "service");
+    const httpOverrideMap = createTestHttpServiceOverrides(httpClientOverrides);
     const providerMap = normalizeOverrideMap(providerOverrides, "provider");
     const merged = new Map(Object.entries(serviceMap));
+    const httpOverrides = new Map(Object.entries(httpOverrideMap));
     for (const [name, provider] of Object.entries(providerMap)) {
         if (provider === null || typeof provider !== "object") {
             throw new TypeError(`Sloppy TestHost provider override '${name}' must be an object.`);
@@ -743,15 +747,38 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides)
     }
 
     function wrapScope(scope) {
+        function getHttpClientOverride(token) {
+            const registration = token?.__sloppyHttpClientRegistration;
+            if (registration?.kind === "typed" && httpOverrides.has(registration.namedToken)) {
+                return registration.createTyped(httpOverrides.get(registration.namedToken));
+            }
+            return undefined;
+        }
+
         return Object.freeze({
             capabilities: scope.capabilities,
+            config: scope.config,
             get(token) {
+                const httpClient = getHttpClientOverride(token);
+                if (httpClient !== undefined) {
+                    return httpClient;
+                }
+                if (httpOverrides.has(token)) {
+                    return httpOverrides.get(token);
+                }
                 if (merged.has(token)) {
                     return merged.get(token);
                 }
                 return scope.get(token);
             },
             tryGet(token) {
+                const httpClient = getHttpClientOverride(token);
+                if (httpClient !== undefined) {
+                    return httpClient;
+                }
+                if (httpOverrides.has(token)) {
+                    return httpOverrides.get(token);
+                }
                 if (merged.has(token)) {
                     return merged.get(token);
                 }
@@ -765,12 +792,26 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides)
 
     return Object.freeze({
         get(token) {
+            const registration = token?.__sloppyHttpClientRegistration;
+            if (registration?.kind === "typed" && httpOverrides.has(registration.namedToken)) {
+                return registration.createTyped(httpOverrides.get(registration.namedToken));
+            }
+            if (httpOverrides.has(token)) {
+                return httpOverrides.get(token);
+            }
             if (merged.has(token)) {
                 return merged.get(token);
             }
             return baseServices.get(token);
         },
         tryGet(token) {
+            const registration = token?.__sloppyHttpClientRegistration;
+            if (registration?.kind === "typed" && httpOverrides.has(registration.namedToken)) {
+                return registration.createTyped(httpOverrides.get(registration.namedToken));
+            }
+            if (httpOverrides.has(token)) {
+                return httpOverrides.get(token);
+            }
             if (merged.has(token)) {
                 return merged.get(token);
             }
@@ -780,7 +821,10 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides)
             return wrapScope(baseServices.createScope());
         },
         dispose() {
-            return disposeOverrideValues(merged.values());
+            return Promise.all([
+                disposeOverrideValues(merged.values()),
+                disposeOverrideValues(httpOverrides.values()),
+            ]).then(() => undefined);
         },
     });
 }
@@ -2316,7 +2360,7 @@ function createTestHost(app, options = {}) {
     const jobs = createJobsHelpers(options.jobs);
     const hostState = Object.freeze({
         config: createConfigOverlay(app.config, options.config, options.secrets),
-        services: createServiceOverlay(app.services, options.services, options.providers),
+        services: createServiceOverlay(app.services, options.services, options.providers, options.httpClients),
         clock: options.clock,
     });
 
@@ -2970,6 +3014,289 @@ async function openApiFromCli(kind, targetPath, options = {}) {
     return JSON.parse(Text.utf8.decode(result.stdout));
 }
 
+function processPlanPath(kind, targetPath) {
+    const root = targetPath.replace(/[\\/]$/u, "");
+    return kind === "artifacts"
+        ? `${root}/app.plan.json`
+        : `${root}/artifacts/app.plan.json`;
+}
+
+async function readProcessPlan(kind, targetPath) {
+    try {
+        return await File.readJson(processPlanPath(kind, targetPath));
+    } catch {
+        return undefined;
+    }
+}
+
+function configKeyToEnvironmentName(key) {
+    return String(key).split(":").join("__");
+}
+
+function generatedClientConfigKey(name) {
+    const text = String(name);
+    return `${text.length === 0 ? text : text[0].toUpperCase() + text.slice(1)}:BaseUrl`;
+}
+
+function httpMockConfigKeys(name, plan) {
+    const keys = [];
+    if (Array.isArray(plan?.httpClients)) {
+        for (const client of plan.httpClients) {
+            if (client?.name === name && typeof client.baseUrlConfigKey === "string") {
+                keys.push(client.baseUrlConfigKey);
+            }
+        }
+    }
+    keys.push(`${name}:BaseUrl`, generatedClientConfigKey(name));
+    return [...new Set(keys)];
+}
+
+function statusText(status) {
+    const titles = {
+        200: "OK",
+        201: "Created",
+        202: "Accepted",
+        204: "No Content",
+        400: "Bad Request",
+        404: "Not Found",
+        500: "Internal Server Error",
+        503: "Service Unavailable",
+    };
+    return titles[status] ?? "Mock Response";
+}
+
+function concatBytes(parts) {
+    const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
+    const result = new Uint8Array(total);
+    let offset = 0;
+    for (const part of parts) {
+        result.set(part, offset);
+        offset += part.byteLength;
+    }
+    return result;
+}
+
+function indexOfBytes(buffer, needle) {
+    outer:
+    for (let index = 0; index <= buffer.byteLength - needle.byteLength; index += 1) {
+        for (let offset = 0; offset < needle.byteLength; offset += 1) {
+            if (buffer[index + offset] !== needle[offset]) {
+                continue outer;
+            }
+        }
+        return index;
+    }
+    return -1;
+}
+
+async function readMockServerRequest(connection, options = {}) {
+    const chunks = [];
+    const headerEndBytes = Text.utf8.encode("\r\n\r\n");
+    const maxHeaderBytes = options.maxHeaderBytes ?? 64 * 1024;
+    let combined = new Uint8Array(0);
+    let headerEnd = -1;
+    while (headerEnd < 0) {
+        const chunk = await connection.read(8192);
+        if (chunk.byteLength === 0) {
+            throw new Error("Mock HTTP server received a closed connection before request headers.");
+        }
+        chunks.push(chunk);
+        combined = concatBytes(chunks);
+        if (combined.byteLength > maxHeaderBytes) {
+            throw new Error("Mock HTTP server request headers exceeded the configured limit.");
+        }
+        headerEnd = indexOfBytes(combined, headerEndBytes);
+    }
+    const head = Text.utf8.decode(combined.slice(0, headerEnd));
+    const lines = head.split("\r\n");
+    const requestLine = lines.shift() ?? "";
+    const requestMatch = /^([A-Z]+)\s+(\S+)\s+HTTP\/1\.[01]$/u.exec(requestLine);
+    if (requestMatch === null) {
+        throw new Error(`Mock HTTP server received an invalid request line: ${requestLine}`);
+    }
+    const headers = {};
+    for (const line of lines) {
+        const colon = line.indexOf(":");
+        if (colon > 0) {
+            headers[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
+        }
+    }
+    const contentLength = Number.parseInt(
+        Object.entries(headers).find(([key]) => key.toLowerCase() === "content-length")?.[1] ?? "0",
+        10,
+    );
+    if (!Number.isFinite(contentLength) || contentLength < 0) {
+        throw new Error("Mock HTTP server received an invalid Content-Length header.");
+    }
+    const bodyChunks = [combined.slice(headerEnd + headerEndBytes.byteLength)];
+    let body = concatBytes(bodyChunks);
+    while (body.byteLength < contentLength) {
+        const chunk = await connection.read(Math.min(8192, contentLength - body.byteLength));
+        if (chunk.byteLength === 0) {
+            throw new Error("Mock HTTP server connection closed before the request body finished.");
+        }
+        bodyChunks.push(chunk);
+        body = concatBytes(bodyChunks);
+    }
+    body = body.slice(0, contentLength);
+    const contentType = Object.entries(headers).find(([key]) => key.toLowerCase() === "content-type")?.[1] ?? "";
+    const text = body.byteLength === 0 ? undefined : Text.utf8.decode(body);
+    let json;
+    if (/application\/json/iu.test(contentType) && text !== undefined) {
+        json = JSON.parse(text);
+    }
+    return Object.freeze({
+        method: requestMatch[1],
+        url: requestMatch[2],
+        headers,
+        json,
+        text,
+        bytes: body.byteLength === 0 ? undefined : body,
+    });
+}
+
+async function writeMockServerResponse(connection, response) {
+    const headers = { ...response.headers };
+    headers["content-length"] ??= String(response.body.byteLength);
+    headers.connection ??= "close";
+    const head = [
+        `HTTP/1.1 ${response.status} ${statusText(response.status)}`,
+        ...Object.entries(headers).map(([name, value]) => `${name}: ${value}`),
+        "",
+        "",
+    ].join("\r\n");
+    await connection.write(Text.utf8.encode(head));
+    if (response.body.byteLength !== 0) {
+        await connection.write(response.body);
+    }
+}
+
+async function startHttpMockServer(name, mock, options = {}) {
+    const host = options.httpMockHost ?? options.host ?? "127.0.0.1";
+    const reservation = await reserveLoopbackPort(host, {
+        portReservationAttempts: options.httpMockPortReservationAttempts ?? options.portReservationAttempts,
+    });
+    const listener = reservation.listener;
+    const connections = new Set();
+    const timeoutWaiters = new Set();
+    let closed = false;
+
+    function waitForMockTimeout() {
+        if (closed) {
+            return Promise.resolve();
+        }
+        return new Promise((resolve) => {
+            let wake;
+            const timer = setTimeout(() => {
+                timeoutWaiters.delete(wake);
+                resolve();
+            }, options.httpMockTimeoutHoldMs ?? 60000);
+            wake = () => {
+                clearTimeout(timer);
+                resolve();
+            };
+            timeoutWaiters.add(wake);
+        });
+    }
+
+    async function handleConnection(connection) {
+        connections.add(connection);
+        try {
+            const request = await readMockServerRequest(connection, options);
+            const response = await mock._dispatchRaw(request);
+            await writeMockServerResponse(connection, response);
+        } catch (error) {
+            if (closed || error?.code === "SLOPPY_E_HTTP_TIMEOUT") {
+                await waitForMockTimeout();
+                return;
+            }
+            const body = Text.utf8.encode(JSON.stringify({
+                code: error?.code ?? "SLOPPY_E_HTTP_MOCK_SERVER",
+                message: "Outbound HTTP mock failed.",
+            }));
+            await writeMockServerResponse(connection, Object.freeze({
+                status: 500,
+                headers: Object.freeze({ "content-type": PROBLEM_CONTENT_TYPE }),
+                body,
+            })).catch(() => {});
+        } finally {
+            await connection.close().catch(() => {});
+            connections.delete(connection);
+        }
+    }
+
+    const serving = (async () => {
+        while (!closed) {
+            try {
+                const connection = await listener.accept({ timeoutMs: 250 });
+                void handleConnection(connection);
+            } catch (error) {
+                if (closed) {
+                    break;
+                }
+                if (/timeout/iu.test(String(error?.message ?? error))) {
+                    continue;
+                }
+                break;
+            }
+        }
+    })();
+
+    return Object.freeze({
+        name,
+        baseUrl: `http://${loopbackAuthority(host, reservation.port)}`,
+        async close() {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            for (const wake of [...timeoutWaiters]) {
+                timeoutWaiters.delete(wake);
+                wake();
+            }
+            await listener.abort().catch(async () => listener.close().catch(() => {}));
+            for (const connection of [...connections]) {
+                await connection.abort().catch(() => {});
+            }
+            await serving.catch(() => {});
+        },
+    });
+}
+
+async function createProcessHttpClientMocks(kind, targetPath, options = {}) {
+    if (options.httpClients === undefined) {
+        return Object.freeze({ env: options.env, async close() {} });
+    }
+    if (!isPlainObject(options.httpClients)) {
+        throw new TypeError("Sloppy TestHost httpClients overrides must be a plain object.");
+    }
+    createTestHttpServiceOverrides(options.httpClients);
+    const plan = await readProcessPlan(kind, targetPath);
+    const env = { ...(options.env ?? {}) };
+    const servers = [];
+    try {
+        for (const [name, mock] of Object.entries(options.httpClients)) {
+            if (typeof mock?._dispatchRaw !== "function") {
+                throw new TypeError(`Sloppy TestHost httpClients.${name} must come from TestHttp.mock().`);
+            }
+            const server = await startHttpMockServer(name, mock, options);
+            servers.push(server);
+            for (const key of httpMockConfigKeys(name, plan)) {
+                env[configKeyToEnvironmentName(key)] = server.baseUrl;
+            }
+        }
+    } catch (error) {
+        await Promise.all(servers.map((server) => server.close().catch(() => {})));
+        throw error;
+    }
+    return Object.freeze({
+        env,
+        async close() {
+            await Promise.all(servers.map((server) => server.close()));
+        },
+    });
+}
+
 function createProcessHelpers(kind, targetPath, options) {
     return Object.freeze({
         diagnostics: createDiagnosticsStore(Object.values(options.secrets ?? {})),
@@ -2995,9 +3322,11 @@ function unsupportedProcessWebSocketConnect(helpers, mode) {
     };
 }
 
-function createProcessOnceHost(kind, targetPath, options = {}) {
+async function createProcessOnceHost(kind, targetPath, options = {}) {
     const command = cliPath(options);
-    const helpers = createProcessHelpers(kind, targetPath, options);
+    const processMocks = await createProcessHttpClientMocks(kind, targetPath, options);
+    const effectiveOptions = { ...options, env: processMocks.env };
+    const helpers = createProcessHelpers(kind, targetPath, effectiveOptions);
     let closed = false;
     async function request(method, target, requestOptions = undefined) {
         if (closed) {
@@ -3008,7 +3337,7 @@ function createProcessOnceHost(kind, targetPath, options = {}) {
         const normalizedOptions = normalizeOptions(requestOptions);
         return withRequestBodyFile({
             ...normalizedOptions,
-            tempDirectory: normalizedOptions.tempDirectory ?? options.tempDirectory,
+            tempDirectory: normalizedOptions.tempDirectory ?? effectiveOptions.tempDirectory,
         }, async (headers, bodyPath) => {
             const args = [
                 ...pathRunArgs(kind, targetPath, "inProcess"),
@@ -3021,12 +3350,12 @@ function createProcessOnceHost(kind, targetPath, options = {}) {
                 args.push("--body-file", bodyPath);
             }
             const result = await SloppyProcess.run(command, args, {
-                cwd: options.cwd,
-                env: options.env,
+                cwd: effectiveOptions.cwd,
+                env: effectiveOptions.env,
                 capture: "bytes",
-                timeoutMs: normalizedOptions.timeoutMs ?? options.timeoutMs ?? 30000,
-                maxStdoutBytes: options.maxStdoutBytes ?? 16 * 1024 * 1024,
-                maxStderrBytes: options.maxStderrBytes ?? 1024 * 1024,
+                timeoutMs: normalizedOptions.timeoutMs ?? effectiveOptions.timeoutMs ?? 30000,
+                maxStdoutBytes: effectiveOptions.maxStdoutBytes ?? 16 * 1024 * 1024,
+                maxStderrBytes: effectiveOptions.maxStderrBytes ?? 1024 * 1024,
             });
             if (result.exitCode !== 0) {
                 const stdout = result.stdout instanceof Uint8Array ? Text.utf8.decode(result.stdout) : String(result.stdout ?? "");
@@ -3048,8 +3377,9 @@ function createProcessOnceHost(kind, targetPath, options = {}) {
     return Object.freeze({
         request,
         websocketConnect: unsupportedProcessWebSocketConnect(helpers, "one-off CLI"),
-        close() {
+        async close() {
             closed = true;
+            await processMocks.close();
         },
         ...helpers,
     });
@@ -3208,17 +3538,20 @@ async function waitForLoopbackReady(host, port, child, helpers, options = {}) {
 
 async function createProcessLoopbackHost(kind, targetPath, options = {}) {
     const command = cliPath(options);
-    const helpers = createProcessHelpers(kind, targetPath, options);
-    const host = options.host ?? "127.0.0.1";
-    const startupAttempts = options.port === undefined ? (options.portReservationAttempts ?? 64) : 1;
+    const processMocks = await createProcessHttpClientMocks(kind, targetPath, options);
+    const effectiveOptions = { ...options, env: processMocks.env };
+    const helpers = createProcessHelpers(kind, targetPath, effectiveOptions);
+    const host = effectiveOptions.host ?? "127.0.0.1";
+    const startupAttempts = effectiveOptions.port === undefined ? (effectiveOptions.portReservationAttempts ?? 64) : 1;
     let port;
     let child;
+    try {
     for (let attempt = 0; attempt < startupAttempts; attempt += 1) {
         let reservation;
         try {
-            reservation = await reserveLoopbackPort(host, options);
+            reservation = await reserveLoopbackPort(host, effectiveOptions);
         } catch (error) {
-            const failedPort = options.port === undefined ? undefined : validateLoopbackPort(options.port);
+            const failedPort = effectiveOptions.port === undefined ? undefined : validateLoopbackPort(effectiveOptions.port);
             recordLoopbackStartupFailure(helpers, {
                 message: `Sloppy TestHost loopback port reservation failed.${error?.message === undefined ? "" : ` ${error.message}`}`,
                 host,
@@ -3235,20 +3568,20 @@ async function createProcessLoopbackHost(kind, targetPath, options = {}) {
             "--port",
             String(port),
         ], {
-            cwd: options.cwd,
-            env: options.env,
+            cwd: effectiveOptions.cwd,
+            env: effectiveOptions.env,
             stdout: "pipe",
             stderr: "pipe",
         });
         try {
-            await waitForLoopbackReady(host, port, child, helpers, options);
+            await waitForLoopbackReady(host, port, child, helpers, effectiveOptions);
             break;
         } catch (error) {
             await child.terminate().catch(() => {});
-            await child.wait({ timeoutMs: options.stopTimeoutMs ?? 5000 }).catch(() => {});
+            await child.wait({ timeoutMs: effectiveOptions.stopTimeoutMs ?? 5000 }).catch(() => {});
             await child.dispose().catch(() => {});
             child = undefined;
-            if (options.port === undefined && attempt + 1 < startupAttempts && isRetryableLoopbackStartupFailure(error)) {
+            if (effectiveOptions.port === undefined && attempt + 1 < startupAttempts && isRetryableLoopbackStartupFailure(error)) {
                 continue;
             }
             throw error;
@@ -3269,7 +3602,7 @@ async function createProcessLoopbackHost(kind, targetPath, options = {}) {
             }
             const exit = await processExitIfAvailable(child);
             if (exit !== undefined) {
-                const output = await processOutputSnapshot(child, options);
+                const output = await processOutputSnapshot(child, effectiveOptions);
                 helpers.diagnostics.record({
                     code: "SLOPPY_E_TESTHOST_LOOPBACK_EXITED",
                     subsystem: "process",
@@ -3291,7 +3624,7 @@ async function createProcessLoopbackHost(kind, targetPath, options = {}) {
                 method: normalizedMethod,
                 headers: requestHeaders,
                 bytes: body.byteLength === 0 ? undefined : body,
-                timeoutMs: normalizedOptions.timeoutMs ?? options.timeoutMs,
+                timeoutMs: normalizedOptions.timeoutMs ?? effectiveOptions.timeoutMs,
             });
             const testResponse = finalizeResponse(responseFromParts(response.status, responseHeaderEntries(response), await response.bytes()), normalizedMethod);
             helpers.metrics.increment("http.requests.total", { method: normalizedMethod, status: String(testResponse.status) });
@@ -3303,12 +3636,17 @@ async function createProcessLoopbackHost(kind, targetPath, options = {}) {
             }
             closed = true;
             await child.terminate().catch(() => {});
-            await child.wait({ timeoutMs: options.stopTimeoutMs ?? 5000 }).catch(() => {});
+            await child.wait({ timeoutMs: effectiveOptions.stopTimeoutMs ?? 5000 }).catch(() => {});
             await child.dispose().catch(() => {});
+            await processMocks.close();
         },
         websocketConnect: unsupportedProcessWebSocketConnect(helpers, "loopback"),
         ...helpers,
     });
+    } catch (error) {
+        await processMocks.close().catch(() => {});
+        throw error;
+    }
 }
 
 function runtimeHostToFluent(runtimeHost, mode) {
@@ -3348,7 +3686,7 @@ async function runtimeOrProcessHost(kind, targetPath, mode, options) {
     }
     const host = mode === "loopback"
         ? await createProcessLoopbackHost(kind, targetPath, options)
-        : createProcessOnceHost(kind, targetPath, options);
+        : await createProcessOnceHost(kind, targetPath, options);
     return runtimeHostToFluent(host, mode);
 }
 
@@ -3585,9 +3923,10 @@ const TestHost = Object.freeze({
 const Testing = Object.freeze({
     createHost: createTestHost,
     TestHost,
+    TestServices,
     FakeClock,
     TestData,
-    TestServices,
+    TestHttp,
 });
 
-export { createTestHost, FakeClock, TestData, TestHost, TestServices, Testing };
+export { createTestHost, FakeClock, TestData, TestHost, TestHttp, TestServices, Testing };

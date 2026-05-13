@@ -183,12 +183,83 @@ and `data.<name>` service token. A provider named `main` is also available as
 `ctx.db`, which keeps app-host ORM tests close to the request-handler shape
 used by runtime provider injection.
 
+Outbound HTTP clients can be replaced with `TestHttp.mock()`:
+
+```ts
+import { TestHost, TestHttp } from "sloppy";
+
+const billing = TestHttp.mock()
+  .get("/invoices/inv_1")
+  .replyJson(200, { id: "inv_1", status: "paid", amount: 42 });
+
+const host = await TestHost.create(app, {
+    httpClients: {
+        billing,
+    },
+});
+```
+
+The `httpClients` keys are named-client names. They override the `http.<name>`
+service token and also work for typed clients registered through
+`app.services.addHttpClient(TypedClient)`.
+
+Artifact, package, and loopback hosts accept the same map:
+
+```ts
+const host = await TestHost.fromArtifacts(".sloppy", {
+    httpClients: {
+        billing,
+    },
+});
+```
+
+In process-backed modes TestHost starts a local mock HTTP server and injects
+the matching named-client base URL into the child process configuration. That
+keeps outbound calls on the normal low-level `HttpClient` path while preserving
+mock call recording and unexpected-call diagnostics.
+
+Mocks can return JSON, text, or bytes, provide a sequence of responses,
+simulate timeouts or connection errors, and assert calls:
+
+```ts
+billing.expectCalled("GET", "/invoices/inv_1");
+billing.expectNoUnexpectedCalls();
+```
+
 `FakeClock.fixed(...)` implements Sloppy's test clock shape for app-host code
 that accepts clock injection.
 
 `TestData.sqliteMemory()` and `TestData.sqliteTempFile()` create test data
 provider descriptors with `open()` helpers. SQLite native bridge availability
 still depends on the active runtime lane.
+
+For real PostgreSQL and SQL Server integration tests, use
+[`TestServices`](testservices.md) (experimental):
+
+```ts
+import { Sloppy, TestHost, TestServices } from "sloppy";
+
+const app = Sloppy.create();
+await using pg = await TestServices.postgres();
+
+await using host = await TestHost.create(app, {
+    providers: {
+        main: pg.provider(),
+    },
+});
+```
+
+Artifact, package, and loopback hosts receive service environment through
+normal `TestHost` options:
+
+```ts
+import { TestHost, TestServices } from "sloppy";
+
+await using pg = await TestServices.postgres();
+await using host = await TestHost.fromArtifacts(".sloppy", {
+    env: pg.env(),
+});
+```
 
 ## Diagnostics, Health, Metrics, Jobs, OpenAPI
 
@@ -239,6 +310,5 @@ them after dispatch.
 - App-host multipart parsing is a bounded helper for form fields and file
   descriptors; it is not binary-fidelity upload testing unless the native
   app-host upload lane implements that behavior.
-- Docker-backed PostgreSQL and SQL Server helpers are not bundled into the
-  JavaScript API. Use the existing live-provider lanes and report them
-  separately.
+- Docker-backed PostgreSQL and SQL Server helpers are opt-in through
+  `TestServices`; default CI must report those live container lanes separately.
