@@ -51,6 +51,7 @@
     "sloppy/problem-details.js",
     "sloppy/rate-limit.js",
     "sloppy/realtime.js",
+    "sloppy/redis.js",
     "sloppy/request-id.js",
     "sloppy/request-logging.js",
     "sloppy/results.js",

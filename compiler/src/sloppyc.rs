@@ -417,6 +417,7 @@ struct AppState {
     os_imported: bool,
     http_client_imported: bool,
     webhooks_imported: bool,
+    redis_imported: bool,
     realtime_imported: bool,
     workers_imported: bool,
     ffi_imported: bool,
@@ -488,6 +489,7 @@ impl AppState {
             os_imported: false,
             http_client_imported: false,
             webhooks_imported: false,
+            redis_imported: false,
             realtime_imported: false,
             workers_imported: false,
             ffi_imported: false,
@@ -1056,6 +1058,7 @@ struct ModuleGraph {
     uses_os_runtime: bool,
     uses_http_client_runtime: bool,
     uses_webhooks_runtime: bool,
+    uses_redis_runtime: bool,
     uses_realtime_runtime: bool,
     uses_workers_runtime: bool,
     dependency_graph: DependencyGraph,
@@ -1109,6 +1112,7 @@ impl ModuleGraph {
             uses_os_runtime: false,
             uses_http_client_runtime: false,
             uses_webhooks_runtime: false,
+            uses_redis_runtime: false,
             uses_realtime_runtime: false,
             uses_workers_runtime: false,
             dependency_graph: DependencyGraph::default(),
@@ -1175,7 +1179,12 @@ impl ModuleGraph {
             match capability {
                 "fs" => self.uses_fs_runtime = true,
                 "time" => self.uses_time_runtime = true,
+                "cache" => self.uses_cache_runtime = true,
                 "net" => self.uses_net_runtime = true,
+                "redis" => {
+                    self.uses_redis_runtime = true;
+                    self.uses_net_runtime = true;
+                }
                 "os" => self.uses_os_runtime = true,
                 "crypto" => self.uses_crypto_runtime = true,
                 "codec" => self.uses_codec_runtime = true,
@@ -1411,7 +1420,12 @@ fn apply_declared_capabilities(
         };
         match capability.as_str() {
             "fs" => app.uses_fs_runtime = true,
+            "cache" => app.uses_cache_runtime = true,
             "net" => app.uses_net_runtime = true,
+            "redis" => {
+                app.uses_redis_runtime = true;
+                app.uses_net_runtime = true;
+            }
             "os" => app.uses_os_runtime = true,
             "time" => app.uses_time_runtime = true,
             "crypto" => app.uses_crypto_runtime = true,
@@ -1603,6 +1617,7 @@ fn extract_program_with_metrics(
         uses_os_runtime: graph.uses_os_runtime,
         uses_http_client_runtime: graph.uses_http_client_runtime,
         uses_webhooks_runtime: graph.uses_webhooks_runtime,
+        uses_redis_runtime: graph.uses_redis_runtime,
         uses_realtime_runtime: graph.uses_realtime_runtime,
         uses_workers_runtime: graph.uses_workers_runtime,
         uses_ffi_runtime: graph.uses_ffi_runtime,
@@ -1640,6 +1655,12 @@ fn program_inferred_capabilities(graph: &ModuleGraph) -> Vec<DatabaseCapability>
     }
     if graph.uses_net_runtime || graph.uses_http_client_runtime {
         push_program_inferred_capability(&mut capabilities, "net");
+    }
+    if graph.uses_cache_runtime {
+        push_program_inferred_capability(&mut capabilities, "cache");
+    }
+    if graph.uses_redis_runtime {
+        push_program_inferred_capability(&mut capabilities, "redis");
     }
     if graph.uses_os_runtime {
         push_program_inferred_capability(&mut capabilities, "os");
@@ -2420,6 +2441,7 @@ fn analyze_program_import(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopWebhooks
+        | resolver::ImportKind::SlopRedis
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
@@ -3116,6 +3138,7 @@ fn validate_program_stdlib_import(
         resolver::ImportKind::SlopNet => validate_module_sloppy_net_import(path, import),
         resolver::ImportKind::SlopHttp => validate_module_sloppy_http_import(path, import),
         resolver::ImportKind::SlopWebhooks => validate_module_sloppy_webhooks_import(path, import),
+        resolver::ImportKind::SlopRedis => validate_module_sloppy_redis_import(path, import),
         resolver::ImportKind::SlopOs => validate_module_sloppy_os_import(path, import),
         resolver::ImportKind::SlopOrm => validate_module_sloppy_orm_import(path, import),
         resolver::ImportKind::SlopWorkers => validate_module_sloppy_workers_import(path, import),
@@ -3618,6 +3641,7 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopWebhooks
+        | resolver::ImportKind::SlopRedis
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
@@ -3888,6 +3912,7 @@ fn program_reexport_require_expr(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopWebhooks
+        | resolver::ImportKind::SlopRedis
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
@@ -4090,6 +4115,10 @@ fn mark_program_import(
             graph.uses_workers_runtime = true;
             graph.uses_webhooks_runtime = true;
         }
+        resolver::ImportKind::SlopRedis => {
+            graph.uses_redis_runtime = true;
+            graph.uses_net_runtime = true;
+        }
         resolver::ImportKind::SlopOs => graph.uses_os_runtime = true,
         resolver::ImportKind::SlopOrm => {
             graph.uses_orm_runtime = true;
@@ -4105,6 +4134,7 @@ fn mark_program_import(
             graph.uses_codec_runtime = true;
             graph.uses_cache_runtime = true;
             graph.uses_net_runtime = true;
+            graph.uses_redis_runtime = true;
             graph.uses_os_runtime = true;
             graph.uses_workers_runtime = true;
         }
@@ -4505,13 +4535,14 @@ fn extract_entry(
         checksum_security_context_visible: state.checksum_security_context_visible
             || graph.checksum_security_context_visible,
         uses_cache_runtime: state.cache_imported || graph.uses_cache_runtime,
-        uses_net_runtime: state.net_imported || graph.uses_net_runtime,
+        uses_net_runtime: state.net_imported || graph.uses_net_runtime || state.redis_imported,
         uses_os_runtime: state.os_imported
             || graph.uses_os_runtime
             || framework_needs_os_runtime
             || !state.auth.schemes.is_empty(),
         uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
         uses_webhooks_runtime: state.webhooks_imported || graph.uses_webhooks_runtime,
+        uses_redis_runtime: state.redis_imported || graph.uses_redis_runtime,
         uses_realtime_runtime,
         uses_workers_runtime,
         uses_ffi_runtime: state.ffi_imported || graph.uses_ffi_runtime,
@@ -4850,6 +4881,10 @@ fn sloppy_ffi_import_name_supported(name: &str) -> bool {
     matches!(name, "unsafeFfi" | "t")
 }
 
+fn sloppy_redis_import_name_supported(name: &str) -> bool {
+    matches!(name, "Redis" | "SloppyRedisError")
+}
+
 #[derive(Debug, Clone, Copy)]
 enum SloppyStdlibImport {
     Fs,
@@ -4860,6 +4895,7 @@ enum SloppyStdlibImport {
     Net,
     Http,
     Webhooks,
+    Redis,
     Os,
     Orm,
     Workers,
@@ -4877,6 +4913,7 @@ impl SloppyStdlibImport {
             "sloppy/net" => Some(Self::Net),
             "sloppy/http" => Some(Self::Http),
             "sloppy/webhooks" => Some(Self::Webhooks),
+            "sloppy/redis" => Some(Self::Redis),
             "sloppy/os" => Some(Self::Os),
             "sloppy/orm" => Some(Self::Orm),
             "sloppy/workers" => Some(Self::Workers),
@@ -4895,6 +4932,7 @@ impl SloppyStdlibImport {
             Self::Net => sloppy_net_import_name_supported(name),
             Self::Http => sloppy_http_import_name_supported(name),
             Self::Webhooks => sloppy_webhooks_import_name_supported(name),
+            Self::Redis => sloppy_redis_import_name_supported(name),
             Self::Os => sloppy_os_import_name_supported(name),
             Self::Orm => sloppy_orm_import_name_supported(name),
             Self::Workers => sloppy_workers_import_name_supported(name),
@@ -5041,6 +5079,10 @@ fn mark_sloppy_root_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclar
                 graph.uses_data_runtime = true;
                 graph.uses_sql_runtime = true;
             }
+            "Redis" | "SloppyRedisError" => {
+                graph.uses_redis_runtime = true;
+                graph.uses_net_runtime = true;
+            }
             "Http" | "HttpClientFactory" | "HttpError" | "SloppyHttpClientError" | "TestHttp" => {
                 graph.uses_http_client_runtime = true;
             }
@@ -5157,6 +5199,18 @@ fn validate_module_sloppy_net_import(
     import: &ImportDeclaration<'_>,
 ) -> Result<(), Diagnostic> {
     validate_module_sloppy_import(path, import, "sloppy/net", sloppy_net_import_name_supported)
+}
+
+fn validate_module_sloppy_redis_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/redis",
+        sloppy_redis_import_name_supported,
+    )
 }
 
 fn validate_module_sloppy_http_import(
@@ -6008,6 +6062,10 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
             state.workers_imported = true;
             state.webhooks_imported = true;
         }
+        SloppyStdlibImport::Redis => {
+            state.redis_imported = true;
+            state.net_imported = true;
+        }
         SloppyStdlibImport::Os => state.os_imported = true,
         SloppyStdlibImport::Orm => {
             state.orm_imported = true;
@@ -6409,6 +6467,8 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "RateLimit"
             | "Realtime"
             | "SloppyRealtimeError"
+            | "Redis"
+            | "SloppyRedisError"
             | "ProblemDetails"
             | "RequestId"
             | "RequestLogging"
@@ -14031,6 +14091,14 @@ fn extract_relative_helper_import(
             }
             continue;
         }
+        if import_source == "sloppy/redis" {
+            validate_module_sloppy_redis_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_redis_runtime = true;
+                graph.uses_net_runtime = true;
+            }
+            continue;
+        }
         if import_source == "sloppy/net" {
             validate_module_sloppy_net_import(&imported.path, import)?;
             if let Some(specifiers) = &import.specifiers {
@@ -14411,6 +14479,14 @@ fn extract_relative_module(
             validate_module_sloppy_cache_import(&imported.path, import)?;
             if import_has_runtime_value_specifier(import) {
                 graph.uses_cache_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/redis" {
+            validate_module_sloppy_redis_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_redis_runtime = true;
+                graph.uses_net_runtime = true;
             }
             continue;
         }
@@ -22091,6 +22167,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     if app.uses_cache_runtime || needs_output_cache_runtime {
         runtime_exports.extend(["Cache", "SloppyCacheError"]);
     }
+    if app.uses_redis_runtime {
+        runtime_exports.extend(["Redis", "SloppyRedisError"]);
+    }
     if app.uses_net_runtime {
         runtime_exports.extend([
             "TcpClient",
@@ -22880,7 +22959,7 @@ fn emit_dynamic_web_app_js(source: &str, app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, RateLimit, Realtime, SloppyRealtimeError, schema, Schema, Environment, data, sql, orm, table, column, relation, SloppyOrmError, SloppyOrmConcurrencyError, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
+    output.push_str("const { Results, RateLimit, Realtime, SloppyRealtimeError, schema, Schema, Environment, data, sql, orm, table, column, relation, SloppyOrmError, SloppyOrmConcurrencyError, Cache, SloppyCacheError, Redis, SloppyRedisError, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
     output.push_str(
         r#"const __sloppy_framework_services = __createFrameworkServiceProvider();
 const __sloppy_framework_provider_configs = new Map([]);

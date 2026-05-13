@@ -81,6 +81,63 @@ SQLite, PostgreSQL, and SQL Server use provider-specific SQL and store entries b
 `clear({ dangerouslyClearAll: true })` only when the whole cache table is intentionally
 owned by that operation.
 
+
+## Redis Cache
+
+`Cache.redis(...)` is Sloppy's first Redis-backed cache provider. It builds on
+the first-party `Redis` client and never falls back to memory.
+
+```ts
+import { Cache, Redis } from "sloppy";
+
+await using redis = Redis.client("main", {
+    url: "redis://127.0.0.1:6379/0",
+});
+
+await using cache = Cache.redis(redis, {
+    name: "default",
+    ttlMs: 60000,
+    prefix: "myapp:",
+});
+
+await cache.set("user:1", { id: 1, name: "Ada" }, { tags: ["users"] });
+const value = await cache.get("user:1");
+```
+
+The provider owns its Redis payload format and stores JSON values as bounded
+Sloppy value payloads. It does not provide an in-memory fallback.
+
+## Creation
+
+```ts
+const cache = Cache.redis("default", {
+    url: "redis://127.0.0.1:6379/0",
+    ttlMs: 60_000,
+    maxValueBytes: 1024 * 1024,
+});
+```
+
+`Cache.redis(name, options)` creates and owns a Redis client. `Cache.redis(redis,
+options)` uses an existing client and does not dispose it unless `disposeClient`
+or `ownsClient` is set.
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `name` | client/cache name | Used in Redis keys and diagnostics. |
+| `client` | created from Redis options | Existing `Redis.client(...)` instance. |
+| `url` | required when no client is supplied | Passed to `Redis.client(...)`. |
+| `ttlMs` | `60000` | Default entry lifetime. |
+| `prefix` | `sloppy:cache:` | Prefix for all cache keys, tag sets, and namespace sets. |
+| `maxValueBytes` | `1048576` | Maximum encoded value size. |
+
+Redis cache stores JSON values using a cache-owned `J:` payload format. Tagged
+and untagged entries use the same payload format. Tag sets store hashed Redis
+entry keys plus reverse entry-to-tag metadata so `remove(...)`, `invalidateTag(...)`,
+and `clear()` do not leave active cross-tag memberships behind. Expired entries
+may leave inert metadata until a later tag invalidation or clear removes it.
+
+`getOrCreate` coalesces concurrent misses in the current process. It is not a
+distributed lock.
 ## Hybrid Cache
 
 Hybrid cache checks memory first, falls back to the distributed cache, and populates

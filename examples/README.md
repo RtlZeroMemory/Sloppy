@@ -41,6 +41,10 @@ sloppy create my-tool --template program
 | `static-files-precompressed` | compile-only / tooling fixture | `sloppy build examples/static-files-precompressed/app.js --out .sloppy-static-precompressed` | Precompressed static variant metadata | Placeholder `.br` and `.gz` files demonstrate selection metadata only. |
 | `static-files-package` | package graph fixture | `sloppy package examples/static-files-package/app.js --out .sloppy-static-package` | Static assets copied into package artifacts | Package path is local alpha packaging, not a release archive. |
 | `static-files-testhost` | documentation example | `node examples/static-files-testhost/test.mjs` | In-process static file TestHost behavior | Exercises route precedence, `HEAD`, precompressed selection, and traversal rejection. |
+| `redis-basic` | live-provider example | Read `examples/redis-basic/README.md` | First-party Redis client shape | Optional provider fixture. Requires Redis and the Sloppy network bridge; default lanes use fake bridge protocol tests only. |
+| `redis-cache` | live-provider example | Read `examples/redis-cache/README.md` | Redis-backed cache provider with tags and service registration | Optional provider fixture. Requires Redis and the Sloppy network bridge. |
+| `redis-locks` | live-provider example | Read `examples/redis-locks/README.md` | Redis single-key lease shape | Optional provider fixture. Requires Redis and the Sloppy network bridge; no cluster or Redlock claim. |
+| `testservices-redis` | documentation example | Read `examples/testservices-redis/README.md` | Experimental Docker-backed Redis service with client, env, flush, reset, and TestHost | Requires Docker, the opt-in TestServices gate, and the Sloppy network bridge. |
 | `auth-api` | compile-only / tooling fixture | `sloppy build && sloppy routes .sloppy && sloppy openapi .sloppy` from the example directory | JWT/API-key/session auth setup, route requirements, roles, policies, OpenAPI security metadata | Uses placeholder secrets; protected-route manual execution needs a request path that can supply headers or cookies. |
 | `realtime-dashboard` | compile-only / tooling fixture | `sloppy build examples/realtime-dashboard/app.js --out .sloppy && sloppy routes .sloppy && sloppy openapi .sloppy` | SSE route metadata, WebSocket route intent, and in-process hub shape | SSE uses bounded `Results.stream`; WebSocket route execution requires HTTP/1.1 Upgrade in native `sloppy run`. |
 | `websocket-echo` | documentation example | Read `examples/websocket-echo/README.md` | App-host WebSocket text/JSON echo, origin policy, subprotocols, heartbeat, idle timeout, and limits | TestHost covers the full app-host API; native `sloppy run` covers text/binary HTTP Upgrade sessions. |
@@ -131,6 +135,6 @@ sloppy create my-tool --template program
   lane.
 - `live-provider example`: the example needs an external database and matching
   optional provider dependency. Default Sloppy apps do not need PostgreSQL, SQL
-  Server, libpq, or ODBC.
+  Server, Redis, libpq, or ODBC.
 - `API-shape fixture`: static checks keep the example honest about imports,
   APIs, and documentation boundaries.

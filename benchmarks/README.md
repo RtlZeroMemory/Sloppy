@@ -23,6 +23,9 @@ There are two benchmark layers:
 - `tools/windows/bench-json-competitors.ps1` runs the opt-in local JSON
   competitor harness under `benchmarks/competitors/`, marking unavailable
   runtimes or dependencies as `SKIPPED`.
+- `benchmarks/redis/bench-redis.mjs` is a local JavaScript stdlib regression
+  harness for RESP encode/parse and Redis cache bookkeeping. It does not
+  benchmark a Redis server.
 
 Run native smoke/list checks locally:
 
@@ -42,6 +45,7 @@ Run a measured local benchmark from a Release build:
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100 -Warmup 10
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100 -Warmup 10 -HttpProfile
+node .\benchmarks\redis\bench-redis.mjs
 ```
 
 Run the local runtime engine:

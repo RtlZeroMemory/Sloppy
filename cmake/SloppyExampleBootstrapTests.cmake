@@ -45,6 +45,10 @@
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_sqlserver_basic_example.cmake")
     add_test(
+        NAME examples.redis.api_shape
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_redis_examples.cmake")
+    add_test(
         NAME examples.request_context.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_request_context_example.cmake")
@@ -214,6 +218,28 @@
             NAME bootstrap.stdlib.webhooks_runtime_classic
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_webhooks_runtime_classic.mjs")
         add_test(
+            NAME bootstrap.stdlib.redis
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_redis.mjs")
+        add_test(
+            NAME bootstrap.stdlib.redis_cache
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_redis_cache.mjs")
+        add_test(
+            NAME bootstrap.stdlib.redis_locks
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_redis_locks.mjs")
+        add_test(
+            NAME bootstrap.stdlib.redis_runtime_classic
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_redis_runtime_classic.mjs")
+        add_test(
+            NAME bootstrap.stdlib.testservices_redis
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_testservices_redis.mjs")
+        add_test(
+            NAME bootstrap.stdlib.redis_live
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/live/test_redis_live.mjs")
+        set_tests_properties(
+            bootstrap.stdlib.redis_live PROPERTIES
+            LABELS "bootstrap;live-provider;redis"
+            SKIP_REGULAR_EXPRESSION "SKIPPED:")
+        add_test(
             NAME bootstrap.stdlib.workers
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_workers.mjs")
         add_test(
@@ -236,7 +262,10 @@
             bootstrap.stdlib.ops_management bootstrap.stdlib.ops_properties bootstrap.stdlib.property
             bootstrap.stdlib.os
             bootstrap.stdlib.http_client bootstrap.stdlib.webhooks bootstrap.stdlib.webhooks_runtime_classic
-            bootstrap.stdlib.workers bootstrap.stdlib.ffi
+            bootstrap.stdlib.redis bootstrap.stdlib.redis_cache
+            bootstrap.stdlib.redis_locks bootstrap.stdlib.testservices_redis
+            bootstrap.stdlib.redis_runtime_classic
+            bootstrap.stdlib.redis_live bootstrap.stdlib.workers bootstrap.stdlib.ffi
             bootstrap.stdlib.codec_properties
             bootstrap.stdlib.core_integration PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")

@@ -469,7 +469,9 @@ try {
         "app.js",
         "results.js",
         "schema.js",
+        "cache.js",
         "data.js",
+        "redis.js",
         "bootstrap.manifest.json",
         "internal/intrinsics.js"
     )

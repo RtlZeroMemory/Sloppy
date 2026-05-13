@@ -1966,6 +1966,7 @@ fn program_mode_marks_each_runtime_stdlib_subpath() {
         ("sloppy/crypto", "Random", "stdlib.crypto"),
         ("sloppy/codec", "Base64", "stdlib.codec"),
         ("sloppy/cache", "Cache", "stdlib.cache"),
+        ("sloppy/redis", "Redis", "stdlib.redis"),
         ("sloppy/workers", "WorkQueue", "stdlib.workers"),
     ];
     for (index, (module, imported, feature)) in cases.iter().enumerate() {
@@ -2113,7 +2114,47 @@ export default app;
         .source
         .contains("return Cache.memory(\"default\")"));
 }
+#[test]
+fn sloppy_redis_import_emits_plan_required_feature() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Redis, SloppyRedisError } from "sloppy/redis";
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text(Redis.token("main").toString()));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/redis import should be recognized");
+    assert!(app.uses_redis_runtime);
+    assert!(app.uses_net_runtime);
 
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("Redis"));
+    assert!(emitted_js.source.contains("SloppyRedisError"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    let required = value["requiredFeatures"]
+        .as_array()
+        .expect("required features should be an array");
+    assert!(required.contains(&serde_json::json!("stdlib.redis")));
+    assert!(required.contains(&serde_json::json!("stdlib.net")));
+    assert_eq!(value["features"]["redis"], serde_json::json!(true));
+    assert_eq!(value["redis"]["enabled"], serde_json::json!(true));
+    assert_eq!(
+        value["doctorChecks"]
+            .as_array()
+            .expect("doctor checks should be an array")
+            .iter()
+            .any(|check| check["id"] == "stdlib.redis.contract"),
+        true
+    );
+}
 #[test]
 fn help_text_lists_diagnostics_timing_json_alias() {
     let help = help_text();
@@ -2246,6 +2287,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         orm_extraction_partial: false,
         uses_migrations_runtime: false,
         uses_provider_health_runtime: false,
+        uses_redis_runtime: false,
         source_files: Vec::new(),
         routes: Vec::new(),
         dynamic_routes: Vec::new(),

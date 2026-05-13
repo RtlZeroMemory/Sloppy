@@ -16,6 +16,7 @@ import {
     Metrics,
     ProblemDetails,
     Realtime,
+    Redis,
     Results,
     Schema,
     Sloppy,
@@ -45,12 +46,13 @@ export const DEFAULT_JS_TARGETS = Object.freeze([
     "stdlib-import-shapes",
     "auth-parsers",
     "ops-health-metrics",
+    "redis-protocol",
 ]);
 
 const SECRET_MARKER = "SECRET_JS_FUZZ_SHOULD_NOT_APPEAR";
 const HTTP_METHODS = Object.freeze(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 const STD_LIB_EXPORTS = Object.freeze({
-    root: ["Sloppy", "Results", "ProblemDetails", "HttpClient", "WorkQueue", "Time", "Deadline", "Health", "Metrics"],
+    root: ["Sloppy", "Results", "ProblemDetails", "HttpClient", "WorkQueue", "Time", "Deadline", "Health", "Metrics", "Redis", "Cache"],
     codec: ["Base64", "Base64Url", "Hex", "Text", "Binary", "Checksums", "Compression"],
     time: ["Time", "Deadline", "CancellationController", "TimeoutError", "CancelledError"],
     net: ["HttpClient", "TcpClient", "TcpListener", "TcpConnection", "LocalEndpoint", "NetworkAddress"],
@@ -804,6 +806,45 @@ const targets = Object.freeze({
         assert.equal(JSON.stringify(result).includes(SECRET_MARKER), false);
         assert(["healthy", "degraded", "unhealthy"].includes(result.status));
         assert.equal(prometheus.includes("fuzz_metric_"), true);
+    },
+
+    async "redis-protocol"(random) {
+        const command = random.pick(["GET", "SET", "DEL", "PING", "HSET"]);
+        const args = Array.from({ length: random.int(4) }, () => textFromPrng(random, 32));
+        const encoded = Redis.encodeCommand([command, ...args]);
+        assert.equal(encoded[0], 42);
+
+        const parser = new Redis.RespParser({ maxBytes: 4096, maxArrayDepth: 8 });
+        const frame = random.pick([
+            "+OK\r\n",
+            ":-1\r\n",
+            "$-1\r\n",
+            "$5\r\nhello\r\n",
+            "*2\r\n$3\r\nGET\r\n$3\r\nkey\r\n",
+        ]);
+        const bytes = Text.utf8.encode(frame);
+        const split = random.int(bytes.byteLength + 1);
+        parser.feed(bytes.subarray(0, split));
+        parser.feed(bytes.subarray(split));
+        const reply = parser.read();
+        assert.notEqual(reply, undefined);
+
+        const malformed = new Redis.RespParser({ maxBytes: 16 });
+        maybeThrows(() => {
+            malformed.feed(bytesFromPrng(random, 64));
+            while (malformed.read() !== undefined) {
+                // Drain complete replies when random bytes happen to form one.
+            }
+        });
+
+        const client = Redis.client("fuzz", {
+            url: "redis://:SECRET_JS_FUZZ_SHOULD_NOT_APPEAR@localhost:6379/0",
+            password: "SECRET_JS_FUZZ_SHOULD_NOT_APPEAR",
+            pingOnConnect: false,
+        });
+        const redacted = client.diagnostics();
+        await client.dispose();
+        assert.equal(JSON.stringify(redacted).includes(SECRET_MARKER), false);
     },
 });
 

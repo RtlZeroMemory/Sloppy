@@ -431,6 +431,27 @@
     {
       "entry": "app.js",
       "kind": "provider",
+      "name": "redis-basic",
+      "reason": "requires Redis and the Sloppy network bridge",
+      "tier": "live-provider"
+    },
+    {
+      "entry": "app.js",
+      "kind": "provider",
+      "name": "redis-cache",
+      "reason": "requires Redis and the Sloppy network bridge",
+      "tier": "live-provider"
+    },
+    {
+      "entry": "app.js",
+      "kind": "provider",
+      "name": "redis-locks",
+      "reason": "requires Redis and the Sloppy network bridge",
+      "tier": "live-provider"
+    },
+    {
+      "entry": "app.js",
+      "kind": "provider",
       "name": "sqlite-basic",
       "reason": "covered by static provider API-shape tests",
       "tier": "pr"
@@ -453,6 +474,12 @@
       "name": "testhost-db",
       "reason": "documentation-only TestData/TestHost database shape",
       "tier": "pr"
+    },
+    {
+      "kind": "metadata",
+      "name": "testservices-redis",
+      "reason": "documentation example requires Docker and the Sloppy network bridge",
+      "tier": "live-provider"
     },
     {
       "entry": "app.js",

@@ -587,6 +587,9 @@ const Health = Object.freeze({
     tcp: tcpCheck,
     realtime: realtimeCheck,
     openApi: () => unavailableCheck("openapi"),
+    redis: (redis) => async () => redis === undefined
+        ? { status: "degraded", message: "redis is not configured", data: { configured: false } }
+        : await redis.health(),
     cache: (cache) => () => {
         if (cache === undefined || cache === null) {
             return { status: "degraded", message: "cache is not configured", data: { configured: false } };

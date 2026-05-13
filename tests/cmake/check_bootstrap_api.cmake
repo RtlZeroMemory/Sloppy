@@ -1,5 +1,6 @@
 set(results_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/results.js")
 set(schema_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/schema.js")
+set(cache_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/cache.js")
 set(data_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/data.js")
 set(codec_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/codec.js")
 set(ffi_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/ffi.js")
@@ -13,6 +14,7 @@ set(request_id_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/request-id.js")
 set(request_logging_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/request-logging.js")
 set(auth_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/auth.js")
 set(public_config_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/config.js")
+set(redis_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/redis.js")
 set(testservices_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/testservices.js")
 set(testing_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/testing.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
@@ -26,7 +28,7 @@ set(services_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/services.js")
 set(shared_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/shared.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${orm_source}" "${time_source}" "${workers_source}" "${http_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${testservices_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${cache_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${orm_source}" "${time_source}" "${workers_source}" "${http_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${redis_source}" "${testservices_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -34,6 +36,7 @@ endforeach()
 
 file(READ "${results_source}" results_js)
 file(READ "${schema_source}" schema_js)
+file(READ "${cache_source}" cache_js)
 file(READ "${data_source}" data_js)
 file(READ "${codec_source}" codec_js)
 file(READ "${ffi_source}" ffi_js)
@@ -47,6 +50,7 @@ file(READ "${request_id_source}" request_id_js)
 file(READ "${request_logging_source}" request_logging_js)
 file(READ "${auth_source}" auth_js)
 file(READ "${public_config_source}" public_config_js)
+file(READ "${redis_source}" redis_js)
 file(READ "${testservices_source}" testservices_js)
 file(READ "${testing_source}" testing_js)
 file(READ "${app_source}" app_js)
@@ -117,6 +121,22 @@ foreach(required_pattern IN ITEMS
         "__validateAtPath")
     require_substring("${schema_js}" "${required_pattern}" "schema.js is missing expected API shape pattern")
 endforeach()
+
+foreach(required_pattern IN ITEMS
+        "function createRedisCache(nameOrRedis, maybeOptions = undefined)"
+        "SET_CACHE_SCRIPT"
+        "REMOVE_CACHE_SCRIPT"
+        "INVALIDATE_TAG_SCRIPT"
+        "TOUCH_CACHE_SCRIPT"
+        "getOrCreate(key,"
+        "invalidateTag(tag)"
+        "stats()"
+        "health()"
+        "Cache = Object.freeze")
+    require_substring("${cache_js}" "${required_pattern}" "cache.js is missing expected Redis cache API pattern")
+    require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected Redis cache runtime pattern")
+endforeach()
+require_substring("${cache_js}" "createRedisCache," "cache.js is missing expected Redis cache export pattern")
 
 foreach(required_pattern IN ITEMS
         "function sql(strings, ...values)"
@@ -370,6 +390,25 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "class SloppyRedisError extends Error"
+        "class RespParser"
+        "function encodeCommand(args)"
+        "class RedisConnectionPool"
+        "function createRedisClient(name, rawOptions)"
+        "function createLocks(client, rawOptions = {})"
+        "SLOPPY_E_REDIS_PROTOCOL_ERROR"
+        "SLOPPY_E_REDIS_LOCK_TIMEOUT"
+        "rediss:// requires the outbound TLS bridge"
+        "const Redis = Object.freeze")
+    require_substring("${redis_js}" "${required_pattern}" "redis.js is missing expected Redis client API pattern")
+    require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected Redis client runtime pattern")
+endforeach()
+require_substring("${redis_js}" "export {" "redis.js is missing expected Redis client export pattern")
+require_substring("${redis_js}" "RedisErrorReply," "redis.js is missing expected Redis client export pattern")
+require_substring("${redis_js}" "RespParser," "redis.js is missing expected Redis client export pattern")
+require_substring("${redis_js}" "SloppyRedisError," "redis.js is missing expected Redis client export pattern")
+
+foreach(required_pattern IN ITEMS
         "class DockerCliBackend"
         "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE"
         "SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE"
@@ -378,6 +417,8 @@ foreach(required_pattern IN ITEMS
         "cleanupErrors"
         "function providerBridgeAvailable(kind)"
         "function startupFailureMessage(kind, options, state, reason)"
+        "function startRedisService(rawOptions)"
+        "redis(options = {})"
         "const TestServices = Object.freeze"
         "export { DockerCliBackend, TestServices }")
     require_substring("${testservices_js}" "${required_pattern}" "testservices.js is missing expected TestServices API pattern")
@@ -502,6 +543,8 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "addSingleton(token, factoryOrValue)"
+        "addRedis(clientOrName, options = undefined)"
+        "addCache(cacheOrName, nameOrOptions = undefined)"
         "addTransient(token, factory)"
         "addScoped(token, factory)"
         "createScope()"
@@ -560,7 +603,7 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "class SloppyCacheError"
-        "const Cache = Object.freeze"
+        "Cache = Object.freeze"
         "Cache,"
         "SloppyCacheError,")
     require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected cache runtime export pattern")
@@ -618,7 +661,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "export { Auth }" "export { Config }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "orm" "table" "column" "relation" "File" "Directory" "Path" "Health" "Metrics" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { ProblemDetails }" "export { RequestId }" "export { RequestLogging }" "export { Results }" "export { schema }" "FakeClock" "TestData" "TestHost" "TestHttp" "TestServices" "Testing")
+foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "export { Auth }" "export { Config }" "Cache" "Redis" "SloppyRedisError" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "orm" "table" "column" "relation" "File" "Directory" "Path" "Health" "Metrics" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { ProblemDetails }" "export { RequestId }" "export { RequestLogging }" "export { Results }" "export { schema }" "FakeClock" "TestData" "TestHost" "TestHttp" "TestServices" "Testing")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

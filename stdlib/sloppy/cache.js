@@ -2,6 +2,7 @@ import { serializeJson } from "./results.js";
 import { isSchema } from "./schema.js";
 import { Text } from "./codec.js";
 import { isRealDataProvider } from "./data.js";
+import { Redis, SloppyRedisError, __decodeRedisValue, __normalizeRedisKey } from "./redis.js";
 
 const CACHE_MARKER = Symbol("SloppyCache");
 const DEFAULT_MEMORY_MAX_ENTRIES = 1024;
@@ -10,6 +11,70 @@ const DEFAULT_TAG_MAX_LENGTH = 128;
 const DEFAULT_VALUE_MAX_BYTES = 1024 * 1024;
 const DEFAULT_DISTRIBUTED_TABLE = "sloppy_cache_entries";
 const IDENTIFIER_PATTERN = /^[A-Za-z_][0-9A-Za-z_]{0,62}$/u;
+const ASYNC_DISPOSE = Symbol.asyncDispose;
+const DEFAULT_REDIS_PREFIX = "sloppy:cache:";
+const DEFAULT_REDIS_TTL_MS = 60000;
+const DEFAULT_REDIS_MAX_VALUE_BYTES = DEFAULT_VALUE_MAX_BYTES;
+const REDIS_REVERSE_TAG_SUFFIX = ":tags";
+const REDIS_SET_CACHE_SCRIPT = `
+local existing = redis.call("SMEMBERS", KEYS[3])
+for _, tagKey in ipairs(existing) do
+  redis.call("SREM", tagKey, KEYS[1])
+end
+redis.call("DEL", KEYS[3])
+redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[2])
+redis.call("SADD", KEYS[2], KEYS[1])
+redis.call("PEXPIRE", KEYS[2], ARGV[3])
+if #KEYS > 3 then
+  redis.call("SADD", KEYS[2], KEYS[3])
+  redis.call("PEXPIRE", KEYS[3], ARGV[3])
+end
+for index = 4, #KEYS do
+  redis.call("SADD", KEYS[index], KEYS[1])
+  redis.call("SADD", KEYS[3], KEYS[index])
+  redis.call("SADD", KEYS[2], KEYS[index])
+  redis.call("PEXPIRE", KEYS[index], ARGV[3])
+end
+return 1`;
+const REDIS_REMOVE_CACHE_SCRIPT = `
+local tags = redis.call("SMEMBERS", KEYS[3])
+for _, tagKey in ipairs(tags) do
+  redis.call("SREM", tagKey, KEYS[1])
+end
+redis.call("DEL", KEYS[3])
+redis.call("SREM", KEYS[2], KEYS[1])
+redis.call("SREM", KEYS[2], KEYS[3])
+return redis.call("DEL", KEYS[1])`;
+const REDIS_INVALIDATE_TAG_SCRIPT = `
+local entries = redis.call("SMEMBERS", KEYS[1])
+for _, key in ipairs(entries) do
+  local reverseKey = key .. ARGV[1]
+  local tags = redis.call("SMEMBERS", reverseKey)
+  for _, tagKey in ipairs(tags) do
+    redis.call("SREM", tagKey, key)
+  end
+  redis.call("DEL", reverseKey)
+  redis.call("DEL", key)
+  redis.call("SREM", KEYS[2], key)
+  redis.call("SREM", KEYS[2], reverseKey)
+end
+redis.call("DEL", KEYS[1])
+redis.call("SREM", KEYS[2], KEYS[1])
+return #entries`;
+const REDIS_TOUCH_CACHE_SCRIPT = `
+if redis.call("EXISTS", KEYS[1]) == 0 then
+  return 0
+end
+redis.call("PEXPIRE", KEYS[1], ARGV[1])
+redis.call("PEXPIRE", KEYS[2], ARGV[2])
+local tags = redis.call("SMEMBERS", KEYS[3])
+if #tags > 0 then
+  redis.call("PEXPIRE", KEYS[3], ARGV[2])
+end
+for _, tagKey in ipairs(tags) do
+  redis.call("PEXPIRE", tagKey, ARGV[2])
+end
+return 1`;
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -1036,6 +1101,275 @@ class HybridCache extends BaseCache {
     }
 }
 
+function redisCacheError(message) {
+    return new TypeError(`SLOPPY_E_CACHE_INVALID_OPTIONS: ${message}`);
+}
+
+function positiveRedisInteger(value, fallback, subject) {
+    const selected = value ?? fallback;
+    if (!Number.isInteger(selected) || selected < 1 || selected > Number.MAX_SAFE_INTEGER) {
+        throw redisCacheError(`${subject} must be a positive integer.`);
+    }
+    return selected;
+}
+
+function normalizeRedisCacheKey(key) {
+    return __normalizeRedisKey(String(key));
+}
+
+function normalizeRedisCacheArgs(nameOrRedis, maybeOptions) {
+    if (typeof nameOrRedis === "string") {
+        const options = maybeOptions ?? {};
+        if (!isPlainObject(options)) {
+            throw redisCacheError("Cache.redis options must be a plain object.");
+        }
+        return { name: normalizeName(nameOrRedis), options };
+    }
+    if (nameOrRedis?.__sloppyRedisRegistration !== undefined || typeof nameOrRedis?.command === "function") {
+        const options = maybeOptions ?? {};
+        if (!isPlainObject(options)) {
+            throw redisCacheError("Cache.redis options must be a plain object.");
+        }
+        return { name: normalizeName(options.name ?? "default"), options: { ...options, client: nameOrRedis } };
+    }
+    throw redisCacheError("Cache.redis expects a cache name or Redis client.");
+}
+
+function redisCacheKeys(cache, key) {
+    const hash = stableHash(key);
+    return Object.freeze({
+        hash,
+        entry: `${cache.prefix}${cache.name}:entry:${hash}`,
+        tags: `${cache.prefix}${cache.name}:entry:${hash}${REDIS_REVERSE_TAG_SUFFIX}`,
+        keys: `${cache.prefix}${cache.name}:keys`,
+    });
+}
+
+function redisTagKey(cache, tag) {
+    return `${cache.prefix}${cache.name}:tag:${stableHash(tag)}`;
+}
+
+function redisTtlFor(cache, options) {
+    const expiresAt = expiresAtFromOptions(options, cache.clock);
+    if (expiresAt === undefined) {
+        return cache.defaultTtlMs;
+    }
+    return Math.max(1, Math.ceil(expiresAt - nowMs(cache.clock)));
+}
+
+function encodeRedisCacheValue(value, maxValueBytes, key) {
+    const text = serializeJson(value);
+    if (text === undefined) {
+        throw redisCacheError("Cache value must be JSON serializable.");
+    }
+    if (jsonBytes(text) > maxValueBytes) {
+        throw new SloppyRedisError("SLOPPY_E_REDIS_VALUE_TOO_LARGE", "Cache value exceeds maxValueBytes.", {
+            keyHash: stableHash(key),
+        });
+    }
+    return `J:${text}`;
+}
+
+function decodeRedisCacheValue(value) {
+    if (value === null || value === undefined) {
+        return undefined;
+    }
+    return __decodeRedisValue(value);
+}
+
+class RedisCache extends BaseCache {
+    constructor(nameOrRedis, maybeOptions = undefined) {
+        const parsed = normalizeRedisCacheArgs(nameOrRedis, maybeOptions);
+        super(parsed.name, "redis", parsed.options);
+        const options = parsed.options;
+        const ownsClient = options.client === undefined;
+        const client = ownsClient ? Redis.client(this.name, options) : options.client;
+        if (client === undefined || typeof client.command !== "function") {
+            throw redisCacheError("Cache.redis client must be a Redis client.");
+        }
+        const prefix = options.prefix ?? DEFAULT_REDIS_PREFIX;
+        if (typeof prefix !== "string" || prefix.length === 0 || prefix.includes("\0")) {
+            throw redisCacheError("Cache.redis prefix must be a non-empty string without NUL.");
+        }
+        this.client = client;
+        this.prefix = prefix;
+        this.defaultTtlMs = positiveRedisInteger(options.ttlMs, DEFAULT_REDIS_TTL_MS, "Cache.redis ttlMs");
+        this.maxValueBytes = positiveRedisInteger(options.maxValueBytes, DEFAULT_REDIS_MAX_VALUE_BYTES, "Cache.redis maxValueBytes");
+        this.disposeClient = ownsClient || options.disposeClient === true || options.ownsClient === true;
+        this.state = Object.freeze({
+            kind: "redis",
+            name: this.name,
+            prefix: this.prefix,
+            client: this.client.name,
+        });
+        Object.defineProperty(this, "__sloppyCacheRegistration", {
+            value: Object.freeze({
+                kind: "redis",
+                name: this.name,
+                token: cacheToken(this.name),
+                create: () => this,
+            }),
+            enumerable: false,
+        });
+        if (ASYNC_DISPOSE !== undefined) {
+            this[ASYNC_DISPOSE] = this.dispose;
+        }
+        Object.seal(this);
+    }
+
+    _entryOptions(options = {}) {
+        const normalized = normalizeEntryOptions(options);
+        return Object.freeze({
+            ...normalized,
+            ttlMs: normalized.ttlMs ?? this.defaultTtlMs,
+        });
+    }
+
+    _redisKey(key) {
+        return normalizeRedisCacheKey(this._key(key));
+    }
+
+    async _getWithMetadata(normalizedKey, schemaOrOptions = undefined) {
+        const options = isSchema(schemaOrOptions)
+            ? Object.freeze({ schema: schemaOrOptions })
+            : this._entryOptions(schemaOrOptions ?? {});
+        const keys = redisCacheKeys(this, normalizedKey);
+        const value = await this.client.command("GET", [keys.entry]);
+        if (value === null || value === undefined) {
+            return undefined;
+        }
+        if (options.slidingExpirationMs !== undefined) {
+            const ttlMs = positiveRedisInteger(options.slidingExpirationMs, undefined, "slidingExpirationMs");
+            await this.client.script(REDIS_TOUCH_CACHE_SCRIPT, [keys.entry, keys.keys, keys.tags], [ttlMs, Math.max(ttlMs, this.defaultTtlMs)]);
+        }
+        const decoded = decodeRedisCacheValue(value);
+        return Object.freeze({
+            value: validateValueWithSchema(decoded, options.schema, normalizedKey),
+            options,
+        });
+    }
+
+    async get(key, schemaOrOptions = undefined) {
+        this._assertOpen("get");
+        const normalizedKey = this._redisKey(key);
+        this._record("gets");
+        const entry = await this._getWithMetadata(normalizedKey, schemaOrOptions);
+        if (entry === undefined) {
+            this._record("misses");
+            return undefined;
+        }
+        this._record("hits");
+        return entry.value;
+    }
+
+    async has(key) {
+        this._assertOpen("has");
+        const keys = redisCacheKeys(this, this._redisKey(key));
+        return await this.client.exists(keys.entry);
+    }
+
+    async getOrCreate(key, optionsOrFactory, maybeFactory = undefined) {
+        if (typeof optionsOrFactory === "function") {
+            return super.getOrCreate(key, maybeFactory ?? {}, optionsOrFactory);
+        }
+        return super.getOrCreate(key, optionsOrFactory, maybeFactory);
+    }
+
+    async set(key, value, options = {}) {
+        this._assertOpen("set");
+        const normalizedKey = this._redisKey(key);
+        const normalizedOptions = this._entryOptions(options);
+        const validated = validateValueWithSchema(value, normalizedOptions.schema, normalizedKey);
+        const keys = redisCacheKeys(this, normalizedKey);
+        const tags = normalizeTags(normalizedOptions.tags, this);
+        const ttlMs = redisTtlFor(this, normalizedOptions);
+        const encoded = encodeRedisCacheValue(validated, this.maxValueBytes, normalizedKey);
+        const tagKeys = tags.map((tag) => redisTagKey(this, tag));
+        await this.client.script(REDIS_SET_CACHE_SCRIPT, [keys.entry, keys.keys, keys.tags, ...tagKeys], [
+            encoded,
+            ttlMs,
+            Math.max(ttlMs, this.defaultTtlMs),
+        ]);
+        this._record("sets");
+        return true;
+    }
+
+    async remove(key) {
+        this._assertOpen("remove");
+        const keys = redisCacheKeys(this, this._redisKey(key));
+        const count = await this.client.script(REDIS_REMOVE_CACHE_SCRIPT, [keys.entry, keys.keys, keys.tags], []);
+        if (Number(count) > 0) {
+            this._record("removes");
+        }
+        return Number(count) > 0;
+    }
+
+    async invalidateTag(tag) {
+        return this.invalidateTags([tag]);
+    }
+
+    async invalidateTags(tags) {
+        this._assertOpen("invalidateTags");
+        const normalized = normalizeTags(tags, this);
+        let total = 0;
+        for (const tag of normalized) {
+            const deleted = await this.client.script(REDIS_INVALIDATE_TAG_SCRIPT, [redisTagKey(this, tag), `${this.prefix}${this.name}:keys`], [REDIS_REVERSE_TAG_SUFFIX]);
+            total += Number(deleted) || 0;
+        }
+        this._record("tagInvalidations");
+        return total;
+    }
+
+    async clear(options = {}) {
+        this._assertOpen("clear");
+        if (options !== undefined && !isPlainObject(options)) {
+            throw new TypeError("Sloppy redis cache clear options must be a plain object.");
+        }
+        let cursor = "0";
+        let removed = 0;
+        do {
+            const scan = await this.client.scan({ cursor, match: `${this.prefix}${this.name}:*`, count: 100 });
+            cursor = scan.cursor;
+            if (scan.keys.length > 0) {
+                const replies = await this.client.pipeline(scan.keys.map((key) => ["DEL", key]));
+                removed += replies.reduce((sum, value) => sum + (Number(value) || 0), 0);
+            }
+        } while (cursor !== "0");
+        return removed;
+    }
+
+    async cleanup() {
+        this._assertOpen("cleanup");
+        return undefined;
+    }
+
+    health() {
+        return this.client.health();
+    }
+
+    stats() {
+        return Object.freeze({
+            ...super.stats(),
+            prefix: this.prefix,
+            deletes: this.counters.removes,
+            tagInvalidations: this.counters.tagInvalidations,
+        });
+    }
+
+    async dispose() {
+        if (this.disposed) {
+            return;
+        }
+        super.dispose();
+        if (this.disposeClient) {
+            await this.client.dispose();
+        }
+    }
+}
+
+function createRedisCache(nameOrRedis, maybeOptions = undefined) {
+    return new RedisCache(nameOrRedis, maybeOptions);
+}
 class NoopCache extends BaseCache {
     constructor(name = "noop") {
         super(name, "noop", {});
@@ -1157,6 +1491,9 @@ const Cache = Object.freeze({
     sqlserver(dbOrOptions, maybeOptions = undefined) {
         return createDistributed("sqlServer", "sqlserver", dbOrOptions, maybeOptions);
     },
+    redis(nameOrRedis, maybeOptions = undefined) {
+        return createRedisCache(nameOrRedis, maybeOptions);
+    },
     distributed(kind, db, options = undefined) {
         if (kind === "sqlite") {
             return createDistributed("sqlite", "sqlite", db, options);
@@ -1183,11 +1520,13 @@ const Cache = Object.freeze({
     __testing: Object.freeze({
         distributedSql,
         normalizeEntryOptions,
+        createRedisCache,
     }),
 });
 
 export {
     Cache,
+    createRedisCache,
     SloppyCacheError,
     isCache,
     normalizeEntryOptions,
