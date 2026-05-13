@@ -1,5 +1,6 @@
 #include "bench_internal.h"
 
+#include "sloppy/json_profile.h"
 #include "sloppy/platform.h"
 #include "sloppy/platform_time.h"
 #include "sloppy/status.h"
@@ -283,6 +284,9 @@ static SlStatus sl_bench_measure(const SlBenchContext* context, const SlBenchDef
     }
 
     checksum = 0U;
+    if (sl_json_profile_enabled() && sl_bench_streq(definition->category, "json")) {
+        sl_json_profile_reset(definition->name, measured_iterations);
+    }
     status = sl_platform_monotonic_time_ns(&start_ns);
     if (!sl_status_is_ok(status)) {
         return status;
@@ -305,6 +309,9 @@ static SlStatus sl_bench_measure(const SlBenchContext* context, const SlBenchDef
     out_result->chunks_processed = definition->chunks_per_iteration * measured_iterations;
     out_result->backpressure_count = definition->backpressure_per_iteration * measured_iterations;
     sl_bench_apply_json_counters(definition, out_result);
+    if (sl_json_profile_enabled() && sl_bench_streq(definition->category, "json")) {
+        sl_json_profile_snapshot(&out_result->json_profile);
+    }
     if (out_result->elapsed_ns != 0U) {
         double seconds = (double)out_result->elapsed_ns / 1000000000.0;
 
@@ -427,6 +434,11 @@ static void sl_bench_print_json_result(const SlBenchResult* result, bool first)
            result->schema_response_native_hits);
     printf("      \"duplicateValidationSkippedCount\": %" PRIu64 ",\n",
            result->duplicate_validation_skipped_count);
+    if (sl_json_profile_snapshot_has_data(&result->json_profile)) {
+        printf("      \"jsonProfile\": ");
+        sl_json_profile_fprint_json(stdout, &result->json_profile, 6U);
+        printf(",\n");
+    }
     printf("      \"note\": ");
     sl_bench_print_json_string(result->note);
     printf("\n");

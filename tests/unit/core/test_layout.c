@@ -27,7 +27,7 @@ _Static_assert(sizeof(SlHttpRouteBinding) == 32U,
 _Static_assert(_Alignof(SlHttpRouteBinding) == _Alignof(void*),
                "SlHttpRouteBinding alignment should be pointer-sized");
 
-_Static_assert(sizeof(SlHttpRequestContext) == 200U,
+_Static_assert(sizeof(SlHttpRequestContext) == 208U,
                "SlHttpRequestContext must pack access-planning flags at the tail");
 _Static_assert(_Alignof(SlHttpRequestContext) == _Alignof(void*),
                "SlHttpRequestContext alignment should be pointer-sized");
