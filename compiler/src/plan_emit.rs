@@ -1914,12 +1914,24 @@ pub(crate) fn emit_plan_with_route_artifact(
     if app.uses_orm_runtime {
         let orm_tables = app.orm_tables.clone();
         let orm_relations = app.orm_relations.clone();
-        let extraction_status = if app.orm_extraction_partial {
-            "partial"
+        let (extraction_status, extraction_reason, doctor_message) = if app.orm_extraction_partial {
+            (
+                "partial",
+                "runtime ORM is available; dynamic table or relation shapes compile and run while static metadata remains partial",
+                "sloppy/orm is Plan-visible; runtime ORM works dynamically while some table or relation metadata is partial",
+            )
         } else if !orm_tables.is_empty() || !orm_relations.is_empty() {
-            "static"
+            (
+                "static",
+                "runtime ORM is available; static table and relation metadata was extracted from AST call expressions",
+                "sloppy/orm is Plan-visible; static table and relation metadata was extracted from AST call expressions",
+            )
         } else {
-            "runtime-dynamic"
+            (
+                "runtime-dynamic",
+                "runtime ORM is available; no static table or relation metadata was extracted, so ORM shape metadata remains runtime-dynamic",
+                "sloppy/orm is Plan-visible; runtime ORM works dynamically and no static table or relation metadata was extracted",
+            )
         };
         value["strongPlan"]["evidence"]["orm"] = json!(
             !app.orm_extraction_partial && (!orm_tables.is_empty() || !orm_relations.is_empty())
@@ -1932,21 +1944,13 @@ pub(crate) fn emit_plan_with_route_artifact(
             "migrationSnapshots": [],
             "extraction": {
                 "status": extraction_status,
-                "reason": if app.orm_extraction_partial {
-                    "runtime ORM is available; dynamic table or relation shapes compile and run while static metadata remains partial"
-                } else {
-                    "runtime ORM is available; static table and relation metadata was extracted from AST call expressions"
-                }
+                "reason": extraction_reason
             }
         });
         doctor_checks.push(json!({
             "id": "stdlib.orm.dynamic_metadata",
             "status": "info",
-            "message": if app.orm_extraction_partial {
-                "sloppy/orm is Plan-visible; runtime ORM works dynamically while some table or relation metadata is partial"
-            } else {
-                "sloppy/orm is Plan-visible; static table and relation metadata was extracted from AST call expressions"
-            }
+            "message": doctor_message
         }));
     }
     if app.uses_workers_runtime {

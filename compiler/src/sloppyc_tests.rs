@@ -6853,7 +6853,8 @@ export default app;
             r#"import { Sloppy, Results } from "sloppy";
 import { table, column, relation } from "sloppy/orm";
 const Users = table("users", { id: column.uuid().primaryKey() });
-relation(Users.name, ({ one }) => ({}));
+function pickTable() { return Users; }
+relation(pickTable(), ({ one }) => ({}));
 const app = Sloppy.create();
 app.mapGet("/", () => Results.text("ok"));
 export default app;

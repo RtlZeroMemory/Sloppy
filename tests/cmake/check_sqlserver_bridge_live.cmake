@@ -24,6 +24,12 @@ if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace" OR NOT output MATCHES 
     message(FATAL_ERROR "SQL Server bridge live output did not include expected cursor, bounded materialization, pool pinning, and timeout evidence.\n${output}")
 endif()
 
-if(NOT output MATCHES "ormLane" OR NOT output MATCHES "selectedEmail.*ada\\.orm@example\\.com" OR NOT output MATCHES "conflict.*true" OR NOT output MATCHES "oneInclude.*Core" OR NOT output MATCHES "manyIncludeCount.*1" OR NOT output MATCHES "rolledBack.*true" OR NOT output MATCHES "cursorCount.*132")
+if(NOT output MATCHES "ormLane.*selectedEmail.*ada\\.orm@example\\.com"
+   OR NOT output MATCHES "ormLane.*conflict.*true"
+   OR NOT output MATCHES "ormLane.*oneInclude.*Core"
+   OR NOT output MATCHES "ormLane.*manyIncludeCount.*1"
+   OR NOT output MATCHES "ormLane.*rolledBack.*true"
+   OR NOT output MATCHES "ormLane.*rawCount.*1"
+   OR NOT output MATCHES "ormLane.*cursorCount.*132")
     message(FATAL_ERROR "SQL Server bridge live output did not include expected ORM migration, CRUD, include, rollback, and cursor evidence.\n${output}")
 endif()
