@@ -182,7 +182,9 @@ const host = await TestHost.create(app, {
 Config and secret overrides are visible through `ctx.config` during app-host
 requests. Service overrides are resolved before the app's service provider for
 matching tokens. Provider overrides are exposed under both the provider name
-and `data.<name>` service token.
+and `data.<name>` service token. A provider named `main` is also available as
+`ctx.db`, which keeps app-host ORM tests close to the request-handler shape
+used by runtime provider injection.
 
 Outbound HTTP clients can be replaced with `TestHttp.mock()`:
 

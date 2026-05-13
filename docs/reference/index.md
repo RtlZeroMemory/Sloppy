@@ -23,6 +23,7 @@ exhaustive level — they're there for "I need every option" lookup.
 - [Validation](validation.md)
 - [Workers](workers.md)
 - [Native FFI](ffi.md)
+- [ORM](orm.md)
 - [Data API](data-api.md)
 - [Providers](providers.md)
 - [Diagnostics](diagnostics.md)

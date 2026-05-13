@@ -397,6 +397,7 @@ struct AppState {
     results_imported: bool,
     data_imported: bool,
     sql_imported: bool,
+    orm_imported: bool,
     migrations_imported: bool,
     provider_health_imported: bool,
     schema_imported: bool,
@@ -431,6 +432,10 @@ struct AppState {
     provider_bindings: BTreeMap<String, ProviderBinding>,
     helper_sources: BTreeMap<String, String>,
     helper_effects: BTreeMap<String, FunctionEffectSummary>,
+    orm_metadata_sources: Vec<(u32, String)>,
+    orm_tables: Vec<Value>,
+    orm_relations: Vec<Value>,
+    orm_extraction_partial: bool,
     middleware: Vec<FrameworkMiddleware>,
     next_middleware_sequence: usize,
     cors_policy: Option<CorsPolicy>,
@@ -461,6 +466,7 @@ impl AppState {
             results_imported: false,
             data_imported: false,
             sql_imported: false,
+            orm_imported: false,
             migrations_imported: false,
             provider_health_imported: false,
             schema_imported: false,
@@ -495,6 +501,10 @@ impl AppState {
             provider_bindings: BTreeMap::new(),
             helper_sources: BTreeMap::new(),
             helper_effects: BTreeMap::new(),
+            orm_metadata_sources: Vec::new(),
+            orm_tables: Vec::new(),
+            orm_relations: Vec::new(),
+            orm_extraction_partial: false,
             middleware: Vec::new(),
             next_middleware_sequence: 0,
             cors_policy: None,
@@ -1023,6 +1033,7 @@ struct ModuleGraph {
     source_files: Vec<SourceFile>,
     uses_data_runtime: bool,
     uses_sql_runtime: bool,
+    uses_orm_runtime: bool,
     uses_migrations_runtime: bool,
     uses_provider_health_runtime: bool,
     uses_time_runtime: bool,
@@ -1073,6 +1084,7 @@ impl ModuleGraph {
             source_files: Vec::new(),
             uses_data_runtime: false,
             uses_sql_runtime: false,
+            uses_orm_runtime: false,
             uses_migrations_runtime: false,
             uses_provider_health_runtime: false,
             uses_time_runtime: false,
@@ -1550,6 +1562,10 @@ fn extract_program_with_metrics(
         program_modules: modules,
         uses_data_runtime: graph.uses_data_runtime,
         uses_sql_runtime: graph.uses_sql_runtime,
+        uses_orm_runtime: graph.uses_orm_runtime,
+        orm_tables: Vec::new(),
+        orm_relations: Vec::new(),
+        orm_extraction_partial: graph.uses_orm_runtime,
         uses_migrations_runtime: graph.uses_migrations_runtime,
         uses_provider_health_runtime: graph.uses_provider_health_runtime,
         source_files,
@@ -2388,6 +2404,7 @@ fn analyze_program_import(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
+        | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi
         | resolver::ImportKind::SqliteProvider => {
@@ -3081,6 +3098,7 @@ fn validate_program_stdlib_import(
         resolver::ImportKind::SlopNet => validate_module_sloppy_net_import(path, import),
         resolver::ImportKind::SlopHttp => validate_module_sloppy_http_import(path, import),
         resolver::ImportKind::SlopOs => validate_module_sloppy_os_import(path, import),
+        resolver::ImportKind::SlopOrm => validate_module_sloppy_orm_import(path, import),
         resolver::ImportKind::SlopWorkers => validate_module_sloppy_workers_import(path, import),
         resolver::ImportKind::SlopFfi => validate_module_sloppy_ffi_import(path, import),
         resolver::ImportKind::SqliteProvider => {
@@ -3580,6 +3598,7 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
+        | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi => "globalThis.__sloppy_runtime".to_string(),
         resolver::ImportKind::SqliteProvider => {
@@ -3847,6 +3866,7 @@ fn program_reexport_require_expr(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
+        | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi => Ok("globalThis.__sloppy_runtime".to_string()),
         resolver::ImportKind::SqliteProvider => {
@@ -4040,6 +4060,11 @@ fn mark_program_import(
         }
         resolver::ImportKind::SlopHttp => graph.uses_http_client_runtime = true,
         resolver::ImportKind::SlopOs => graph.uses_os_runtime = true,
+        resolver::ImportKind::SlopOrm => {
+            graph.uses_orm_runtime = true;
+            graph.uses_data_runtime = true;
+            graph.uses_sql_runtime = true;
+        }
         resolver::ImportKind::SlopWorkers => graph.uses_workers_runtime = true,
         resolver::ImportKind::SlopFfi => graph.uses_ffi_runtime = true,
         resolver::ImportKind::SlopStdlib => {
@@ -4345,12 +4370,23 @@ fn extract_entry(
         apply_problem_details_to_routes(path, &mut state.routes, descriptor)?;
     }
 
-    let helper_sources = state
-        .helper_sources
+    state
+        .orm_metadata_sources
+        .sort_by_key(|(source_start, _)| *source_start);
+    let mut helper_sources = state
+        .orm_metadata_sources
         .iter()
-        .filter(|(name, _)| helper_source_is_safe_for_top_level(state.helper_effects.get(*name)))
         .map(|(_, source)| source.clone())
-        .collect();
+        .collect::<Vec<_>>();
+    helper_sources.extend(
+        state
+            .helper_sources
+            .iter()
+            .filter(|(name, _)| {
+                helper_source_is_safe_for_top_level(state.helper_effects.get(*name))
+            })
+            .map(|(_, source)| source.clone()),
+    );
     let framework_needs_os_runtime = state.routes.iter().any(|route| {
         route.handler.bindings.iter().any(|binding| {
             binding.kind == "config"
@@ -4396,6 +4432,10 @@ fn extract_entry(
                         .any(|binding| binding.injection_kind.as_deref() == Some("provider"))
             }),
         uses_sql_runtime: state.sql_imported || graph.uses_sql_runtime,
+        uses_orm_runtime: state.orm_imported || graph.uses_orm_runtime,
+        orm_tables: state.orm_tables,
+        orm_relations: state.orm_relations,
+        orm_extraction_partial: state.orm_extraction_partial,
         uses_migrations_runtime: state.migrations_imported || graph.uses_migrations_runtime,
         uses_provider_health_runtime: state.provider_health_imported
             || graph.uses_provider_health_runtime,
@@ -4519,6 +4559,19 @@ fn sloppy_crypto_import_name_supported(name: &str) -> bool {
 
 fn sloppy_data_import_name_supported(name: &str) -> bool {
     matches!(name, "sql" | "Migrations" | "ProviderHealth")
+}
+
+fn sloppy_orm_import_name_supported(name: &str) -> bool {
+    matches!(
+        name,
+        "orm"
+            | "table"
+            | "column"
+            | "relation"
+            | "sql"
+            | "SloppyOrmError"
+            | "SloppyOrmConcurrencyError"
+    )
 }
 
 fn sloppy_sqlite_provider_import_name_supported(name: &str) -> bool {
@@ -4764,6 +4817,7 @@ enum SloppyStdlibImport {
     Net,
     Http,
     Os,
+    Orm,
     Workers,
     Ffi,
 }
@@ -4778,6 +4832,7 @@ impl SloppyStdlibImport {
             "sloppy/net" => Some(Self::Net),
             "sloppy/http" => Some(Self::Http),
             "sloppy/os" => Some(Self::Os),
+            "sloppy/orm" => Some(Self::Orm),
             "sloppy/workers" => Some(Self::Workers),
             "sloppy/ffi" => Some(Self::Ffi),
             _ => None,
@@ -4793,6 +4848,7 @@ impl SloppyStdlibImport {
             Self::Net => sloppy_net_import_name_supported(name),
             Self::Http => sloppy_http_import_name_supported(name),
             Self::Os => sloppy_os_import_name_supported(name),
+            Self::Orm => sloppy_orm_import_name_supported(name),
             Self::Workers => sloppy_workers_import_name_supported(name),
             Self::Ffi => sloppy_ffi_import_name_supported(name),
         }
@@ -4931,6 +4987,11 @@ fn mark_sloppy_root_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclar
                 graph.uses_data_runtime = true;
                 graph.uses_provider_health_runtime = true;
             }
+            "orm" | "table" | "column" | "relation" => {
+                graph.uses_orm_runtime = true;
+                graph.uses_data_runtime = true;
+                graph.uses_sql_runtime = true;
+            }
             "Http" | "HttpClientFactory" | "HttpError" | "SloppyHttpClientError" | "TestHttp" => {
                 graph.uses_http_client_runtime = true;
             }
@@ -5002,6 +5063,13 @@ fn validate_module_sloppy_data_import(
         "sloppy/data",
         sloppy_data_import_name_supported,
     )
+}
+
+fn validate_module_sloppy_orm_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(path, import, "sloppy/orm", sloppy_orm_import_name_supported)
 }
 
 fn validate_module_sloppy_sqlite_provider_import(
@@ -5853,6 +5921,11 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
         SloppyStdlibImport::Net => state.net_imported = true,
         SloppyStdlibImport::Http => state.http_client_imported = true,
         SloppyStdlibImport::Os => state.os_imported = true,
+        SloppyStdlibImport::Orm => {
+            state.orm_imported = true;
+            state.data_imported = true;
+            state.sql_imported = true;
+        }
         SloppyStdlibImport::Workers => state.workers_imported = true,
         SloppyStdlibImport::Ffi => state.ffi_imported = true,
     }
@@ -6153,6 +6226,16 @@ fn extract_import(
                         state.provider_health_imported = true;
                     }
                 }
+                ("orm", "orm")
+                | ("table", "table")
+                | ("column", "column")
+                | ("relation", "relation") => {
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.orm_imported = true;
+                        state.data_imported = true;
+                        state.sql_imported = true;
+                    }
+                }
                 ("schema", "schema") => state.schema_imported = true,
                 ("Schema", "Schema") => state.schema_imported = true,
                 _ if sloppy_root_import_name_supported(imported) && imported == local => {}
@@ -6241,6 +6324,10 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "sql"
             | "Migrations"
             | "ProviderHealth"
+            | "orm"
+            | "table"
+            | "column"
+            | "relation"
             | "schema"
             | "Schema"
             | "Email"
@@ -6357,6 +6444,12 @@ fn extract_variable_declaration(
             );
         } else if let Some(binding) = app_provider_lookup(init, state) {
             state.provider_bindings.insert(name.to_string(), binding);
+        } else if let Some(metadata_source) =
+            orm_table_declaration_source(path, source, name, init, state)?
+        {
+            state
+                .orm_metadata_sources
+                .push((declarator.span.start, metadata_source));
         } else if helper_initializer(init).is_some() {
             let Some(init_source) = source_slice(source, init.span()) else {
                 return Err(Diagnostic::new(
@@ -6659,6 +6752,10 @@ fn extract_expression_statement(
 
     if let Some((module_name, span)) = app_use_module_call(&statement.expression, state) {
         state.used_modules.push((module_name, span));
+        return Ok(());
+    }
+
+    if orm_relation_metadata_call(path, source, statement, state)? {
         return Ok(());
     }
 
@@ -12524,6 +12621,284 @@ fn app_use_module_call(expression: &Expression<'_>, state: &AppState) -> Option<
         return None;
     };
     Some((identifier.name.as_str().to_string(), identifier.span))
+}
+
+fn orm_table_declaration_source(
+    path: &Path,
+    source: &str,
+    name: &str,
+    expression: &Expression<'_>,
+    state: &mut AppState,
+) -> Result<Option<String>, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(None);
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return Ok(None);
+    };
+    if callee.name.as_str() != "table" || !state.orm_imported {
+        return Ok(None);
+    }
+    if call.arguments.len() < 2 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ORM_TABLE",
+            "ORM table declarations require a literal table name and static column object",
+        )
+        .with_path(path)
+        .with_span(call.span)
+        .with_hint(orm_table_hint()));
+    }
+    let columns_argument = &call.arguments[1];
+    if let Argument::ObjectExpression(columns) = columns_argument {
+        if columns.properties.is_empty() {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_ORM_TABLE",
+                "ORM table declarations require a non-empty column object",
+            )
+            .with_path(path)
+            .with_span(argument_span(columns_argument).unwrap_or(call.span))
+            .with_hint(orm_table_hint()));
+        }
+    }
+    if let Some(metadata) =
+        orm_table_metadata_from_call(source_name_from_path(path), source, name, call)
+    {
+        state.orm_tables.push(metadata);
+    } else {
+        state.orm_extraction_partial = true;
+    }
+    let Some(init_source) = source_slice(source, expression.span()) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ORM_TABLE",
+            "ORM table declaration source could not be extracted",
+        )
+        .with_path(path)
+        .with_span(call.span)
+        .with_hint(orm_table_hint()));
+    };
+    Ok(Some(format!("const {name} = {init_source};")))
+}
+
+fn source_name_from_path(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("app")
+        .to_string()
+}
+
+fn orm_table_metadata_from_call(
+    source_name: String,
+    source: &str,
+    model: &str,
+    call: &CallExpression<'_>,
+) -> Option<Value> {
+    let table_name = string_argument(call.arguments.first()?)?;
+    let columns_object = object_argument(call.arguments.get(1)?)?;
+    let mut columns = Vec::new();
+    for property in &columns_object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return None;
+        };
+        if property.computed || property.method || property.shorthand {
+            return None;
+        }
+        let column_name = property_key_name(&property.key)?.to_string();
+        let column_expression = source_slice(source, property.value.span())?;
+        let column_type = orm_column_type_from_expression(&property.value)?;
+        columns.push(json!({
+            "name": column_name,
+            "type": column_type,
+            "primaryKey": orm_column_has_modifier(&property.value, "primaryKey"),
+            "nullable": orm_column_has_modifier(&property.value, "nullable"),
+            "notNull": orm_column_has_modifier(&property.value, "notNull"),
+            "unique": orm_column_has_modifier(&property.value, "unique"),
+            "index": orm_column_has_modifier(&property.value, "index"),
+            "private": orm_column_has_modifier(&property.value, "private"),
+            "softDelete": orm_column_has_modifier(&property.value, "softDelete"),
+            "concurrencyToken": orm_column_has_modifier(&property.value, "concurrencyToken"),
+            "default": orm_column_has_modifier(&property.value, "default"),
+            "defaultNow": orm_column_has_modifier(&property.value, "defaultNow"),
+            "generated": orm_column_has_modifier(&property.value, "generated"),
+            "reference": crate::plan_emit::parse_reference(&column_expression),
+        }));
+    }
+    Some(json!({
+        "model": model,
+        "name": table_name,
+        "source": source_name,
+        "columns": columns,
+    }))
+}
+
+fn orm_column_type_from_expression<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
+    let mut current = expression;
+    loop {
+        let Expression::CallExpression(call) = current else {
+            return None;
+        };
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            return None;
+        };
+        if let Expression::Identifier(object) = &member.object {
+            if object.name.as_str() == "column" {
+                let column_type = member.property.name.as_str();
+                return if orm_column_type_supported(column_type) {
+                    Some(column_type)
+                } else {
+                    None
+                };
+            }
+        }
+        current = &member.object;
+    }
+}
+
+fn orm_column_type_supported(column_type: &str) -> bool {
+    matches!(
+        column_type,
+        "text"
+            | "string"
+            | "int"
+            | "integer"
+            | "bigint"
+            | "number"
+            | "float"
+            | "decimal"
+            | "bool"
+            | "boolean"
+            | "uuid"
+            | "instant"
+            | "timestamp"
+            | "date"
+            | "json"
+            | "blob"
+            | "bytes"
+            | "enum"
+    )
+}
+
+fn orm_column_has_modifier(expression: &Expression<'_>, modifier: &str) -> bool {
+    let mut current = expression;
+    while let Expression::CallExpression(call) = current {
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            return false;
+        };
+        if member.property.name.as_str() == modifier {
+            return true;
+        }
+        current = &member.object;
+    }
+    false
+}
+
+fn orm_table_hint() -> &'static str {
+    "Use:\n  const Users = table(\"users\", {\n    id: column.uuid().primaryKey(),\n    teamId: column.uuid().references(() => Teams.id),\n  });"
+}
+
+fn orm_relation_hint() -> &'static str {
+    "Use:\n  relation(Users, ({ one, many }) => ({\n    team: one(Teams, {\n      local: Users.teamId,\n      foreign: Teams.id,\n    }),\n  }));"
+}
+
+fn orm_relation_metadata_call(
+    path: &Path,
+    source: &str,
+    statement: &ExpressionStatement<'_>,
+    state: &mut AppState,
+) -> Result<bool, Diagnostic> {
+    let expression = &statement.expression;
+    let Expression::CallExpression(call) = expression else {
+        return Ok(false);
+    };
+    let Expression::Identifier(callee) = &call.callee else {
+        return Ok(false);
+    };
+    if callee.name.as_str() != "relation" {
+        return Ok(false);
+    }
+    if !state.orm_imported {
+        return Ok(false);
+    }
+    if call.arguments.len() < 2 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ORM_RELATION",
+            "ORM relation declarations require a table identifier and an inline callback",
+        )
+        .with_path(path)
+        .with_span(call.span)
+        .with_hint(orm_relation_hint()));
+    }
+    let Some(table_argument) = call.arguments.first() else {
+        return Ok(false);
+    };
+    if !matches!(table_argument, Argument::Identifier(_)) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ORM_RELATION",
+            "ORM relation declarations require a static table identifier",
+        )
+        .with_path(path)
+        .with_span(argument_span(table_argument).unwrap_or(call.span))
+        .with_hint(orm_relation_hint()));
+    }
+    let Some(callback_argument) = call.arguments.get(1) else {
+        return Ok(false);
+    };
+    let Some(statement_source) = source_slice(source, statement.span) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ORM_RELATION",
+            "ORM relation declaration source could not be extracted",
+        )
+        .with_path(path)
+        .with_span(statement.span)
+        .with_hint(orm_relation_hint()));
+    };
+    state
+        .orm_metadata_sources
+        .push((statement.span.start, statement_source.to_string()));
+    if matches!(
+        callback_argument,
+        Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
+    ) {
+        if let Some(callback_source) = source_slice(
+            source,
+            argument_span(callback_argument).unwrap_or(call.span),
+        ) {
+            if let Some(object_source) = crate::plan_emit::relation_object_source(&callback_source)
+            {
+                let Argument::Identifier(table_identifier) = table_argument else {
+                    unreachable!("table argument shape checked above");
+                };
+                for part in crate::plan_emit::split_top_level_properties(object_source) {
+                    let Some((relation_name, expression)) =
+                        crate::plan_emit::parse_property_name(part)
+                    else {
+                        state.orm_extraction_partial = true;
+                        continue;
+                    };
+                    let Some(mut relation) =
+                        crate::plan_emit::parse_relation_definition(relation_name, expression)
+                    else {
+                        state.orm_extraction_partial = true;
+                        continue;
+                    };
+                    if let Value::Object(ref mut object) = relation {
+                        object.insert(
+                            "tableModel".to_string(),
+                            json!(table_identifier.name.as_str()),
+                        );
+                        object.insert("source".to_string(), json!(source_name_from_path(path)));
+                    }
+                    state.orm_relations.push(relation);
+                }
+            } else {
+                state.orm_extraction_partial = true;
+            }
+        } else {
+            state.orm_extraction_partial = true;
+        }
+    } else {
+        state.orm_extraction_partial = true;
+    }
+    Ok(true)
 }
 
 fn app_service_registration_call(
@@ -20677,6 +21052,16 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     if app.uses_sql_runtime {
         runtime_exports.push("sql");
     }
+    if app.uses_orm_runtime {
+        runtime_exports.extend([
+            "orm",
+            "table",
+            "column",
+            "relation",
+            "SloppyOrmError",
+            "SloppyOrmConcurrencyError",
+        ]);
+    }
     if app.uses_time_runtime {
         runtime_exports.extend([
             "Time",
@@ -21396,7 +21781,7 @@ fn emit_dynamic_web_app_js(source: &str, app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
+    output.push_str("const { Results, Realtime, Environment, data, sql, orm, table, column, relation, SloppyOrmError, SloppyOrmConcurrencyError, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
     output.push_str(
         r#"const __sloppy_framework_services = __createFrameworkServiceProvider();
 const __sloppy_framework_provider_configs = new Map([]);

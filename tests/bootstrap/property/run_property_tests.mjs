@@ -10,9 +10,12 @@ import {
     Deadline,
     Hex,
     HttpClient,
+    column,
+    orm,
     ProblemDetails,
     Results,
     Sloppy,
+    table,
     Text,
     Time,
     WorkQueue,
@@ -26,6 +29,7 @@ const DEFAULT_PROPERTY_TARGETS = Object.freeze([
     "workers",
     "logging",
     "config",
+    "orm",
 ]);
 
 const SECRET_MARKER = "SECRET_PROPERTY_VALUE_SHOULD_NOT_APPEAR";
@@ -465,6 +469,35 @@ const properties = Object.freeze({
         assert.equal(typeof builder.config.__snapshot(), "object");
         assertThrows(() => builder.config.getString("", "fallback"), /key/);
         assertThrows(() => builder.config.bind("App", { broken: { type: "decimal" } }), /type/);
+    },
+
+    orm(random, iteration) {
+        const suffix = `${iteration}_${random.int(1_000_000)}`;
+        const tableName = `orm_property_${suffix}`;
+        const columnName = `value_${random.int(1_000_000)}`;
+        const Model = table(tableName, {
+            id: column.uuid().primaryKey(),
+            [columnName]: column.text().nullable().index(),
+        });
+        const snapshot = orm.migrations.snapshot(Model);
+        assert.equal(snapshot.tables[0].name, tableName);
+        assert.equal(snapshot.tables[0].columns.some((entry) => entry.name === columnName), true);
+        assert.equal(orm.migrations.snapshot(Model).checksum, snapshot.checksum);
+
+        const Expanded = table(tableName, {
+            id: column.uuid().primaryKey(),
+            [columnName]: column.text().nullable().index(),
+            added: column.int().default(0),
+        });
+        const diff = orm.migrations.diff(snapshot, Expanded, { provider: "sqlite" });
+        assert.match(diff.sql, /\balter\s+table\b/iu);
+        assert.equal(diff.destructive, false);
+
+        const text = randomText(random, 16);
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(text)) {
+            assertThrows(() => table(text, { id: column.int().primaryKey() }), /safe SQL identifier/);
+        }
+        assertThrows(() => table(`bad-${suffix}`, { id: column.int().primaryKey() }), /safe SQL identifier/);
     },
 });
 

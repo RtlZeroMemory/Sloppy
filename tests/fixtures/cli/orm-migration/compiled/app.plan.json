@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-orm-migration",
+    "hash": "test-only"
+  },
+  "dataProviders": [
+    {
+      "token": "data.main",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "service": "data.main",
+      "database": "app.db"
+    }
+  ],
+  "features": {
+    "orm": true
+  },
+  "strongPlan": {
+    "evidence": {
+      "orm": true
+    }
+  },
+  "orm": {
+    "mode": "runtime-dynamic",
+    "tables": [
+      {
+        "model": "Teams",
+        "name": "teams",
+        "source": "app.ts",
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "primaryKey": true
+          },
+          {
+            "name": "slug",
+            "type": "text",
+            "notNull": true,
+            "unique": true
+          },
+          {
+            "name": "createdAt",
+            "type": "instant",
+            "notNull": true,
+            "defaultNow": true
+          }
+        ]
+      },
+      {
+        "model": "Users",
+        "name": "users",
+        "source": "app.ts",
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "primaryKey": true
+          },
+          {
+            "name": "teamId",
+            "type": "uuid",
+            "notNull": true,
+            "reference": {
+              "tableModel": "Teams",
+              "column": "id"
+            }
+          },
+          {
+            "name": "email",
+            "type": "text",
+            "notNull": true,
+            "unique": true
+          },
+          {
+            "name": "deletedAt",
+            "type": "instant",
+            "softDelete": true
+          }
+        ]
+      }
+    ],
+    "relations": [],
+    "migrationSnapshots": [],
+    "extraction": {
+      "status": "partial"
+    }
+  }
+}

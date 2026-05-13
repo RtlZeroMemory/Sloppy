@@ -1,0 +1,124 @@
+if(NOT DEFINED SLOPPY_CLI)
+    message(FATAL_ERROR "SLOPPY_CLI is required")
+endif()
+if(NOT DEFINED SLOPPY_SOURCE_DIR)
+    message(FATAL_ERROR "SLOPPY_SOURCE_DIR is required")
+endif()
+if(NOT DEFINED SLOPPY_EXPECTED)
+    message(FATAL_ERROR "SLOPPY_EXPECTED is required")
+endif()
+
+set(work_dir "${CMAKE_CURRENT_BINARY_DIR}/orm-migration-status-apply")
+file(REMOVE_RECURSE "${work_dir}")
+file(MAKE_DIRECTORY "${work_dir}")
+file(COPY "${SLOPPY_SOURCE_DIR}/tests/fixtures/cli/orm-migration/" DESTINATION "${work_dir}")
+file(READ "${SLOPPY_SOURCE_DIR}/tests/golden/cli/orm-migration-status-text.txt" status_text_expected)
+file(READ "${SLOPPY_SOURCE_DIR}/tests/golden/cli/orm-migration-status-json.json" status_json_expected)
+file(READ "${SLOPPY_SOURCE_DIR}/tests/golden/cli/orm-migration-apply-text.txt" apply_text_expected)
+file(READ "${SLOPPY_SOURCE_DIR}/tests/golden/cli/orm-migration-apply-json.json" apply_json_expected)
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration status "${work_dir}/compiled" --provider main
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE empty_status_result
+    OUTPUT_VARIABLE empty_status_stdout
+    ERROR_VARIABLE empty_status_stderr)
+if(NOT empty_status_result EQUAL 0 OR NOT empty_status_stdout STREQUAL status_text_expected)
+    message(FATAL_ERROR "sloppy orm migration status no-migrations output changed\nstdout:\n${empty_status_stdout}\nstderr:\n${empty_status_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration status "${work_dir}/compiled" --provider main --format json
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE empty_status_json_result
+    OUTPUT_VARIABLE empty_status_json_stdout
+    ERROR_VARIABLE empty_status_json_stderr)
+if(NOT empty_status_json_result EQUAL 0 OR NOT empty_status_json_stdout STREQUAL status_json_expected)
+    message(FATAL_ERROR "sloppy orm migration status no-migrations JSON output changed\nstdout:\n${empty_status_json_stdout}\nstderr:\n${empty_status_json_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration apply "${work_dir}/compiled" --provider main
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE empty_apply_result
+    OUTPUT_VARIABLE empty_apply_stdout
+    ERROR_VARIABLE empty_apply_stderr)
+if(NOT empty_apply_result EQUAL 0 OR NOT empty_apply_stdout STREQUAL apply_text_expected)
+    message(FATAL_ERROR "sloppy orm migration apply no-migrations output changed\nstdout:\n${empty_apply_stdout}\nstderr:\n${empty_apply_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration apply "${work_dir}/compiled" --provider main --format json
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE empty_apply_json_result
+    OUTPUT_VARIABLE empty_apply_json_stdout
+    ERROR_VARIABLE empty_apply_json_stderr)
+if(NOT empty_apply_json_result EQUAL 0 OR NOT empty_apply_json_stdout STREQUAL apply_json_expected)
+    message(FATAL_ERROR "sloppy orm migration apply no-migrations JSON output changed\nstdout:\n${empty_apply_json_stdout}\nstderr:\n${empty_apply_json_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration add CreateUsers "${work_dir}/compiled" --provider main
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE add_result
+    OUTPUT_VARIABLE add_stdout
+    ERROR_VARIABLE add_stderr)
+if(NOT add_result EQUAL 0)
+    message(FATAL_ERROR "sloppy orm migration add failed\nstdout:\n${add_stdout}\nstderr:\n${add_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration status "${work_dir}/compiled" --provider main
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE pending_result
+    OUTPUT_VARIABLE pending_stdout
+    ERROR_VARIABLE pending_stderr)
+if(NOT pending_result EQUAL 0 OR NOT pending_stdout MATCHES "\\[pending\\] 0001_create_users\\.sql")
+    message(FATAL_ERROR "sloppy orm migration status did not report pending\nstdout:\n${pending_stdout}\nstderr:\n${pending_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration apply "${work_dir}/compiled" --provider main
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE apply_result
+    OUTPUT_VARIABLE apply_stdout
+    ERROR_VARIABLE apply_stderr)
+if(NOT apply_result EQUAL 0 OR NOT apply_stdout MATCHES "\\[applied\\] 0001_create_users\\.sql")
+    message(FATAL_ERROR "sloppy orm migration apply did not apply migration\nstdout:\n${apply_stdout}\nstderr:\n${apply_stderr}")
+endif()
+
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration status "${work_dir}/compiled" --provider main --format json
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE json_result
+    OUTPUT_VARIABLE json_stdout
+    ERROR_VARIABLE json_stderr)
+if(NOT json_result EQUAL 0 OR
+   NOT json_stdout MATCHES "\"status\":\"current\"" OR
+   NOT json_stdout MATCHES "\"status\":\"applied\"")
+    message(FATAL_ERROR "sloppy orm migration status JSON did not report current/applied\nstdout:\n${json_stdout}\nstderr:\n${json_stderr}")
+endif()
+
+file(WRITE "${work_dir}/migrations/0002_users_trigger.sql" "create trigger users_ai after insert on users begin\n  -- semicolons in trigger comments must stay inside the trigger body;\n  update users set email = lower(new.email) where id = new.id;\nend;\n")
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration apply "${work_dir}/compiled" --provider main
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE trigger_apply_result
+    OUTPUT_VARIABLE trigger_apply_stdout
+    ERROR_VARIABLE trigger_apply_stderr)
+if(NOT trigger_apply_result EQUAL 0 OR NOT trigger_apply_stdout MATCHES "\\[applied\\] 0002_users_trigger\\.sql")
+    message(FATAL_ERROR "sloppy orm migration apply did not apply SQLite trigger migration\nstdout:\n${trigger_apply_stdout}\nstderr:\n${trigger_apply_stderr}")
+endif()
+
+file(APPEND "${work_dir}/migrations/0001_create_users.sql" "\n-- tamper\n")
+execute_process(
+    COMMAND "${SLOPPY_CLI}" orm migration status "${work_dir}/compiled" --provider main
+    WORKING_DIRECTORY "${SLOPPY_SOURCE_DIR}"
+    RESULT_VARIABLE changed_result
+    OUTPUT_VARIABLE changed_stdout
+    ERROR_VARIABLE changed_stderr)
+if(changed_result EQUAL 0 OR
+   NOT changed_stdout MATCHES "\\[changed\\] 0001_create_users\\.sql" OR
+   NOT changed_stderr MATCHES "applied migration hash changed")
+    message(FATAL_ERROR "sloppy orm migration status did not fail on checksum mismatch\nstdout:\n${changed_stdout}\nstderr:\n${changed_stderr}")
+endif()

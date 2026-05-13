@@ -1058,8 +1058,10 @@ function signalObject() {
 
 function createContext(app, hostState, method, targetParts, headers, route, matchedRoute, bodyKind, bodyBytes, options = undefined) {
     const request = createRequestObject(method, targetParts, headers, bodyKind, bodyBytes);
+    const services = hostState.services.createScope();
     const context = {
-        services: hostState.services.createScope(),
+        services,
+        db: services.tryGet("data.main") ?? services.tryGet("main"),
         capabilities: app.capabilities,
         config: hostState.config,
         log: app.log,

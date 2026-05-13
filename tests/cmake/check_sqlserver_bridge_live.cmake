@@ -23,3 +23,13 @@ endif()
 if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace" OR NOT output MATCHES "sqlserverTimedOut.*true" OR NOT output MATCHES "materializedRejected.*true" OR NOT output MATCHES "cursorCount.*152" OR NOT output MATCHES "cursorMaxRowsRejected.*true" OR NOT output MATCHES "poolPinned.*true" OR NOT output MATCHES "cursorTimedOut.*true")
     message(FATAL_ERROR "SQL Server bridge live output did not include expected cursor, bounded materialization, pool pinning, and timeout evidence.\n${output}")
 endif()
+
+if(NOT output MATCHES "ormLane.*selectedEmail.*ada\\.orm@example\\.com"
+   OR NOT output MATCHES "ormLane.*conflict.*true"
+   OR NOT output MATCHES "ormLane.*oneInclude.*Core"
+   OR NOT output MATCHES "ormLane.*manyIncludeCount.*1"
+   OR NOT output MATCHES "ormLane.*rolledBack.*true"
+   OR NOT output MATCHES "ormLane.*rawCount.*1"
+   OR NOT output MATCHES "ormLane.*cursorCount.*132")
+    message(FATAL_ERROR "SQL Server bridge live output did not include expected ORM migration, CRUD, include, rollback, and cursor evidence.\n${output}")
+endif()

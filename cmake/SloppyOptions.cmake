@@ -154,6 +154,7 @@ set(
     crypto.js
     net.js
     os.js
+    orm.js
     problem-details.js
     realtime.js
     request-id.js

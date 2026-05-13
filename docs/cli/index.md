@@ -25,6 +25,7 @@ sloppy --version
 | [`sloppy capabilities`](capabilities.md) | List declared capabilities                   |
 | [`sloppy doctor`](doctor.md) | Validate the local environment and a Plan                |
 | [`sloppy db`](db.md)         | Inspect and apply configured database migrations         |
+| [`sloppy orm`](orm.md)       | Generate, inspect, and apply ORM migrations               |
 | [`sloppy audit`](audit.md)   | Run security/compliance checks against a Plan            |
 | [`sloppy openapi`](openapi.md) | Generate an OpenAPI document from a Plan               |
 | [`sloppyc`](sloppyc.md)      | Run the compiler directly                                |

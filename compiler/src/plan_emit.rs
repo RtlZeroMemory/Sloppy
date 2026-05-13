@@ -125,6 +125,230 @@ fn route_json_request_plan(bindings: &[RequestBinding]) -> Value {
     })
 }
 
+fn skip_ascii_whitespace(source: &str, mut index: usize) -> usize {
+    while index < source.len() && source.as_bytes()[index].is_ascii_whitespace() {
+        index += 1;
+    }
+    index
+}
+
+fn matching_delimiter(source: &str, start: usize, open: u8, close: u8) -> Option<usize> {
+    if *source.as_bytes().get(start)? != open {
+        return None;
+    }
+    let mut depth = 0usize;
+    let mut index = start;
+    let mut quote: Option<u8> = None;
+    while index < source.len() {
+        let current = source.as_bytes()[index];
+        if let Some(active_quote) = quote {
+            if current == b'\\' {
+                index += 2;
+                continue;
+            }
+            if current == active_quote {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        if current == b'"' || current == b'\'' || current == b'`' {
+            quote = Some(current);
+        } else if current == open {
+            depth += 1;
+        } else if current == close {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                return Some(index);
+            }
+        }
+        index += 1;
+    }
+    None
+}
+
+fn parse_static_identifier(source: &str, start: usize) -> Option<(&str, usize)> {
+    let start = skip_ascii_whitespace(source, start);
+    let mut end = start;
+    while end < source.len() {
+        let ch = source.as_bytes()[end];
+        if ch == b'_' || ch == b'$' || ch.is_ascii_alphanumeric() {
+            end += 1;
+        } else {
+            break;
+        }
+    }
+    (end > start).then_some((&source[start..end], end))
+}
+
+pub(crate) fn split_top_level_properties(object_source: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut index = 0usize;
+    let mut paren = 0usize;
+    let mut brace = 0usize;
+    let mut bracket = 0usize;
+    let mut quote: Option<u8> = None;
+    while index < object_source.len() {
+        let current = object_source.as_bytes()[index];
+        if let Some(active_quote) = quote {
+            if current == b'\\' {
+                index += 2;
+                continue;
+            }
+            if current == active_quote {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        match current {
+            b'"' | b'\'' | b'`' => quote = Some(current),
+            b'(' => paren += 1,
+            b')' => paren = paren.saturating_sub(1),
+            b'{' => brace += 1,
+            b'}' => brace = brace.saturating_sub(1),
+            b'[' => bracket += 1,
+            b']' => bracket = bracket.saturating_sub(1),
+            b',' if paren == 0 && brace == 0 && bracket == 0 => {
+                let part = object_source[start..index].trim();
+                if !part.is_empty() {
+                    parts.push(part);
+                }
+                start = index + 1;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    let tail = object_source[start..].trim();
+    if !tail.is_empty() {
+        parts.push(tail);
+    }
+    parts
+}
+
+pub(crate) fn parse_property_name(part: &str) -> Option<(&str, &str)> {
+    let colon = part.find(':')?;
+    let raw_name = part[..colon].trim();
+    if raw_name.is_empty() {
+        return None;
+    }
+    let name = raw_name
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .or_else(|| {
+            raw_name
+                .strip_prefix('\'')
+                .and_then(|value| value.strip_suffix('\''))
+        })
+        .unwrap_or(raw_name);
+    Some((name, part[colon + 1..].trim()))
+}
+
+pub(crate) fn parse_reference(expression: &str) -> Option<Value> {
+    let reference = expression.find(".references(")?;
+    let after_arrow = expression[reference..].find("=>")? + reference + 2;
+    let target = expression[after_arrow..].trim_start();
+    let table_end = target.find('.')?;
+    let table = target[..table_end].trim();
+    let column_start = table_end + 1;
+    let column_end = target[column_start..]
+        .find(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '$'))
+        .map(|index| column_start + index)
+        .unwrap_or(target.len());
+    let column = target[column_start..column_end].trim();
+    if table.is_empty() || column.is_empty() {
+        return None;
+    }
+    Some(json!({ "tableModel": table, "column": column }))
+}
+
+fn parse_static_column_ref(expression: &str) -> Option<Value> {
+    let expression = expression.trim();
+    let dot = expression.find('.')?;
+    let table = expression[..dot].trim();
+    let column_start = dot + 1;
+    let column_end = expression[column_start..]
+        .find(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '$'))
+        .map(|index| column_start + index)
+        .unwrap_or(expression.len());
+    let column = expression[column_start..column_end].trim();
+    if table.is_empty() || column.is_empty() {
+        return None;
+    }
+    Some(json!({ "tableModel": table, "column": column }))
+}
+
+fn parse_relation_options(expression: &str) -> Option<(Value, Value)> {
+    let expression = expression.trim();
+    if !expression.starts_with('{') {
+        return None;
+    }
+    let end = matching_delimiter(expression, 0, b'{', b'}')?;
+    let mut local = None;
+    let mut foreign = None;
+    for part in split_top_level_properties(&expression[1..end]) {
+        let Some((name, value)) = parse_property_name(part) else {
+            continue;
+        };
+        match name {
+            "local" => local = parse_static_column_ref(value),
+            "foreign" => foreign = parse_static_column_ref(value),
+            _ => {}
+        }
+    }
+    Some((local?, foreign?))
+}
+
+pub(crate) fn parse_relation_definition(name: &str, expression: &str) -> Option<Value> {
+    let expression = expression.trim();
+    let (kind, mut index) = parse_static_identifier(expression, 0)?;
+    if !matches!(kind, "one" | "many") {
+        return None;
+    }
+    index = skip_ascii_whitespace(expression, index);
+    if expression.as_bytes().get(index) != Some(&b'(') {
+        return None;
+    }
+    let end = matching_delimiter(expression, index, b'(', b')')?;
+    let args = split_top_level_properties(&expression[index + 1..end]);
+    if args.len() < 2 {
+        return None;
+    }
+    let (target_model, target_end) = parse_static_identifier(args[0], 0)?;
+    if skip_ascii_whitespace(args[0], target_end) != args[0].len() {
+        return None;
+    }
+    let (local, foreign) = parse_relation_options(args[1])?;
+    Some(json!({
+        "name": name,
+        "kind": kind,
+        "targetModel": target_model,
+        "local": local,
+        "foreign": foreign,
+    }))
+}
+
+pub(crate) fn relation_object_source(callback_source: &str) -> Option<&str> {
+    let arrow = callback_source.find("=>")?;
+    let after_arrow = callback_source[arrow + 2..].trim_start();
+    if !after_arrow.starts_with('(') {
+        return None;
+    }
+    let brace_relative = after_arrow.find('{')?;
+    let brace = arrow + 2 + callback_source[arrow + 2..].find('{')?;
+    if !after_arrow[..brace_relative]
+        .trim()
+        .chars()
+        .all(|ch| ch == '(')
+    {
+        return None;
+    }
+    let end = matching_delimiter(callback_source, brace, b'{', b'}')?;
+    Some(&callback_source[brace + 1..end])
+}
+
 fn schema_response_native_fallback_reason(schema: &Value) -> Option<&'static str> {
     let Some(kind) = schema.get("kind").and_then(Value::as_str) else {
         return Some("schema-kind-missing");
@@ -2010,6 +2234,48 @@ pub(crate) fn emit_plan_with_route_artifact(
                 "message": "dynamic outbound HTTP client metadata is partial and must be checked at runtime"
             }));
         }
+    }
+    if app.uses_orm_runtime {
+        let orm_tables = app.orm_tables.clone();
+        let orm_relations = app.orm_relations.clone();
+        let (extraction_status, extraction_reason, doctor_message) = if app.orm_extraction_partial {
+            (
+                "partial",
+                "runtime ORM is available; dynamic table or relation shapes compile and run while static metadata remains partial",
+                "sloppy/orm is Plan-visible; runtime ORM works dynamically while some table or relation metadata is partial",
+            )
+        } else if !orm_tables.is_empty() || !orm_relations.is_empty() {
+            (
+                "static",
+                "runtime ORM is available; static table and relation metadata was extracted from AST call expressions",
+                "sloppy/orm is Plan-visible; static table and relation metadata was extracted from AST call expressions",
+            )
+        } else {
+            (
+                "runtime-dynamic",
+                "runtime ORM is available; no static table or relation metadata was extracted, so ORM shape metadata remains runtime-dynamic",
+                "sloppy/orm is Plan-visible; runtime ORM works dynamically and no static table or relation metadata was extracted",
+            )
+        };
+        value["strongPlan"]["evidence"]["orm"] = json!(
+            !app.orm_extraction_partial && (!orm_tables.is_empty() || !orm_relations.is_empty())
+        );
+        value["features"]["orm"] = json!(true);
+        value["orm"] = json!({
+            "mode": "runtime-dynamic",
+            "tables": orm_tables,
+            "relations": orm_relations,
+            "migrationSnapshots": [],
+            "extraction": {
+                "status": extraction_status,
+                "reason": extraction_reason
+            }
+        });
+        doctor_checks.push(json!({
+            "id": "stdlib.orm.dynamic_metadata",
+            "status": "info",
+            "message": doctor_message
+        }));
     }
     if app.uses_workers_runtime {
         required_features.push("stdlib.workers".to_string());

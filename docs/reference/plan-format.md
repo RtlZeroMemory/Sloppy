@@ -338,6 +338,46 @@ Plan capability entries. The current simple declarations map to
 `filesystem/readwrite`, `network/connect-listen`, `os/info`, and `use` access
 for `time`, `crypto`, `codec`, `workers`, and `ffi`.
 
+## ORM Metadata
+
+When source imports `sloppy/orm`, the compiler emits:
+
+```json
+{
+  "features": { "orm": true },
+  "strongPlan": { "evidence": { "orm": true } },
+  "orm": {
+    "mode": "runtime-dynamic",
+    "tables": [
+      {
+        "model": "Users",
+        "name": "users",
+        "source": "app.ts",
+        "columns": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "primaryKey": true
+          }
+        ]
+      }
+    ],
+    "relations": [],
+    "migrationSnapshots": [],
+    "extraction": {
+      "status": "partial",
+      "reason": "runtime ORM is available; dynamic table or relation shapes compile and run while static metadata remains partial"
+    }
+  }
+}
+```
+
+`orm.tables[]` is emitted for simple static
+`const Model = table("name", { ... })` definitions. It records visible column
+types, common modifiers, and simple `references(() => Other.id)` targets.
+Runtime ORM calls still work dynamically when source is too dynamic for this
+metadata.
+
 ## Native FFI Metadata
 
 `native.ffi[]` records compiler-extracted native library declarations from

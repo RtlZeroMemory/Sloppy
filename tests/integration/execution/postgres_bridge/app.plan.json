@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:a149104101355abaea3c06c9ad6599749c40c7bb881aed001803fa817faf6463",
+    "hash": "sha256:5399aea28a39354b1d47ec7d4dcc3f932fc714165a7d3c80c3a5009a1eac0a29",
     "id": "postgres-bridge-app-js",
     "path": "app.js"
   },
