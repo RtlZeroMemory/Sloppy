@@ -166,9 +166,16 @@
                 "${CMAKE_COMMAND}" -E env "SLOPPY_TESTHOST_CLI=$<TARGET_FILE:sloppy>"
                 "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_testhost_process_modes.mjs")
         add_test(
+            NAME bootstrap.stdlib.testhost_framework_matrix
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_testhost_framework_matrix.mjs")
+        add_test(
             NAME bootstrap.stdlib.prealpha_control_plane_dogfood
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_prealpha_control_plane_dogfood.mjs")
+        add_test(
+            NAME bootstrap.stdlib.static_files
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_static_files.mjs")
         add_test(
             NAME bootstrap.stdlib.modules
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_modules.mjs")
@@ -214,11 +221,30 @@
                 "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/property/run_property_tests.mjs"
                 "--seed" "12345" "--iterations" "256")
         add_test(
+            NAME bootstrap.stdlib.rate_limit_properties
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/property/test_rate_limit_properties.mjs")
+        add_test(
             NAME bootstrap.stdlib.os
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_os.mjs")
         add_test(
             NAME bootstrap.stdlib.http_client
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_http_client.mjs")
+        add_test(
+            NAME bootstrap.stdlib.http_client_factory
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_http_client_factory.mjs")
+        add_test(
+            NAME bootstrap.stdlib.rate_limit
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_rate_limit.mjs")
+        add_test(
+            NAME bootstrap.stdlib.rate_limit_testhost
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_rate_limit_testhost.mjs")
+        add_test(
+            NAME bootstrap.stdlib.rate_limit_redis
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_rate_limit_redis.mjs")
+        add_test(
+            NAME bootstrap.stdlib.rate_limit_stress
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_rate_limit_stress.mjs")
         add_test(
             NAME bootstrap.stdlib.webhooks
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_webhooks.mjs")
@@ -261,16 +287,22 @@
             bootstrap.stdlib.import_graph bootstrap.stdlib.public_exports
             bootstrap.stdlib.internal_utilities
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.testhost_process_modes
+            bootstrap.stdlib.testhost_framework_matrix
             bootstrap.stdlib.realtime_framework bootstrap.stdlib.runtime_classic_surface
             bootstrap.stdlib.prealpha_control_plane_dogfood
+            bootstrap.stdlib.static_files
             bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.orm bootstrap.stdlib.orm_runtime_classic
             bootstrap.stdlib.orm_runtime_classic_sync bootstrap.stdlib.orm_testhost
             bootstrap.stdlib.testservices_runtime bootstrap.stdlib.cache_platform bootstrap.stdlib.codec
             bootstrap.stdlib.auth
             bootstrap.stdlib.ops_management bootstrap.stdlib.ops_properties bootstrap.stdlib.property
+            bootstrap.stdlib.rate_limit_properties
             bootstrap.stdlib.os
-            bootstrap.stdlib.http_client bootstrap.stdlib.webhooks bootstrap.stdlib.webhooks_runtime_classic
+            bootstrap.stdlib.http_client bootstrap.stdlib.http_client_factory
+            bootstrap.stdlib.rate_limit bootstrap.stdlib.rate_limit_testhost
+            bootstrap.stdlib.rate_limit_redis bootstrap.stdlib.rate_limit_stress
+            bootstrap.stdlib.webhooks bootstrap.stdlib.webhooks_runtime_classic
             bootstrap.stdlib.redis bootstrap.stdlib.redis_cache
             bootstrap.stdlib.redis_locks bootstrap.stdlib.testservices_redis
             bootstrap.stdlib.redis_runtime_classic
@@ -281,6 +313,20 @@
         set_tests_properties(
             bootstrap.stdlib.core_integration PROPERTIES LABELS
                                                        "core-integration;bootstrap;conformance")
+        set_tests_properties(
+            bootstrap.stdlib.testhost_framework_matrix PROPERTIES LABELS
+                                                                 "bootstrap;testhost;framework;conformance")
+        set_tests_properties(
+            bootstrap.stdlib.static_files PROPERTIES LABELS
+                                                   "bootstrap;static-assets;conformance")
+        set_tests_properties(
+            bootstrap.stdlib.http_client_factory PROPERTIES LABELS
+                                                          "bootstrap;http-client;conformance")
+        set_tests_properties(
+            bootstrap.stdlib.rate_limit bootstrap.stdlib.rate_limit_testhost
+            bootstrap.stdlib.rate_limit_redis bootstrap.stdlib.rate_limit_stress
+            bootstrap.stdlib.rate_limit_properties PROPERTIES
+            LABELS "bootstrap;rate-limit;conformance")
     endif()
 
     if(WIN32 AND SLOPPY_PACKAGE_ARCHIVE)

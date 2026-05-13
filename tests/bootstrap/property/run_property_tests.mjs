@@ -14,6 +14,7 @@ import {
     column,
     orm,
     ProblemDetails,
+    RateLimit,
     Results,
     Sloppy,
     table,
@@ -29,6 +30,7 @@ const DEFAULT_PROPERTY_TARGETS = Object.freeze([
     "time",
     "http-client",
     "static-files",
+    "rate-limit",
     "workers",
     "logging",
     "config",
@@ -417,6 +419,63 @@ const properties = Object.freeze({
             process.chdir(previousCwd);
             await rm(root, { recursive: true, force: true });
         }
+    },
+
+    async "rate-limit"(random) {
+        const safeHeader = `X-Prop-${random.int(99999)}`;
+        assert.equal(RateLimit.partition.header(safeHeader).metadata.name, safeHeader.toLowerCase());
+        assertThrows(() => RateLimit.partition.header(random.pick(["bad header", "x\nbad", ""])), /HTTP token/);
+
+        const directIp = RateLimit.partition.ip();
+        const trustedIp = RateLimit.partition.ip({ trustProxy: true });
+        const headers = new Map([["x-forwarded-for", "203.0.113.77, 10.0.0.2"]]);
+        const ctx = {
+            connection: { remoteAddress: "198.51.100.9" },
+            request: { headers },
+            route: { tenant: "core" },
+            user: {
+                authenticated: true,
+                sub: "user-1",
+                claims: { tenant: "core" },
+            },
+        };
+        assert.equal(directIp.resolve(ctx), "ip:198.51.100.9");
+        assert.equal(trustedIp.resolve(ctx), "ip:203.0.113.77");
+        assert.equal(RateLimit.partition.routeParam("tenant").resolve(ctx), "core");
+        assert.equal(RateLimit.partition.claim("tenant").resolve(ctx), "core");
+
+        const store = RateLimit.memory({
+            name: `property-${random.nextU32()}`,
+            maxKeys: 8,
+        });
+        const windowMs = 1 + random.int(5000);
+        const policy = RateLimit.fixedWindow({
+            name: `fixed-${random.nextU32()}`,
+            limit: 1,
+            windowMs,
+            partitionBy: RateLimit.partition.ip(),
+        });
+        const first = await store.check({ policy, cost: 1, partitionHash: "same", nowMs: 0 });
+        assert.equal(first.allowed, true);
+        assert.equal(first.remaining, 0);
+        const denied = await store.check({ policy, cost: 1, partitionHash: "same", nowMs: 0 });
+        assert.equal(denied.allowed, false);
+        assert.ok(denied.retryAfterMs >= 1);
+        assert.ok(denied.retryAfterMs <= windowMs);
+        const reset = await store.check({ policy, cost: 1, partitionHash: "same", nowMs: windowMs });
+        assert.equal(reset.allowed, true);
+
+        const bucket = RateLimit.tokenBucket({
+            name: `bucket-${random.nextU32()}`,
+            capacity: 1,
+            refillPerSecond: 1 + random.int(10),
+            partitionBy: "global",
+        });
+        const bucketStore = RateLimit.memory({ name: `bucket-store-${random.nextU32()}` });
+        assert.equal((await bucketStore.check({ policy: bucket, cost: 1, partitionHash: "global", nowMs: 0 })).allowed, true);
+        const bucketDenied = await bucketStore.check({ policy: bucket, cost: 1, partitionHash: "global", nowMs: 0 });
+        assert.equal(bucketDenied.allowed, false);
+        assert.ok(bucketDenied.retryAfterMs >= 1);
     },
 
     async workers(random) {

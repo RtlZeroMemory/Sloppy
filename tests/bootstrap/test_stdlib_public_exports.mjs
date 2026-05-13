@@ -66,6 +66,18 @@ import {
     WorkerPool,
 } from "../../stdlib/sloppy/workers.js";
 import {
+    Auth as AuthSubpath,
+} from "../../stdlib/sloppy/auth.js";
+import {
+    Config as ConfigSubpath,
+} from "../../stdlib/sloppy/config.js";
+import {
+    Health as HealthSubpath,
+} from "../../stdlib/sloppy/health.js";
+import {
+    Metrics as MetricsSubpath,
+} from "../../stdlib/sloppy/metrics.js";
+import {
     SloppyWebhookError,
     TestWebhooks,
     Webhooks,
@@ -83,11 +95,29 @@ import {
     SloppyRedisError as RedisSubpathError,
 } from "../../stdlib/sloppy/redis.js";
 import {
+    RateLimit as RateLimitSubpath,
+    SloppyRateLimitError as RateLimitSubpathError,
+} from "../../stdlib/sloppy/rate-limit.js";
+import {
+    Realtime as RealtimeSubpath,
+    SloppyRealtimeError as RealtimeSubpathError,
+} from "../../stdlib/sloppy/realtime.js";
+import {
     column,
     orm,
     relation,
     table,
 } from "../../stdlib/sloppy/orm.js";
+import {
+    TestData as TestDataSubpath,
+    TestHost as TestHostSubpath,
+    TestHttp as TestHttpTestingSubpath,
+    TestServices as TestServicesTestingSubpath,
+    Testing,
+} from "../../stdlib/sloppy/testing.js";
+import {
+    TestServices as TestServicesSubpath,
+} from "../../stdlib/sloppy/testservices.js";
 import {
     Auth,
     BackgroundService as RootBackgroundService,
@@ -156,7 +186,21 @@ const documentedSubpathExports = {
     "sloppy/ffi": [t, unsafeFfi],
     "sloppy/cache": [CacheSubpath, SloppyCacheError],
     "sloppy/redis": [RedisSubpath, RedisSubpathError],
+    "sloppy/auth": [AuthSubpath],
+    "sloppy/config": [ConfigSubpath],
+    "sloppy/health": [HealthSubpath],
+    "sloppy/metrics": [MetricsSubpath],
+    "sloppy/rate-limit": [RateLimitSubpath, RateLimitSubpathError],
+    "sloppy/realtime": [RealtimeSubpath, RealtimeSubpathError],
     "sloppy/orm": [orm, table, column, relation],
+    "sloppy/testing": [
+        TestDataSubpath,
+        TestHostSubpath,
+        TestHttpTestingSubpath,
+        TestServicesTestingSubpath,
+        Testing,
+    ],
+    "sloppy/testservices": [TestServicesSubpath],
 };
 
 for (const [specifier, exports] of Object.entries(documentedSubpathExports)) {
@@ -177,6 +221,19 @@ assert.equal(SloppyRedisError, RedisSubpathError);
 assert.equal(typeof Redis.client, "function");
 assert.equal(typeof Redis.locks, "function");
 assert.equal(typeof SloppyRedisError, "function");
+assert.equal(Auth, AuthSubpath);
+assert.equal(Config, ConfigSubpath);
+assert.equal(Health, HealthSubpath);
+assert.equal(Metrics, MetricsSubpath);
+assert.equal(RateLimit, RateLimitSubpath);
+assert.equal(SloppyRateLimitError, RateLimitSubpathError);
+assert.equal(Realtime, RealtimeSubpath);
+assert.equal(SloppyRealtimeError, RealtimeSubpathError);
+assert.equal(TestHost, TestHostSubpath);
+assert.equal(TestData, TestDataSubpath);
+assert.equal(RootTestHttp, TestHttpTestingSubpath);
+assert.equal(TestServices, TestServicesSubpath);
+assert.equal(TestServices, TestServicesTestingSubpath);
 assert.equal(RootHttp, Http);
 assert.equal(RootHttpClientFactory, HttpClientFactory);
 assert.equal(RootHttpError, HttpError);
