@@ -149,6 +149,7 @@ set(
     ffi.js
     fs.js
     health.js
+    http.js
     metrics.js
     crypto.js
     net.js

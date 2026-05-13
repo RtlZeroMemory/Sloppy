@@ -17,6 +17,7 @@ stdlib/sloppy/
   testservices.js
   data.js
   fs.js
+  http.js
   net.js
   problem-details.js
   request-id.js
@@ -88,6 +89,10 @@ lib/sloppy/bootstrap/sloppy/
   PostgreSQL and SQL Server test service layer. It uses `sloppy/os` process
   APIs for Docker CLI lifecycle, `sloppy/data` provider bridges for readiness
   and SQL helpers, and redacted diagnostics/cleanup for TestHost integration.
+- `http.js` provides the first-party outbound HTTP factory: named clients,
+  typed clients, resilience policies, service registration metadata, TestHost
+  mocks, metrics, diagnostics, and health snapshots over the low-level
+  `HttpClient` transport in `net.js`.
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
   the current public API shape and feature-gated bridge calls where native bridge support
   exists.
@@ -125,7 +130,7 @@ lib/sloppy/bootstrap/sloppy/
   PostgreSQL, and SQL Server.
 - Native plugins and full app lifecycle integration are planned separately.
 - Config file/environment/CLI loading inside the JS stdlib itself, secret managers,
-  tracing exporters, async service factories, typed DI tokens, and native service graph
+  tracing exporters, async service factories, and native service graph
   validation belong to later framework/runtime slices. Native console and JSONL file
   logging sinks are owned by the C runtime and configured through Plan/config metadata.
 
@@ -136,7 +141,9 @@ lib/sloppy/bootstrap/sloppy/
 - `docs/api/testservices.md` — `TestServices`
 - `docs/api/filesystem.md` — `sloppy/fs`
 - `docs/api/network.md` — `sloppy/net`
-- `docs/api/http-client.md` — `HttpClient`
+- `docs/api/http-client.md` — `Http` and `HttpClient`
+- `docs/reference/http-client.md` — HTTP factory reference
+- `docs/internals/http-client-runtime.md` — HTTP client runtime architecture
 - `docs/api/os.md` — `sloppy/os`
 - `docs/api/time.md` — `sloppy/time`
 - `docs/api/crypto.md` — `sloppy/crypto`

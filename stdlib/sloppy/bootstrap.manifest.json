@@ -12,6 +12,7 @@
     "sloppy/ffi.js",
     "sloppy/fs.js",
     "sloppy/health.js",
+    "sloppy/http.js",
     "sloppy/metrics.js",
     "sloppy/net.js",
     "sloppy/os.js",

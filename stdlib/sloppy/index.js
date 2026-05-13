@@ -9,6 +9,13 @@ export { Directory, File, FileHandle, FileWatcher, Path } from "./fs.js";
 export { Health } from "./health.js";
 export { Metrics } from "./metrics.js";
 export {
+    Http,
+    HttpClientFactory,
+    HttpError,
+    SloppyHttpClientError,
+    TestHttp,
+} from "./http.js";
+export {
     HttpClient,
     LocalEndpoint,
     NamedPipe,

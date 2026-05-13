@@ -1,0 +1,45 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Billing",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/invoices/{id}": {
+      "get": {
+        "operationId": "getInvoice",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invoice",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Invoice" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Invoice": {
+        "type": "object",
+        "required": ["id", "status", "amount"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "type": "string" },
+          "amount": { "type": "number" }
+        }
+      }
+    }
+  }
+}

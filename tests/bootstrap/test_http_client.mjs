@@ -15,6 +15,17 @@ async function assertRejectsMessage(fn, expected) {
     });
 }
 
+async function waitForCondition(predicate, message) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 1000) {
+        if (predicate()) {
+            return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.fail(message);
+}
+
 function assertReceivedStreamIds(received, expected) {
     assert.deepEqual(
         received.map((entry) => entry.streamId).sort((left, right) => left - right),
@@ -1556,6 +1567,236 @@ await withNodeNetBridge(async () => {
         await assertRejectsMessage(() => client.get("/second"), /SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED/);
         releaseHold();
         await held;
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let releaseHold;
+    const holdReleased = new Promise((resolve) => {
+        releaseHold = resolve;
+    });
+    let observedHold;
+    const holdObserved = new Promise((resolve) => {
+        observedHold = resolve;
+    });
+    const observed = [];
+    const server = await startPersistentHttpServer(async (request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        if (request.target === "/hold") {
+            observedHold();
+            await holdReleased;
+        }
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000, pendingQueueLimit: 1 },
+        });
+        const held = client.get("/hold");
+        await holdObserved;
+        const queued = client.get("/queued");
+        await waitForCondition(() => client.poolStats().queuedRequests === 1, "expected one queued pooled HTTP request");
+
+        assert.equal(client.poolStats().queuedRequests, 1);
+        assert.equal(client.poolStats().poolWaitCount, 1);
+
+        releaseHold();
+        assert.equal(await (await held).text(), "ok");
+        assert.equal(await (await queued).text(), "ok");
+        assert.deepEqual(observed.map((request) => request.target), ["/hold", "/queued"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 1);
+        assert.equal(client.poolStats().connectionsReused, 1);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let releaseHold;
+    const holdReleased = new Promise((resolve) => {
+        releaseHold = resolve;
+    });
+    let observedHold;
+    const holdObserved = new Promise((resolve) => {
+        observedHold = resolve;
+    });
+    const server = await startPersistentHttpServer(async (request) => {
+        if (request.target === "/hold") {
+            observedHold();
+            await holdReleased;
+        }
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: {
+                maxConnectionsPerOrigin: 1,
+                idleTimeoutMs: 0,
+                pendingQueueLimit: 1,
+                pendingQueueTimeoutMs: 100,
+            },
+        });
+        const held = client.get("/hold");
+        await holdObserved;
+        const queued = client.get("/queued");
+        await waitForCondition(() => client.poolStats().queuedRequests === 1, "expected queued request with idle timeout disabled");
+        releaseHold();
+        assert.equal(await (await held).text(), "ok");
+        assert.equal(await (await queued).text(), "ok");
+        assert.equal(client.poolStats().queuedRequests, 0);
+        assert.equal(client.poolStats().idleConnections, 0);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let releaseHold;
+    const holdReleased = new Promise((resolve) => {
+        releaseHold = resolve;
+    });
+    let observedHold;
+    const holdObserved = new Promise((resolve) => {
+        observedHold = resolve;
+    });
+    const server = await startPersistentHttpServer(async (request) => {
+        if (request.target === "/hold") {
+            observedHold();
+            await holdReleased;
+        }
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: {
+                maxConnectionsPerOrigin: 1,
+                idleTimeoutMs: 1000,
+                pendingQueueLimit: 1,
+                pendingQueueTimeoutMs: 20,
+            },
+        });
+        const held = client.get("/hold");
+        await holdObserved;
+        await assertRejectsMessage(() => client.get("/queued"), /SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED/);
+        assert.equal(client.poolStats().queuedRequests, 0);
+        releaseHold();
+        assert.equal(await (await held).text(), "ok");
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let releaseHold;
+    const holdReleased = new Promise((resolve) => {
+        releaseHold = resolve;
+    });
+    let observedHold;
+    const holdObserved = new Promise((resolve) => {
+        observedHold = resolve;
+    });
+    const controller = new CancellationController();
+    const server = await startPersistentHttpServer(async (request) => {
+        if (request.target === "/hold") {
+            observedHold();
+            await holdReleased;
+        }
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: {
+                maxConnectionsPerOrigin: 1,
+                idleTimeoutMs: 1000,
+                pendingQueueLimit: 1,
+                pendingQueueTimeoutMs: 1000,
+            },
+        });
+        const held = client.get("/hold");
+        await holdObserved;
+        const queued = client.get("/queued", { signal: controller.signal });
+        await waitForCondition(() => client.poolStats().queuedRequests === 1, "expected queued cancellable request");
+        controller.cancel("done");
+        await assertRejectsMessage(() => queued, /SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED/);
+        assert.equal(client.poolStats().queuedRequests, 0);
+        releaseHold();
+        assert.equal(await (await held).text(), "ok");
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    let releaseHold;
+    const holdReleased = new Promise((resolve) => {
+        releaseHold = resolve;
+    });
+    let observedHold;
+    const holdObserved = new Promise((resolve) => {
+        observedHold = resolve;
+    });
+    const observed = [];
+    const server = await startPersistentHttpServer(async (request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        if (request.target === "/hold") {
+            observedHold();
+            await holdReleased;
+        }
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000, pendingQueueLimit: 1 },
+        });
+        const held = client.get("/hold");
+        await holdObserved;
+        const queued = client.get("/queued");
+        await waitForCondition(() => client.poolStats().queuedRequests === 1, "expected queued request before close");
+        await client.close();
+        await assertRejectsMessage(() => queued, /SLOPPY_E_HTTP_CLIENT_POOL_CLOSED/);
+        releaseHold();
+        assert.equal(await (await held).text(), "ok");
+        assert.equal(client.poolStats().queuedRequests, 0);
+        assert.equal(client.poolStats().idleConnections, 0);
+        assert.throws(() => client.get("/after-close"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+        await client.close();
+        assert.deepEqual(observed.map((request) => request.target), ["/hold"]);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const observed = [];
+    const server = await startPersistentHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000, connectionLifetimeMs: 0 },
+        });
+        assert.equal(await (await client.get("/lifetime-one")).text(), "ok");
+        assert.equal(await (await client.get("/lifetime-two")).text(), "ok");
+
+        assert.deepEqual(observed.map((request) => request.target), ["/lifetime-one", "/lifetime-two"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 2);
+        assert.equal(client.poolStats().connectionsCreated, 2);
+        assert.equal(client.poolStats().connectionsReused, 0);
     } finally {
         await server.close();
     }

@@ -3,4 +3,4 @@
    |
 1 | import { Sloppy as S, Results } from "sloppy";
    |          ^^^^^^^^^^^
-hint: Use documented imports from "sloppy", "sloppy/time", "sloppy/fs", "sloppy/crypto", "sloppy/codec", "sloppy/net", "sloppy/os", "sloppy/workers", or "sloppy/ffi".
+hint: Use documented imports from "sloppy", "sloppy/time", "sloppy/fs", "sloppy/crypto", "sloppy/codec", "sloppy/net", "sloppy/http", "sloppy/os", "sloppy/workers", or "sloppy/ffi".
