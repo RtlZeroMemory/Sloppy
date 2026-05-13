@@ -72,9 +72,11 @@ lib/sloppy/bootstrap/sloppy/
   strings, numbers, integers, booleans, arrays, enums, literals, optional,
   nullable, defaulted fields, object shapes, and request body validation
   errors.
-- `testing.js` provides the bootstrap app test host for in-memory JS app-host
-  dispatch through route handlers, middleware, results, CORS, health checks, and
-  scoped services. The dogfood proof in
+- `testing.js` provides `TestHost`, `Testing.createHost`, fake clock helpers,
+  and test data helpers. App-host mode dispatches in memory through route
+  handlers, middleware, results, CORS, health checks, and scoped services.
+  Artifact/package modes call the Sloppy CLI so requests enter the native
+  runtime path. The dogfood proof in
   `tests/bootstrap/test_prealpha_control_plane_dogfood.mjs` imports the
   `examples/prealpha-control-plane` route modules through this host.
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
@@ -120,7 +122,8 @@ lib/sloppy/bootstrap/sloppy/
 
 ## Source Docs
 
-- `docs/api/README.md`
+- `docs/api/index.md`
+- `docs/api/testhost.md` — `TestHost`
 - `docs/api/filesystem.md` — `sloppy/fs`
 - `docs/api/network.md` — `sloppy/net`
 - `docs/api/http-client.md` — `HttpClient`
