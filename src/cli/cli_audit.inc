@@ -83,6 +83,15 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
                               "protected route has no auth scheme metadata", "auth", findings,
                               errors);
         }
+        if (!metadata->routes[outer].auth_required &&
+            metadata->routes[outer].docs_internal &&
+            sl_cli_span_equal_cstr(metadata->routes[outer].docs_kind, "ui"))
+        {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_DOCS_ROUTE_PUBLIC",
+                              "OpenAPI docs route is public; protect it with app.docs requireAuth "
+                              "when exposing non-public APIs",
+                              "openapi", findings, errors);
+        }
         if (metadata->routes[outer].binding_count > 0U) {
             size_t binding = 0U;
             for (binding = 0U; binding < metadata->routes[outer].binding_count; binding += 1U) {
@@ -101,6 +110,20 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
         {
             sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_RESPONSE_UNKNOWN",
                               "route response metadata is unknown", "response", findings, errors);
+        }
+        if (!sl_cli_span_empty(metadata->routes[outer].query_schema) &&
+            sl_cli_find_schema(metadata, metadata->routes[outer].query_schema) == NULL)
+        {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_QUERY_SCHEMA_MISSING",
+                              "route query contract references a missing schema", "openapi",
+                              findings, errors);
+        }
+        if (!sl_cli_span_empty(metadata->routes[outer].params_schema) &&
+            sl_cli_find_schema(metadata, metadata->routes[outer].params_schema) == NULL)
+        {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_PARAMS_SCHEMA_MISSING",
+                              "route parameter contract references a missing schema", "openapi",
+                              findings, errors);
         }
         if (sl_cli_span_equal_cstr(metadata->routes[outer].response_kind, "json")) {
             sl_cli_audit_emit(

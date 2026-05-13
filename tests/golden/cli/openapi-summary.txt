@@ -1,0 +1,7 @@
+Sloppy OpenAPI
+
+routes total: 1
+routes included: 1
+routes omitted: 0
+operations complete: 0
+operations partial: 1

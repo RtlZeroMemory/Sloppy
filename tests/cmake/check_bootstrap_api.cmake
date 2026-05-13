@@ -516,6 +516,7 @@ foreach(required_pattern IN ITEMS
         "freeze()"
         "isFrozen()"
         "use(provider)"
+        "docs(options = undefined)"
         "__getRoutes()"
         "__handleErrorStatus(status, context = undefined)"
         "__debug()"

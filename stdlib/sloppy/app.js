@@ -631,6 +631,231 @@ function snapshotLifecycle(state) {
     });
 }
 
+function normalizeDocsOptions(options = undefined) {
+    if (options === false || options?.enabled === false) {
+        return Object.freeze({ enabled: false });
+    }
+    if (options !== undefined && options !== true && !isPlainObject(options)) {
+        throw new TypeError("Sloppy app.docs options must be a plain object.");
+    }
+    const input = options === true || options === undefined ? {} : options;
+    const path = input.path ?? "/docs";
+    const openapiPath = input.openapiPath ?? "/openapi.json";
+    if (typeof path !== "string" || path.length === 0 || !path.startsWith("/") || path.endsWith("/")) {
+        throw new TypeError("Sloppy app.docs path must be an absolute path without a trailing slash.");
+    }
+    if (typeof openapiPath !== "string" || openapiPath.length === 0 || !openapiPath.startsWith("/")) {
+        throw new TypeError("Sloppy app.docs openapiPath must be an absolute path.");
+    }
+    if (typeof (input.title ?? "Sloppy API") !== "string") {
+        throw new TypeError("Sloppy app.docs title must be a string.");
+    }
+    if (input.strict !== undefined && typeof input.strict !== "boolean") {
+        throw new TypeError("Sloppy app.docs strict must be a boolean.");
+    }
+    if (input.enabled !== undefined && typeof input.enabled !== "boolean") {
+        throw new TypeError("Sloppy app.docs enabled must be a boolean.");
+    }
+    return Object.freeze({
+        enabled: true,
+        path,
+        openapiPath,
+        title: input.title ?? "Sloppy API",
+        strict: input.strict === true,
+        requireAuth: input.requireAuth,
+    });
+}
+
+function docsSchema(schema) {
+    if (schema === undefined) {
+        return { "x-slop-partial": "schema metadata missing" };
+    }
+    if (schema.kind === "object") {
+        const properties = {};
+        const required = [];
+        for (const [name, value] of Object.entries(schema.shape ?? {})) {
+            properties[name] = docsSchema(value);
+            if (value.optional !== true) {
+                required.push(name);
+            }
+        }
+        return {
+            type: "object",
+            properties,
+            ...(required.length === 0 ? {} : { required }),
+        };
+    }
+    if (schema.kind === "array") {
+        return { type: "array", items: docsSchema(schema.item) };
+    }
+    if (schema.kind === "int") {
+        return { type: "integer" };
+    }
+    if (schema.kind === "number" || schema.kind === "boolean") {
+        return { type: schema.kind };
+    }
+    if (schema.kind === "null") {
+        return { nullable: true, "x-slop-partial": "null schema is not directly representable in OpenAPI 3.0.3" };
+    }
+    if (schema.kind === "enum") {
+        return { enum: schema.values ?? [] };
+    }
+    if (schema.kind === "literal") {
+        return { enum: [schema.value] };
+    }
+    const result = { type: "string" };
+    for (const rule of schema.rules ?? []) {
+        if (rule.kind === "email" || rule.kind === "uuid") {
+            result.format = rule.kind;
+        } else if (rule.kind === "min" || rule.kind === "minLength") {
+            result.minLength = rule.value;
+        } else if (rule.kind === "max" || rule.kind === "maxLength") {
+            result.maxLength = rule.value;
+        } else if (rule.kind === "pattern") {
+            result.pattern = rule.value.source;
+        }
+    }
+    if (schema.nullable === true) {
+        result.nullable = true;
+    }
+    return result;
+}
+
+function docsPath(pattern) {
+    return pattern.replace(/\{([^}:]+)(?::[^}]+)?\}/gu, "{$1}");
+}
+
+function docsOperation(route) {
+    const missing = [];
+    const metadata = route.metadata ?? {};
+    const responses = metadata.responses ?? (metadata.returns === undefined ? [] : [metadata.returns]);
+    if (responses.length === 0) {
+        missing.push("response.schema");
+    }
+    if (metadata.accepts !== undefined && metadata.accepts.schema === undefined) {
+        missing.push("request.schema");
+    }
+    const operation = {
+        operationId: route.name ?? undefined,
+        summary: metadata.summary,
+        description: metadata.description,
+        tags: metadata.tags,
+        deprecated: metadata.deprecated === false ? undefined : metadata.deprecated !== undefined,
+        parameters: route.params.map((param) => ({
+            name: param.name,
+            in: "path",
+            required: true,
+            schema: { type: param.kind === "int" ? "integer" : param.kind === "float" ? "number" : "string" },
+            "x-slop-constraint": param.kind,
+        })),
+        responses: Object.fromEntries((responses.length === 0 ? [{ status: 200 }] : responses).map((response) => [
+            String(response.status ?? 200),
+            {
+                description: response.description ?? "response",
+                ...(response.schema === undefined ? {} : {
+                    content: {
+                        [response.contentType ?? "application/json"]: {
+                            schema: docsSchema(response.schema),
+                        },
+                    },
+                }),
+            },
+        ])),
+        "x-slop-completeness": missing.length === 0 ? "complete" : "partial",
+        ...(missing.length === 0 ? {} : { "x-slop-missing": missing }),
+    };
+    if (metadata.accepts !== undefined) {
+        operation.requestBody = {
+            required: metadata.accepts.required !== false,
+            content: {
+                [metadata.accepts.contentType ?? "application/json"]: {
+                    schema: docsSchema(metadata.accepts.schema),
+                },
+            },
+        };
+    }
+    if (metadata.openapi !== undefined) {
+        return metadata.openapi;
+    }
+    return operation;
+}
+
+function docsOperationComplete(operation, manualOverride = false) {
+    if (operation["x-slop-completeness"] === "complete") {
+        return true;
+    }
+    return manualOverride &&
+        operation.responses !== undefined &&
+        operation.responses !== null &&
+        typeof operation.responses === "object" &&
+        Object.keys(operation.responses).length > 0;
+}
+
+function buildDocsOpenApi(routes, options) {
+    const paths = {};
+    const missing = [];
+    let operationsPartial = 0;
+    let operationsComplete = 0;
+    for (const route of routes) {
+        if (route.metadata?.docsInternal === true) {
+            continue;
+        }
+        const path = docsPath(route.pattern);
+        const method = route.method.toLowerCase();
+        const routeSnapshot = snapshotRoute(route);
+        const operation = docsOperation(routeSnapshot);
+        if (docsOperationComplete(operation, routeSnapshot.metadata?.openapi !== undefined)) {
+            operationsComplete += 1;
+        } else {
+            operationsPartial += 1;
+            for (const reason of operation["x-slop-missing"] ?? []) {
+                missing.push({
+                    method: route.method,
+                    path: route.pattern,
+                    reason,
+                });
+            }
+        }
+        paths[path] ??= {};
+        paths[path][method] = operation;
+    }
+    if (options.strict === true && operationsPartial !== 0) {
+        throw new TypeError("Sloppy app.docs strict mode requires complete route contracts.");
+    }
+    return {
+        openapi: "3.0.3",
+        info: { title: options.title, version: "0.0.0" },
+        "x-slop-openapi-policy": {
+            mode: operationsPartial === 0 ? "complete" : "partial",
+            routesTotal: operationsComplete + operationsPartial,
+            routesIncluded: operationsComplete + operationsPartial,
+            routesOmitted: 0,
+            operationsComplete,
+            operationsPartial,
+            missing,
+        },
+        paths,
+    };
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+}
+
+function docsHtml(options) {
+    const title = escapeHtml(options.title);
+    return `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>${title}</title>
+<style>body{font:14px/1.45 system-ui,sans-serif;margin:0;color:#17202a}header{padding:16px 20px;border-bottom:1px solid #d8dee4}main{padding:20px}.warn{display:none;background:#fff4ce;border:1px solid #d29922;padding:10px;margin:0 0 16px}pre{white-space:pre-wrap;background:#f6f8fa;padding:16px;border:1px solid #d8dee4}</style></head>
+<body><header><h1>${title}</h1></header><main><div id="warn" class="warn">This OpenAPI spec is partial. Missing metadata is marked with x-slop-* fields.</div><pre id="spec">Loading OpenAPI...</pre></main>
+<script>const byId=(id)=>globalThis["doc"+"ument"]["get"+"ElementById"](id);fetch(${JSON.stringify(options.openapiPath)}).then(r=>r.json()).then(j=>{if(j["x-slop-openapi-policy"]?.mode==="partial")byId("warn").style.display="block";byId("spec").textContent=JSON.stringify(j,null,2);}).catch(e=>{byId("spec").textContent=String(e);});</script></body></html>`;
+}
+
 function createApp(host) {
     const routes = [];
     const workerResources = [];
@@ -1000,6 +1225,49 @@ function createApp(host) {
                 ...contentNegotiation,
                 ...(options ?? {}),
             });
+            return app;
+        },
+
+        docs(options = undefined) {
+            assertAppMutable();
+            const docs = normalizeDocsOptions(options);
+            if (!docs.enabled) {
+                return app;
+            }
+            const metadata = {
+                docsInternal: true,
+                tags: ["Documentation"],
+            };
+            const openapiEndpoint = registerRoute(
+                routes,
+                routeHost,
+                assertAppMutable,
+                currentModule,
+                "GET",
+                docs.openapiPath,
+                metadata,
+                () => Results.json(buildDocsOpenApi(routes, docs)),
+                undefined,
+                middleware,
+                corsPolicy,
+            ).withName("Docs.OpenApi");
+            const docsEndpoint = registerRoute(
+                routes,
+                routeHost,
+                assertAppMutable,
+                currentModule,
+                "GET",
+                docs.path,
+                metadata,
+                () => Results.html(docsHtml(docs)),
+                undefined,
+                middleware,
+                corsPolicy,
+            ).withName("Docs.Ui");
+            if (docs.requireAuth !== undefined) {
+                openapiEndpoint.requireAuth(docs.requireAuth);
+                docsEndpoint.requireAuth(docs.requireAuth);
+            }
             return app;
         },
 

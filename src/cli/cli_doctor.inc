@@ -703,6 +703,17 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
     }
     for (size_t index = 0U; index < metadata->route_count; index += 1U) {
         const SlCliRoute* route = &metadata->routes[index];
+        if (sl_cli_span_equal_cstr(route->name, "Docs.Ui") ||
+            sl_cli_span_equal_cstr(route->name, "Docs.OpenApi"))
+        {
+            sl_cli_doctor_emit(
+                options, arena, sl_cli_span_cstr("app.openapi.docs"),
+                route->auth_required ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
+                route->auth_required
+                    ? sl_cli_span_cstr("OpenAPI docs route is Plan-visible and protected")
+                    : sl_cli_span_cstr("OpenAPI docs route is Plan-visible and public"),
+                emitted);
+        }
         if (!sl_cli_span_empty(route->completeness) &&
             !sl_cli_span_equal_cstr(route->completeness, "complete"))
         {
@@ -725,6 +736,21 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
                     options, arena, sl_cli_span_cstr("route.validation"), sl_cli_span_cstr("warn"),
                     sl_cli_span_cstr("JSON body binding has no schema metadata"), emitted);
             }
+        }
+        if (!sl_cli_span_empty(route->query_schema) &&
+            sl_cli_find_schema(metadata, route->query_schema) == NULL)
+        {
+            sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.openapi.query"),
+                               sl_cli_span_cstr("warn"),
+                               sl_cli_span_cstr("route query contract references a missing schema"),
+                               emitted);
+        }
+        if (!sl_cli_span_empty(route->params_schema) &&
+            sl_cli_find_schema(metadata, route->params_schema) == NULL)
+        {
+            sl_cli_doctor_emit(
+                options, arena, sl_cli_span_cstr("route.openapi.params"), sl_cli_span_cstr("warn"),
+                sl_cli_span_cstr("route parameter contract references a missing schema"), emitted);
         }
         if (!sl_cli_span_empty(route->json_request_fallback)) {
             char message_buffer[640];

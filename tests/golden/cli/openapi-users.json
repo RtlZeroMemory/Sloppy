@@ -5,8 +5,17 @@
     "version": "0.0.0"
   },
   "x-slop-openapi-policy": {
-    "status": "plan-supported-subset",
-    "unknownMetadata": "explicit-partial-markers",
+    "mode": "partial",
+    "routesTotal": 4,
+    "routesIncluded": 4,
+    "routesOmitted": 0,
+    "operationsComplete": 1,
+    "operationsPartial": 3,
+    "missing": [
+      { "method": "GET", "path": "/api/users/{id:int}", "reason": "response schema is missing" },
+      { "method": "GET", "path": "/api/users", "reason": "response schema is missing" },
+      { "method": "POST", "path": "/api/users", "reason": "response schema is missing" }
+    ],
     "optimizations": "reported-only"
   },
   "paths": {
@@ -14,7 +23,10 @@
       "get": {
         "operationId": "Users.Get",
         "x-slop-source": { "path": "input.js", "line": 35, "column": 1 },
-        "x-slop-completeness": "complete",
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "response schema is missing"
+        ],
         "x-slop-capabilities": [{ "provider": "data.main", "providerKind": "sqlite", "access": "read", "operation": "queryOne" }],
         "x-slop-optimization-candidates": ["native-json-serialization", "provider-aware-route", "static-route-dispatch"],
         "parameters": [
@@ -30,7 +42,10 @@
       "get": {
         "operationId": "Users.List",
         "x-slop-source": { "path": "input.js", "line": 26, "column": 1 },
-        "x-slop-completeness": "complete",
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "response schema is missing"
+        ],
         "x-slop-capabilities": [{ "provider": "data.main", "providerKind": "sqlite", "access": "read", "operation": "query" }],
         "x-slop-optimization-candidates": ["native-json-serialization", "provider-aware-route", "static-route-dispatch"],
         "parameters": [
@@ -43,7 +58,10 @@
       "post": {
         "operationId": "Users.Create",
         "x-slop-source": { "path": "input.js", "line": 31, "column": 1 },
-        "x-slop-completeness": "complete",
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "response schema is missing"
+        ],
         "x-slop-capabilities": [{ "provider": "data.main", "providerKind": "sqlite", "access": "write", "operation": "exec" }, { "provider": "data.main", "providerKind": "sqlite", "access": "read", "operation": "queryOne" }],
         "x-slop-optimization-candidates": ["native-json-serialization", "native-body-validation", "provider-aware-route", "static-route-dispatch"],
         "parameters": [],
@@ -91,7 +109,7 @@
         "x-slop-source": { "path": "input.js", "line": 4, "column": 20 },
         "properties": {
           "email": { "type": "string", "format": "email" },
-          "name": { "type": "string" },
+          "name": { "type": "string", "minLength": 1 },
           "tags": { "type": "array", "items": { "type": "string" } }
         },
         "required": ["name"]

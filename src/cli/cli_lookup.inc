@@ -43,6 +43,22 @@ static const SlCliCapability* sl_cli_find_capability(const SlCliMetadata* metada
     return NULL;
 }
 
+static const SlCliSchema* sl_cli_find_schema(const SlCliMetadata* metadata, SlCliSpan name)
+{
+    size_t index = 0U;
+
+    if (sl_cli_span_empty(name)) {
+        return NULL;
+    }
+    for (index = 0U; index < metadata->schema_count; index += 1U) {
+        if (sl_cli_span_equal(metadata->schemas[index].name, name)) {
+            return &metadata->schemas[index];
+        }
+    }
+
+    return NULL;
+}
+
 static bool sl_cli_capability_allows(SlCliSpan access, SlCliSpan operation)
 {
     if (sl_cli_span_equal_cstr(operation, "read")) {

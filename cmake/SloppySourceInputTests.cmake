@@ -43,6 +43,17 @@
             conformance.static_assets.package_and_run
             PROPERTIES LABELS "conformance;source-input;static;asset;package")
 
+        add_test(
+            NAME conformance.openapi_docs.package_and_run
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_ENABLE_V8=${SLOPPY_ENABLE_V8}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_openapi_docs_package.cmake")
+        set_tests_properties(
+            conformance.openapi_docs.package_and_run
+            PROPERTIES LABELS "conformance;source-input;openapi;docs;package")
+
         if(NOT SLOPPY_ENABLE_V8)
             add_test(
                 NAME sloppy.run.source_input_emits_artifacts_non_v8

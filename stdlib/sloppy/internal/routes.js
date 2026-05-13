@@ -7,7 +7,7 @@ import {
 } from "../auth.js";
 import { createSseRouteHandler, createWebSocketRouteHandler } from "../realtime.js";
 import { Results } from "../results.js";
-import { isSchema } from "../schema.js";
+import { isSchema, schema as Schema } from "../schema.js";
 import { cleanupAfterFailure, finishWithCleanup, validateServiceToken } from "./services.js";
 import { isPlainObject } from "./shared.js";
 
@@ -16,6 +16,7 @@ const ROUTE_KINDS = new Set(["http", "sse", "websocket"]);
 const PREFLIGHT_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
 const ROUTE_PARAM_PATTERN = /^\{([A-Za-z_][0-9A-Za-z_]*)(?::(str|int|uuid|alpha|float))?\}$/u;
+const MEDIA_TYPE_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+\/[!#$%&'*+\-.^_`|~0-9A-Za-z]+(?:\s*;\s*[!#$%&'*+\-.^_`|~0-9A-Za-z]+=[!#$%&'*+\-.^_`|~0-9A-Za-z]+)*$/u;
 
 function validatePattern(pattern) {
     if (typeof pattern !== "string" || pattern.length === 0 || !pattern.startsWith("/")) {
@@ -212,6 +213,52 @@ function validateName(name, subject) {
     if (typeof name !== "string" || name.length === 0) {
         throw new TypeError(`Sloppy ${subject} name must be a non-empty string.`);
     }
+}
+
+function validateMetadataText(value, subject) {
+    if (typeof value !== "string" || value.length === 0) {
+        throw new TypeError(`Sloppy ${subject} must be a non-empty string.`);
+    }
+}
+
+function cloneFrozenJson(value, subject) {
+    if (value === null || typeof value === "string" || typeof value === "boolean") {
+        return value;
+    }
+    if (typeof value === "number") {
+        if (!Number.isFinite(value)) {
+            throw new TypeError(`Sloppy ${subject} must be JSON-compatible.`);
+        }
+        return value;
+    }
+    if (Array.isArray(value)) {
+        return Object.freeze(value.map((item) => cloneFrozenJson(item, subject)));
+    }
+    if (isPlainObject(value)) {
+        const out = {};
+        for (const [key, current] of Object.entries(value)) {
+            out[key] = cloneFrozenJson(current, subject);
+        }
+        return Object.freeze(out);
+    }
+    throw new TypeError(`Sloppy ${subject} must be JSON-compatible.`);
+}
+
+function validateStatusCode(status) {
+    if (!Number.isInteger(status) || status < 100 || status > 599) {
+        throw new TypeError("Sloppy route response status must be an integer from 100 to 599.");
+    }
+}
+
+function validateMediaType(value, subject) {
+    if (typeof value !== "string" || !MEDIA_TYPE_PATTERN.test(value)) {
+        throw new TypeError(`Sloppy ${subject} must be an HTTP media type.`);
+    }
+}
+
+function schemaMetadata(schema, subject) {
+    validateSchema(schema, subject);
+    return schema.metadata;
 }
 
 function routeParamEntries(pattern) {
@@ -765,23 +812,103 @@ function snapshotMetadata(metadata) {
     if (snapshot.auth !== undefined) {
         snapshot.auth = snapshotAuthRequirement(snapshot.auth);
     }
+    if (Array.isArray(snapshot.responses)) {
+        snapshot.responses = Object.freeze(snapshot.responses.map((response) => Object.freeze({ ...response })));
+    }
+    if (Array.isArray(snapshot.consumes)) {
+        snapshot.consumes = Object.freeze([...snapshot.consumes]);
+    }
+    if (Array.isArray(snapshot.produces)) {
+        snapshot.produces = Object.freeze([...snapshot.produces]);
+    }
+    if (Array.isArray(snapshot.headers)) {
+        snapshot.headers = Object.freeze(snapshot.headers.map((header) => Object.freeze({ ...header })));
+    }
 
     return Object.freeze(snapshot);
 }
 
 function createEndpointBuilder(route, assertAppMutable) {
+    function setName(name) {
+        assertAppMutable();
+        validateName(name, "endpoint");
+        if (route.name !== name && route.routeSet.some((current) => current.name === name)) {
+            throw new Error(`Sloppy route name '${name}' is already registered.`);
+        }
+
+        route.name = name;
+        if (route.routeInfo !== undefined) {
+            route.routeInfo.name = name;
+        }
+        return endpoint;
+    }
+
+    function addResponse(status, schemaOrResult = undefined, options = undefined) {
+        assertAppMutable();
+        if (options !== undefined && !isPlainObject(options)) {
+            throw new TypeError("Sloppy endpoint returns options must be a plain object.");
+        }
+        validateStatusCode(status);
+
+        const response = {
+            status,
+            description: options?.description,
+            contentType: options?.contentType ?? route.metadata.produces?.[0] ?? "application/json",
+            schema: schemaOrResult === undefined ? undefined : schemaMetadata(schemaOrResult, "endpoint returns"),
+        };
+        if (response.description !== undefined) {
+            validateMetadataText(response.description, "endpoint response description");
+        }
+        validateMediaType(response.contentType, "endpoint response content type");
+
+        const responses = [...(route.metadata.responses ?? [])];
+        const existing = responses.findIndex((current) => current.status === status);
+        if (existing >= 0) {
+            responses[existing] = Object.freeze(response);
+        } else {
+            responses.push(Object.freeze(response));
+        }
+        responses.sort((left, right) => left.status - right.status);
+        route.metadata.responses = Object.freeze(responses);
+        route.metadata.returns = Object.freeze(response);
+        return endpoint;
+    }
+
     const endpoint = {
         withName(name) {
+            return setName(name);
+        },
+        name(name) {
+            return setName(name);
+        },
+        summary(text) {
             assertAppMutable();
-            validateName(name, "endpoint");
-            if (route.name !== name && route.routeSet.some((current) => current.name === name)) {
-                throw new Error(`Sloppy route name '${name}' is already registered.`);
+            validateMetadataText(text, "endpoint summary");
+            route.metadata.summary = text;
+            return endpoint;
+        },
+        description(text) {
+            assertAppMutable();
+            validateMetadataText(text, "endpoint description");
+            route.metadata.description = text;
+            return endpoint;
+        },
+        tags(...tags) {
+            assertAppMutable();
+            for (const tag of tags) {
+                validateTag(tag);
             }
-
-            route.name = name;
-            if (route.routeInfo !== undefined) {
-                route.routeInfo.name = name;
+            route.metadata.tags = Object.freeze([...new Set([...(route.metadata.tags ?? []), ...tags])]);
+            return endpoint;
+        },
+        deprecated(reasonOrBool = true) {
+            assertAppMutable();
+            if (typeof reasonOrBool !== "boolean" && typeof reasonOrBool !== "string") {
+                throw new TypeError("Sloppy endpoint deprecated metadata must be a boolean or reason string.");
             }
+            route.metadata.deprecated = reasonOrBool === false
+                ? false
+                : Object.freeze({ value: true, reason: typeof reasonOrBool === "string" ? reasonOrBool : undefined });
             return endpoint;
         },
         requireAuth(options = undefined) {
@@ -793,28 +920,105 @@ function createEndpointBuilder(route, assertAppMutable) {
             }
             return endpoint;
         },
-        accepts(schema) {
+        requiresAuth(options = undefined) {
+            return endpoint.requireAuth(options);
+        },
+        authorize(policy) {
+            validateMetadataText(policy, "authorization policy");
+            return endpoint.requireAuth({ policy });
+        },
+        security(options = undefined) {
+            return endpoint.requireAuth(options);
+        },
+        accepts(schema, options = undefined) {
             assertAppMutable();
-            validateSchema(schema, "endpoint accepts");
+            if (options !== undefined && !isPlainObject(options)) {
+                throw new TypeError("Sloppy endpoint accepts options must be a plain object.");
+            }
+            if (options?.description !== undefined) {
+                validateMetadataText(options.description, "endpoint request description");
+            }
+            const contentType = options?.contentType ?? route.metadata.consumes?.[0] ?? "application/json";
+            validateMediaType(contentType, "endpoint request content type");
 
             route.metadata.accepts = Object.freeze({
-                contentType: "application/json",
-                schema: schema.metadata,
+                contentType,
+                required: options?.required !== false,
+                description: options?.description,
+                schema: schemaMetadata(schema, "endpoint accepts"),
             });
             return endpoint;
         },
-        returns(schema, options = undefined) {
+        returns(statusOrSchema, schemaOrOptions = undefined, maybeOptions = undefined) {
             assertAppMutable();
-            validateSchema(schema, "endpoint returns");
-            if (options !== undefined && !isPlainObject(options)) {
-                throw new TypeError("Sloppy endpoint returns options must be a plain object.");
+            if (typeof statusOrSchema === "number") {
+                return addResponse(statusOrSchema, schemaOrOptions, maybeOptions);
             }
-
-            route.metadata.returns = Object.freeze({
-                status: options?.status ?? 200,
-                contentType: options?.contentType ?? "application/json",
-                schema: schema.metadata,
+            const options = schemaOrOptions;
+            return addResponse(options?.status ?? 200, statusOrSchema, options);
+        },
+        produces(mediaType) {
+            assertAppMutable();
+            validateMediaType(mediaType, "endpoint produces media type");
+            route.metadata.produces = Object.freeze([...new Set([...(route.metadata.produces ?? []), mediaType])]);
+            return endpoint;
+        },
+        consumes(mediaType) {
+            assertAppMutable();
+            validateMediaType(mediaType, "endpoint consumes media type");
+            route.metadata.consumes = Object.freeze([...new Set([...(route.metadata.consumes ?? []), mediaType])]);
+            return endpoint;
+        },
+        header(name, schema, options = undefined) {
+            assertAppMutable();
+            validateHeaderToken(name, "endpoint header");
+            if (options !== undefined && !isPlainObject(options)) {
+                throw new TypeError("Sloppy endpoint header options must be a plain object.");
+            }
+            if (options?.description !== undefined) {
+                validateMetadataText(options.description, "endpoint header description");
+            }
+            route.metadata.headers = Object.freeze([
+                ...(route.metadata.headers ?? []).filter((header) => header.name.toLowerCase() !== name.toLowerCase()),
+                Object.freeze({
+                    name,
+                    schema: schemaMetadata(schema, "endpoint header"),
+                    required: options?.required === true,
+                    description: options?.description,
+                }),
+            ]);
+            return endpoint;
+        },
+        query(schemaOrObject, options = undefined) {
+            assertAppMutable();
+            if (options !== undefined && !isPlainObject(options)) {
+                throw new TypeError("Sloppy endpoint query options must be a plain object.");
+            }
+            const schemaValue = isSchema(schemaOrObject) ? schemaOrObject : Schema.object(schemaOrObject);
+            route.metadata.query = Object.freeze({
+                schema: schemaMetadata(schemaValue, "endpoint query"),
+                required: options?.required === true,
             });
+            return endpoint;
+        },
+        params(schemaOrObject, options = undefined) {
+            assertAppMutable();
+            if (options !== undefined && !isPlainObject(options)) {
+                throw new TypeError("Sloppy endpoint params options must be a plain object.");
+            }
+            const schemaValue = isSchema(schemaOrObject) ? schemaOrObject : Schema.object(schemaOrObject);
+            route.metadata.params = Object.freeze({
+                schema: schemaMetadata(schemaValue, "endpoint params"),
+                required: options?.required !== false,
+            });
+            return endpoint;
+        },
+        openapi(override) {
+            assertAppMutable();
+            if (!isPlainObject(override)) {
+                throw new TypeError("Sloppy endpoint OpenAPI override must be a plain object.");
+            }
+            route.metadata.openapi = cloneFrozenJson(override, "endpoint OpenAPI override");
             return endpoint;
         },
     };

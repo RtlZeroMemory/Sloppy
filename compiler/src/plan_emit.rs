@@ -733,6 +733,54 @@ pub(crate) fn emit_plan_with_route_artifact(
             if !route.tags.is_empty() {
                 route_json["tags"] = json!(route.tags);
             }
+            if let Some(summary) = &route.summary {
+                route_json["summary"] = json!(summary);
+            }
+            if let Some(description) = &route.description {
+                route_json["description"] = json!(description);
+            }
+            if let Some(deprecated) = &route.deprecated {
+                route_json["deprecated"] = json!(deprecated != "false");
+                if deprecated != "true" && deprecated != "false" {
+                    route_json["deprecatedReason"] = json!(deprecated);
+                }
+            }
+            if !route.consumes.is_empty() {
+                route_json["consumes"] = json!(route.consumes);
+            }
+            if !route.produces.is_empty() {
+                route_json["produces"] = json!(route.produces);
+            }
+            if !route.headers.is_empty() {
+                route_json["headers"] = json!(route
+                    .headers
+                    .iter()
+                    .map(|header| {
+                        json!({
+                            "name": header.name,
+                            "schema": header.schema,
+                            "required": header.required,
+                            "description": header.description
+                        })
+                    })
+                    .collect::<Vec<_>>());
+            }
+            if let Some(schema) = &route.query_schema {
+                route_json["querySchema"] = json!(schema);
+            }
+            if let Some(schema) = &route.params_schema {
+                route_json["paramsSchema"] = json!(schema);
+            }
+            if let Some(override_value) = &route.openapi_override {
+                route_json["openapi"] = override_value.clone();
+            }
+            if let Some(docs) = &route.docs {
+                route_json["docsInternal"] = json!(true);
+                route_json["docs"] = json!({
+                    "kind": docs.kind,
+                    "strict": docs.strict
+                });
+            }
             if let Some(health) = &route.health {
                 route_json["health"] = json!({
                     "kind": health.kind,
@@ -797,7 +845,17 @@ pub(crate) fn emit_plan_with_route_artifact(
                 || route.health.is_some()
                 || !route.middleware.is_empty()
                 || route.auth.is_some()
-                || route.cors.is_some();
+                || route.cors.is_some()
+                || route.summary.is_some()
+                || route.description.is_some()
+                || route.deprecated.is_some()
+                || !route.consumes.is_empty()
+                || !route.produces.is_empty()
+                || !route.headers.is_empty()
+                || route.query_schema.is_some()
+                || route.params_schema.is_some()
+                || route.openapi_override.is_some()
+                || route.docs.is_some();
             if emits_binding_metadata(index, route) {
                 route_json["bindings"] = json!(route
                     .handler
