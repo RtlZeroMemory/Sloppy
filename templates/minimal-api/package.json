@@ -9,6 +9,6 @@
     "routes": "sloppy routes .sloppy"
   },
   "devDependencies": {
-    "@slopware/sloppy": "0.1.0-alpha.0"
+    "@slopware/sloppy": "0.1.0-alpha.1"
   }
 }

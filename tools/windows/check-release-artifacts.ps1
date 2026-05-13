@@ -113,7 +113,7 @@ function Test-ReleaseTemplates {
         $templatePackage = Read-JsonFile -Relative "templates/$template/package.json"
         $devDependency = $templatePackage.devDependencies.PSObject.Properties["@slopware/sloppy"]
         Assert-True ($null -ne $devDependency) "Template $template must include @slopware/sloppy as a dev dependency for editor declarations."
-        Assert-True ($devDependency.Value -eq "0.1.0-alpha.0") "Template $template must pin @slopware/sloppy to first alpha declarations."
+        Assert-True ($devDependency.Value -match '^0\.1\.0-alpha\.\d+$') "Template $template must pin @slopware/sloppy to a 0.1.0-alpha.N declarations package."
         $templateConfig = Read-RequiredText -Relative "templates/$template/tsconfig.json"
         Assert-TextContains -Text $templateConfig -Needle '"@slopware/sloppy"' -Message "Template $template tsconfig must load Sloppy declaration package."
     }
@@ -330,7 +330,7 @@ function Test-NpmPackagePolicy {
 
     $rootPackage = Get-Content -LiteralPath (Join-Path $packagesRoot "sloppy/package.json") -Raw | ConvertFrom-Json
     Assert-True (Test-Path -LiteralPath (Join-Path $packagesRoot "sloppy/LICENSE") -PathType Leaf) "Root npm package must include a LICENSE file matching its license metadata."
-    Assert-True ($rootPackage.version -eq "0.1.0-alpha.0") "First @slopware alpha package version must be 0.1.0-alpha.0."
+    Assert-True ($rootPackage.version -match '^0\.1\.0-alpha\.\d+$') "Root @slopware alpha package version must be 0.1.0-alpha.N."
     Assert-True ($rootPackage.types -eq "types/index.d.ts") "Root npm package must expose TypeScript declarations."
     Assert-True (Test-Path -LiteralPath (Join-Path $packagesRoot "sloppy/types/index.d.ts") -PathType Leaf) "Root npm package must include TypeScript declaration entrypoint."
     Assert-True (@($rootPackage.files) -contains "types/") "Root npm package files list must include types/."

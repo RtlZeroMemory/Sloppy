@@ -1,6 +1,6 @@
 {
   "name": "@slopware/sloppy-darwin-x64",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "macOS x64 Sloppy runtime platform package generated from a tested release archive.",
   "license": "Apache-2.0",
   "repository": {

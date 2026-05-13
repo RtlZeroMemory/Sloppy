@@ -130,8 +130,8 @@ function Assert-NoNativeInstallScripts {
         throw "$PackageJsonPath must publish with alpha dist-tag for dry-run policy."
     }
     if ($json.name -eq "@slopware/sloppy") {
-        if ($json.version -ne "0.1.0-alpha.0") {
-            throw "$PackageJsonPath must use first alpha version 0.1.0-alpha.0."
+        if ($json.version -notmatch '^0\.1\.0-alpha\.\d+$') {
+            throw "$PackageJsonPath must use a 0.1.0-alpha.N prerelease version."
         }
         if ($json.types -ne "types/index.d.ts") {
             throw "$PackageJsonPath must expose TypeScript declarations."

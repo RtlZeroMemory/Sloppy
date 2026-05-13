@@ -7,6 +7,7 @@ honest about the manual and future CI publishing paths.
 ## Alpha Target
 
 - First alpha version: `0.1.0-alpha.0`.
+- Current alpha release target: `0.1.0-alpha.1`.
 - npm dist-tag: `alpha`.
 - npm scope: `@slopware`.
 - Root package: `@slopware/sloppy`.
@@ -17,7 +18,8 @@ honest about the manual and future CI publishing paths.
   - `@slopware/sloppy-darwin-x64`
 
 The package metadata, optional dependency pins, archive manifests, release
-contract, and `sloppy --version` output must all use `0.1.0-alpha.0`.
+contract, and `sloppy --version` output must all use the current alpha release
+target.
 
 ## Implemented Release Infrastructure
 
@@ -28,7 +30,7 @@ contract, and `sloppy --version` output must all use `0.1.0-alpha.0`.
 - The root npm package includes `types/index.d.ts` plus subpath declarations for
   `sloppy/data`, `sloppy/fs`, `sloppy/os`, and `sloppy/providers/sqlite`.
 - App templates that import Sloppy APIs include a local TypeScript config and a
-  dev dependency on `@slopware/sloppy@0.1.0-alpha.0` so editors can load the
+  dev dependency on the current `@slopware/sloppy` alpha so editors can load the
   ambient declarations for bare `sloppy` imports.
 - Release dry-runs produce archive checksums and npm tarballs for the root and
   matching platform package.

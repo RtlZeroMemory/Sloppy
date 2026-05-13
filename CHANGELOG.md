@@ -20,6 +20,12 @@ evidence and a completed readiness gate.
 - Added RELEASE-DIST dry-run contracts, canonical archive naming, runtime dependency audit
   scaffolding, npm launcher/platform package skeletons, and post-merge verifier handoff.
 
+## 0.1.0-alpha.1
+
+- Carries the imported helper dependency extraction fix for function modules.
+- Keeps the alpha npm package set scoped under `@slopware` and published with
+  the `alpha` dist-tag.
+
 ## 0.1.0-alpha.0
 
 - Starts the first `@slopware/sloppy` alpha package line at `0.1.0-alpha.0`.

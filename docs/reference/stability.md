@@ -8,7 +8,7 @@ Contracts and behavior can change between alpha revisions.
 
 Current emitted/compiled version markers:
 
-- runtime CLI version string: `0.1.0-alpha.0`
+- runtime CLI version string: `0.1.0-alpha.1`
 - compiler version: `sloppyc-0.8.0`
 - plan runtime minimum version: `0.1.0`
 - plan stdlib version: `0.1.0`
