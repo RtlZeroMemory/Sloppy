@@ -556,7 +556,8 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
-        "export function deepFreeze(value)"
+        "export function deepFreeze(value, seen = new WeakSet())"
+        "seen.has(value)"
         "export function snapshotJson(value)"
         "JSON.parse(JSON.stringify(value))")
     require_substring("${json_js}" "${required_pattern}" "internal/json.js is missing expected JSON helper pattern")

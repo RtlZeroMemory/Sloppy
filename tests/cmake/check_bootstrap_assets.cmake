@@ -1,4 +1,8 @@
 file(READ "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/bootstrap.manifest.json" bootstrap_manifest_json)
+file(READ "${SLOPPY_BOOTSTRAP_BUILD_DIR}/bootstrap.manifest.json" bootstrap_manifest_build_json)
+if(NOT bootstrap_manifest_build_json STREQUAL bootstrap_manifest_json)
+    message(FATAL_ERROR "bootstrap.manifest.json in build dir differs from source")
+endif()
 string(JSON bootstrap_module_count LENGTH "${bootstrap_manifest_json}" modules)
 
 set(required_bootstrap_assets

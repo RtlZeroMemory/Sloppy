@@ -1921,8 +1921,11 @@ class HttpConnectionPool {
                 this._stats.connectionsClosed += 1;
                 pending.push(record.session.close().catch(() => {}));
             }
+            entry.records.clear();
+            entry.pending = undefined;
             entry.total = 0;
         }
+        this._http2Entries.clear();
         await Promise.all(pending);
     }
 }
@@ -5071,6 +5074,14 @@ function createHttpClientFacade(baseOptions = undefined) {
         assertOpen();
         return sendHttpRequest(baseOptions, request, options, defaultMethod, pool);
     }
+    function bodyRequestOpen(url, options, kind) {
+        assertOpen();
+        return sendHttpBodyRequest(baseOptions, url, options, kind, pool);
+    }
+    function postJsonOpen(url, value, options) {
+        assertOpen();
+        return postJsonRequest(baseOptions, url, value, options, pool);
+    }
     function closeClient() {
         if (closePromise === undefined) {
             closed = true;
@@ -5101,19 +5112,19 @@ function createHttpClientFacade(baseOptions = undefined) {
             return requestOpen(url, options, "HEAD");
         },
         getJson(url, options = undefined) {
-            return sendHttpBodyRequest(baseOptions, url, options, "json", pool);
+            return bodyRequestOpen(url, options, "json");
         },
         postJson(url, value, options = undefined) {
-            return postJsonRequest(baseOptions, url, value, options, pool);
+            return postJsonOpen(url, value, options);
         },
         text(url, options = undefined) {
-            return sendHttpBodyRequest(baseOptions, url, options, "text", pool);
+            return bodyRequestOpen(url, options, "text");
         },
         json(url, options = undefined) {
-            return sendHttpBodyRequest(baseOptions, url, options, "json", pool);
+            return bodyRequestOpen(url, options, "json");
         },
         bytes(url, options = undefined) {
-            return sendHttpBodyRequest(baseOptions, url, options, "bytes", pool);
+            return bodyRequestOpen(url, options, "bytes");
         },
         poolStats() {
             return pool?.stats() ?? Object.freeze({

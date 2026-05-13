@@ -32,6 +32,7 @@ import {
 } from "./internal/routes.js";
 import { createServiceProvider, createServicesBuilder } from "./internal/services.js";
 import { createMutationGuard, isPlainObject } from "./internal/shared.js";
+import { validateSqliteProviderOptions } from "./internal/validation.js";
 import { Health, createHealthHandler as createOpsHealthHandler } from "./health.js";
 import { isCache } from "./cache.js";
 import { Metrics } from "./metrics.js";
@@ -368,26 +369,7 @@ function sqliteProviderToken(name) {
 
 function validateMergedProviderOptions(provider, options) {
     if (provider.kind === "sqlite") {
-        if (!isPlainObject(options)) {
-            throw new TypeError("Sloppy sqlite provider options must be a plain object.");
-        }
-        const allowedKeys = new Set(["database", "queueCapacity"]);
-        for (const key of Object.keys(options)) {
-            if (!allowedKeys.has(key)) {
-                throw new TypeError(`Sloppy sqlite provider option '${key}' is not supported.`);
-            }
-        }
-        if (typeof options.database !== "string" || options.database.length === 0) {
-            throw new TypeError(
-                "Sloppy sqlite provider database option must be a non-empty string.",
-            );
-        }
-        if (
-            options.queueCapacity !== undefined &&
-            (!Number.isInteger(options.queueCapacity) || options.queueCapacity < 1 || options.queueCapacity > 1_000_000)
-        ) {
-            throw new TypeError("Sloppy sqlite provider queueCapacity option must be a positive integer.");
-        }
+        validateSqliteProviderOptions(options, { requireDatabase: true });
     }
 }
 

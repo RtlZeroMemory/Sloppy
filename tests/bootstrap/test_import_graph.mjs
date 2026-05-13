@@ -8,7 +8,7 @@ const sourceBootstrapDir = path.resolve(
     "../../stdlib/sloppy",
 );
 const bootstrapBaseDir = process.env.SLOPPY_BOOTSTRAP_BUILD_DIR ?? sourceBootstrapDir;
-const manifestPath = path.join(sourceBootstrapDir, "bootstrap.manifest.json");
+const manifestPath = path.join(bootstrapBaseDir, "bootstrap.manifest.json");
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 const modules = manifest.modules.filter((modulePath) => {
     // Node compatibility shims are bundled for Sloppy's bootstrap loader, but

@@ -1,7 +1,7 @@
 import { isPlainObject } from "./shared.js";
 
 const SECRET_REDACTION = "[REDACTED]";
-const SECRET_KEY_PATTERN = /password|passwd|pwd|secret|token|authorization|cookie|set-cookie|apikey|clientsecret|privatekey|passphrase|connectionstring/iu;
+const SECRET_KEY_PATTERN = /password|passwd|pwd|secret|token|authorization|cookie|set[-_]?cookie|api[-_]?key|client[-_]?secret|private[-_]?key|passphrase|connection[-_]?string/iu;
 const SENSITIVE_HEADER_PATTERN = /^(authorization|cookie|set-cookie|x-api-key|api-key)$/iu;
 const SENSITIVE_QUERY_PATTERN = /(token|secret|password|authorization|api[_-]?key)/iu;
 

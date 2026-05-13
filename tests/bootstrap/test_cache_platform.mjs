@@ -368,6 +368,37 @@ async function withCacheBridge(callback) {
             memoryPrototype.dispose = originalMemoryDispose;
             distributedPrototype.dispose = originalDistributedDispose;
         }
+
+        let failureMemoryDisposed = false;
+        let failureDistributedDisposed = false;
+        const failureMemory = Cache.memory("async-fail-front", { maxEntries: 10 });
+        const failureDistributed = Cache.sqlite(sqliteDb, { name: "async-fail-back", namespace: "async-hybrid-fail" });
+        memoryPrototype.dispose = async function dispose() {
+            await Promise.resolve();
+            if (this === failureMemory) {
+                failureMemoryDisposed = true;
+            }
+            return originalMemoryDispose.call(this);
+        };
+        distributedPrototype.dispose = async function dispose() {
+            await Promise.resolve();
+            if (this === failureDistributed) {
+                failureDistributedDisposed = true;
+                throw new Error("distributed dispose failed");
+            }
+            return originalDistributedDispose.call(this);
+        };
+        try {
+            await assert.rejects(
+                () => Cache.hybrid("async-fail-main", { memory: failureMemory, distributed: failureDistributed }).dispose(),
+                /distributed dispose failed/u,
+            );
+            assert.equal(failureMemoryDisposed, true);
+            assert.equal(failureDistributedDisposed, true);
+        } finally {
+            memoryPrototype.dispose = originalMemoryDispose;
+            distributedPrototype.dispose = originalDistributedDispose;
+        }
     });
 }
 

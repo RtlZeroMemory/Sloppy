@@ -248,7 +248,11 @@ function deadlineDelayMs(deadline) {
 function registerCancellationTimer(controller, delayMs, reasonFactory) {
     const timer = setTimeout(() => {
         if (!controller._disposed) {
-            controller.cancel(reasonFactory());
+            try {
+                controller.cancel(reasonFactory());
+            } catch {
+                // Timer-triggered cancellation should not crash the host when listeners throw.
+            }
         }
     }, Math.ceil(delayMs));
     controller._cleanups.push(() => clearTimeout(timer));

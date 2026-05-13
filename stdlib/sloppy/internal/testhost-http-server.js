@@ -101,8 +101,12 @@ async function readMockServerRequest(connection, options = {}) {
     const body = concatBytes(bodyChunks).slice(0, contentLength);
     const contentType = headerLookup.get("content-type") ?? "";
     const text = body.byteLength === 0 ? undefined : Text.utf8.decode(body);
+    const mediaType = contentType.split(";", 1)[0].trim().toLowerCase();
     let json;
-    if (/application\/json/iu.test(contentType) && text !== undefined) {
+    if (
+        text !== undefined &&
+        (mediaType === "application/json" || (mediaType.startsWith("application/") && mediaType.endsWith("+json")))
+    ) {
         json = JSON.parse(text);
     }
     return Object.freeze({
@@ -117,8 +121,13 @@ async function readMockServerRequest(connection, options = {}) {
 
 async function writeMockServerResponse(connection, response) {
     const headers = { ...response.headers };
-    headers["content-length"] ??= String(response.body.byteLength);
-    headers.connection ??= "close";
+    const headerLookup = createHeaderLookup(headers);
+    if (headerLookup.get("content-length") === undefined) {
+        headers["content-length"] = String(response.body.byteLength);
+    }
+    if (headerLookup.get("connection") === undefined) {
+        headers.connection = "close";
+    }
     const head = [
         `HTTP/1.1 ${response.status} ${statusText(response.status)}`,
         ...Object.entries(headers).map(([name, value]) => `${name}: ${value}`),

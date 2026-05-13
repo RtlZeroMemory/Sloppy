@@ -1,4 +1,5 @@
 import { isPlainObject } from "./internal/validation.js";
+import { disposeAll } from "./internal/disposable.js";
 import { serializeJson } from "./results.js";
 import { isSchema } from "./schema.js";
 import { Text } from "./codec.js";
@@ -1088,10 +1089,7 @@ class HybridCache extends BaseCache {
     async dispose() {
         super.dispose();
         if (this.owned) {
-            await Promise.all([
-                Promise.resolve(this.memory.dispose?.()),
-                Promise.resolve(this.distributed.dispose?.()),
-            ]);
+            await disposeAll([this.memory, this.distributed]);
         }
     }
 }

@@ -120,6 +120,17 @@ assert.deepEqual(await runtime.TestServices.docker.available({ dockerBackend }),
 assert.equal(await runtime.TestServices.docker.require({ dockerBackend }).then((result) => result.ok), true);
 assert.deepEqual(dockerCommands[0], ["version", "--format", "{{json .}}"]);
 
+const classicHttpClient = runtime.HttpClient.create({ baseUrl: "http://example.test" });
+const classicHttpClose = classicHttpClient.close();
+assert.throws(() => classicHttpClient.get("/closed"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+assert.throws(() => classicHttpClient.text("/closed"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+assert.throws(() => classicHttpClient.json("/closed"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+assert.throws(() => classicHttpClient.bytes("/closed"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+assert.throws(() => classicHttpClient.getJson("/closed"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+assert.throws(() => classicHttpClient.postJson("/closed", { ok: true }), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+assert.equal(classicHttpClient.dispose(), classicHttpClose);
+await classicHttpClose;
+
 const unavailable = await runtime.TestServices.docker.available({
     dockerBackend: {
         async run() {

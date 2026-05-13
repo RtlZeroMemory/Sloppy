@@ -3556,7 +3556,11 @@ Reason:
     function registerCancellationTimer(controller, delayMs, reasonFactory) {
         const timer = setTimeout(() => {
             if (!controller._disposed) {
-                controller.cancel(reasonFactory());
+                try {
+                    controller.cancel(reasonFactory());
+                } catch {
+                    // Timer-triggered cancellation should not crash the host when listeners throw.
+                }
             }
         }, Math.ceil(delayMs));
         controller._cleanups.push(() => clearTimeout(timer));
@@ -6676,6 +6680,34 @@ Reason:
                 session.close().catch(() => {});
             }, this._options.idleTimeoutMs);
         }
+
+        async close() {
+            if (this._closed) {
+                return;
+            }
+            this._closed = true;
+            const pending = [];
+            for (const entry of this._entries.values()) {
+                for (const idle of entry.idle.splice(0)) {
+                    clearTimeout(idle.timer);
+                    pending.push(idle.connection.close().catch(() => {}));
+                }
+                entry.total = entry.inUse;
+            }
+            for (const entry of this._http2Entries.values()) {
+                for (const record of entry.sessions.splice(0)) {
+                    if (record.timer !== undefined) {
+                        clearTimeout(record.timer);
+                    }
+                    pending.push(record.session.close().catch(() => {}));
+                }
+                entry.records.clear();
+                entry.pending = undefined;
+                entry.total = 0;
+            }
+            this._http2Entries.clear();
+            await Promise.all(pending);
+        }
     }
 
     function isHttpCancellationSignal(value) {
@@ -9428,42 +9460,78 @@ Reason:
             poolOptions,
         );
         const pool = poolOptions === undefined ? undefined : new HttpConnectionPool(poolOptions);
+        let closed = false;
+        let closePromise;
+        function assertOpen() {
+            if (closed) {
+                throw httpClientError(
+                    "HttpClientClosedError",
+                    "SLOPPY_E_HTTP_CLIENT_CLOSED",
+                    "HTTP client is closed.",
+                );
+            }
+        }
+        function requestOpen(request, options, defaultMethod) {
+            assertOpen();
+            return sendHttpRequest(baseOptions, request, options, defaultMethod, pool);
+        }
+        function bodyRequestOpen(url, options, kind) {
+            assertOpen();
+            return sendHttpBodyRequest(baseOptions, url, options, kind, pool);
+        }
+        function postJsonOpen(url, value, options) {
+            assertOpen();
+            return postJsonRequest(baseOptions, url, value, options, pool);
+        }
+        function closeClient() {
+            if (closePromise === undefined) {
+                closed = true;
+                closePromise = Promise.resolve(pool?.close()).then(() => undefined);
+            }
+            return closePromise;
+        }
         const client = {
             request(request, options = undefined) {
-                return sendHttpRequest(baseOptions, request, options, undefined, pool);
+                return requestOpen(request, options, undefined);
             },
             get(url, options = undefined) {
-                return sendHttpRequest(baseOptions, url, options, "GET", pool);
+                return requestOpen(url, options, "GET");
             },
             post(url, options = undefined) {
-                return sendHttpRequest(baseOptions, url, options, "POST", pool);
+                return requestOpen(url, options, "POST");
             },
             put(url, options = undefined) {
-                return sendHttpRequest(baseOptions, url, options, "PUT", pool);
+                return requestOpen(url, options, "PUT");
             },
             patch(url, options = undefined) {
-                return sendHttpRequest(baseOptions, url, options, "PATCH", pool);
+                return requestOpen(url, options, "PATCH");
             },
             delete(url, options = undefined) {
-                return sendHttpRequest(baseOptions, url, options, "DELETE", pool);
+                return requestOpen(url, options, "DELETE");
             },
             head(url, options = undefined) {
-                return sendHttpRequest(baseOptions, url, options, "HEAD", pool);
+                return requestOpen(url, options, "HEAD");
             },
             getJson(url, options = undefined) {
-                return sendHttpBodyRequest(baseOptions, url, options, "json", pool);
+                return bodyRequestOpen(url, options, "json");
             },
             postJson(url, value, options = undefined) {
-                return postJsonRequest(baseOptions, url, value, options, pool);
+                return postJsonOpen(url, value, options);
             },
             text(url, options = undefined) {
-                return sendHttpBodyRequest(baseOptions, url, options, "text", pool);
+                return bodyRequestOpen(url, options, "text");
             },
             json(url, options = undefined) {
-                return sendHttpBodyRequest(baseOptions, url, options, "json", pool);
+                return bodyRequestOpen(url, options, "json");
             },
             bytes(url, options = undefined) {
-                return sendHttpBodyRequest(baseOptions, url, options, "bytes", pool);
+                return bodyRequestOpen(url, options, "bytes");
+            },
+            close() {
+                return closeClient();
+            },
+            dispose() {
+                return closeClient();
             },
         };
         Object.defineProperty(client, "__sloppyHttpClientOptions", {
@@ -16107,7 +16175,7 @@ Reason:
             if (isPlainObject(value)) {
                 const safe = {};
                 for (const [key, entryValue] of Object.entries(value)) {
-                    if (/password|secret|token|connectionstring|connectionString|pwd/iu.test(key)) {
+                    if (/password|passwd|pwd|secret|token|authorization|cookie|set[-_]?cookie|api[-_]?key|client[-_]?secret|private[-_]?key|passphrase|connection[-_]?string/iu.test(key)) {
                         safe[key] = SECRET_REDACTION;
                     } else {
                         safe[key] = safeObject(entryValue, secrets);

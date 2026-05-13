@@ -29,6 +29,7 @@ import {
     requireNonEmptyString,
     requirePlainObject,
     requirePositiveFiniteNumber,
+    validateSqliteProviderOptions,
 } from "../../stdlib/sloppy/internal/validation.js";
 import {
     createDiagnosticsStore,
@@ -73,6 +74,14 @@ assert.equal(isHttpToken("x-api-key"), true);
 assert.equal(isHttpToken("bad header"), false);
 assert.equal(requireHttpToken("authorization", "token expected"), "authorization");
 assert.throws(() => requireHttpToken("bad header", "token expected"), /token expected/u);
+assert.deepEqual(validateSqliteProviderOptions({ database: "app.db", queueCapacity: 16 }), {
+    database: "app.db",
+    queueCapacity: 16,
+});
+assert.throws(() => validateSqliteProviderOptions({ unknown: true }), /option 'unknown'/u);
+assert.deepEqual(validateSqliteProviderOptions({}), {});
+assert.throws(() => validateSqliteProviderOptions({}, { requireDatabase: true }), /non-empty string/u);
+assert.throws(() => validateSqliteProviderOptions({ database: "bad\0db" }), /without NUL/u);
 
 const originalBuffer = new Uint8Array([0, 1, 2, 3, 4]).buffer;
 const copiedBuffer = copyArrayBuffer(new DataView(originalBuffer, 1, 3));
@@ -113,6 +122,11 @@ assert.equal(Object.isFrozen(jsonSnapshot), true);
 assert.equal(Object.isFrozen(jsonSnapshot.nested), true);
 assert.equal(snapshotJson(undefined), undefined);
 assert.equal(deepFreeze(null), null);
+const cyclic = { name: "cycle" };
+cyclic.self = cyclic;
+assert.equal(deepFreeze(cyclic), cyclic);
+assert.equal(Object.isFrozen(cyclic), true);
+assert.equal(cyclic.self, cyclic);
 
 assert.equal(SECRET_REDACTION, "[REDACTED]");
 assert.equal(boundedText("abcdef", 4), "cdef");
@@ -140,6 +154,28 @@ assert.deepEqual(redactObject({
 });
 assert.deepEqual(redactObject({ count: 3 }, { stringifyPrimitives: true }), { count: "3" });
 
+const secretKeyVariants = [
+    "apiKey",
+    "apikey",
+    "api_key",
+    "api-key",
+    "clientSecret",
+    "client_secret",
+    "client-secret",
+    "privateKey",
+    "private_key",
+    "private-key",
+    "connectionString",
+    "connection_string",
+    "connection-string",
+    "set-cookie",
+    "set_cookie",
+    "setcookie",
+];
+for (const key of secretKeyVariants) {
+    assert.deepEqual(redactObject({ [key]: "leak" }), { [key]: "[REDACTED]" }, `${key} should be redacted`);
+}
+
 assert.deepEqual(normalizeOverrideMap({ a: 1 }, "config"), { a: 1 });
 assert.throws(() => normalizeOverrideMap([], "config"), /overrides must be a plain object/u);
 
@@ -151,6 +187,9 @@ diagnostics.record({
         count: 3,
         token: "top-secret",
         nested: { apiKey: "top-secret" },
+        connection_string: "top-secret",
+        "client-secret": "top-secret",
+        set_cookie: "top-secret",
     },
 });
 assert.equal(diagnostics.latest().message, "message with [REDACTED]");
@@ -158,6 +197,9 @@ assert.deepEqual(diagnostics.latest().fields, {
     count: "3",
     token: "[REDACTED]",
     nested: { apiKey: "[REDACTED]" },
+    connection_string: "[REDACTED]",
+    "client-secret": "[REDACTED]",
+    set_cookie: "[REDACTED]",
 });
 assert.equal(diagnostics.filter({ code: "SLOPPY_TEST" }).length, 1);
 assert.equal(diagnostics.expectCode("SLOPPY_TEST"), diagnostics);

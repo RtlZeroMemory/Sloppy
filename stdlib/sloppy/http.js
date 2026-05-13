@@ -1,6 +1,6 @@
 import { Text } from "./codec.js";
 import { Random } from "./crypto.js";
-import { disposeAll, onceAsync } from "./internal/disposable.js";
+import { disposeAll } from "./internal/disposable.js";
 import { createHeaderLookup } from "./internal/headers.js";
 import { redactHeaders, redactUrlTemplate } from "./internal/redaction.js";
 import {
@@ -652,10 +652,17 @@ function createManagedClient(name, options, transport = undefined) {
         }
     }
 
-    const closeClient = onceAsync(async () => {
+    let closePromise = undefined;
+    function closeClient() {
+        if (closePromise !== undefined) {
+            return closePromise;
+        }
         closed = true;
-        await (lowLevel.close?.() ?? lowLevel.dispose?.());
-    });
+        closePromise = Promise.resolve()
+            .then(() => lowLevel.close?.() ?? lowLevel.dispose?.())
+            .then(() => undefined);
+        return closePromise;
+    }
 
     async function execute(method, path, requestOptions = {}) {
         assertOpen();
