@@ -1,5 +1,7 @@
 #include "bench_internal.h"
 
+#include "sloppy/builder.h"
+#include "sloppy/json_writer.h"
 #include "sloppy/json_profile.h"
 #include "sloppy/platform.h"
 #include "sloppy/platform_time.h"
@@ -8,6 +10,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef enum SlBenchFormat
@@ -43,45 +46,39 @@ static void sl_bench_print_error_text(const char* text)
 
 static void sl_bench_print_json_string(const char* text)
 {
-    const unsigned char* cursor = (const unsigned char*)text;
+    unsigned char stack_storage[512];
+    unsigned char* storage = stack_storage;
+    size_t escaped_length = 0U;
+    SlByteBuilder builder = {0};
+    SlStr value = text == NULL ? sl_str_empty() : sl_str_from_cstr(text);
+    SlStatus status = sl_json_writer_escaped_string_length(value, &escaped_length);
 
-    fputc('"', stdout);
-    while (*cursor != '\0') {
-        unsigned char ch = *cursor;
-        switch (ch) {
-        case '"':
-            fputs("\\\"", stdout);
-            break;
-        case '\\':
-            fputs("\\\\", stdout);
-            break;
-        case '\b':
-            fputs("\\b", stdout);
-            break;
-        case '\f':
-            fputs("\\f", stdout);
-            break;
-        case '\n':
-            fputs("\\n", stdout);
-            break;
-        case '\r':
-            fputs("\\r", stdout);
-            break;
-        case '\t':
-            fputs("\\t", stdout);
-            break;
-        default:
-            if (ch < 0x20U) {
-                printf("\\u%04x", (unsigned int)ch);
-            }
-            else {
-                fputc((int)ch, stdout);
-            }
-            break;
-        }
-        cursor += 1;
+    if (!sl_status_is_ok(status)) {
+        fputs("\"<json-escape-error>\"", stdout);
+        return;
     }
-    fputc('"', stdout);
+    if (escaped_length > sizeof(stack_storage)) {
+        storage = (unsigned char*)malloc(escaped_length);
+        if (storage == NULL) {
+            fputs("\"<out-of-memory>\"", stdout);
+            return;
+        }
+    }
+
+    status = sl_byte_builder_init_fixed(&builder, storage, escaped_length);
+    if (sl_status_is_ok(status)) {
+        status = sl_json_writer_append_escaped_string_bytes(&builder, value);
+    }
+    if (sl_status_is_ok(status)) {
+        SlBytes escaped = sl_byte_builder_view(&builder);
+        fwrite(escaped.ptr, 1U, escaped.length, stdout);
+    }
+    else {
+        fputs("\"<json-escape-error>\"", stdout);
+    }
+    if (storage != stack_storage) {
+        free(storage);
+    }
 }
 
 static int sl_bench_parse_options(int argc, char** argv, SlBenchOptions* out_options)

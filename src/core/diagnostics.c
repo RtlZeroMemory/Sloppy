@@ -19,6 +19,7 @@
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
 #include "sloppy/container.h"
+#include "sloppy/json_writer.h"
 
 static SlStr sl_diag_literal(const char* ptr, size_t length)
 {
@@ -2258,30 +2259,10 @@ SlStatus sl_diag_render_text_with_source(SlArena* arena, const SlDiag* diag,
 
 static SlStatus sl_diag_json_escaped_len(SlStr value, size_t* out)
 {
-    size_t length = 2U;
-    size_t index = 0U;
-    SlStatus status;
-
     if (out == NULL || !sl_diag_str_is_valid(value)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    for (index = 0U; index < value.length; index += 1U) {
-        unsigned char ch = (unsigned char)value.ptr[index];
-        if (ch == '"' || ch == '\\' || ch == '\n' || ch == '\r' || ch == '\t') {
-            status = sl_checked_add_size(length, 2U, &length);
-        }
-        else if (ch < 0x20U) {
-            status = sl_checked_add_size(length, 6U, &length);
-        }
-        else {
-            status = sl_checked_add_size(length, 1U, &length);
-        }
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-    }
-    *out = length;
-    return sl_status_ok();
+    return sl_json_writer_escaped_string_length(value, out);
 }
 
 static SlStatus sl_diag_add_json_escaped_len(size_t* total, SlStr value)
@@ -2295,71 +2276,9 @@ static SlStatus sl_diag_add_json_escaped_len(size_t* total, SlStr value)
     return sl_diag_add_len(total, length);
 }
 
-static char sl_diag_json_escape_letter(unsigned char ch)
-{
-    if (ch == '\n') {
-        return 'n';
-    }
-    if (ch == '\r') {
-        return 'r';
-    }
-    return 't';
-}
-
 static SlStatus sl_diag_builder_append_json_escaped(SlStringBuilder* builder, SlStr value)
 {
-    static const char hex[] = "0123456789abcdef";
-    size_t index = 0U;
-    SlStatus status;
-
-    status = sl_string_builder_append_char(builder, '"');
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    for (index = 0U; index < value.length; index += 1U) {
-        unsigned char ch = (unsigned char)value.ptr[index];
-        if (ch == '"' || ch == '\\') {
-            status = sl_string_builder_append_char(builder, '\\');
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-            status = sl_string_builder_append_char(builder, (char)ch);
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-        }
-        else if (ch == '\n' || ch == '\r' || ch == '\t') {
-            status = sl_string_builder_append_char(builder, '\\');
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-            status = sl_string_builder_append_char(builder, sl_diag_json_escape_letter(ch));
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-        }
-        else if (ch < 0x20U) {
-            status = sl_diag_builder_append_literal(builder, "\\u00", 4U);
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-            status = sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0xFU]);
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-            status = sl_string_builder_append_char(builder, hex[ch & 0xFU]);
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-        }
-        else {
-            status = sl_string_builder_append_char(builder, (char)ch);
-            if (!sl_status_is_ok(status)) {
-                return status;
-            }
-        }
-    }
-    return sl_string_builder_append_char(builder, '"');
+    return sl_json_writer_append_escaped_string(builder, value);
 }
 
 static SlStatus sl_diag_json_span_len(size_t* total, SlSourceSpan span)

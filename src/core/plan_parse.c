@@ -1604,8 +1604,7 @@ static SlStatus sl_plan_parse_route_auth(SlPlanParseContext* ctx, yyjson_val* ro
                                          SlPlanRoute* out)
 {
     yyjson_val* auth = NULL;
-    yyjson_val* allow_anonymous = NULL;
-    yyjson_val* required = NULL;
+    SlStatus status;
 
     if (ctx == NULL || route == NULL || out == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -1626,29 +1625,14 @@ static SlStatus sl_plan_parse_route_auth(SlPlanParseContext* ctx, yyjson_val* ro
     }
 
     out->auth.present = true;
-    required = yyjson_obj_get(auth, "required");
-    if (required != NULL && !yyjson_is_null(required)) {
-        if (!yyjson_is_bool(required)) {
-            return sl_plan_parse_field_diag(
-                ctx,
-                sl_plan_parse_literal("invalid app plan field type",
-                                      sizeof("invalid app plan field type") - 1U),
-                sl_plan_parse_literal("route auth.required must be a boolean",
-                                      sizeof("route auth.required must be a boolean") - 1U));
-        }
-        out->auth.required = yyjson_get_bool(required);
+    status = sl_plan_parse_bool_field(ctx, auth, "required", false, &out->auth.required);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-    allow_anonymous = yyjson_obj_get(auth, "allowAnonymous");
-    if (allow_anonymous != NULL && !yyjson_is_null(allow_anonymous)) {
-        if (!yyjson_is_bool(allow_anonymous)) {
-            return sl_plan_parse_field_diag(
-                ctx,
-                sl_plan_parse_literal("invalid app plan field type",
-                                      sizeof("invalid app plan field type") - 1U),
-                sl_plan_parse_literal("route auth.allowAnonymous must be a boolean",
-                                      sizeof("route auth.allowAnonymous must be a boolean") - 1U));
-        }
-        out->auth.allow_anonymous = yyjson_get_bool(allow_anonymous);
+    status =
+        sl_plan_parse_bool_field(ctx, auth, "allowAnonymous", false, &out->auth.allow_anonymous);
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
     return sl_status_ok();
 }

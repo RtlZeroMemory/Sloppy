@@ -80,3 +80,11 @@ Follow `docs/internals/compiler-standards.md` and
 `docs/contributor/rust-standards.md` for module size, extractor honesty,
 diagnostic stability, deterministic output, generated artifact, dependency,
 and test requirements.
+
+## Native Runtime Contract
+
+Native C/C++ runtime work must follow `docs/internals/native-runtime-standards.md`.
+Keep core, platform, provider, CLI, and V8 boundaries explicit; use checked
+arithmetic and bounded builders for size-sensitive paths; return `SlStatus`
+when callers need diagnostics; and add focused tests or fuzz seeds for parser,
+serializer, ownership, or cleanup changes.

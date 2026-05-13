@@ -75,7 +75,8 @@ static SlCliSpan sl_cli_doctor_route_message(SlArena* arena, const char* prefix,
         !sl_status_is_ok(sl_string_builder_append_cstr(&builder, " (route: ")) ||
         !sl_status_is_ok(sl_string_builder_append_str(
             &builder, sl_str_from_parts(route_identity.ptr, route_identity.length))) ||
-        !sl_status_is_ok(sl_string_builder_append_char(&builder, ')'))) {
+        !sl_status_is_ok(sl_string_builder_append_char(&builder, ')')))
+    {
         return sl_cli_span_cstr(prefix);
     }
 
@@ -319,11 +320,10 @@ static void sl_cli_doctor_emit_cache(const SlCliOptions* options, SlArena* arena
         const SlCliRoute* route = &metadata->routes[index];
         has_output_cache = has_output_cache || route->output_cache_value != NULL;
         has_cache_headers = has_cache_headers || route->cache_headers_value != NULL;
-        if (route->auth_required && route->output_cache_value != NULL) {
-            yyjson_val* shared = yyjson_obj_get(route->output_cache_value, "allowSharedAuthenticated");
-            has_shared_auth_output_cache = has_shared_auth_output_cache ||
-                                           (shared != NULL && yyjson_is_bool(shared) &&
-                                            yyjson_get_bool(shared));
+        if (route->auth_required && route->output_cache_value != NULL &&
+            route->output_cache_allow_shared_authenticated)
+        {
+            has_shared_auth_output_cache = true;
         }
     }
 
@@ -339,17 +339,16 @@ static void sl_cli_doctor_emit_cache(const SlCliOptions* options, SlArena* arena
             emitted);
     }
     if (has_cache_headers) {
-        sl_cli_doctor_emit(
-            options, arena, sl_cli_span_cstr("route.cache-headers.metadata"), sl_cli_span_cstr("ok"),
-            sl_cli_span_cstr("cache header route metadata is visible"), emitted);
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.cache-headers.metadata"),
+                           sl_cli_span_cstr("ok"),
+                           sl_cli_span_cstr("cache header route metadata is visible"), emitted);
     }
     if (has_shared_auth_output_cache) {
-        sl_cli_doctor_emit(
-            options, arena, sl_cli_span_cstr("route.output-cache.shared-auth"),
-            sl_cli_span_cstr("warn"),
-            sl_cli_span_cstr(
-                "shared authenticated OutputCache routes require application data isolation review"),
-            emitted);
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.output-cache.shared-auth"),
+                           sl_cli_span_cstr("warn"),
+                           sl_cli_span_cstr("shared authenticated OutputCache routes require "
+                                            "application data isolation review"),
+                           emitted);
     }
 }
 
@@ -558,24 +557,22 @@ static void sl_cli_doctor_emit_auth(const SlCliOptions* options, SlArena* arena,
             sl_cli_doctor_emit(
                 options, arena, sl_cli_span_cstr("app.auth.session-store"),
                 sl_cli_span_cstr("warn"),
-                sl_cli_span_cstr("cookie session uses in-memory session store metadata"),
-                emitted);
+                sl_cli_span_cstr("cookie session uses in-memory session store metadata"), emitted);
         }
     }
     if (has_protected_routes) {
-        sl_cli_doctor_emit(
-            options, arena, sl_cli_span_cstr("app.auth.protected-routes"),
-            metadata->auth_scheme_count > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
-            metadata->auth_scheme_count > 0U
-                ? sl_cli_span_cstr("protected route auth metadata is Plan-visible")
-                : sl_cli_span_cstr("protected routes have no auth scheme metadata"),
-            emitted);
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.auth.protected-routes"),
+                           metadata->auth_scheme_count > 0U ? sl_cli_span_cstr("ok")
+                                                            : sl_cli_span_cstr("warn"),
+                           metadata->auth_scheme_count > 0U
+                               ? sl_cli_span_cstr("protected route auth metadata is Plan-visible")
+                               : sl_cli_span_cstr("protected routes have no auth scheme metadata"),
+                           emitted);
     }
     if (has_anonymous_routes) {
-        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.auth.anonymous-routes"),
-                           sl_cli_span_cstr("ok"),
-                           sl_cli_span_cstr("anonymous route auth metadata is Plan-visible"),
-                           emitted);
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("app.auth.anonymous-routes"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("anonymous route auth metadata is Plan-visible"), emitted);
     }
     for (route_index = 0U; route_index < metadata->route_count; route_index += 1U) {
         const SlCliRoute* route = &metadata->routes[route_index];
@@ -592,13 +589,13 @@ static void sl_cli_doctor_emit_auth(const SlCliOptions* options, SlArena* arena,
                 }
             }
             if (!found) {
-                sl_cli_doctor_emit(
-                    options, arena, sl_cli_span_cstr("app.auth.route-scheme"),
-                    sl_cli_span_cstr("error"),
-                    sl_cli_doctor_route_message(
-                        arena, "route references an auth scheme that is not configured",
-                        sl_cli_doctor_route_identity(route)),
-                    emitted);
+                sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.auth.route-scheme"),
+                                   sl_cli_span_cstr("error"),
+                                   sl_cli_doctor_route_message(
+                                       arena,
+                                       "route references an auth scheme that is not configured",
+                                       sl_cli_doctor_route_identity(route)),
+                                   emitted);
             }
         }
         if (!sl_cli_span_empty(route->auth_policy)) {
@@ -612,13 +609,13 @@ static void sl_cli_doctor_emit_auth(const SlCliOptions* options, SlArena* arena,
                 }
             }
             if (!found) {
-                sl_cli_doctor_emit(
-                    options, arena, sl_cli_span_cstr("app.auth.route-policy"),
-                    sl_cli_span_cstr("error"),
-                    sl_cli_doctor_route_message(
-                        arena, "route references an auth policy that is not configured",
-                        sl_cli_doctor_route_identity(route)),
-                    emitted);
+                sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.auth.route-policy"),
+                                   sl_cli_span_cstr("error"),
+                                   sl_cli_doctor_route_message(
+                                       arena,
+                                       "route references an auth policy that is not configured",
+                                       sl_cli_doctor_route_identity(route)),
+                                   emitted);
             }
         }
     }
@@ -867,16 +864,15 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
     if (rate_limited_routes > 0U) {
         sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.rate-limit.routes"),
                            sl_cli_span_cstr("ok"),
-                           sl_cli_span_cstr("rate-limit metadata present on Plan routes"),
-                           emitted);
+                           sl_cli_span_cstr("rate-limit metadata present on Plan routes"), emitted);
     }
     if (health_routes > 0U || management_routes > 0U || prometheus_metrics || json_metrics) {
-        sl_cli_doctor_emit(
-            options, arena, sl_cli_span_cstr("ops.health"),
-            health_routes > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
-            health_routes > 0U ? sl_cli_span_cstr("health endpoint metadata present")
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("ops.health"),
+                           health_routes > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
+                           health_routes > 0U
+                               ? sl_cli_span_cstr("health endpoint metadata present")
                                : sl_cli_span_cstr("health endpoint metadata not present"),
-            emitted);
+                           emitted);
         sl_cli_doctor_emit(
             options, arena, sl_cli_span_cstr("ops.management"),
             management_routes > 0U ? sl_cli_span_cstr("warn") : sl_cli_span_cstr("info"),
@@ -958,21 +954,21 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
             (sl_cli_doctor_span_contains_ascii_ci(route->name, "login") ||
              sl_cli_doctor_span_contains_ascii_ci(route->pattern, "login")))
         {
-            sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.rate-limit.login"),
-                               sl_cli_span_cstr("warn"),
-                               sl_cli_doctor_route_message(
-                                   arena, "public login route has no rate-limit metadata",
-                                   sl_cli_doctor_route_identity(route)),
-                               emitted);
+            sl_cli_doctor_emit(
+                options, arena, sl_cli_span_cstr("route.rate-limit.login"),
+                sl_cli_span_cstr("warn"),
+                sl_cli_doctor_route_message(arena, "public login route has no rate-limit metadata",
+                                            sl_cli_doctor_route_identity(route)),
+                emitted);
         }
         for (size_t rate_index = 0U; rate_index < route->rate_limit_count; rate_index += 1U) {
             if (route->rate_limit_partials[rate_index]) {
-                sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.rate-limit.partial"),
-                                   sl_cli_span_cstr("warn"),
-                                   sl_cli_doctor_route_message(
-                                       arena, "route rate-limit metadata is partial",
-                                       sl_cli_doctor_route_identity(route)),
-                                   emitted);
+                sl_cli_doctor_emit(
+                    options, arena, sl_cli_span_cstr("route.rate-limit.partial"),
+                    sl_cli_span_cstr("warn"),
+                    sl_cli_doctor_route_message(arena, "route rate-limit metadata is partial",
+                                                sl_cli_doctor_route_identity(route)),
+                    emitted);
                 break;
             }
         }
@@ -988,10 +984,9 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
         if (!sl_cli_span_empty(route->query_schema) &&
             sl_cli_find_schema(metadata, route->query_schema) == NULL)
         {
-            sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.openapi.query"),
-                               sl_cli_span_cstr("warn"),
-                               sl_cli_span_cstr("route query contract references a missing schema"),
-                               emitted);
+            sl_cli_doctor_emit(
+                options, arena, sl_cli_span_cstr("route.openapi.query"), sl_cli_span_cstr("warn"),
+                sl_cli_span_cstr("route query contract references a missing schema"), emitted);
         }
         if (!sl_cli_span_empty(route->params_schema) &&
             sl_cli_find_schema(metadata, route->params_schema) == NULL)
@@ -1003,8 +998,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
         if (!sl_cli_span_empty(route->json_request_fallback)) {
             char message_buffer[640];
             SlStringBuilder message_builder = {0};
-            SlCliSpan identity =
-                !sl_cli_span_empty(route->name) ? route->name : route->pattern;
+            SlCliSpan identity = !sl_cli_span_empty(route->name) ? route->name : route->pattern;
             SlCliSpan message = route->json_request_fallback;
 
             if (sl_status_is_ok(sl_string_builder_init_fixed(&message_builder, message_buffer,
@@ -1023,8 +1017,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
         if (!sl_cli_span_empty(route->json_response_fallback)) {
             char message_buffer[640];
             SlStringBuilder message_builder = {0};
-            SlCliSpan identity =
-                !sl_cli_span_empty(route->name) ? route->name : route->pattern;
+            SlCliSpan identity = !sl_cli_span_empty(route->name) ? route->name : route->pattern;
             SlCliSpan message = route->json_response_fallback;
 
             if (sl_status_is_ok(sl_string_builder_init_fixed(&message_builder, message_buffer,
@@ -1111,9 +1104,8 @@ static void sl_cli_doctor_write_report(const SlCliOptions* options, bool emitted
     if (!sl_status_is_ok(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)))) {
         return;
     }
-    if (!sl_status_is_ok(sl_diag_builder_init(
-            &builder, &arena, SL_DIAG_SEVERITY_NOTE, SL_DIAG_NONE,
-            sl_str_from_cstr("sloppy doctor report written"))))
+    if (!sl_status_is_ok(sl_diag_builder_init(&builder, &arena, SL_DIAG_SEVERITY_NOTE, SL_DIAG_NONE,
+                                              sl_str_from_cstr("sloppy doctor report written"))))
     {
         return;
     }
@@ -1128,9 +1120,9 @@ static void sl_cli_doctor_write_report(const SlCliOptions* options, bool emitted
     }
     context.command = sl_str_from_cstr("doctor");
     context.runtime_version = sl_str_from_cstr(SL_VERSION_STRING);
-    context.plan_path =
-        options != NULL && options->plan_path != NULL ? sl_str_from_cstr(options->plan_path)
-                                                      : sl_str_empty();
+    context.plan_path = options != NULL && options->plan_path != NULL
+                            ? sl_str_from_cstr(options->plan_path)
+                            : sl_str_empty();
     context.cause_message = sl_str_from_cstr("local doctor report");
     sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_CLI, SL_BREADCRUMB_EVENT_DOCTOR_REPORT,
                                 SL_STATUS_OK, 0U, 0U, 0U, 0U, context.cause_message);

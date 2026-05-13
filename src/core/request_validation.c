@@ -13,6 +13,7 @@
 #include "sloppy/checked_math.h"
 #include "sloppy/container.h"
 #include "sloppy/json_profile.h"
+#include "sloppy/json_writer.h"
 
 #include <yyjson.h>
 
@@ -331,61 +332,6 @@ static SlStatus sl_request_validation_add_issue(SlRequestValidationState* state,
         message);
 }
 
-static SlStatus sl_request_validation_append_json_escaped(SlStringBuilder* builder, SlStr text)
-{
-    size_t index = 0U;
-    SlStatus status;
-
-    status = sl_string_builder_append_char(builder, '"');
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-
-    for (index = 0U; index < text.length; index += 1U) {
-        unsigned char ch = (unsigned char)text.ptr[index];
-        switch (ch) {
-        case '"':
-            status = sl_string_builder_append_cstr(builder, "\\\"");
-            break;
-        case '\\':
-            status = sl_string_builder_append_cstr(builder, "\\\\");
-            break;
-        case '\b':
-            status = sl_string_builder_append_cstr(builder, "\\b");
-            break;
-        case '\f':
-            status = sl_string_builder_append_cstr(builder, "\\f");
-            break;
-        case '\n':
-            status = sl_string_builder_append_cstr(builder, "\\n");
-            break;
-        case '\r':
-            status = sl_string_builder_append_cstr(builder, "\\r");
-            break;
-        case '\t':
-            status = sl_string_builder_append_cstr(builder, "\\t");
-            break;
-        default:
-            if (ch < 0x20U) {
-                static const char hex[] = "0123456789abcdef";
-                char escaped[] = {'\\', 'u', '0', '0', '0', '0', '\0'};
-                escaped[4] = hex[(ch >> 4U) & 0x0FU];
-                escaped[5] = hex[ch & 0x0FU];
-                status = sl_string_builder_append_cstr(builder, escaped);
-            }
-            else {
-                status = sl_string_builder_append_char(builder, (char)ch);
-            }
-            break;
-        }
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-    }
-
-    return sl_string_builder_append_char(builder, '"');
-}
-
 static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestValidationState* state,
                                               SlEngineResult* out_result)
 {
@@ -442,7 +388,7 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
                 state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
-        status = sl_request_validation_append_json_escaped(&builder, issue->path);
+        status = sl_json_writer_append_escaped_string(&builder, issue->path);
         if (!sl_status_is_ok(status)) {
             sl_request_validation_profile_end(
                 state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
@@ -454,7 +400,7 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
                 state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
-        status = sl_request_validation_append_json_escaped(&builder, issue->code);
+        status = sl_json_writer_append_escaped_string(&builder, issue->code);
         if (!sl_status_is_ok(status)) {
             sl_request_validation_profile_end(
                 state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
@@ -466,7 +412,7 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
                 state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
-        status = sl_request_validation_append_json_escaped(&builder, issue->message);
+        status = sl_json_writer_append_escaped_string(&builder, issue->message);
         if (!sl_status_is_ok(status)) {
             sl_request_validation_profile_end(
                 state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
@@ -1052,21 +998,26 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
                 sl_request_validation_literal("Expected a finite number.",
                                               sizeof("Expected a finite number.") - 1U));
         }
-        if (schema->has_min && yyjson_get_num(value) < (double)schema->min_value) {
-            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
-                                              scalar_start);
-            return sl_request_validation_add_issue_code(
-                state, path, sl_request_validation_literal("number.min", sizeof("number.min") - 1U),
-                sl_request_validation_literal("Expected a larger number.",
-                                              sizeof("Expected a larger number.") - 1U));
-        }
-        if (schema->has_max && yyjson_get_num(value) > (double)schema->max_value) {
-            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
-                                              scalar_start);
-            return sl_request_validation_add_issue_code(
-                state, path, sl_request_validation_literal("number.max", sizeof("number.max") - 1U),
-                sl_request_validation_literal("Expected a smaller number.",
-                                              sizeof("Expected a smaller number.") - 1U));
+        {
+            double number = yyjson_get_num(value);
+            if (schema->has_min && number < (double)schema->min_value) {
+                sl_request_validation_profile_end(
+                    state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION, scalar_start);
+                return sl_request_validation_add_issue_code(
+                    state, path,
+                    sl_request_validation_literal("number.min", sizeof("number.min") - 1U),
+                    sl_request_validation_literal("Expected a larger number.",
+                                                  sizeof("Expected a larger number.") - 1U));
+            }
+            if (schema->has_max && number > (double)schema->max_value) {
+                sl_request_validation_profile_end(
+                    state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION, scalar_start);
+                return sl_request_validation_add_issue_code(
+                    state, path,
+                    sl_request_validation_literal("number.max", sizeof("number.max") - 1U),
+                    sl_request_validation_literal("Expected a smaller number.",
+                                                  sizeof("Expected a smaller number.") - 1U));
+            }
         }
         sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
                                           scalar_start);
@@ -1082,21 +1033,26 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
                 sl_request_validation_literal("Expected an integer.",
                                               sizeof("Expected an integer.") - 1U));
         }
-        if (schema->has_min && yyjson_get_sint(value) < schema->min_value) {
-            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
-                                              scalar_start);
-            return sl_request_validation_add_issue_code(
-                state, path, sl_request_validation_literal("number.min", sizeof("number.min") - 1U),
-                sl_request_validation_literal("Expected a larger integer.",
-                                              sizeof("Expected a larger integer.") - 1U));
-        }
-        if (schema->has_max && yyjson_get_sint(value) > schema->max_value) {
-            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
-                                              scalar_start);
-            return sl_request_validation_add_issue_code(
-                state, path, sl_request_validation_literal("number.max", sizeof("number.max") - 1U),
-                sl_request_validation_literal("Expected a smaller integer.",
-                                              sizeof("Expected a smaller integer.") - 1U));
+        {
+            int64_t integer = yyjson_get_sint(value);
+            if (schema->has_min && integer < schema->min_value) {
+                sl_request_validation_profile_end(
+                    state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION, scalar_start);
+                return sl_request_validation_add_issue_code(
+                    state, path,
+                    sl_request_validation_literal("number.min", sizeof("number.min") - 1U),
+                    sl_request_validation_literal("Expected a larger integer.",
+                                                  sizeof("Expected a larger integer.") - 1U));
+            }
+            if (schema->has_max && integer > schema->max_value) {
+                sl_request_validation_profile_end(
+                    state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION, scalar_start);
+                return sl_request_validation_add_issue_code(
+                    state, path,
+                    sl_request_validation_literal("number.max", sizeof("number.max") - 1U),
+                    sl_request_validation_literal("Expected a smaller integer.",
+                                                  sizeof("Expected a smaller integer.") - 1U));
+            }
         }
         sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
                                           scalar_start);

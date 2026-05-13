@@ -1,6 +1,7 @@
 #include "sloppy/json_writer.h"
 
 #include "sloppy/builder.h"
+#include "sloppy/checked_math.h"
 #include "sloppy/json_profile.h"
 
 #include <math.h>
@@ -72,29 +73,98 @@ SlStatus sl_json_writer_write_char(SlJsonWriter* writer, char value)
     return sl_status_ok();
 }
 
-SlStatus sl_json_writer_write_string(SlJsonWriter* writer, SlStr text)
+static bool sl_json_writer_string_needs_escape(SlStr text)
+{
+    for (size_t index = 0U; index < text.length; index += 1U) {
+        unsigned char ch = (unsigned char)text.ptr[index];
+        if (ch == '"' || ch == '\\' || ch < 0x20U) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_json_writer_named_escape_allowed(unsigned char ch)
+{
+    return ch == '\b' || ch == '\f' || ch == '\n' || ch == '\r' || ch == '\t';
+}
+
+SlStatus sl_json_writer_escaped_string_length(SlStr text, size_t* out_length)
+{
+    size_t length = 2U;
+
+    if (out_length == NULL || (text.ptr == NULL && text.length != 0U)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    for (size_t index = 0U; index < text.length; index += 1U) {
+        unsigned char ch = (unsigned char)text.ptr[index];
+        size_t additional = 1U;
+
+        if (ch == '"' || ch == '\\' || sl_json_writer_named_escape_allowed(ch)) {
+            additional = 2U;
+        }
+        else if (ch < 0x20U) {
+            additional = 6U;
+        }
+        SlStatus status = sl_checked_add_size(length, additional, &length);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
+    *out_length = length;
+    return sl_status_ok();
+}
+
+static SlStatus sl_json_writer_append_codepoint_escape(SlStringBuilder* builder, unsigned char ch)
 {
     static const char hex[] = "0123456789abcdef";
-    size_t index = 0U;
+    SlStatus status = sl_string_builder_append_cstr(builder, "\\u00");
+
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU]);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_char(builder, hex[ch & 0x0FU]);
+    }
+    return status;
+}
+
+static char sl_json_writer_escape_letter(unsigned char ch)
+{
+    switch (ch) {
+    case '\b':
+        return 'b';
+    case '\f':
+        return 'f';
+    case '\n':
+        return 'n';
+    case '\r':
+        return 'r';
+    case '\t':
+        return 't';
+    default:
+        return '\0';
+    }
+}
+
+static SlStatus sl_json_writer_append_escaped_string_with_mode(SlStringBuilder* builder, SlStr text,
+                                                               bool codepoint_controls)
+{
     bool profile_enabled = sl_json_profile_enabled();
     uint64_t scan_start =
         profile_enabled ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_SCAN)
                         : 0U;
-    uint64_t write_start = 0U;
     bool needs_escape = false;
+    uint64_t write_start = 0U;
     SlStatus status;
 
-    if (writer == NULL || (text.ptr == NULL && text.length != 0U)) {
+    if (builder == NULL || (text.ptr == NULL && text.length != 0U)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    for (index = 0U; index < text.length; index += 1U) {
-        unsigned char ch = (unsigned char)text.ptr[index];
-        if (ch == '"' || ch == '\\' || ch < 0x20U) {
-            needs_escape = true;
-            break;
-        }
-    }
+    needs_escape = sl_json_writer_string_needs_escape(text);
     if (profile_enabled) {
         sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_SCAN, scan_start);
         sl_json_profile_counter_add(needs_escape
@@ -106,7 +176,7 @@ SlStatus sl_json_writer_write_string(SlJsonWriter* writer, SlStr text)
     write_start = profile_enabled
                       ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE)
                       : 0U;
-    status = sl_json_writer_write_char(writer, '"');
+    status = sl_string_builder_append_char(builder, '"');
     if (!sl_status_is_ok(status)) {
         if (profile_enabled) {
             sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
@@ -114,9 +184,9 @@ SlStatus sl_json_writer_write_string(SlJsonWriter* writer, SlStr text)
         return status;
     }
     if (!needs_escape) {
-        status = sl_json_writer_write_str(writer, text);
+        status = sl_string_builder_append_str(builder, text);
         if (sl_status_is_ok(status)) {
-            status = sl_json_writer_write_char(writer, '"');
+            status = sl_string_builder_append_char(builder, '"');
         }
         if (profile_enabled) {
             sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
@@ -124,39 +194,39 @@ SlStatus sl_json_writer_write_string(SlJsonWriter* writer, SlStr text)
         return status;
     }
 
-    for (index = 0U; index < text.length; index += 1U) {
+    for (size_t index = 0U; index < text.length; index += 1U) {
         unsigned char ch = (unsigned char)text.ptr[index];
-        char escaped[6] = {'\\', 'u', '0', '0', '0', '0'};
 
-        if (ch == '"' || ch == '\\') {
-            status = sl_json_writer_write_char(writer, '\\');
+        switch (ch) {
+        case '"':
+        case '\\':
+            status = sl_string_builder_append_char(builder, '\\');
             if (sl_status_is_ok(status)) {
-                status = sl_json_writer_write_char(writer, (char)ch);
+                status = sl_string_builder_append_char(builder, (char)ch);
             }
-        }
-        else if (ch == '\b') {
-            status = sl_json_writer_write_str(writer, sl_str_from_cstr("\\b"));
-        }
-        else if (ch == '\f') {
-            status = sl_json_writer_write_str(writer, sl_str_from_cstr("\\f"));
-        }
-        else if (ch == '\n') {
-            status = sl_json_writer_write_str(writer, sl_str_from_cstr("\\n"));
-        }
-        else if (ch == '\r') {
-            status = sl_json_writer_write_str(writer, sl_str_from_cstr("\\r"));
-        }
-        else if (ch == '\t') {
-            status = sl_json_writer_write_str(writer, sl_str_from_cstr("\\t"));
-        }
-        else if (ch < 0x20U) {
-            escaped[4] = hex[(ch >> 4U) & 0x0FU];
-            escaped[5] = hex[ch & 0x0FU];
-            status = sl_json_writer_write_bytes(
-                writer, sl_bytes_from_parts((const unsigned char*)escaped, sizeof(escaped)));
-        }
-        else {
-            status = sl_json_writer_write_char(writer, (char)ch);
+            break;
+        case '\b':
+        case '\f':
+        case '\n':
+        case '\r':
+        case '\t':
+            if (codepoint_controls) {
+                status = sl_json_writer_append_codepoint_escape(builder, ch);
+                break;
+            }
+            status = sl_string_builder_append_char(builder, '\\');
+            if (sl_status_is_ok(status)) {
+                status = sl_string_builder_append_char(builder, sl_json_writer_escape_letter(ch));
+            }
+            break;
+        default:
+            if (ch < 0x20U) {
+                status = sl_json_writer_append_codepoint_escape(builder, ch);
+            }
+            else {
+                status = sl_string_builder_append_char(builder, (char)ch);
+            }
+            break;
         }
         if (!sl_status_is_ok(status)) {
             if (profile_enabled) {
@@ -165,11 +235,68 @@ SlStatus sl_json_writer_write_string(SlJsonWriter* writer, SlStr text)
             return status;
         }
     }
-    status = sl_json_writer_write_char(writer, '"');
+    status = sl_string_builder_append_char(builder, '"');
     if (profile_enabled) {
         sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
     }
     return status;
+}
+
+SlStatus sl_json_writer_append_escaped_string(SlStringBuilder* builder, SlStr text)
+{
+    return sl_json_writer_append_escaped_string_with_mode(builder, text, false);
+}
+
+SlStatus sl_json_writer_append_escaped_string_codepoint_controls(SlStringBuilder* builder,
+                                                                 SlStr text)
+{
+    return sl_json_writer_append_escaped_string_with_mode(builder, text, true);
+}
+
+SlStatus sl_json_writer_append_escaped_string_bytes(SlByteBuilder* builder, SlStr text)
+{
+    SlStringBuilder string_builder = {0};
+    SlStatus status;
+
+    if (builder == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    string_builder.bytes = *builder;
+    status = sl_json_writer_append_escaped_string(&string_builder, text);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    *builder = string_builder.bytes;
+    return sl_status_ok();
+}
+
+SlStatus sl_json_writer_write_string(SlJsonWriter* writer, SlStr text)
+{
+    SlStringBuilder builder = {0};
+    char* remaining = NULL;
+    SlStatus status;
+
+    if (writer == NULL || (text.ptr == NULL && text.length != 0U) ||
+        writer->length > writer->capacity || (writer->data == NULL && writer->capacity != 0U))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (writer->length < writer->capacity) {
+        remaining = (char*)writer->data + writer->length;
+    }
+    status = sl_string_builder_init_fixed(&builder, remaining, writer->capacity - writer->length);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_json_writer_append_escaped_string(&builder, text);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    writer->length += sl_string_builder_view(&builder).length;
+    return sl_status_ok();
 }
 
 SlStatus sl_json_writer_write_i64(SlJsonWriter* writer, int64_t value)

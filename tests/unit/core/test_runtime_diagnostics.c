@@ -107,7 +107,8 @@ static int test_breadcrumb_ring_snapshot_and_jsonl(void)
     }
     sl_breadcrumb_ring_init(&ring);
     sl_breadcrumb_ring_record(&ring, SL_DIAG_SUBSYSTEM_HTTP, SL_BREADCRUMB_EVENT_HTTP_REQUEST_START,
-                              SL_STATUS_OK, 7U, 8U, 0U, 0U, sl_str_from_cstr("/users"));
+                              SL_STATUS_OK, 7U, 8U, 0U, 0U,
+                              sl_str_from_cstr("/users\n\"quoted\"\\tab\t"));
     sl_breadcrumb_ring_record(&ring, SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_EXIT,
                               SL_STATUS_OK, 7U, 8U, 9U, 10U, sl_str_empty());
     if (sl_breadcrumb_ring_snapshot(&ring, entries, 2U) != 2U || entries[0].sequence != 1U ||
@@ -120,6 +121,7 @@ static int test_breadcrumb_ring_snapshot_and_jsonl(void)
         return 3;
     }
     if (!contains(rendered, "\"event\":\"http.request.start\"") ||
+        !contains(rendered, "\"detail\":\"/users\\n\\\"quoted\\\"\\\\tab\\t\"") ||
         !contains(rendered, "\"handlerId\":10"))
     {
         return 4;

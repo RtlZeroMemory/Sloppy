@@ -24,6 +24,7 @@
 #include "sloppy/http_dispatch.h"
 #include "sloppy/http_response.h"
 #include "sloppy/http_transport.h"
+#include "sloppy/json_writer.h"
 #include "sloppy/plan.h"
 #include "sloppy/platform.h"
 #include "sloppy/platform_dynlib.h"

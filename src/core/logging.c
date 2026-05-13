@@ -2,6 +2,7 @@
 
 #include "sloppy/builder.h"
 #include "sloppy/container.h"
+#include "sloppy/json_writer.h"
 #include "sloppy/platform_thread.h"
 #include "sloppy/platform_time.h"
 
@@ -614,60 +615,10 @@ SlStatus sl_log_event_builder_finish(SlLogEventBuilder* builder, SlLogEvent* out
 
 static SlStatus sl_log_json_append_escaped(SlStringBuilder* builder, SlStr text)
 {
-    size_t index = 0U;
-    static const char hex[] = "0123456789abcdef";
-
     if (builder == NULL || !sl_log_text_valid(text)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    SlStatus status = sl_string_builder_append_char(builder, '"');
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    for (index = 0U; index < text.length; index += 1U) {
-        unsigned char ch = (unsigned char)text.ptr[index];
-        switch (ch) {
-        case '"':
-            status = sl_string_builder_append_cstr(builder, "\\\"");
-            break;
-        case '\\':
-            status = sl_string_builder_append_cstr(builder, "\\\\");
-            break;
-        case '\b':
-            status = sl_string_builder_append_cstr(builder, "\\b");
-            break;
-        case '\f':
-            status = sl_string_builder_append_cstr(builder, "\\f");
-            break;
-        case '\n':
-            status = sl_string_builder_append_cstr(builder, "\\n");
-            break;
-        case '\r':
-            status = sl_string_builder_append_cstr(builder, "\\r");
-            break;
-        case '\t':
-            status = sl_string_builder_append_cstr(builder, "\\t");
-            break;
-        default:
-            if (ch < 0x20U) {
-                status = sl_string_builder_append_cstr(builder, "\\u00");
-                if (sl_status_is_ok(status)) {
-                    status = sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU]);
-                }
-                if (sl_status_is_ok(status)) {
-                    status = sl_string_builder_append_char(builder, hex[ch & 0x0FU]);
-                }
-            }
-            else {
-                status = sl_string_builder_append_char(builder, (char)ch);
-            }
-            break;
-        }
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-    }
-    return sl_string_builder_append_char(builder, '"');
+    return sl_json_writer_append_escaped_string(builder, text);
 }
 
 static SlStatus sl_log_json_append_field_value(SlStringBuilder* builder, const SlLogField* field)

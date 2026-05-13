@@ -1695,7 +1695,8 @@ static int sl_run_cache_openapi_docs_route(SlRunApp* app, const char* command_na
     {
         yyjson_val* docs_internal = yyjson_obj_get(route, "docsInternal");
         yyjson_val* docs = yyjson_obj_get(route, "docs");
-        yyjson_val* kind = docs != NULL && yyjson_is_obj(docs) ? yyjson_obj_get(docs, "kind") : NULL;
+        yyjson_val* kind =
+            docs != NULL && yyjson_is_obj(docs) ? yyjson_obj_get(docs, "kind") : NULL;
         yyjson_val* pattern = yyjson_obj_get(route, "pattern");
 
         if (docs_internal == NULL || !yyjson_is_bool(docs_internal) ||
@@ -1707,8 +1708,7 @@ static int sl_run_cache_openapi_docs_route(SlRunApp* app, const char* command_na
             continue;
         }
         if (!sl_run_copy_span_cstr(app->openapi_docs_path, sizeof(app->openapi_docs_path),
-                                   (SlCliSpan){yyjson_get_str(pattern),
-                                               yyjson_get_len(pattern)}))
+                                   (SlCliSpan){yyjson_get_str(pattern), yyjson_get_len(pattern)}))
         {
             yyjson_doc_free(doc);
             sl_run_write_command_message(command_name,
@@ -2104,79 +2104,32 @@ static SlHttpMethod sl_run_method_from_cstr(const char* method)
 static const char* sl_run_method_to_cstr(SlHttpMethod method)
 {
     switch (method) {
-        case SL_HTTP_METHOD_GET:
-            return "GET";
-        case SL_HTTP_METHOD_POST:
-            return "POST";
-        case SL_HTTP_METHOD_PUT:
-            return "PUT";
-        case SL_HTTP_METHOD_DELETE:
-            return "DELETE";
-        case SL_HTTP_METHOD_PATCH:
-            return "PATCH";
-        case SL_HTTP_METHOD_OPTIONS:
-            return "OPTIONS";
-        case SL_HTTP_METHOD_HEAD:
-            return "HEAD";
-        case SL_HTTP_METHOD_UNKNOWN:
-        default:
-            return NULL;
+    case SL_HTTP_METHOD_GET:
+        return "GET";
+    case SL_HTTP_METHOD_POST:
+        return "POST";
+    case SL_HTTP_METHOD_PUT:
+        return "PUT";
+    case SL_HTTP_METHOD_DELETE:
+        return "DELETE";
+    case SL_HTTP_METHOD_PATCH:
+        return "PATCH";
+    case SL_HTTP_METHOD_OPTIONS:
+        return "OPTIONS";
+    case SL_HTTP_METHOD_HEAD:
+        return "HEAD";
+    case SL_HTTP_METHOD_UNKNOWN:
+    default:
+        return NULL;
     }
 }
 
 static SlStatus sl_run_append_js_string(SlStringBuilder* builder, SlStr value)
 {
-    static const char hex[] = "0123456789abcdef";
-    SlStatus status;
-
     if (builder == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_string_builder_append_char(builder, '"');
-    for (size_t index = 0U; sl_status_is_ok(status) && index < value.length; index += 1U) {
-        unsigned char ch = (unsigned char)value.ptr[index];
-        switch (ch) {
-            case '"':
-                status = sl_string_builder_append_cstr(builder, "\\\"");
-                break;
-            case '\\':
-                status = sl_string_builder_append_cstr(builder, "\\\\");
-                break;
-            case '\b':
-                status = sl_string_builder_append_cstr(builder, "\\b");
-                break;
-            case '\f':
-                status = sl_string_builder_append_cstr(builder, "\\f");
-                break;
-            case '\n':
-                status = sl_string_builder_append_cstr(builder, "\\n");
-                break;
-            case '\r':
-                status = sl_string_builder_append_cstr(builder, "\\r");
-                break;
-            case '\t':
-                status = sl_string_builder_append_cstr(builder, "\\t");
-                break;
-            default:
-                if (ch < 0x20U) {
-                    status = sl_string_builder_append_cstr(builder, "\\u00");
-                    if (sl_status_is_ok(status)) {
-                        status = sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU]);
-                    }
-                    if (sl_status_is_ok(status)) {
-                        status = sl_string_builder_append_char(builder, hex[ch & 0x0FU]);
-                    }
-                }
-                else {
-                    status = sl_string_builder_append_char(builder, (char)ch);
-                }
-                break;
-        }
-    }
-    if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_char(builder, '"');
-    }
-    return status;
+    return sl_json_writer_append_escaped_string(builder, value);
 }
 
 static SlStr sl_run_target_path(const char* target)
@@ -2197,8 +2150,7 @@ static SlStr sl_run_target_path(const char* target)
 static bool sl_run_request_targets_openapi_docs_route(SlRunApp* app,
                                                       const SlHttpRequestHead* request)
 {
-    if (app == NULL || request == NULL || request->path.ptr == NULL ||
-        !app->has_openapi_docs_route)
+    if (app == NULL || request == NULL || request->path.ptr == NULL || !app->has_openapi_docs_route)
     {
         return false;
     }
@@ -2208,8 +2160,7 @@ static bool sl_run_request_targets_openapi_docs_route(SlRunApp* app,
     return sl_str_equal(request->path, sl_str_from_cstr(app->openapi_docs_path));
 }
 
-static SlStatus sl_run_openapi_artifact_response(SlRunApp* app,
-                                                 const SlHttpRequestHead* request,
+static SlStatus sl_run_openapi_artifact_response(SlRunApp* app, const SlHttpRequestHead* request,
                                                  SlHttpResponse* out_response)
 {
     if (app == NULL || request == NULL || out_response == NULL ||
@@ -2218,9 +2169,9 @@ static SlStatus sl_run_openapi_artifact_response(SlRunApp* app,
     {
         return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
     }
-    *out_response = sl_http_response_text(
-        200U, sl_str_from_parts((const char*)app->openapi_artifact_bytes.ptr,
-                                app->openapi_artifact_bytes.length));
+    *out_response =
+        sl_http_response_text(200U, sl_str_from_parts((const char*)app->openapi_artifact_bytes.ptr,
+                                                      app->openapi_artifact_bytes.length));
     out_response->content_type = sl_str_from_cstr("application/json; charset=utf-8");
     return sl_status_ok();
 }
@@ -2506,9 +2457,8 @@ static SlStatus sl_run_dispatch_dynamic_response(SlRunApp* app, SlArena* arena,
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_engine_call_function0(app->engine, arena,
-                                      sl_str_from_cstr("__sloppy_dynamic_transport"), &result,
-                                      out_diag);
+    status = sl_engine_call_function0(
+        app->engine, arena, sl_str_from_cstr("__sloppy_dynamic_transport"), &result, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -2950,8 +2900,8 @@ static SlStatus sl_run_transport_dispatch(SlHttpTransportConnection* connection,
     if (app->has_dynamic_routes && sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
         out_diag != NULL && out_diag->code == SL_DIAG_HTTP_ROUTE_NOT_FOUND)
     {
-        status = sl_run_dispatch_dynamic_response(app, arena, &request->head, out_response,
-                                                  out_diag);
+        status =
+            sl_run_dispatch_dynamic_response(app, arena, &request->head, out_response, out_diag);
         if (sl_status_is_ok(status)) {
             return status;
         }

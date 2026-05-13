@@ -225,62 +225,10 @@ static bool sl_cli_string_builder_append_span(SlStringBuilder* builder, SlCliSpa
 
 static bool sl_cli_json_builder_append_string(SlStringBuilder* builder, SlCliSpan span)
 {
-    static const char hex[] = "0123456789abcdef";
-    size_t index = 0U;
-
     if (builder == NULL) {
         return false;
     }
-    if (!sl_status_is_ok(sl_string_builder_append_char(builder, '"'))) {
-        return false;
-    }
-    for (index = 0U; index < span.length; index += 1U) {
-        unsigned char ch = (unsigned char)span.ptr[index];
-        if (ch == '"' || ch == '\\') {
-            if (!sl_status_is_ok(sl_string_builder_append_char(builder, '\\')) ||
-                !sl_status_is_ok(sl_string_builder_append_char(builder, (char)ch)))
-            {
-                return false;
-            }
-        }
-        else if (ch == '\n') {
-            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\n"))) {
-                return false;
-            }
-        }
-        else if (ch == '\r') {
-            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\r"))) {
-                return false;
-            }
-        }
-        else if (ch == '\t') {
-            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\t"))) {
-                return false;
-            }
-        }
-        else if (ch == '\b') {
-            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\b"))) {
-                return false;
-            }
-        }
-        else if (ch == '\f') {
-            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\f"))) {
-                return false;
-            }
-        }
-        else if (ch < 0x20U) {
-            if (!sl_status_is_ok(sl_string_builder_append_cstr(builder, "\\u00")) ||
-                !sl_status_is_ok(sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU])) ||
-                !sl_status_is_ok(sl_string_builder_append_char(builder, hex[ch & 0x0FU])))
-            {
-                return false;
-            }
-        }
-        else if (!sl_status_is_ok(sl_string_builder_append_char(builder, (char)ch))) {
-            return false;
-        }
-    }
-    return sl_status_is_ok(sl_string_builder_append_char(builder, '"'));
+    return sl_status_is_ok(sl_json_writer_append_escaped_string(builder, sl_cli_span_str(span)));
 }
 
 static SlCliSpan sl_cli_json_span(yyjson_val* object, const char* name)
@@ -393,8 +341,9 @@ static void sl_cli_print_help(void)
     printf("  sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> [--format "
            "text|json]\n");
     printf("  sloppy orm migration add <name> [artifacts-dir|package-dir] --provider <name>\n");
-    printf("  sloppy orm migration script|status|apply [artifacts-dir|package-dir] --provider <name> "
-           "[--format text|json]\n");
+    printf(
+        "  sloppy orm migration script|status|apply [artifacts-dir|package-dir] --provider <name> "
+        "[--format text|json]\n");
     printf("  sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json]\n");
     printf("  sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--output "
@@ -517,7 +466,8 @@ static void sl_cli_print_command_help(const char* command)
         printf("       sloppy orm migration script|status|apply [artifacts-dir|package-dir] "
                "--provider <name> [--format text|json]\n");
         printf("\n");
-        printf("ORM migration script/add generates provider-specific SQL from Plan ORM metadata.\n");
+        printf(
+            "ORM migration script/add generates provider-specific SQL from Plan ORM metadata.\n");
         printf("ORM migration status/apply delegates to the same provider-matched migration engine "
                "as sloppy db.\n");
         return;
@@ -1076,8 +1026,7 @@ static int sl_cli_parse_db_option(int argc, char** argv, int* index, SlCliOption
     const char* label = out != NULL && out->command != NULL && strcmp(out->command, "orm") == 0
                             ? "sloppy orm"
                             : "sloppy db";
-    if (argc <= 0 || argv == NULL || index == NULL || out == NULL || !db_like)
-    {
+    if (argc <= 0 || argv == NULL || index == NULL || out == NULL || !db_like) {
         return 0;
     }
 
@@ -1334,8 +1283,8 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
             return 0;
         }
         if (argc < 4 || strcmp(argv[2], "migration") != 0) {
-            sl_cli_write_cstr(
-                stderr, "sloppy orm: expected migration add, script, status, or apply\n");
+            sl_cli_write_cstr(stderr,
+                              "sloppy orm: expected migration add, script, status, or apply\n");
             return 1;
         }
         if (strcmp(argv[3], "add") == 0) {
@@ -1364,8 +1313,8 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
             index = 4;
         }
         else {
-            sl_cli_write_cstr(
-                stderr, "sloppy orm: expected migration add, script, status, or apply\n");
+            sl_cli_write_cstr(stderr,
+                              "sloppy orm: expected migration add, script, status, or apply\n");
             return 1;
         }
     }
@@ -1588,41 +1537,39 @@ static bool sl_cli_write_str(FILE* file, SlStr str)
 
 static void sl_cli_json_escape(FILE* file, SlCliSpan span)
 {
-    static const char hex[] = "0123456789abcdef";
-    size_t index = 0U;
+    unsigned char stack_storage[1024];
+    unsigned char* storage = stack_storage;
+    size_t escaped_length = 0U;
+    SlHeapBuffer heap_storage = {0};
+    SlByteBuilder builder = {0};
+    SlStr text = sl_cli_span_str(span);
+    SlStatus status = sl_json_writer_escaped_string_length(text, &escaped_length);
 
-    fputc('"', file);
-    for (index = 0U; index < span.length; index += 1U) {
-        unsigned char ch = (unsigned char)span.ptr[index];
-        if (ch == '"' || ch == '\\') {
-            fputc('\\', file);
-            fputc((int)ch, file);
-        }
-        else if (ch == '\n') {
-            fputs("\\n", file);
-        }
-        else if (ch == '\r') {
-            fputs("\\r", file);
-        }
-        else if (ch == '\t') {
-            fputs("\\t", file);
-        }
-        else if (ch == '\b') {
-            fputs("\\b", file);
-        }
-        else if (ch == '\f') {
-            fputs("\\f", file);
-        }
-        else if (ch < 0x20U) {
-            fputs("\\u00", file);
-            fputc(hex[(ch >> 4U) & 0x0FU], file);
-            fputc(hex[ch & 0x0FU], file);
-        }
-        else {
-            fputc((int)ch, file);
-        }
+    if (!sl_status_is_ok(status)) {
+        fputs("\"<json-escape-error>\"", file);
+        return;
     }
-    fputc('"', file);
+    if (escaped_length > sizeof(stack_storage)) {
+        status = sl_heap_buffer_alloc(&heap_storage, escaped_length);
+        if (!sl_status_is_ok(status)) {
+            fputs("\"<out-of-memory>\"", file);
+            return;
+        }
+        storage = heap_storage.ptr;
+    }
+
+    status = sl_byte_builder_init_fixed(&builder, storage, escaped_length);
+    if (sl_status_is_ok(status)) {
+        status = sl_json_writer_append_escaped_string_bytes(&builder, text);
+    }
+    if (sl_status_is_ok(status)) {
+        SlBytes escaped = sl_byte_builder_view(&builder);
+        fwrite(escaped.ptr, 1U, escaped.length, file);
+    }
+    else {
+        fputs("\"<json-escape-error>\"", file);
+    }
+    sl_heap_buffer_dispose(&heap_storage);
 }
 
 static SlStr sl_cli_redacted_span(SlArena* arena, SlCliSpan text)

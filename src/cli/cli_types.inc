@@ -105,6 +105,8 @@ typedef struct SlCliRoute
     bool docs_strict;
     bool auth_required;
     bool auth_allow_anonymous;
+    bool output_cache_vary_by_user;
+    bool output_cache_allow_shared_authenticated;
     bool dynamic_metadata;
     bool rate_limit_partials[SL_CLI_MAX_ROUTE_RATE_LIMITS];
     bool header_required[SL_CLI_MAX_ROUTE_BINDINGS];
