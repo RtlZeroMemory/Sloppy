@@ -23,6 +23,7 @@ const DEFAULT_SERIALIZATION_OPTIONS = Object.freeze({
     }),
 });
 const ROUTE_PARAM_PATTERN = /^\{([A-Za-z_][0-9A-Za-z_]*)(?::(str|int|uuid|alpha|float))?\}$/u;
+const WEBSOCKET_ROUTE_OPTIONS = Symbol.for("sloppy.websocket.routeOptions");
 
 function nowMs() {
     if (globalThis.performance !== undefined && typeof globalThis.performance.now === "function") {
@@ -1019,6 +1020,12 @@ function createContext(app, hostState, method, targetParts, headers, route, matc
         log: app.log,
         metrics: typeof app.__getMetricsRegistry === "function" ? app.__getMetricsRegistry() : undefined,
         user: options?.user,
+        requireUser() {
+            if (this.user?.authenticated !== true) {
+                throw new Error("SLOPPY_E_AUTH_UNAUTHORIZED");
+            }
+            return this.user;
+        },
         clock: hostState.clock,
         route,
         routePattern: matchedRoute?.pattern ?? null,
@@ -1189,9 +1196,9 @@ function problemCodeFromResponse(response) {
 
 function createMetricsStore() {
     const counters = new Map();
-    function increment(name, labels = {}) {
+    function increment(name, labels = {}, amount = 1) {
         const key = serializeJson({ name, labels });
-        counters.set(key, (counters.get(key) ?? 0) + 1);
+        counters.set(key, (counters.get(key) ?? 0) + amount);
     }
     const metrics = {
         increment,
@@ -1586,6 +1593,35 @@ async function createJwt(claims, options = {}) {
     return `${header}.${payload}.${Base64Url.encode(signature)}`;
 }
 
+function createTestPrincipal(principal) {
+    if (!isPlainObject(principal)) {
+        throw new TypeError("Sloppy TestHost principal must be a plain object.");
+    }
+    const roles = Object.freeze([...(principal.roles ?? [])]);
+    const scopes = Object.freeze([...(principal.scopes ?? [])]);
+    const claims = Object.freeze({ ...(principal.claims ?? principal) });
+    const user = {
+        ...principal,
+        authenticated: principal.authenticated ?? true,
+        roles,
+        scopes,
+        claims,
+        hasRole(role) {
+            return typeof role === "string" && roles.includes(role);
+        },
+        hasScope(scope) {
+            return typeof scope === "string" && scopes.includes(scope);
+        },
+        hasClaim(name, value = undefined) {
+            if (typeof name !== "string" || !Object.prototype.hasOwnProperty.call(claims, name)) {
+                return false;
+            }
+            return value === undefined ? true : Object.is(claims[name], value);
+        },
+    };
+    return Object.freeze(user);
+}
+
 class RequestBuilder {
     constructor(host, method, target, options = undefined) {
         this._host = host;
@@ -1697,10 +1733,7 @@ class RequestBuilder {
     }
 
     asUser(principal) {
-        if (!isPlainObject(principal)) {
-            throw new TypeError("Sloppy test host principal must be a plain object.");
-        }
-        this._body.user = Object.freeze({ ...principal, authenticated: principal.authenticated ?? true });
+        this._body.user = createTestPrincipal(principal);
         return this;
     }
 
@@ -1773,6 +1806,397 @@ class RequestBuilder {
     }
 }
 
+function byteLengthOfWebSocketMessage(kind, value) {
+    if (kind === "binary") {
+        return copyBytes(value, "websocket message").byteLength;
+    }
+    if (kind === "ping" || kind === "pong") {
+        return value === undefined ? 0 : Text.utf8.encode(String(value)).byteLength;
+    }
+    return Text.utf8.encode(kind === "json" ? serializeJson(value) : String(value)).byteLength;
+}
+
+function createAsyncMessageQueue(onShift = undefined) {
+    const values = [];
+    const waiters = [];
+    let closed = false;
+    return {
+        push(value) {
+            if (closed) {
+                return false;
+            }
+            const waiter = waiters.shift();
+            if (waiter !== undefined) {
+                waiter({ value, done: false });
+            } else {
+                values.push(value);
+            }
+            return true;
+        },
+        close() {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            while (waiters.length !== 0) {
+                waiters.shift()({ value: undefined, done: true });
+            }
+        },
+        async next() {
+            if (values.length !== 0) {
+                const value = values.shift();
+                onShift?.(value);
+                return { value, done: false };
+            }
+            if (closed) {
+                return { value: undefined, done: true };
+            }
+            return new Promise((resolve) => {
+                waiters.push((result) => {
+                    if (!result.done) {
+                        onShift?.(result.value);
+                    }
+                    resolve(result);
+                });
+            });
+        },
+        async take(timeoutMs = 1000, subject = "message") {
+            let timer;
+            const timeout = new Promise((_, reject) => {
+                timer = setTimeout(() => {
+                    reject(new Error(`Sloppy TestHost timed out waiting for WebSocket ${subject}.`));
+                }, timeoutMs);
+            });
+            try {
+                const result = await Promise.race([this.next(), timeout]);
+                if (result.done) {
+                    throw new Error(`Sloppy TestHost WebSocket closed while waiting for ${subject}.`);
+                }
+                return result.value;
+            } finally {
+                clearTimeout(timer);
+            }
+        },
+        [Symbol.asyncIterator]() {
+            return this;
+        },
+    };
+}
+
+function createWebSocketMessage(kind, value) {
+    let jsonCache;
+    if (kind === "json") {
+        jsonCache = value;
+    }
+    return Object.freeze({
+        kind,
+        ...(kind === "text" ? { text: String(value) } : {}),
+        ...(kind === "binary" ? { bytes: copyBytes(value, "websocket message") } : {}),
+        ...(kind === "json" ? { text: serializeJson(value) } : {}),
+        ...(kind === "ping" || kind === "pong" ? { text: value === undefined ? "" : String(value) } : {}),
+        ...(kind === "close" ? { code: value.code, reason: String(value.reason ?? "") } : {}),
+        json() {
+            if (kind === "json") {
+                return jsonCache;
+            }
+            if (kind !== "text") {
+                throw new TypeError("Sloppy WebSocket message is not text JSON.");
+            }
+            jsonCache ??= JSON.parse(String(value));
+            return jsonCache;
+        },
+        validate(schema) {
+            return Schema.validate(this.json(), schema);
+        },
+    });
+}
+
+function websocketOriginsAllow(routeOptions, origin) {
+    const origins = routeOptions.origins;
+    if (origin === undefined || origin.length === 0 || origins === undefined || origins === "*") {
+        return true;
+    }
+    return Array.isArray(origins) && origins.includes(origin);
+}
+
+function websocketReject(status, code, message) {
+    const error = new Error(message);
+    error.status = status;
+    error.code = code;
+    return error;
+}
+
+class TestWebSocket {
+    constructor(state) {
+        this._state = state;
+    }
+
+    get closed() {
+        return this._state.closed;
+    }
+
+    get protocol() {
+        return this._state.protocol;
+    }
+
+    _send(kind, value) {
+        if (this._state.closed) {
+            throw new Error("Sloppy TestHost WebSocket is closed.");
+        }
+        const bytes = byteLengthOfWebSocketMessage(kind, value);
+        if (bytes > this._state.options.maxMessageBytes) {
+            this._state.close(1009, "message too large");
+            throw new Error("SLOPPY_E_WEBSOCKET_MESSAGE_TOO_LARGE");
+        }
+        this._state.touch?.();
+        this._state.clientToServer.push(createWebSocketMessage(kind, value));
+        this._state.metrics.increment("websocket.messages.in.total", {
+            route: this._state.route,
+            kind,
+        });
+        this._state.metrics.increment("websocket.bytes.in.total", {
+            route: this._state.route,
+            kind,
+        }, bytes);
+        return Promise.resolve();
+    }
+
+    sendText(text) {
+        return this._send("text", String(text));
+    }
+
+    sendJson(value) {
+        return this._send("json", value);
+    }
+
+    sendBytes(bytes) {
+        return this._send("binary", bytes);
+    }
+
+    sendPing(payload = "") {
+        return this._send("ping", payload);
+    }
+
+    sendPong(payload = "") {
+        return this._send("pong", payload);
+    }
+
+    async expectText(expected, options = {}) {
+        const message = await this._state.serverToClient.take(options.timeoutMs, "text message");
+        if (message.kind !== "text") {
+            throw new Error(`Sloppy TestHost expected WebSocket text message, got '${message.kind}'.`);
+        }
+        assertExpectedResponseValue(message.text, expected, "WebSocket text");
+        return this;
+    }
+
+    async expectJson(expectedOrSchema, options = {}) {
+        const message = await this._state.serverToClient.take(options.timeoutMs, "JSON message");
+        const value = message.kind === "json" ? message.json() : message.json();
+        if (Schema.isSchema(expectedOrSchema)) {
+            Schema.validate(value, expectedOrSchema);
+        } else {
+            assertDeepJsonEqual(value, expectedOrSchema, "WebSocket JSON");
+        }
+        return this;
+    }
+
+    async expectBytes(expected, options = {}) {
+        const message = await this._state.serverToClient.take(options.timeoutMs, "binary message");
+        if (message.kind !== "binary") {
+            throw new Error(`Sloppy TestHost expected WebSocket binary message, got '${message.kind}'.`);
+        }
+        assertDeepJsonEqual([...message.bytes], [...copyBytes(expected, "expected WebSocket bytes")], "WebSocket bytes");
+        return this;
+    }
+
+    async expectPing(options = {}) {
+        const message = await this._state.serverToClient.take(options.timeoutMs, "ping");
+        if (message.kind !== "ping") {
+            throw new Error(`Sloppy TestHost expected WebSocket ping, got '${message.kind}'.`);
+        }
+        return this;
+    }
+
+    async expectPong(options = {}) {
+        const message = await this._state.serverToClient.take(options.timeoutMs, "pong");
+        if (message.kind !== "pong") {
+            throw new Error(`Sloppy TestHost expected WebSocket pong, got '${message.kind}'.`);
+        }
+        return this;
+    }
+
+    async expectClose(code = undefined, options = {}) {
+        const message = await this._state.serverToClient.take(options.timeoutMs, "close");
+        if (message.kind !== "close") {
+            throw new Error(`Sloppy TestHost expected WebSocket close, got '${message.kind}'.`);
+        }
+        if (code !== undefined) {
+            assertExpectedResponseValue(message.code, code, "WebSocket close code");
+        }
+        return this;
+    }
+
+    close(code = 1000, reason = "") {
+        this._state.close(code, reason);
+        return Promise.resolve();
+    }
+}
+
+class WebSocketConnectAttempt {
+    constructor(start) {
+        this._start = start;
+        this._promise = undefined;
+    }
+
+    _connect() {
+        if (this._promise === undefined) {
+            this._promise = Promise.resolve().then(this._start);
+            this._promise.catch(() => {});
+        }
+        return this._promise;
+    }
+
+    then(resolve, reject) {
+        return this._connect().then(resolve, reject);
+    }
+
+    catch(reject) {
+        return this._connect().catch(reject);
+    }
+
+    finally(callback) {
+        return this._connect().finally(callback);
+    }
+
+    async expectRejected(status) {
+        try {
+            await this._connect();
+        } catch (error) {
+            assertExpectedResponseValue(error.status, status, "WebSocket rejection status");
+            return undefined;
+        }
+        throw new Error(`Sloppy TestHost expected WebSocket rejection status ${status}.`);
+    }
+}
+
+class WebSocketBuilder {
+    constructor(host, target, options = undefined) {
+        this._host = host;
+        this._target = target;
+        this._headers = {};
+        this._timeoutMs = 1000;
+        this._protocols = [];
+        this._user = undefined;
+        this._jwt = undefined;
+        if (options !== undefined) {
+            if (!isPlainObject(options)) {
+                throw new TypeError("Sloppy TestHost WebSocket options must be a plain object.");
+            }
+            this.headers(options.headers ?? {});
+            if (options.origin !== undefined) {
+                this.origin(options.origin);
+            }
+            if (options.protocols !== undefined) {
+                this.protocols(options.protocols);
+            }
+            if (options.timeoutMs !== undefined) {
+                this.timeout(options.timeoutMs);
+            }
+        }
+    }
+
+    header(name, value) {
+        mergeHeader(this._headers, name, value);
+        return this;
+    }
+
+    headers(values) {
+        if (!isPlainObject(values)) {
+            throw new TypeError("Sloppy TestHost WebSocket headers() expects a plain object.");
+        }
+        for (const [name, value] of Object.entries(values)) {
+            this.header(name, value);
+        }
+        return this;
+    }
+
+    origin(value) {
+        if (typeof value !== "string" || value.length === 0) {
+            throw new TypeError("Sloppy TestHost WebSocket origin must be a non-empty string.");
+        }
+        return this.header("Origin", value);
+    }
+
+    protocols(values) {
+        if (!Array.isArray(values)) {
+            throw new TypeError("Sloppy TestHost WebSocket protocols must be an array.");
+        }
+        this._protocols = values.map(String);
+        if (this._protocols.length !== 0) {
+            this.header("Sec-WebSocket-Protocol", this._protocols.join(", "));
+        }
+        return this;
+    }
+
+    timeout(ms) {
+        if (!Number.isInteger(ms) || ms <= 0) {
+            throw new TypeError("Sloppy TestHost WebSocket timeout must be a positive integer millisecond value.");
+        }
+        this._timeoutMs = ms;
+        return this;
+    }
+
+    bearer(token) {
+        if (typeof token !== "string" || token.length === 0) {
+            throw new TypeError("Sloppy TestHost WebSocket bearer token must be a non-empty string.");
+        }
+        return this.header("Authorization", `Bearer ${token}`);
+    }
+
+    apiKey(key, options = {}) {
+        if (typeof key !== "string" || key.length === 0) {
+            throw new TypeError("Sloppy TestHost WebSocket API key must be a non-empty string.");
+        }
+        return this.header(options.header ?? "x-api-key", key);
+    }
+
+    withSession(session, options = {}) {
+        if (typeof session !== "string" || session.length === 0) {
+            throw new TypeError("Sloppy TestHost WebSocket session value must be a non-empty string.");
+        }
+        appendCookie(this._headers, options.name ?? "sloppy.session", session);
+        return this;
+    }
+
+    withJwt(claims, options = {}) {
+        if (typeof claims === "string") {
+            return this.bearer(claims);
+        }
+        this._jwt = { claims, options };
+        return this;
+    }
+
+    asUser(principal) {
+        this._user = createTestPrincipal(principal);
+        return this;
+    }
+
+    connect() {
+        return new WebSocketConnectAttempt(async () => {
+            if (this._jwt !== undefined) {
+                this.bearer(await createJwt(this._jwt.claims, this._jwt.options));
+            }
+            return this._host.websocketConnect(this._target, {
+                headers: this._headers,
+                protocols: this._protocols,
+                timeoutMs: this._timeoutMs,
+                user: this._user,
+            });
+        });
+    }
+}
+
 function createFluentHost(base, mode = "inProcess", defaults = {}) {
     const host = {
         mode,
@@ -1789,6 +2213,20 @@ function createFluentHost(base, mode = "inProcess", defaults = {}) {
                 merged.user = defaults.user;
             }
             return base.request(method, target, merged);
+        },
+        websocketConnect(target, options) {
+            const merged = {
+                ...(defaults.options ?? {}),
+                ...(options ?? {}),
+                headers: {
+                    ...(defaults.headers ?? {}),
+                    ...(options?.headers ?? {}),
+                },
+            };
+            if (defaults.user !== undefined && merged.user === undefined) {
+                merged.user = defaults.user;
+            }
+            return base.websocketConnect(target, merged);
         },
         get(target, options) {
             return new RequestBuilder(host, "GET", target, options);
@@ -1811,13 +2249,13 @@ function createFluentHost(base, mode = "inProcess", defaults = {}) {
         head(target, options) {
             return new RequestBuilder(host, "HEAD", target, options);
         },
+        websocket(target, options) {
+            return new WebSocketBuilder(host, target, options);
+        },
         asUser(principal) {
-            if (!isPlainObject(principal)) {
-                throw new TypeError("Sloppy TestHost principal must be a plain object.");
-            }
             return createFluentHost(base, mode, {
                 ...defaults,
-                user: Object.freeze({ ...principal, authenticated: principal.authenticated ?? true }),
+                user: createTestPrincipal(principal),
             });
         },
         withHeader(name, value) {
@@ -1867,6 +2305,7 @@ function createTestHost(app, options = {}) {
         : DEFAULT_SERIALIZATION_OPTIONS;
     let closed = false;
     let activeRequests = 0;
+    const activeSockets = new Set();
     let closePromise = undefined;
     let drainWaiters = [];
     const secretValues = Object.values(options.secrets ?? {});
@@ -1912,7 +2351,7 @@ function createTestHost(app, options = {}) {
 
     function finishRequest() {
         activeRequests -= 1;
-        if (closed && activeRequests === 0) {
+        if (closed && activeRequests === 0 && activeSockets.size === 0) {
             const waiters = drainWaiters;
             drainWaiters = [];
             for (const resolve of waiters) {
@@ -1922,12 +2361,23 @@ function createTestHost(app, options = {}) {
     }
 
     function waitForDrain() {
-        if (activeRequests === 0) {
+        if (activeRequests === 0 && activeSockets.size === 0) {
             return Promise.resolve();
         }
         return new Promise((resolve) => {
             drainWaiters.push(resolve);
         });
+    }
+
+    function finishSocket(state) {
+        activeSockets.delete(state);
+        if (closed && activeRequests === 0 && activeSockets.size === 0) {
+            const waiters = drainWaiters;
+            drainWaiters = [];
+            for (const resolve of waiters) {
+                resolve();
+            }
+        }
     }
 
     async function request(method, target, options = undefined) {
@@ -2057,8 +2507,298 @@ function createTestHost(app, options = {}) {
         }
     }
 
+    async function websocketConnect(target, options = undefined) {
+        if (closed) {
+            throw new Error("Sloppy test host is closed.");
+        }
+        const normalizedOptions = normalizeOptions(options);
+        const targetParts = splitTarget(target);
+        const headerEntries = headerEntriesFromObject(normalizedOptions.headers, "request");
+        const headers = createHeadersLike(headerEntries);
+        const match = findRoute(routes, "GET", targetParts.path);
+        diagnostics.record({
+            code: "SLOPPY_TESTHOST_WEBSOCKET_CONNECT",
+            subsystem: "websocket",
+            severity: "debug",
+            message: "TestHost WebSocket connection started.",
+            fields: { route: match.route?.pattern ?? null },
+        });
+        if (match.route === undefined || match.route.kind !== "websocket") {
+            metrics.increment("websocket.upgrades.rejected.total", { outcome: "not-found" });
+            throw websocketReject(match.route === undefined ? 404 : 405, "SLOPPY_E_WEBSOCKET_ROUTE_NOT_FOUND", "WebSocket route was not found.");
+        }
+
+        const routeOptions = match.route.metadata.realtime?.websocket ??
+            match.route.handler?.[WEBSOCKET_ROUTE_OPTIONS] ??
+            Object.freeze({ maxMessageBytes: 64 * 1024, maxSendQueueBytes: 1024 * 1024, closeTimeoutMs: 5000 });
+        const origin = headers.get("origin");
+        if (!websocketOriginsAllow(routeOptions, origin)) {
+            diagnostics.record({
+                code: "SLOPPY_E_WEBSOCKET_ORIGIN_REJECTED",
+                subsystem: "websocket",
+                severity: "warn",
+                fields: { route: match.route.pattern },
+            });
+            metrics.increment("websocket.upgrades.rejected.total", { outcome: "origin" });
+            throw websocketReject(403, "SLOPPY_E_WEBSOCKET_ORIGIN_REJECTED", "WebSocket origin is not allowed.");
+        }
+
+        const requestedProtocols = Array.isArray(normalizedOptions.protocols)
+            ? normalizedOptions.protocols
+            : (headers.get("sec-websocket-protocol") ?? "")
+                .split(",")
+                .map((value) => value.trim())
+                .filter((value) => value.length !== 0);
+        let protocol = "";
+        if (Array.isArray(routeOptions.protocols) && routeOptions.protocols.length !== 0) {
+            protocol = requestedProtocols.find((value) => routeOptions.protocols.includes(value)) ?? "";
+            if (protocol.length === 0) {
+                metrics.increment("websocket.upgrades.rejected.total", { outcome: "protocol" });
+                throw websocketReject(400, "SLOPPY_E_WEBSOCKET_PROTOCOL_REJECTED", "WebSocket subprotocol is not allowed.");
+            }
+        }
+
+        const clientToServer = createAsyncMessageQueue();
+        let queuedServerBytes = 0;
+        const serverToClient = createAsyncMessageQueue((message) => {
+            if (message.kind === "text") {
+                queuedServerBytes = Math.max(0, queuedServerBytes - byteLengthOfWebSocketMessage("text", message.text));
+            } else if (message.kind === "json") {
+                queuedServerBytes = Math.max(0, queuedServerBytes - byteLengthOfWebSocketMessage("json", message.json()));
+            } else if (message.kind === "binary") {
+                queuedServerBytes = Math.max(0, queuedServerBytes - byteLengthOfWebSocketMessage("binary", message.bytes));
+            } else if (message.kind === "ping" || message.kind === "pong") {
+                queuedServerBytes = Math.max(0, queuedServerBytes - byteLengthOfWebSocketMessage(message.kind, message.text));
+            }
+        });
+        let socketContext;
+        let accepted = false;
+        let finished = false;
+        let heartbeatTimer;
+        let idleTimer;
+        let acceptResolve;
+        const acceptedPromise = new Promise((resolve) => {
+            acceptResolve = resolve;
+        });
+        const state = {
+            options: routeOptions,
+            route: match.route.pattern,
+            metrics,
+            clientToServer,
+            serverToClient,
+            protocol,
+            closed: false,
+            touch() {
+                if (!Number.isInteger(routeOptions.idleTimeoutMs) || routeOptions.idleTimeoutMs <= 0 || state.closed) {
+                    return;
+                }
+                clearTimeout(idleTimer);
+                idleTimer = setTimeout(() => {
+                    state.close(1001, "idle timeout");
+                }, routeOptions.idleTimeoutMs);
+            },
+            close(code = 1000, reason = "") {
+                if (state.closed) {
+                    return;
+                }
+                state.closed = true;
+                clearInterval(heartbeatTimer);
+                clearTimeout(idleTimer);
+                clientToServer.close();
+                serverToClient.push(createWebSocketMessage("close", { code, reason }));
+                serverToClient.close();
+                metrics.increment("websocket.close.total", {
+                    route: match.route.pattern,
+                    code: String(code),
+                });
+            },
+        };
+        const socket = {
+            get ctx() {
+                return socketContext;
+            },
+            __setContext(ctx) {
+                socketContext = ctx;
+            },
+            get closed() {
+                return state.closed;
+            },
+            get protocol() {
+                return protocol;
+            },
+            id: `test-ws-${activeSockets.size + 1}`,
+            remoteAddress: "test-host",
+            get request() {
+                return socketContext?.request;
+            },
+            async accept() {
+                if (state.closed) {
+                    throw new Error("Sloppy WebSocket is closed.");
+                }
+                if (!accepted) {
+                    accepted = true;
+                    metrics.increment("websocket.upgrades.total", { route: match.route.pattern, outcome: "accepted" });
+                    if (Number.isInteger(routeOptions.heartbeatMs) && routeOptions.heartbeatMs > 0) {
+                        heartbeatTimer = setInterval(() => {
+                            if (state.closed) {
+                                return;
+                            }
+                            serverToClient.push(createWebSocketMessage("ping", ""));
+                            metrics.increment("websocket.messages.out.total", {
+                                route: match.route.pattern,
+                                kind: "ping",
+                            });
+                        }, routeOptions.heartbeatMs);
+                    }
+                    state.touch();
+                    acceptResolve();
+                }
+            },
+            async close(code = 1000, reason = "") {
+                state.close(code, reason);
+            },
+            async sendText(text) {
+                return sendFromServer("text", String(text));
+            },
+            async sendJson(value) {
+                return sendFromServer("json", value);
+            },
+            async sendBytes(bytes) {
+                return sendFromServer("binary", bytes);
+            },
+            async sendPing(payload = "") {
+                return sendFromServer("ping", payload);
+            },
+            async sendPong(payload = "") {
+                return sendFromServer("pong", payload);
+            },
+            messages() {
+                return clientToServer;
+            },
+        };
+
+        function sendFromServer(kind, value) {
+            if (!accepted) {
+                throw new Error("SLOPPY_E_WEBSOCKET_NOT_ACCEPTED: call socket.accept() before sending.");
+            }
+            if (state.closed) {
+                throw new Error("SLOPPY_E_WEBSOCKET_CLOSED");
+            }
+            const bytes = byteLengthOfWebSocketMessage(kind, value);
+            if (bytes > routeOptions.maxMessageBytes) {
+                state.close(1009, "message too large");
+                throw new Error("SLOPPY_E_WEBSOCKET_MESSAGE_TOO_LARGE");
+            }
+            if (queuedServerBytes + bytes > routeOptions.maxSendQueueBytes) {
+                metrics.increment("websocket.backpressure.total", { route: match.route.pattern, outcome: routeOptions.slowClientPolicy ?? "error" });
+                if (routeOptions.slowClientPolicy === "close") {
+                    state.close(1013, "send queue full");
+                    return Promise.resolve();
+                }
+                throw new Error("SLOPPY_E_WEBSOCKET_BACKPRESSURE");
+            }
+            queuedServerBytes += bytes;
+            const message = createWebSocketMessage(kind, value);
+            serverToClient.push(message);
+            metrics.increment("websocket.messages.out.total", { route: match.route.pattern, kind });
+            metrics.increment("websocket.bytes.out.total", { route: match.route.pattern, kind }, bytes);
+            return Promise.resolve();
+        }
+
+        const context = createContext(
+            app,
+            hostState,
+            "GET",
+            targetParts,
+            headers,
+            match.params,
+            match.route,
+            "none",
+            new Uint8Array(0),
+            normalizedOptions,
+        );
+        socketContext = {
+            ...context,
+            __sloppyWebSocketHandshake: true,
+            __sloppyWebSocket: socket,
+            connection: Object.freeze({
+                id: socket.id,
+                protocol: "websocket",
+                scheme: "test",
+                secure: false,
+            }),
+        };
+
+        activeSockets.add(state);
+        const handlerPromise = Promise.resolve(match.route.handler(socketContext)).then(
+            (value) => {
+                finished = true;
+                if (!accepted) {
+                    return value;
+                }
+                if (!state.closed) {
+                    state.close(1000, "handler complete");
+                }
+                return undefined;
+            },
+            (error) => {
+                finished = true;
+                diagnostics.record({
+                    code: "SLOPPY_E_WEBSOCKET_HANDLER_ERROR",
+                    subsystem: "websocket",
+                    severity: "error",
+                    message: error.message,
+                    fields: { route: match.route.pattern },
+                });
+                state.close(1011, "handler error");
+                return undefined;
+            },
+        ).finally(async () => {
+            try {
+                await socketContext.services.dispose();
+            } finally {
+                finishSocket(state);
+            }
+        });
+
+        const timeoutMs = normalizedOptions.timeoutMs ?? 1000;
+        let timer;
+        const timeoutPromise = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                reject(websocketReject(504, "SLOPPY_E_WEBSOCKET_ACCEPT_TIMEOUT", "WebSocket handler did not accept before timeout."));
+            }, timeoutMs);
+        });
+        try {
+            const outcome = await Promise.race([
+                acceptedPromise.then(() => Object.freeze({ kind: "accepted" })),
+                handlerPromise.then((value) => Object.freeze({ kind: "handler", value })),
+                timeoutPromise,
+            ]);
+            if (outcome.kind === "handler" && !accepted) {
+                const response = outcome.value === undefined
+                    ? undefined
+                    : responseFromResultWithOptions(outcome.value, serializationOptions);
+                throw websocketReject(
+                    response?.status ?? 500,
+                    response === undefined
+                        ? "SLOPPY_E_WEBSOCKET_REJECTED"
+                        : (problemCodeFromResponse(response) ?? "SLOPPY_E_WEBSOCKET_REJECTED"),
+                    "WebSocket upgrade was rejected.",
+                );
+            }
+        } finally {
+            clearTimeout(timer);
+        }
+        if (!accepted) {
+            throw websocketReject(500, "SLOPPY_E_WEBSOCKET_NOT_ACCEPTED", "WebSocket was not accepted.");
+        }
+        metrics.increment("websocket.connections.total", { route: match.route.pattern });
+        return Object.freeze(new TestWebSocket(state));
+    }
+
     const host = {
         request,
+        websocketConnect,
         get(target, options) {
             return request("GET", target, options);
         },
@@ -2077,6 +2817,9 @@ function createTestHost(app, options = {}) {
         options(target, options) {
             return request("OPTIONS", target, options);
         },
+        websocket(target, options) {
+            return new WebSocketBuilder(host, target, options);
+        },
         async close() {
             if (closePromise !== undefined) {
                 return closePromise;
@@ -2085,6 +2828,9 @@ function createTestHost(app, options = {}) {
                 app.__beginShutdown();
             }
             closed = true;
+            for (const socket of [...activeSockets]) {
+                socket.close(1001, "test host closed");
+            }
             closePromise = (async () => {
                 await waitForDrain();
                 await hostState.services.dispose();
@@ -2231,6 +2977,22 @@ function createProcessHelpers(kind, targetPath, options) {
     });
 }
 
+function unsupportedProcessWebSocketConnect(helpers, mode) {
+    return async function websocketConnect() {
+        helpers.diagnostics.record({
+            code: "SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED",
+            subsystem: "websocket",
+            severity: "warn",
+            message: `Sloppy TestHost ${mode} WebSocket connections are not supported by this runtime lane.`,
+        });
+        throw websocketReject(
+            501,
+            "SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED",
+            `Sloppy TestHost ${mode} WebSocket connections are not supported by this runtime lane.`,
+        );
+    };
+}
+
 function createProcessOnceHost(kind, targetPath, options = {}) {
     const command = cliPath(options);
     const helpers = createProcessHelpers(kind, targetPath, options);
@@ -2283,6 +3045,7 @@ function createProcessOnceHost(kind, targetPath, options = {}) {
     }
     return Object.freeze({
         request,
+        websocketConnect: unsupportedProcessWebSocketConnect(helpers, "one-off CLI"),
         close() {
             closed = true;
         },
@@ -2541,6 +3304,7 @@ async function createProcessLoopbackHost(kind, targetPath, options = {}) {
             await child.wait({ timeoutMs: options.stopTimeoutMs ?? 5000 }).catch(() => {});
             await child.dispose().catch(() => {});
         },
+        websocketConnect: unsupportedProcessWebSocketConnect(helpers, "loopback"),
         ...helpers,
     });
 }
@@ -2550,6 +3314,12 @@ function runtimeHostToFluent(runtimeHost, mode) {
         ...createFluentHost({
             request(method, target, options) {
                 return runtimeHost.request(method, target, options);
+            },
+            websocketConnect(target, options) {
+                if (typeof runtimeHost.websocketConnect === "function") {
+                    return runtimeHost.websocketConnect(target, options);
+                }
+                return unsupportedProcessWebSocketConnect(runtimeHost, mode)(target, options);
             },
             close() {
                 return runtimeHost.close?.();

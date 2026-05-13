@@ -30,7 +30,8 @@ configuration, services, validation, or data access.
 - [App test host](testing.md) — in-memory app-host dispatch for tests
 - [Request context](request-context.md) — what's on `ctx` inside a handler
 - [Results](results.md) — every response helper
-- [Realtime](realtime.md) — SSE route helpers, experimental WebSocket metadata, and in-process hubs
+- [Realtime](realtime.md) — SSE route helpers, WebSocket route registration, and in-process hubs
+- [WebSockets](websockets.md) — app-host WebSocket socket API, options, TestHost helpers, and runtime limits
 - [Network](network.md) — TCP, local IPC (Unix sockets / named pipes), `NetworkAddress`
 - [HTTP Client](http-client.md) — outbound HTTP/1.1 and explicit HTTP/2 requests
 - [Services](services.md) — singleton/scoped/transient DI, disposal

@@ -14426,7 +14426,9 @@ fn route_call_parts<'a>(
     else {
         return Ok(None);
     };
-    let (metadata, handler_arg) = if call.arguments.len() == 3 {
+    let (metadata, handler_arg) = if kind == "websocket" && call.arguments.len() == 3 {
+        (RouteMetadata::default(), &call.arguments[1])
+    } else if call.arguments.len() == 3 {
         (
             route_metadata_from_options_argument(&call.arguments[1])?,
             &call.arguments[2],

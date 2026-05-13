@@ -150,6 +150,8 @@ app.get("/admin", () => Results.ok({ ok: true }))
 | `scope` / `scopes` | `string \| string[]` | User must have every listed scope. |
 | `role` | `string` | User must have the role. |
 | `roles` | `string[]` | User must have at least one role. |
+| `scope` | `string` | User must have the scope. JWT `scope` strings are split on spaces. |
+| `scopes` | `string[]` | User must have every listed scope. |
 | `claim` | `string` | User must have the claim. |
 | `policy` | `string` | Named policy must return `true`. |
 
@@ -171,6 +173,22 @@ Groups can require auth for every child route:
 const internal = app.group("/internal").requireAuth();
 internal.get("/status", () => Results.ok({ ok: true }));
 ```
+
+Route builders also expose `.requiresScope(scope)`, which adds a scope
+requirement while keeping the route protected:
+
+```ts
+app.websocket("/secure/ws", async (socket) => {
+  await socket.accept();
+  await socket.sendJson({ sub: socket.ctx.user.sub });
+})
+  .requiresAuth()
+  .requiresScope("realtime");
+```
+
+WebSocket routes use the same auth ordering as HTTP routes. Missing credentials
+reject the handshake with `401`; authenticated users without the required role,
+scope, claim, or policy reject with `403`.
 
 ## Policies
 

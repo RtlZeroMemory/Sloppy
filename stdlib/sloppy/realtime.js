@@ -3,6 +3,12 @@ import { Results } from "./results.js";
 
 const DEFAULT_QUEUE_LIMIT = 64;
 const EVENT_NAME_PATTERN = /^[A-Za-z0-9_.:-]+$/u;
+const WEBSOCKET_PROTOCOL_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
+const DEFAULT_WEBSOCKET_MAX_MESSAGE_BYTES = 64 * 1024;
+const DEFAULT_WEBSOCKET_MAX_SEND_QUEUE_BYTES = 1024 * 1024;
+const DEFAULT_WEBSOCKET_CLOSE_TIMEOUT_MS = 5000;
+const WEBSOCKET_ROUTE_HANDLER = Symbol.for("sloppy.websocket.routeHandler");
+const WEBSOCKET_ROUTE_OPTIONS = Symbol.for("sloppy.websocket.routeOptions");
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -137,6 +143,116 @@ function createUnavailableWebSocketHandler() {
             },
         });
     };
+}
+
+function positiveIntegerOption(value, name, defaultValue = undefined) {
+    if (value === undefined) {
+        return defaultValue;
+    }
+    if (!Number.isInteger(value) || value <= 0) {
+        throw new TypeError(`Sloppy WebSocket ${name} must be a positive integer.`);
+    }
+    return value;
+}
+
+function validateProtocolToken(value) {
+    if (typeof value !== "string" || value.length === 0 || !WEBSOCKET_PROTOCOL_PATTERN.test(value)) {
+        throw new TypeError("Sloppy WebSocket protocols must be non-empty WebSocket subprotocol tokens.");
+    }
+    return value;
+}
+
+function normalizeWebSocketProtocols(value) {
+    if (value === undefined) {
+        return Object.freeze([]);
+    }
+    if (!Array.isArray(value)) {
+        throw new TypeError("Sloppy WebSocket protocols must be an array when provided.");
+    }
+    return Object.freeze([...new Set(value.map(validateProtocolToken))]);
+}
+
+function normalizeWebSocketOrigins(value) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (value === "*") {
+        return "*";
+    }
+    if (typeof value === "string") {
+        if (value.length === 0) {
+            throw new TypeError("Sloppy WebSocket origins must be non-empty strings.");
+        }
+        return Object.freeze([value]);
+    }
+    if (!Array.isArray(value) || value.length === 0) {
+        throw new TypeError("Sloppy WebSocket origins must be '*', a string, or a non-empty string array.");
+    }
+    for (const origin of value) {
+        if (typeof origin !== "string" || origin.length === 0) {
+            throw new TypeError("Sloppy WebSocket origins must be non-empty strings.");
+        }
+        if (origin === "*" && value.length !== 1) {
+            throw new TypeError("Sloppy WebSocket '*' origin cannot be combined with explicit origins.");
+        }
+    }
+    return value[0] === "*" ? "*" : Object.freeze([...new Set(value)]);
+}
+
+export function normalizeWebSocketRouteOptions(options = undefined) {
+    if (options === undefined) {
+        return Object.freeze({
+            protocols: Object.freeze([]),
+            maxMessageBytes: DEFAULT_WEBSOCKET_MAX_MESSAGE_BYTES,
+            maxSendQueueBytes: DEFAULT_WEBSOCKET_MAX_SEND_QUEUE_BYTES,
+            closeTimeoutMs: DEFAULT_WEBSOCKET_CLOSE_TIMEOUT_MS,
+            compression: false,
+            slowClientPolicy: "error",
+        });
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy WebSocket options must be a plain object.");
+    }
+    if (options.compression !== undefined && options.compression !== false) {
+        throw new TypeError("Sloppy WebSocket compression is not supported by this runtime.");
+    }
+    const slowClientPolicy = options.slowClientPolicy ?? "error";
+    if (slowClientPolicy !== "error" && slowClientPolicy !== "close") {
+        throw new TypeError("Sloppy WebSocket slowClientPolicy must be 'error' or 'close'.");
+    }
+    const heartbeatMs = positiveIntegerOption(options.heartbeatMs, "heartbeatMs");
+    const idleTimeoutMs = positiveIntegerOption(options.idleTimeoutMs, "idleTimeoutMs");
+    return Object.freeze({
+        protocols: normalizeWebSocketProtocols(options.protocols),
+        origins: normalizeWebSocketOrigins(options.origins),
+        maxMessageBytes: positiveIntegerOption(
+            options.maxMessageBytes,
+            "maxMessageBytes",
+            DEFAULT_WEBSOCKET_MAX_MESSAGE_BYTES,
+        ),
+        maxSendQueueBytes: positiveIntegerOption(
+            options.maxSendQueueBytes,
+            "maxSendQueueBytes",
+            DEFAULT_WEBSOCKET_MAX_SEND_QUEUE_BYTES,
+        ),
+        ...(heartbeatMs === undefined ? {} : { heartbeatMs }),
+        ...(idleTimeoutMs === undefined ? {} : { idleTimeoutMs }),
+        closeTimeoutMs: positiveIntegerOption(
+            options.closeTimeoutMs,
+            "closeTimeoutMs",
+            DEFAULT_WEBSOCKET_CLOSE_TIMEOUT_MS,
+        ),
+        compression: false,
+        slowClientPolicy,
+    });
+}
+
+export function webSocketRouteOptions(handler) {
+    return handler?.[WEBSOCKET_ROUTE_OPTIONS];
+}
+
+export function webSocketUserHandler(handler) {
+    return handler?.[WEBSOCKET_ROUTE_HANDLER];
 }
 
 function createHub(name) {
@@ -331,19 +447,38 @@ function sse(handler, options = undefined) {
     return createSseStream(handler, options);
 }
 
-function websocket(handler) {
-    return createWebSocketRouteHandler(handler);
+function websocket(handler, options = undefined) {
+    return createWebSocketRouteHandler(handler, options);
 }
 
 export function createSseRouteHandler(handler, options = undefined) {
     return createSseStream(handler, options);
 }
 
-export function createWebSocketRouteHandler(handler) {
+export function createWebSocketRouteHandler(handler, options = undefined) {
     if (typeof handler !== "function") {
         throw new TypeError("Sloppy WebSocket route handler must be a function.");
     }
-    return createUnavailableWebSocketHandler();
+    const routeOptions = normalizeWebSocketRouteOptions(options);
+    function sloppyWebSocketRoute(ctx) {
+        if (ctx?.__sloppyWebSocketHandshake === true && ctx.__sloppyWebSocket !== undefined) {
+            ctx.__sloppyWebSocket.__setContext?.(ctx);
+            if (handler.length >= 2) {
+                return handler(ctx, ctx.__sloppyWebSocket);
+            }
+            return handler(ctx.__sloppyWebSocket);
+        }
+        return createUnavailableWebSocketHandler()();
+    }
+    Object.defineProperties(sloppyWebSocketRoute, {
+        [WEBSOCKET_ROUTE_HANDLER]: {
+            value: handler,
+        },
+        [WEBSOCKET_ROUTE_OPTIONS]: {
+            value: routeOptions,
+        },
+    });
+    return sloppyWebSocketRoute;
 }
 
 export const Realtime = Object.freeze({

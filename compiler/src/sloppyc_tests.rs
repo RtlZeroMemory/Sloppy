@@ -8384,9 +8384,9 @@ app.sse("/events", async (ctx, stream) => {
     await stream.event("ready", { ok: true });
 }).requireAuth();
 const group = app.group("/live");
-group.ws("/ws", async (ctx, socket) => {
+group.websocket("/ws", async (ctx, socket) => {
     await socket.sendJson({ ok: true });
-});
+}, { maxMessageBytes: 65536 }).requiresAuth().requiresScope("realtime");
 export default app;
 "#;
     let path = std::path::Path::new("realtime.js");
@@ -8403,7 +8403,7 @@ export default app;
     assert!(app.routes[1]
         .handler
         .emitted_source
-        .starts_with("Realtime.websocket("));
+        .contains("Realtime.websocket("));
 
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("Results, Realtime"));
@@ -8417,6 +8417,7 @@ export default app;
     let value: serde_json::Value = serde_json::from_str(&plan).expect("plan should parse");
     assert_eq!(value["routes"][0]["kind"], "sse");
     assert_eq!(value["routes"][1]["kind"], "websocket");
+    assert_eq!(value["routes"][1]["auth"]["scopes"][0], "realtime");
     assert_eq!(value["features"]["realtime"], true);
     assert!(value["requiredFeatures"]
         .as_array()

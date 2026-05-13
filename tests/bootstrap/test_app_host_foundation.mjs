@@ -1323,6 +1323,212 @@ async function flushMicrotasks(count = 6) {
     assert.equal(unavailable.status, 501);
     assert.equal(unavailable.body.code, "SLOPPY_E_REALTIME_WEBSOCKET_UNAVAILABLE");
 
+    const optionFirstWsApp = Sloppy.create();
+    optionFirstWsApp.ws("/ws-options", { protocols: ["option.first"], origins: "https://app.example.com" }, async () => {});
+    const optionFirstWsRoute = optionFirstWsApp.__getRoutes()[0];
+    assert.deepEqual(optionFirstWsRoute.metadata.realtime.websocket.protocols, ["option.first"]);
+    assert.deepEqual(optionFirstWsRoute.handler[Symbol.for("sloppy.websocket.routeOptions")].protocols, ["option.first"]);
+
+    const websocketApp = Sloppy.create();
+    const ClientMessage = schema.object({
+        type: schema.enum(["ping", "echo"]),
+        text: schema.string().optional(),
+    });
+    websocketApp.websocket("/ws", async (socket) => {
+        await socket.accept();
+        for await (const message of socket.messages()) {
+            if (message.kind === "text") {
+                await socket.sendText(`echo:${message.text}`);
+                continue;
+            }
+            if (message.kind === "json") {
+                const input = message.validate(ClientMessage);
+                if (input.type === "ping") {
+                    await socket.sendJson({ type: "pong" });
+                } else {
+                    await socket.sendJson({ type: "echo", text: input.text ?? "" });
+                }
+                continue;
+            }
+            if (message.kind === "binary") {
+                await socket.sendBytes(message.bytes);
+            }
+        }
+    }, {
+        protocols: ["sloppy.realtime"],
+        origins: ["https://app.example.com"],
+        maxMessageBytes: 64 * 1024,
+        maxSendQueueBytes: 1024,
+        heartbeatMs: 15_000,
+        idleTimeoutMs: 30_000,
+        closeTimeoutMs: 5_000,
+    }).withName("Realtime.Socket").requiresAuth().requiresScope("realtime");
+
+    const websocketRoute = websocketApp.__getRoutes()[0];
+    assert.equal(websocketRoute.kind, "websocket");
+    assert.equal(websocketRoute.metadata.realtime.websocket.protocols[0], "sloppy.realtime");
+    assert.deepEqual(websocketRoute.metadata.realtime.websocket.origins, ["https://app.example.com"]);
+    assert.equal(websocketRoute.metadata.realtime.websocket.maxMessageBytes, 64 * 1024);
+    assert.equal(websocketRoute.metadata.auth.scopes[0], "realtime");
+    assert.equal(websocketRoute.name, "Realtime.Socket");
+
+    const websocketHost = await TestHost.create(websocketApp);
+    await websocketHost.websocket("/ws")
+        .origin("https://app.example.com")
+        .protocols(["sloppy.realtime"])
+        .connect()
+        .expectRejected(401);
+    await websocketHost.websocket("/ws")
+        .origin("https://blocked.example.com")
+        .protocols(["sloppy.realtime"])
+        .asUser({ sub: "u1", scopes: ["realtime"] })
+        .connect()
+        .expectRejected(403);
+    const ws = await websocketHost.websocket("/ws")
+        .origin("https://app.example.com")
+        .protocols(["sloppy.realtime"])
+        .asUser({ sub: "u1", scopes: ["realtime"] })
+        .connect();
+    await ws.sendText("hello");
+    await ws.expectText("echo:hello");
+    await ws.sendJson({ type: "ping" });
+    await ws.expectJson({ type: "pong" });
+    await ws.sendJson({ type: "echo", text: "hi" });
+    await ws.expectJson({ type: "echo", text: "hi" });
+    await ws.sendBytes(new Uint8Array([1, 2, 3]));
+    await ws.expectBytes(new Uint8Array([1, 2, 3]));
+    await ws.close();
+    websocketHost.metrics.expectCounter("websocket.messages.in.total", 1, {
+        route: "/ws",
+        kind: "binary",
+    });
+    websocketHost.metrics.expectCounter("websocket.bytes.out.total", 3, {
+        route: "/ws",
+        kind: "binary",
+    });
+    await websocketHost.close();
+
+    const secureWebsocketApp = Sloppy.create();
+    secureWebsocketApp.use(Auth.jwtBearer({
+        secret: "test-secret",
+        clock: () => Date.parse("2026-01-01T00:00:00Z"),
+    }));
+    secureWebsocketApp.websocket("/secure/ws", async (socket) => {
+        const user = socket.ctx.requireUser();
+        await socket.accept();
+        await socket.sendJson({ type: "hello", sub: user.sub });
+        await socket.close();
+    }).requiresAuth().requiresScope("realtime");
+    const previousSloppyForWebSocketJwt = globalThis.__sloppy;
+    const fakeWebSocketHmac = (algorithm, key, bytes) => {
+        const prefix = Text.utf8.encode(algorithm);
+        const output = new Uint8Array(prefix.byteLength + key.byteLength + bytes.byteLength);
+        output.set(prefix, 0);
+        output.set(key, prefix.byteLength);
+        output.set(bytes, prefix.byteLength + key.byteLength);
+        return output;
+    };
+    globalThis.__sloppy = {
+        ...previousSloppyForWebSocketJwt,
+        crypto: {
+            ...previousSloppyForWebSocketJwt?.crypto,
+            hmac: fakeWebSocketHmac,
+        },
+    };
+    let secureWebsocketHost;
+    try {
+        secureWebsocketHost = await TestHost.create(secureWebsocketApp);
+        await secureWebsocketHost.websocket("/secure/ws").connect().expectRejected(401);
+        await secureWebsocketHost.websocket("/secure/ws")
+            .withJwt({ sub: "u1", scope: "other" }, { secret: "test-secret" })
+            .connect()
+            .expectRejected(403);
+        const secureWs = await secureWebsocketHost.websocket("/secure/ws")
+            .withJwt({ sub: "u1", scope: "realtime" }, { secret: "test-secret" })
+            .connect();
+        await secureWs.expectJson({ type: "hello", sub: "u1" });
+        await secureWs.expectClose(1000);
+    } finally {
+        await secureWebsocketHost?.close();
+        globalThis.__sloppy = previousSloppyForWebSocketJwt;
+    }
+
+    const heartbeatWebsocketApp = Sloppy.create();
+    heartbeatWebsocketApp.websocket("/heartbeat", async (socket) => {
+        await socket.accept();
+        for await (const message of socket.messages()) {
+            if (message.kind === "ping") {
+                await socket.sendPong(message.text);
+            }
+        }
+    }, { heartbeatMs: 20 });
+    heartbeatWebsocketApp.websocket("/idle", async (socket) => {
+        await socket.accept();
+        for await (const _message of socket.messages()) {
+        }
+    }, { idleTimeoutMs: 30 });
+    const heartbeatWebsocketHost = await TestHost.create(heartbeatWebsocketApp);
+    const heartbeatWs = await heartbeatWebsocketHost.websocket("/heartbeat").connect();
+    await heartbeatWs.expectPing({ timeoutMs: 200 });
+    await heartbeatWs.sendPing("client");
+    await heartbeatWs.expectPong({ timeoutMs: 200 });
+    await heartbeatWs.close();
+    const idleWs = await heartbeatWebsocketHost.websocket("/idle").connect();
+    await idleWs.expectClose(1001, { timeoutMs: 300 });
+    await heartbeatWebsocketHost.close();
+
+    const limitsWebsocketApp = Sloppy.create();
+    limitsWebsocketApp.websocket("/small", async (socket) => {
+        await socket.accept();
+        for await (const message of socket.messages()) {
+            await socket.sendText(message.text);
+        }
+    }, { maxMessageBytes: 4 });
+    limitsWebsocketApp.websocket("/backpressure", async (socket) => {
+        await socket.accept();
+        for await (const message of socket.messages()) {
+            if (message.kind === "text") {
+                await socket.sendText("12345");
+                await socket.sendText("67890");
+            }
+        }
+    }, { maxSendQueueBytes: 6, slowClientPolicy: "close" });
+    limitsWebsocketApp.websocket("/boom", async (socket) => {
+        await socket.accept();
+        for await (const _message of socket.messages()) {
+            throw new Error("boom");
+        }
+    });
+    const limitsWebsocketHost = await TestHost.create(limitsWebsocketApp);
+    const smallWs = await limitsWebsocketHost.websocket("/small").connect();
+    await assertRejectsMessage(async () => smallWs.sendText("hello"), /SLOPPY_E_WEBSOCKET_MESSAGE_TOO_LARGE/);
+    await smallWs.expectClose(1009);
+    const backpressureWs = await limitsWebsocketHost.websocket("/backpressure").connect();
+    await backpressureWs.sendText("go");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await backpressureWs.expectText("12345");
+    await backpressureWs.expectClose(1013);
+    const boomWs = await limitsWebsocketHost.websocket("/boom").connect();
+    await boomWs.sendText("go");
+    await boomWs.expectClose(1011);
+    limitsWebsocketHost.diagnostics.expectCode("SLOPPY_E_WEBSOCKET_HANDLER_ERROR");
+    await limitsWebsocketHost.close();
+
+    const artifactWebSocketHost = await TestHost.fromArtifacts(".sloppy", { cliPath: "sloppy" });
+    await artifactWebSocketHost.websocket("/ws").connect().expectRejected(501);
+    artifactWebSocketHost.diagnostics.expectCode("SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED");
+    await artifactWebSocketHost.close();
+
+    const invalidWebSocketOptions = Sloppy.create();
+    assertThrowsMessage(
+        () => invalidWebSocketOptions.websocket("/bad", async () => {}, { compression: true }),
+        /compression/,
+    );
+    assertThrowsMessage(
+        () => invalidWebSocketOptions.websocket("/bad-protocol", async () => {}, { protocols: ["bad token"] }),
+        /subprotocol/,
+    );
+
     const protectedWs = Sloppy.create();
     protectedWs.ws("/admin/ws", async () => {}).requireAuth({ role: "admin" });
     const protectedMissingAuth = await protectedWs.__getRoutes()[0].handler();

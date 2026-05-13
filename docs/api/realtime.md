@@ -1,7 +1,7 @@
 # Realtime
 
-`Realtime` is the experimental route surface for server-sent events, current
-WebSocket route metadata, and in-process hub helpers.
+`Realtime` is the experimental route surface for server-sent events,
+app-host WebSocket primitives, and in-process hub helpers.
 
 ```ts
 import { Sloppy, Realtime } from "sloppy";
@@ -33,12 +33,60 @@ const live = app.group("/live").requireAuth();
 live.sse("/events", handler);
 ```
 
-`app.ws(pattern, handler)` and `group.ws(pattern, handler)` register `GET`
-routes with realtime kind `websocket`. In this alpha, the route metadata,
-compiler lowering, OpenAPI extension, auth ordering, and unavailable runtime
-response are implemented. Native HTTP/1.1 upgrade execution is not implemented:
-the generated handler returns `501` with code
-`SLOPPY_E_REALTIME_WEBSOCKET_UNAVAILABLE`.
+`app.websocket(pattern, handler, options?)` and
+`group.websocket(pattern, handler, options?)` register `GET` routes with
+realtime kind `websocket`. `app.ws(...)` and `group.ws(...)` remain aliases.
+
+```ts
+const ClientMessage = schema.object({
+    type: schema.enum(["ping", "echo"]),
+    text: schema.string().optional(),
+});
+
+app.websocket("/ws", async (socket) => {
+    await socket.accept();
+
+    for await (const message of socket.messages()) {
+        if (message.kind === "text") {
+            await socket.sendText(`echo:${message.text}`);
+            continue;
+        }
+
+        if (message.kind === "json") {
+            const input = message.validate(ClientMessage);
+            if (input.type === "ping") {
+                await socket.sendJson({ type: "pong" });
+            }
+        }
+    }
+}, {
+    origins: ["https://app.example.com"],
+    protocols: ["sloppy.realtime"],
+    maxMessageBytes: 64 * 1024,
+    maxSendQueueBytes: 1024 * 1024,
+    heartbeatMs: 15_000,
+    idleTimeoutMs: 30_000,
+});
+```
+
+Options are validated at route registration. `protocols` must be WebSocket
+subprotocol tokens. `origins` must be explicit strings or `"*"`. Message and
+queue limits must be positive integers. Compression is rejected unless it is
+`false`.
+
+Route builders support WebSocket-specific metadata:
+
+```ts
+app.websocket("/secure/ws", async (socket) => {
+    const user = socket.ctx.user;
+    await socket.accept();
+    await socket.sendJson({ type: "hello", sub: user.sub });
+})
+    .withName("Realtime.Secure")
+    .requiresAuth()
+    .requiresScope("realtime")
+    .allowedOrigins(["https://app.example.com"]);
+```
 
 ## `Realtime.sse(handler, options?)`
 
@@ -76,11 +124,33 @@ Event options:
 | `retry` | Writes a non-negative integer retry value. |
 | `comment` | Writes a comment before the event fields. CR and LF are rejected. |
 
-## `Realtime.websocket(handler)`
+## WebSocket Socket
 
-Wraps a handler in the current unavailable WebSocket response. Use
-`app.ws(...)` for route registration so the Plan records the route kind and
-tooling can report it.
+The handler receives a socket object. New handlers should use
+`async (socket) => { ... }`; legacy two-argument handlers receive
+`(ctx, socket)`.
+
+| Member | Behavior |
+| --- | --- |
+| `socket.ctx` | Request context, including auth, services, config, metrics, route, and request metadata. |
+| `socket.accept()` | Accepts the app-host WebSocket connection. Sends before accept fail. |
+| `socket.messages()` | Async iterator of inbound messages. |
+| `socket.sendText(text)` | Sends a text message. |
+| `socket.sendJson(value)` | Sends a JSON message. |
+| `socket.sendBytes(bytes)` | Sends a binary message in app-host tests. |
+| `socket.close(code?, reason?)` | Closes idempotently. |
+| `socket.closed` | `true` after close. |
+| `socket.protocol` | Selected subprotocol, or an empty string. |
+| `socket.id` | Test-host connection ID in app-host tests. |
+
+Messages have `kind`, plus kind-specific data. Text messages expose `text`;
+binary messages expose `bytes`; JSON messages can be read through `json()` or
+validated with `validate(schema)`.
+
+`Realtime.websocket(handler, options?)` wraps a handler with the same route
+handler marker used by `app.websocket(...)`. Direct HTTP calls to a WebSocket
+route still return the unavailable response; use TestHost WebSocket helpers to
+exercise the socket path.
 
 ## `Realtime.hub(name)`
 
@@ -103,14 +173,20 @@ across processes, and not wired to native WebSocket upgrades in this alpha.
 The compiler records non-HTTP route kinds as `sse` or `websocket` in Plan route
 metadata and marks the Plan with `runtime.realtime`. `sloppy routes` includes a
 `kind` field, and `sloppy openapi` emits `x-slop-realtime` /
-`x-slop-transport` on realtime operations.
+`x-slop-transport` on realtime operations. Standard OpenAPI does not model
+WebSocket message flow; Sloppy does not present WebSocket routes as ordinary
+HTTP response operations.
 
 ## Current Limits
 
 - SSE uses the bounded `Results.stream` descriptor path and native Core stream
   serialization; the handler does not stay attached to a live socket after it
   returns.
-- WebSocket upgrade execution is unavailable and returns `501`.
+- WebSocket app-host execution is available through `TestHost.create(app)`.
+- Native HTTP upgrade execution is unavailable and returns `501`.
+- Artifact/package TestHost WebSocket connections report
+  `SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` until a runtime lane supports real
+  upgrade execution.
 - There is no browser client helper.
 - Hubs are in-process bootstrap helpers only.
 - No compression, replay buffer, external pub/sub, or cross-node fan-out.
