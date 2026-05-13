@@ -83,6 +83,7 @@ size_t sl_breadcrumb_ring_snapshot(const SlBreadcrumbRing* ring, SlBreadcrumb* o
 SlStatus sl_breadcrumb_ring_render_jsonl(SlArena* arena, const SlBreadcrumbRing* ring, SlStr* out);
 
 SlBreadcrumbRing* sl_breadcrumb_global_ring(void);
+bool sl_breadcrumb_global_should_record(SlBreadcrumbEvent event, SlStatusCode status);
 void sl_breadcrumb_global_record(SlDiagSubsystem subsystem, SlBreadcrumbEvent event,
                                  SlStatusCode status, uint64_t request_id, uint64_t connection_id,
                                  uint64_t route_id, uint64_t handler_id, SlStr detail);

@@ -17,12 +17,17 @@ rendering redacts common secret-bearing strings in diagnostic messages and cause
 
 ## Breadcrumbs
 
-The runtime owns a fixed-size breadcrumb ring. It records bounded events such as Plan load,
-artifact validation, HTTP request dispatch, route matches, native response hits, V8 handler
-entry/exit/failure, stream failures, provider worker failures, package report writes, doctor
-report writes, and fatal native invariants.
+The runtime owns a fixed-size breadcrumb ring. It records bounded failure and
+diagnostic events such as Plan load, artifact validation, HTTP request dispatch
+failures, V8 handler failures, stream failures, provider worker failures,
+package report writes, doctor report writes, and fatal native invariants.
+Routine HTTP/V8 success breadcrumbs on the request hot path are disabled by
+default. Set `SLOPPY_SUCCESS_BREADCRUMBS=1` when a local diagnostic capture
+needs successful request start, route match, native response hit, or handler
+entry/exit breadcrumbs.
 
-Breadcrumb recording does not allocate. Rendering `breadcrumbs.jsonl` is explicit and local.
+Breadcrumb recording does not allocate. Rendering `breadcrumbs.jsonl` is
+explicit and local.
 
 ## Crash Reports
 
