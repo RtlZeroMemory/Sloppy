@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Text } from "../../stdlib/sloppy/codec.js";
+import { TestHttp } from "../../stdlib/sloppy/http.js";
 import { TestHost } from "../../stdlib/sloppy/testing.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -239,21 +240,69 @@ function createNetBridge() {
     return {
         listen(options) {
             return new Promise((resolve, reject) => {
-                const server = net.createServer();
+                const pending = [];
+                const acceptors = [];
+                const server = net.createServer((socket) => {
+                    const handle = createConnectionHandle(socket);
+                    const acceptor = acceptors.shift();
+                    if (acceptor === undefined) {
+                        pending.push(handle);
+                    } else {
+                        acceptor.resolve(handle);
+                    }
+                });
                 server.once("error", reject);
                 server.listen(options.port, options.host, options.backlog ?? 128, () => {
                     server.off("error", reject);
-                    resolve({ server });
+                    resolve({ server, pending, acceptors, closed: false });
                 });
             });
         },
         closeListener(handle) {
+            handle.closed = true;
+            for (const acceptor of handle.acceptors.splice(0)) {
+                acceptor.reject(new Error("listener closed"));
+            }
             return new Promise((resolve, reject) => {
                 handle.server.close((error) => error == null ? resolve() : reject(error));
             });
         },
         abortListener(handle) {
+            handle.closed = true;
+            for (const acceptor of handle.acceptors.splice(0)) {
+                acceptor.reject(new Error("listener closed"));
+            }
             handle.server.close();
+        },
+        accept(handle, timeoutMs) {
+            if (handle.pending.length !== 0) {
+                return handle.pending.shift();
+            }
+            if (handle.closed) {
+                throw new Error("listener closed");
+            }
+            return new Promise((resolve, reject) => {
+                const acceptor = { resolve, reject };
+                let timer;
+                if (timeoutMs !== undefined) {
+                    timer = setTimeout(() => {
+                        const index = handle.acceptors.indexOf(acceptor);
+                        if (index >= 0) {
+                            handle.acceptors.splice(index, 1);
+                        }
+                        reject(new Error("accept timed out"));
+                    }, timeoutMs);
+                }
+                acceptor.resolve = (value) => {
+                    clearTimeout(timer);
+                    resolve(value);
+                };
+                acceptor.reject = (error) => {
+                    clearTimeout(timer);
+                    reject(error);
+                };
+                handle.acceptors.push(acceptor);
+            });
         },
         connect(options) {
             return new Promise((resolve, reject) => {
@@ -286,6 +335,12 @@ function createNetBridge() {
 
 function createFsBridge() {
     return {
+        async readText(filePath) {
+            return fs.readFile(filePath, "utf8");
+        },
+        async readBytes(filePath) {
+            return bytes(await fs.readFile(filePath));
+        },
         async directoryCreate(directory, recursive) {
             await fs.mkdir(directory, { recursive: recursive === true });
         },
@@ -362,10 +417,17 @@ async function occupyPort() {
 
 async function writeFixture(root) {
     const source = path.join(root, "app.js");
-    await fs.writeFile(source, `import { Results, Sloppy } from "sloppy";
+    await fs.writeFile(source, `import { Config, Http, Results, Sloppy } from "sloppy";
+const Billing = Http.client("billing", {
+  baseUrl: Config.required("Billing:BaseUrl"),
+});
 const app = Sloppy.create();
 app.get("/hello", () => Results.text("hello"));
 app.post("/echo", (ctx) => Results.ok(ctx.request.json()));
+app.get("/billing/{id}", async (ctx) => Results.json(await (await Billing.get("/invoices/{id}", {
+  params: { id: ctx.route.id },
+  signal: ctx.signal,
+}).send()).json()));
 export default app;
 `, "utf8");
     return source;
@@ -398,6 +460,16 @@ async function assertHello(host) {
         const response = await host.get("/hello").expectStatus(200);
         assert.equal(await response.text(), "hello");
         await host.openapi.expectRoute("GET", "/hello");
+    } finally {
+        await host.close();
+    }
+}
+
+async function assertBillingMock(host, mock, id = "inv_1") {
+    try {
+        const response = await host.get(`/billing/${id}`).expectStatus(200);
+        assert.deepEqual(await response.json(), { id, status: "paid", amount: 42 });
+        mock.expectCalled("GET", `/invoices/${id}`).expectNoUnexpectedCalls();
     } finally {
         await host.close();
     }
@@ -452,6 +524,54 @@ try {
         await assertHello(await TestHost.fromPackage(packageDir, { cliPath }));
         await assertHello(await TestHost.fromArtifacts(artifacts, { mode: "loopback", cliPath }));
         await assertHello(await TestHost.fromPackage(packageDir, { mode: "loopback", cliPath }));
+
+        const artifactMock = TestHttp.mock()
+            .get("/invoices/inv_1")
+            .replyJson(200, { id: "inv_1", status: "paid", amount: 42 });
+        await assertBillingMock(await TestHost.fromArtifacts(artifacts, {
+            cliPath,
+            httpClients: { billing: artifactMock },
+        }), artifactMock);
+
+        const packageMock = TestHttp.mock()
+            .get("/invoices/inv_1")
+            .replyJson(200, { id: "inv_1", status: "paid", amount: 42 });
+        await assertBillingMock(await TestHost.fromPackage(packageDir, {
+            cliPath,
+            httpClients: { billing: packageMock },
+        }), packageMock);
+
+        const loopbackMock = TestHttp.mock()
+            .get("/invoices/inv_1")
+            .replyJson(200, { id: "inv_1", status: "paid", amount: 42 });
+        await assertBillingMock(await TestHost.fromArtifacts(artifacts, {
+            mode: "loopback",
+            cliPath,
+            httpClients: { billing: loopbackMock },
+        }), loopbackMock);
+
+        const packageLoopbackMock = TestHttp.mock()
+            .get("/invoices/inv_1")
+            .replyJson(200, { id: "inv_1", status: "paid", amount: 42 });
+        await assertBillingMock(await TestHost.fromPackage(packageDir, {
+            mode: "loopback",
+            cliPath,
+            httpClients: { billing: packageLoopbackMock },
+        }), packageLoopbackMock);
+
+        const unexpectedMock = TestHttp.mock()
+            .get("/invoices/other")
+            .replyJson(200, { id: "other", status: "paid", amount: 42 });
+        const unexpectedHost = await TestHost.fromArtifacts(artifacts, {
+            cliPath,
+            httpClients: { billing: unexpectedMock },
+        });
+        try {
+            await unexpectedHost.get("/billing/inv_1").expectStatus(500);
+            assert.throws(() => unexpectedMock.expectNoUnexpectedCalls(), /Unexpected outbound HTTP calls/);
+        } finally {
+            await unexpectedHost.close();
+        }
 
         const [first, second] = await Promise.all([
             TestHost.fromArtifacts(artifacts, { mode: "loopback", cliPath }),

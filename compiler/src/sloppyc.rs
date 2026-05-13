@@ -2393,6 +2393,7 @@ fn analyze_program_import(
         | resolver::ImportKind::SlopCodec
         | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
+        | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi
@@ -3086,6 +3087,7 @@ fn validate_program_stdlib_import(
         resolver::ImportKind::SlopCodec => validate_module_sloppy_codec_import(path, import),
         resolver::ImportKind::SlopCache => validate_module_sloppy_cache_import(path, import),
         resolver::ImportKind::SlopNet => validate_module_sloppy_net_import(path, import),
+        resolver::ImportKind::SlopHttp => validate_module_sloppy_http_import(path, import),
         resolver::ImportKind::SlopOs => validate_module_sloppy_os_import(path, import),
         resolver::ImportKind::SlopWorkers => validate_module_sloppy_workers_import(path, import),
         resolver::ImportKind::SlopFfi => validate_module_sloppy_ffi_import(path, import),
@@ -3585,6 +3587,7 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopCodec
         | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
+        | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi => "globalThis.__sloppy_runtime".to_string(),
@@ -3852,6 +3855,7 @@ fn program_reexport_require_expr(
         | resolver::ImportKind::SlopCodec
         | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
+        | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
         | resolver::ImportKind::SlopFfi => Ok("globalThis.__sloppy_runtime".to_string()),
@@ -4045,6 +4049,7 @@ fn mark_program_import(
                 }
             }
         }
+        resolver::ImportKind::SlopHttp => graph.uses_http_client_runtime = true,
         resolver::ImportKind::SlopOs => graph.uses_os_runtime = true,
         resolver::ImportKind::SlopWorkers => graph.uses_workers_runtime = true,
         resolver::ImportKind::SlopFfi => graph.uses_ffi_runtime = true,
@@ -4180,7 +4185,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-                .with_hint("Use documented named imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/cache\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"; Sloppy does not implement Node or npm resolution."));
+                .with_hint("Use documented named imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/cache\", \"sloppy/net\", \"sloppy/http\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"; Sloppy does not implement Node or npm resolution."));
     }
 
     if let Some((specifier, span)) = &state.unsupported_import_name {
@@ -4190,7 +4195,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-        .with_hint("Use documented imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/cache\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"."));
+        .with_hint("Use documented imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/cache\", \"sloppy/net\", \"sloppy/http\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"."));
     }
 
     if !state.sloppy_imported {
@@ -4745,6 +4750,13 @@ fn sloppy_net_import_name_supported(name: &str) -> bool {
     )
 }
 
+fn sloppy_http_import_name_supported(name: &str) -> bool {
+    matches!(
+        name,
+        "Http" | "HttpClientFactory" | "HttpError" | "SloppyHttpClientError" | "TestHttp"
+    )
+}
+
 fn sloppy_os_import_name_supported(name: &str) -> bool {
     matches!(
         name,
@@ -4768,6 +4780,7 @@ enum SloppyStdlibImport {
     Codec,
     Cache,
     Net,
+    Http,
     Os,
     Workers,
     Ffi,
@@ -4782,6 +4795,7 @@ impl SloppyStdlibImport {
             "sloppy/codec" => Some(Self::Codec),
             "sloppy/cache" => Some(Self::Cache),
             "sloppy/net" => Some(Self::Net),
+            "sloppy/http" => Some(Self::Http),
             "sloppy/os" => Some(Self::Os),
             "sloppy/workers" => Some(Self::Workers),
             "sloppy/ffi" => Some(Self::Ffi),
@@ -4797,6 +4811,7 @@ impl SloppyStdlibImport {
             Self::Codec => sloppy_codec_import_name_supported(name),
             Self::Cache => sloppy_cache_import_name_supported(name),
             Self::Net => sloppy_net_import_name_supported(name),
+            Self::Http => sloppy_http_import_name_supported(name),
             Self::Os => sloppy_os_import_name_supported(name),
             Self::Workers => sloppy_workers_import_name_supported(name),
             Self::Ffi => sloppy_ffi_import_name_supported(name),
@@ -4882,7 +4897,10 @@ fn validate_module_sloppy_root_import(
         };
         let imported = specifier.imported.name().as_str();
         let local = specifier.local.name.as_str();
-        if matches!(imported, "Testing" | "TestHost" | "FakeClock" | "TestData") {
+        if matches!(
+            imported,
+            "Testing" | "TestHost" | "TestServices" | "FakeClock" | "TestData"
+        ) {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
                 "Sloppy testing helpers cannot be imported by compiled app source",
@@ -4933,6 +4951,9 @@ fn mark_sloppy_root_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclar
             "ProviderHealth" => {
                 graph.uses_data_runtime = true;
                 graph.uses_provider_health_runtime = true;
+            }
+            "Http" | "HttpClientFactory" | "HttpError" | "SloppyHttpClientError" | "TestHttp" => {
+                graph.uses_http_client_runtime = true;
             }
             _ => {}
         }
@@ -5033,6 +5054,18 @@ fn validate_module_sloppy_net_import(
     import: &ImportDeclaration<'_>,
 ) -> Result<(), Diagnostic> {
     validate_module_sloppy_import(path, import, "sloppy/net", sloppy_net_import_name_supported)
+}
+
+fn validate_module_sloppy_http_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/http",
+        sloppy_http_import_name_supported,
+    )
 }
 
 fn validate_module_sloppy_os_import(
@@ -5852,6 +5885,7 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
         SloppyStdlibImport::Codec => state.codec_imported = true,
         SloppyStdlibImport::Cache => state.cache_imported = true,
         SloppyStdlibImport::Net => state.net_imported = true,
+        SloppyStdlibImport::Http => state.http_client_imported = true,
         SloppyStdlibImport::Os => state.os_imported = true,
         SloppyStdlibImport::Workers => state.workers_imported = true,
         SloppyStdlibImport::Ffi => state.ffi_imported = true,
@@ -6108,7 +6142,10 @@ fn extract_import(
 
             let imported = specifier.imported.name().as_str();
             let local = specifier.local.name.as_str();
-            if matches!(imported, "Testing" | "TestHost" | "FakeClock" | "TestData") {
+            if matches!(
+                imported,
+                "Testing" | "TestHost" | "TestServices" | "FakeClock" | "TestData"
+            ) {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
                     "Sloppy testing helpers cannot be imported by compiled app source",
@@ -6228,8 +6265,14 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "RequestLogging"
             | "Health"
             | "Metrics"
+            | "Http"
+            | "HttpClientFactory"
+            | "HttpError"
+            | "SloppyHttpClientError"
+            | "TestHttp"
             | "Testing"
             | "TestHost"
+            | "TestServices"
             | "FakeClock"
             | "TestData"
             | "data"
@@ -13119,6 +13162,13 @@ fn extract_relative_helper_import(
             }
             continue;
         }
+        if import_source == "sloppy/http" {
+            validate_module_sloppy_http_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_http_client_runtime = true;
+            }
+            continue;
+        }
         if import_source == "sloppy/os" {
             validate_module_sloppy_os_import(&imported.path, import)?;
             if import_has_runtime_value_specifier(import) {
@@ -13493,6 +13543,13 @@ fn extract_relative_module(
                         }
                     }
                 }
+            }
+            continue;
+        }
+        if import_source == "sloppy/http" {
+            validate_module_sloppy_http_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_http_client_runtime = true;
             }
             continue;
         }
@@ -20324,7 +20381,14 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         runtime_exports.push("Environment");
     }
     if app.uses_http_client_runtime {
-        runtime_exports.push("HttpClient");
+        runtime_exports.extend([
+            "HttpClient",
+            "Http",
+            "HttpClientFactory",
+            "HttpError",
+            "SloppyHttpClientError",
+            "TestHttp",
+        ]);
     }
     if app.uses_workers_runtime {
         runtime_exports.extend(WORKER_EXPORTS.iter().copied());
@@ -21017,7 +21081,7 @@ fn emit_dynamic_web_app_js(source: &str, app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
+    output.push_str("const { Results, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
     output.push_str(
         r#"const __sloppy_framework_services = __createFrameworkServiceProvider();
 const __sloppy_framework_provider_configs = new Map([]);

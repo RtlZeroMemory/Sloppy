@@ -147,3 +147,36 @@ The compiler rejects app-host-only built-ins such as `Health.config(...)`,
 `app.mapHealthChecks()` is still supported for the earlier lightweight
 `/health`, `/health/live`, and `/health/ready` compatibility API. New code should
 use `app.health()`.
+
+## HTTP client checks
+
+Named HTTP clients expose a lightweight `health()` snapshot:
+
+```ts
+import { Http } from "sloppy/http";
+
+const billing = Http.client("billing", {
+    baseUrl: "https://billing.internal",
+    circuitBreaker: Http.circuitBreaker({
+        failureRatio: 0.5,
+        minimumThroughput: 10,
+        breakDurationMs: 30000,
+    }),
+});
+
+app.services.addHttpClient(billing);
+
+app.mapHealthChecks({
+    checks: [
+        {
+            name: "billing-http",
+            check: (ctx) => ctx.services.get("http.billing").health().status === "healthy",
+            readiness: true,
+        },
+    ],
+});
+```
+
+The built-in snapshot reports unhealthy when the client circuit is open. Probe
+requests remain application-owned so health checks do not create hidden
+outbound traffic.

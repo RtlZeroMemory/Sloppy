@@ -10,6 +10,13 @@ export { Directory, File, FileHandle, FileWatcher, Path } from "./fs.js";
 export { Health } from "./health.js";
 export { Metrics } from "./metrics.js";
 export {
+    Http,
+    HttpClientFactory,
+    HttpError,
+    SloppyHttpClientError,
+    TestHttp,
+} from "./http.js";
+export {
     HttpClient,
     LocalEndpoint,
     NamedPipe,
@@ -27,7 +34,7 @@ export { RequestLogging } from "./request-logging.js";
 export { Results } from "./results.js";
 export { Schema } from "./schema.js";
 export { schema } from "./schema.js";
-export { FakeClock, TestData, TestHost, Testing } from "./testing.js";
+export { FakeClock, TestData, TestHost, TestServices, Testing } from "./testing.js";
 export {
     CancelledError,
     CancellationController,

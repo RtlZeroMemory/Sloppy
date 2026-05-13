@@ -194,6 +194,7 @@ Provider-specific redaction lives in each provider's `*.c` (e.g.
 | V8 bridge tests (V8-gated)| JS-visible behavior end-to-end                      |
 | Live PostgreSQL (opt-in) | Real database with connection string                 |
 | Live SQL Server (opt-in) | Real database + ODBC driver                          |
+| TestServices (experimental, opt-in) | Docker lifecycle plus provider-backed readiness      |
 | Stress / torture (opt-in)| Long-running workload for leak/cancellation behavior |
 
 Live and V8 lanes are opt-in. Default CI covers native and conformance. Missing

@@ -1,10 +1,27 @@
 import { isPromiseLike } from "./shared.js";
 import { Cache, isCache } from "../cache.js";
+import { Http } from "../http.js";
 
 function validateServiceToken(token) {
-    if (typeof token !== "string" || token.length === 0) {
-        throw new TypeError("Sloppy service token must be a non-empty string.");
+    if (typeof token === "string" && token.length !== 0) {
+        return;
     }
+    if (
+        token !== null &&
+        typeof token === "object" &&
+        typeof token.__sloppyHttpClientToken === "string" &&
+        token.__sloppyHttpClientToken.length !== 0
+    ) {
+        return;
+    }
+    throw new TypeError("Sloppy service token must be a non-empty string or supported typed service token.");
+}
+
+function serviceTokenDisplay(token) {
+    if (typeof token === "string") {
+        return token;
+    }
+    return token.__sloppyHttpClientToken;
 }
 
 function cacheServiceToken(name = "default") {
@@ -26,7 +43,7 @@ function createServicesBuilder(guard) {
         validateServiceToken(token);
 
         if (registrations.has(token)) {
-            throw new Error(`Sloppy service '${token}' is already registered.`);
+            throw new Error(`Sloppy service '${serviceTokenDisplay(token)}' is already registered.`);
         }
 
         registrations.set(token, {
@@ -84,6 +101,42 @@ function createServicesBuilder(guard) {
                 lifetime: "scoped",
                 factory,
             });
+        },
+
+        addHttpClient(clientOrName, options = undefined) {
+            guard.assertMutable();
+
+            const client = typeof clientOrName === "string"
+                ? Http.client(clientOrName, options ?? {})
+                : clientOrName;
+            const registration = client?.__sloppyHttpClientRegistration;
+            if (registration === undefined) {
+                throw new TypeError("Sloppy services.addHttpClient expects Http.client, Http.typedClient, or a client name with options.");
+            }
+
+            const namedToken = registration.namedToken ?? registration.token;
+            if (!registrations.has(namedToken)) {
+                addRegistration(namedToken, {
+                    lifetime: "singleton",
+                    initialized: false,
+                    factory(scope) {
+                        return registration.createNamed(scope.config);
+                    },
+                });
+            } else if (registration.kind !== "typed") {
+                throw new Error(`Sloppy service '${serviceTokenDisplay(namedToken)}' is already registered.`);
+            }
+
+            if (registration.kind === "typed") {
+                addRegistration(registration.token, {
+                    lifetime: "transient",
+                    factory(scope) {
+                        return registration.createTyped(scope.get(namedToken));
+                    },
+                });
+            }
+
+            return services;
         },
 
         __snapshot() {
@@ -150,7 +203,7 @@ function finishWithCleanup(result, cleanup) {
     return cleanupAfterSuccess(result, cleanup);
 }
 
-function createServiceProvider(registrations, capabilities) {
+function createServiceProvider(registrations, capabilities, config = undefined) {
     const singletonDisposables = [];
     let providerDisposed = false;
 
@@ -213,6 +266,7 @@ function createServiceProvider(registrations, capabilities) {
         const resolvingLifetimes = [];
         const scope = Object.freeze({
             capabilities,
+            config,
             get(token) {
                 return resolve(scope, token);
             },
@@ -271,20 +325,20 @@ function createServiceProvider(registrations, capabilities) {
         }
 
         if (!registrations.has(token)) {
-            throw new Error(`Sloppy service '${token}' is not registered.`);
+            throw new Error(`Sloppy service '${serviceTokenDisplay(token)}' is not registered.`);
         }
 
         const registration = registrations.get(token);
 
         if (scope.__resolving().includes(token)) {
-            throw new Error(`Sloppy service circular dependency detected: ${[...scope.__resolving(), token].join(" -> ")}.`);
+            throw new Error(`Sloppy service circular dependency detected: ${[...scope.__resolving(), token].map(serviceTokenDisplay).join(" -> ")}.`);
         }
 
         if (
             registration.lifetime === "scoped" &&
             scope.__resolvingLifetimes().includes("singleton")
         ) {
-            throw new Error(`Sloppy singleton service cannot depend on scoped service '${token}'.`);
+            throw new Error(`Sloppy singleton service cannot depend on scoped service '${serviceTokenDisplay(token)}'.`);
         }
 
         if (registration.lifetime === "singleton") {
@@ -333,6 +387,7 @@ function createServiceProvider(registrations, capabilities) {
 
         const scope = Object.freeze({
             capabilities,
+            config,
             get(token) {
                 return resolve(scope, token);
             },
@@ -393,7 +448,49 @@ function createServiceProvider(registrations, capabilities) {
 
     const rootScope = createRootScope();
 
+    function addHttpClient(clientOrName, options = undefined) {
+        if (providerDisposed) {
+            throw new Error("Sloppy service provider is disposed.");
+        }
+        const client = typeof clientOrName === "string"
+            ? Http.client(clientOrName, options ?? {})
+            : clientOrName;
+        const registration = client?.__sloppyHttpClientRegistration;
+        if (registration === undefined) {
+            throw new TypeError("Sloppy services.addHttpClient expects Http.client, Http.typedClient, or a client name with options.");
+        }
+
+        const namedToken = registration.namedToken ?? registration.token;
+        if (!registrations.has(namedToken)) {
+            registrations.set(namedToken, {
+                lifetime: "singleton",
+                initialized: false,
+                factory(scope) {
+                    return registration.createNamed(scope.config);
+                },
+            });
+        } else if (registration.kind !== "typed") {
+            throw new Error(`Sloppy service '${serviceTokenDisplay(namedToken)}' is already registered.`);
+        }
+
+        if (registration.kind === "typed") {
+            if (registrations.has(registration.token)) {
+                throw new Error(`Sloppy service '${serviceTokenDisplay(registration.token)}' is already registered.`);
+            }
+            registrations.set(registration.token, {
+                lifetime: "transient",
+                factory(scope) {
+                    return registration.createTyped(scope.get(namedToken));
+                },
+            });
+        }
+
+        return provider;
+    }
+
     const provider = Object.freeze({
+        addHttpClient,
+
         get(token) {
             validateServiceToken(token);
             if (providerDisposed) {
@@ -401,10 +498,10 @@ function createServiceProvider(registrations, capabilities) {
             }
             const registration = registrations.get(token);
             if (registration === undefined) {
-                throw new Error(`Sloppy service '${token}' is not registered.`);
+                throw new Error(`Sloppy service '${serviceTokenDisplay(token)}' is not registered.`);
             }
             if (registration.lifetime !== "singleton") {
-                throw new Error(`Sloppy root service resolution only supports singleton services; create a scope to resolve '${token}'.`);
+                throw new Error(`Sloppy root service resolution only supports singleton services; create a scope to resolve '${serviceTokenDisplay(token)}'.`);
             }
             return resolve(rootScope, token);
         },
@@ -419,7 +516,7 @@ function createServiceProvider(registrations, capabilities) {
                 return undefined;
             }
             if (registration.lifetime !== "singleton") {
-                throw new Error(`Sloppy root service resolution only supports singleton services; create a scope to resolve '${token}'.`);
+                throw new Error(`Sloppy root service resolution only supports singleton services; create a scope to resolve '${serviceTokenDisplay(token)}'.`);
             }
             return resolve(rootScope, token);
         },

@@ -6,11 +6,13 @@ set(ffi_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/ffi.js")
 set(fs_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/fs.js")
 set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
 set(workers_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/workers.js")
+set(http_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/http.js")
 set(problem_details_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/problem-details.js")
 set(request_id_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/request-id.js")
 set(request_logging_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/request-logging.js")
 set(auth_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/auth.js")
 set(public_config_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/config.js")
+set(testservices_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/testservices.js")
 set(testing_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/testing.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
@@ -23,7 +25,7 @@ set(services_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/services.js")
 set(shared_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/shared.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${time_source}" "${workers_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${time_source}" "${workers_source}" "${http_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${testservices_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -37,11 +39,13 @@ file(READ "${ffi_source}" ffi_js)
 file(READ "${fs_source}" fs_js)
 file(READ "${time_source}" time_js)
 file(READ "${workers_source}" workers_js)
+file(READ "${http_source}" http_js)
 file(READ "${problem_details_source}" problem_details_js)
 file(READ "${request_id_source}" request_id_js)
 file(READ "${request_logging_source}" request_logging_js)
 file(READ "${auth_source}" auth_js)
 file(READ "${public_config_source}" public_config_js)
+file(READ "${testservices_source}" testservices_js)
 file(READ "${testing_source}" testing_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
@@ -308,12 +312,44 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "class HttpClientFactory"
+        "function createManagedClient(name, options"
+        "function createNamedClient(name, options = {}"
+        "function createTypedClient(name, options = {}"
+        "const TestHttp = Object.freeze"
+        "createTestHttpServiceOverrides"
+        "SLOPPY_E_HTTP_UNEXPECTED_STATUS"
+        "SLOPPY_E_HTTP_MOCK_UNEXPECTED_CALL"
+        "retry: Object.freeze"
+        "circuitBreaker"
+        "bulkhead"
+        "__sloppyHttpClientRegistration"
+        "__sloppyHttpClientToken"
+        "Object.freeze")
+    require_substring("${http_js}" "${required_pattern}" "http.js is missing expected HTTP client factory pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "function required(key)"
         "function boolean(key"
         "__sloppyConfigReference: true"
         "[Config reference redacted]"
         "Object.freeze")
     require_substring("${public_config_js}" "${required_pattern}" "config.js is missing expected public Config pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "class DockerCliBackend"
+        "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE"
+        "SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE"
+        "function odbcEscapeValue(value)"
+        "SLOPPY_E_TESTSERVICES_CLEANUP_FAILED"
+        "cleanupErrors"
+        "function providerBridgeAvailable(kind)"
+        "function startupFailureMessage(kind, options, state, reason)"
+        "const TestServices = Object.freeze"
+        "export { DockerCliBackend, TestServices }")
+    require_substring("${testservices_js}" "${required_pattern}" "testservices.js is missing expected TestServices API pattern")
 endforeach()
 
 foreach(required_pattern IN ITEMS
@@ -328,6 +364,7 @@ foreach(required_pattern IN ITEMS
         "function createOpenApiHelpers(loadDocument)"
         "class RequestBuilder"
         "const TestHost = Object.freeze"
+        "TestServices,"
         "const FakeClock = Object.freeze"
         "const TestData = Object.freeze"
         "request(method, target, options = undefined)"
@@ -339,8 +376,21 @@ foreach(required_pattern IN ITEMS
         "options(target, options)"
         "close()"
         "const Testing = Object.freeze"
-        "export { createTestHost, FakeClock, TestData, TestHost, Testing }")
+        "export { createTestHost, FakeClock, TestData, TestHost, TestHttp, TestServices, Testing }")
     require_substring("${testing_js}" "${required_pattern}" "testing.js is missing expected app test host pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "const __sloppyTestServices = (() =>"
+        "class DockerCliBackend"
+        "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE"
+        "SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE"
+        "function odbcEscapeValue(value)"
+        "SLOPPY_E_TESTSERVICES_CLEANUP_FAILED"
+        "cleanupErrors"
+        "DockerCliBackend,"
+        "TestServices,")
+    require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected TestServices runtime pattern")
 endforeach()
 
 foreach(required_pattern IN ITEMS
@@ -424,7 +474,7 @@ foreach(required_pattern IN ITEMS
         "addTransient(token, factory)"
         "addScoped(token, factory)"
         "createScope()"
-        "function createServiceProvider(registrations, capabilities)"
+        "function createServiceProvider(registrations, capabilities, config = undefined)"
         "function finishWithCleanup(result, cleanup)"
         "Sloppy service provider is disposed"
         "Object.freeze")
@@ -537,7 +587,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "export { Auth }" "export { Config }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Health" "Metrics" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { ProblemDetails }" "export { RequestId }" "export { RequestLogging }" "export { Results }" "export { schema }" "FakeClock" "TestData" "TestHost" "Testing")
+foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "export { Auth }" "export { Config }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Health" "Metrics" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { ProblemDetails }" "export { RequestId }" "export { RequestLogging }" "export { Results }" "export { schema }" "FakeClock" "TestData" "TestHost" "TestHttp" "TestServices" "Testing")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

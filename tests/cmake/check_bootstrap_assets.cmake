@@ -9,6 +9,7 @@ set(required_bootstrap_assets
     data.js
     fs.js
     health.js
+    http.js
     metrics.js
     net.js
     os.js
@@ -47,6 +48,8 @@ set(required_bootstrap_assets
     providers/sqlite.js
     results.js
     schema.js
+    testservices.js
+    testing.js
     internal/capabilities.js
     internal/config.js
     internal/intrinsics.js

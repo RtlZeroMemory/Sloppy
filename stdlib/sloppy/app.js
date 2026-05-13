@@ -1858,7 +1858,7 @@ function createBuilder() {
                 config: createConfigProvider(config.__snapshot()),
                 log: createLogger(logging.__snapshot()),
                 capabilities: createCapabilityProvider(capabilitySnapshot),
-                services: createServiceProvider(serviceSnapshot, createCapabilityProvider(capabilitySnapshot)),
+                services: createServiceProvider(serviceSnapshot, createCapabilityProvider(capabilitySnapshot), createConfigProvider(config.__snapshot())),
                 moduleDebugRef,
                 options: appOptions,
             }));

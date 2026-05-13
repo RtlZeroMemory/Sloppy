@@ -104,6 +104,8 @@ the native registry:
 - `db.pool.exhausted`
 - `db.queue.depth`
 
+## Cache metrics
+
 Cache services registered with `app.services.addCache(...)` publish safe
 low-cardinality counters when resolved through the app service provider:
 
@@ -123,3 +125,34 @@ Cache labels use cache names, backend kinds, operation names, route patterns,
 status classes, and bounded bypass reasons. They do not include raw cache keys,
 raw URLs, user IDs, cookies, authorization headers, SQL parameters, or cached
 values.
+
+## HTTP client metrics
+
+Named clients created through `Http.client(...)` expose a client-local metrics
+snapshot:
+
+```ts
+const snapshot = ctx.services.get("http.billing").metrics();
+```
+
+HTTP client factory counters include:
+
+- `http.client.requests.total`
+- `http.client.errors.total`
+- `http.client.retries.total`
+
+The snapshot also includes pool counters from the low-level `HttpClient`
+transport:
+
+- connections created
+- connections reused
+- idle closes
+- pool wait count
+- pool rejected count
+- active requests
+- idle connections
+- queued requests
+
+Client labels are bounded to client name, method, route template, status,
+status class, and outcome. Do not use raw full URLs, user IDs, request IDs,
+tokens, or query strings as HTTP client metric labels.
