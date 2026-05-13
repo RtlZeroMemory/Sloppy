@@ -189,12 +189,15 @@ provider descriptors with `open()` helpers. SQLite native bridge availability
 still depends on the active runtime lane.
 
 For real PostgreSQL and SQL Server integration tests, use
-[`TestServices`](testservices.md):
+[`TestServices`](testservices.md) (experimental):
 
 ```ts
-const pg = await TestServices.postgres();
+import { Sloppy, TestHost, TestServices } from "sloppy";
 
-const host = await TestHost.create(app, {
+const app = Sloppy.create();
+await using pg = await TestServices.postgres();
+
+await using host = await TestHost.create(app, {
     providers: {
         main: pg.provider(),
     },
@@ -205,7 +208,10 @@ Artifact, package, and loopback hosts receive service environment through
 normal `TestHost` options:
 
 ```ts
-const host = await TestHost.fromArtifacts(".sloppy", {
+import { TestHost, TestServices } from "sloppy";
+
+await using pg = await TestServices.postgres();
+await using host = await TestHost.fromArtifacts(".sloppy", {
     env: pg.env(),
 });
 ```

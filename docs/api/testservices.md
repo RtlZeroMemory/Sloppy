@@ -8,7 +8,10 @@ CLI, waits for the matching Sloppy data provider to prove readiness, and gives
 It is experimental and opt-in. Default CI must not depend on Docker.
 
 ```ts
-import { Sloppy, TestHost, TestServices } from "sloppy";
+import { Results, Sloppy, TestHost, TestServices } from "sloppy";
+
+const app = Sloppy.create();
+app.get("/health/ready", () => Results.json({ ok: true }));
 
 await using pg = await TestServices.postgres({
     database: "app_test",
@@ -119,25 +122,31 @@ Defaults:
 | --- | --- |
 | `image` | `mcr.microsoft.com/mssql/server:2022-latest` |
 | `database` | `app_test` |
+| `driver` | `ODBC Driver 17 for SQL Server` |
 | `username` | `sa` |
 | `password` | generated strong local-test password |
 | `startupTimeoutMs` | `60000` |
 
 The service sets `ACCEPT_EULA=Y`, uses Docker-assigned host ports by default,
 creates the database during readiness when needed, and verifies `select 1`.
+This PR supports only the built-in SQL Server `sa` login. Passing any other
+`username` throws a `TypeError`; custom login/user provisioning is deferred.
 
 `env()` returns `SQLSERVER_HOST`, `SQLSERVER_PORT`, `SQLSERVER_USER`,
 `SQLSERVER_PASSWORD`, `SQLSERVER_DATABASE`, and
-`SQLSERVER_CONNECTION_STRING`.
+`SQLSERVER_DRIVER`, and `SQLSERVER_CONNECTION_STRING`.
 
 ## TestHost
 
 App-host mode:
 
 ```ts
-const pg = await TestServices.postgres();
+import { Sloppy, TestHost, TestServices } from "sloppy";
 
-const host = await TestHost.create(app, {
+const app = Sloppy.create();
+await using pg = await TestServices.postgres();
+
+await using host = await TestHost.create(app, {
     providers: {
         main: pg.provider(),
     },
@@ -150,9 +159,11 @@ const host = await TestHost.create(app, {
 Artifact/package mode:
 
 ```ts
-const pg = await TestServices.postgres();
+import { TestHost, TestServices } from "sloppy";
 
-const host = await TestHost.fromArtifacts(".sloppy", {
+await using pg = await TestServices.postgres();
+
+await using host = await TestHost.fromArtifacts(".sloppy", {
     env: pg.env(),
 });
 ```
@@ -160,7 +171,10 @@ const host = await TestHost.fromArtifacts(".sloppy", {
 Loopback package mode:
 
 ```ts
-const host = await TestHost.fromPackage("./dist/app", {
+import { TestHost, TestServices } from "sloppy";
+
+await using pg = await TestServices.postgres();
+await using host = await TestHost.fromPackage("./dist/app", {
     mode: "loopback",
     env: pg.env(),
 });
@@ -183,8 +197,9 @@ await pg.reset({ migrate: true });
 ```
 
 PostgreSQL reset drops and recreates the `public` schema. SQL Server reset
-drops user tables after removing foreign keys. `reset({ migrate: true })`
-reruns the migrations previously applied through the service.
+recreates the test database from `master` and reconnects before rerunning
+migrations. `reset({ migrate: true })` reruns the migrations previously applied
+through the service.
 
 ## Diagnostics And Cleanup
 
@@ -211,6 +226,8 @@ Cleanup guarantees:
 - failed startup removes partial containers
 - `dispose()` is idempotent
 - stop/remove operations are bounded
+- remove failures are reported in diagnostics and make `dispose()` throw unless
+  `keepContainerOnFailure: true` is set for debugging
 - `keepContainerOnFailure: true` keeps the failed container for debugging and
   leaves the name/id in diagnostics
 

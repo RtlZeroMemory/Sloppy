@@ -28,7 +28,7 @@ default lane plus a few mandatory ones; the rest are opt-in.
 | libFuzzer seed replay| Deterministic seed replay; default-safe replay in normal tests, instrumented Windows replay on main/schedule/manual/labels |
 | Advanced static analysis | CodeQL for analysis-relevant paths; clang-tidy/analyzer on main/schedule/manual/labels |
 | Live providers       | PostgreSQL/SQL Server against real services            |
-| TestServices         | Docker-backed PostgreSQL/SQL Server through first-party `TestServices` |
+| TestServices         | Experimental Docker-backed PostgreSQL/SQL Server through first-party `TestServices` |
 | Stress / torture     | Long-running pressure, races, drains                   |
 | Benchmark            | Measurement only; never correctness                    |
 
@@ -120,7 +120,7 @@ checking the diagnostic code or the cleanup behavior is incomplete.
 
 ## TestServices
 
-`TestServices` is the first-party Docker-backed dependency lane for
+`TestServices` is the experimental first-party Docker-backed dependency lane for
 PostgreSQL and SQL Server integration tests. Default CI runs the Sloppy
 artifact bootstrap contract without starting containers. Real containers
 require an explicit gate such as:

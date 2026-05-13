@@ -322,6 +322,9 @@ foreach(required_pattern IN ITEMS
         "class DockerCliBackend"
         "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE"
         "SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE"
+        "function odbcEscapeValue(value)"
+        "SLOPPY_E_TESTSERVICES_CLEANUP_FAILED"
+        "cleanupErrors"
         "function providerBridgeAvailable(kind)"
         "function startupFailureMessage(kind, options, state, reason)"
         "const TestServices = Object.freeze"
@@ -362,6 +365,9 @@ foreach(required_pattern IN ITEMS
         "class DockerCliBackend"
         "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE"
         "SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE"
+        "function odbcEscapeValue(value)"
+        "SLOPPY_E_TESTSERVICES_CLEANUP_FAILED"
+        "cleanupErrors"
         "DockerCliBackend,"
         "TestServices,")
     require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected TestServices runtime pattern")
@@ -553,7 +559,7 @@ foreach(required_pattern IN ITEMS
     require_substring("${app_js}" "${required_pattern}" "app.js is missing expected API shape pattern")
 endforeach()
 
-foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "export { Auth }" "export { Config }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Health" "Metrics" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { ProblemDetails }" "export { RequestId }" "export { RequestLogging }" "export { Results }" "export { schema }" "FakeClock" "TestData" "TestHost" "Testing")
+foreach(required_pattern IN ITEMS "export { Router, Sloppy }" "export { Auth }" "export { Config }" "Base64" "Base64Url" "Hex" "Text" "Binary" "Compression" "Checksums" "export {" "data" "sql" "File" "Directory" "Path" "Health" "Metrics" "Time" "Deadline" "CancellationController" "BackgroundService" "WorkQueue" "WorkerPool" "Worker" "export { ProblemDetails }" "export { RequestId }" "export { RequestLogging }" "export { Results }" "export { schema }" "FakeClock" "TestData" "TestHost" "TestServices" "Testing")
     require_substring("${index_js}" "${required_pattern}" "index.js is missing expected export pattern")
 endforeach()
 

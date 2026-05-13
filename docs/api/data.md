@@ -11,9 +11,11 @@ interpolation becomes a parameter, never a string concatenation.
 > SQL Server, libpq, or ODBC.
 
 For first-party Docker-backed PostgreSQL and SQL Server integration tests, use
-[`TestServices`](testservices.md). It starts real containers, verifies readiness
-through the matching data provider bridge, exposes `provider()` for app-host
-tests, and exposes `env()` for artifact/package tests.
+[`TestServices`](testservices.md) (experimental). It starts real containers,
+verifies readiness through the matching experimental data provider bridge,
+exposes `provider()` for app-host tests, and exposes `env()` for
+artifact/package tests. It requires the Docker CLI plus the matching
+PostgreSQL or SQL Server native provider bridge.
 
 ## Tagged template
 

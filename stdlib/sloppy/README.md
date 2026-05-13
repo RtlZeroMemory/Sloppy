@@ -84,7 +84,7 @@ lib/sloppy/bootstrap/sloppy/
   runtime path. The dogfood proof in
   `tests/bootstrap/test_prealpha_control_plane_dogfood.mjs` imports the
   `examples/prealpha-control-plane` route modules through this host.
-- `testservices.js` provides `TestServices`, the opt-in Docker-backed
+- `testservices.js` provides experimental `TestServices`, the opt-in Docker-backed
   PostgreSQL and SQL Server test service layer. It uses `sloppy/os` process
   APIs for Docker CLI lifecycle, `sloppy/data` provider bridges for readiness
   and SQL helpers, and redacted diagnostics/cleanup for TestHost integration.

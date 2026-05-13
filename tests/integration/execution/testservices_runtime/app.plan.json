@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:d8f6d0e6f15a3cf3df0435dc7bf5f5c2b4996bc7c69836883396be8939833014",
+    "hash": "sha256:2c9425e2c80d0c278ea33694f0fa1f3c36a9f1c5930ecfba28d05023b69dd58c",
     "id": "testservices-runtime-app-js",
     "path": "app.js"
   },

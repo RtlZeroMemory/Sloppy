@@ -1,7 +1,7 @@
 # TestServices SQL Server
 
-This example shows the recommended shape for a SQL Server-backed integration
-test with `TestServices` and `TestHost`.
+This experimental example shows the recommended shape for a SQL Server-backed
+integration test with `TestServices` and `TestHost`.
 
 Requirements:
 
@@ -11,22 +11,22 @@ Requirements:
 - Microsoft ODBC Driver 17 or 18
 - opt-in test gate, for example `SLOPPY_TESTSERVICES=1`
 
+The test harness or CI job should perform skip/exit behavior when the opt-in
+gate or Docker probe is unavailable. Keep the application snippet runtime
+neutral.
+
 ```ts
 import { Results, Sloppy, TestHost, TestServices, sql } from "sloppy";
 
-if (process.env.SLOPPY_TESTSERVICES !== "1") {
-    console.log("SKIPPED: set SLOPPY_TESTSERVICES=1 to run SQL Server containers");
-    process.exit(0);
-}
-
 const docker = await TestServices.docker.available();
 if (!docker.ok) {
-    console.log(`SKIPPED: Docker unavailable: ${docker.reason}`);
-    process.exit(0);
+    throw new Error(`Docker unavailable for TestServices: ${docker.reason}`);
 }
 
 await using sqlServer = await TestServices.sqlServer({
     database: "app_test",
+    driver: "ODBC Driver 17 for SQL Server",
+    username: "sa",
     password: "Strong_test_password_123!",
 });
 
@@ -71,3 +71,5 @@ await host.get("/health/ready").expectStatus(200);
 
 SQL Server image startup is heavier than PostgreSQL startup. Increase
 `startupTimeoutMs` on cold machines instead of adding sleeps to tests.
+This API currently supports only the built-in `sa` login; custom SQL Server
+logins are not provisioned by TestServices.

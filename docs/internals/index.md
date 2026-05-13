@@ -16,7 +16,7 @@ codebase itself. If you're using Sloppy to build an application, you want
 - [Native endpoint dispatch](native-endpoint-dispatch.md) — Plan-backed dispatch table metadata
 - [TestHost](testhost.md) — app-host, artifact, and loopback test harness boundaries
 - [WebSocket runtime](websocket-runtime.md) — app-host simulation boundaries and native upgrade work still required
-- [TestServices](testservices.md) — Docker-backed dependency test lifecycle
+- [TestServices](testservices.md) — experimental Docker-backed dependency test lifecycle
 - [Async runtime](async-runtime.md) — owner-thread model, cancellation
 - [Provider runtime](provider-runtime.md) — provider executor and bridges
 - [Memory model](memory-model.md) — arenas, lifetimes, ownership

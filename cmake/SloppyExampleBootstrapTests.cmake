@@ -102,6 +102,28 @@
         PROPERTIES
             LABELS "bootstrap;v8"
             SKIP_REGULAR_EXPRESSION "requires V8-enabled build")
+    add_test(
+        NAME bootstrap.stdlib.testservices_postgres_live
+        COMMAND
+            "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_testservices_postgres_live.cmake")
+    set_tests_properties(
+        bootstrap.stdlib.testservices_postgres_live
+        PROPERTIES
+            LABELS "bootstrap;v8;live-provider;postgres"
+            SKIP_REGULAR_EXPRESSION "SKIP: live PostgreSQL TestServices lane is not configured|requires V8-enabled build")
+    add_test(
+        NAME bootstrap.stdlib.testservices_sqlserver_live
+        COMMAND
+            "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_testservices_sqlserver_live.cmake")
+    set_tests_properties(
+        bootstrap.stdlib.testservices_sqlserver_live
+        PROPERTIES
+            LABELS "bootstrap;v8;live-provider;sqlserver"
+            SKIP_REGULAR_EXPRESSION "SKIP: live SQL Server TestServices lane is not configured|requires V8-enabled build")
 
     if(NODE_EXECUTABLE)
         add_test(

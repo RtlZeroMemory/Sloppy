@@ -107,7 +107,7 @@ CI exposes `live-postgres`, `live-sqlserver`, `live-providers`, and
 `full-ci` labels. Missing Docker, missing ODBC driver, or unavailable
 async support is `UNAVAILABLE` — never folded into a default pass.
 
-## TestServices lane (opt-in)
+## TestServices lane (experimental, opt-in)
 
 ```powershell
 $env:SLOPPY_TESTSERVICES = "1"

@@ -52,7 +52,7 @@ dynamic imports and computed dynamic imports over explicit `moduleInclude`
 graphs.
 
 `RequestId` and `RequestLogging` are supported for static middleware defaults.
-`TestHost`, `TestServices`, `Testing`, `FakeClock`, and `TestData` are framework test helpers; compiler input rejects them with
+`TestHost`, experimental `TestServices`, `Testing`, `FakeClock`, and `TestData` are framework test helpers; compiler input rejects them with
 `SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT`.
 
 ## Program Mode Source

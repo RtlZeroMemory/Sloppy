@@ -11293,8 +11293,9 @@ Reason:
 
     const __sloppyTestServices = (() => {
 
-        const DEFAULT_POSTGRES_IMAGE = "postgres:17";
-        const DEFAULT_SQLSERVER_IMAGE = "mcr.microsoft.com/mssql/server:2022-latest";
+    const DEFAULT_POSTGRES_IMAGE = "postgres:17";
+    const DEFAULT_SQLSERVER_IMAGE = "mcr.microsoft.com/mssql/server:2022-latest";
+    const DEFAULT_SQLSERVER_ODBC_DRIVER = "ODBC Driver 17 for SQL Server";
         const LOCALHOST = "127.0.0.1";
         const POSTGRES_PORT = 5432;
         const SQLSERVER_PORT = 1433;
@@ -11452,6 +11453,7 @@ Reason:
                     readyAt: undefined,
                     disposedAt: undefined,
                 },
+                cleanupErrors: [],
                 secrets,
             };
         }
@@ -11628,20 +11630,54 @@ Reason:
             }
         }
 
-        async function removeContainer(backend, containerId, options) {
+        function cleanupFailure(operation, args, resultOrError, secrets) {
+            const details = resultOrError instanceof Error
+                ? resultOrError.message
+                : `${resultOrError.timedOut === true ? "timed out" : `exit code ${resultOrError.exitCode}`}: ${resultOrError.stderr || resultOrError.stdout}`;
+            return Object.freeze({
+                operation,
+                command: `docker ${args.join(" ")}`,
+                message: redactWithSecrets(boundedText(details, 2000), secrets),
+            });
+        }
+
+        async function cleanupDockerCommand(backend, args, options, state, required) {
+            try {
+                const result = await backend.run(args, options);
+                if (result.exitCode === 0 && result.timedOut !== true) {
+                    return;
+                }
+                const failure = cleanupFailure(args[0], args, result, state.secrets);
+                state.cleanupErrors.push(failure);
+                if (required) {
+                    throw new Error(`SLOPPY_E_TESTSERVICES_CLEANUP_FAILED: ${failure.message}`);
+                }
+            } catch (error) {
+                if (String(error?.message ?? error).startsWith("SLOPPY_E_TESTSERVICES_CLEANUP_FAILED:")) {
+                    throw error;
+                }
+                const failure = cleanupFailure(args[0], args, error, state.secrets);
+                state.cleanupErrors.push(failure);
+                if (required) {
+                    throw new Error(`SLOPPY_E_TESTSERVICES_CLEANUP_FAILED: ${failure.message}`, { cause: error });
+                }
+            }
+        }
+
+        async function removeContainer(backend, containerId, options, state) {
             if (containerId === undefined) {
                 return;
             }
-            await backend.run(["stop", "--time", String(Math.ceil((options.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS) / 1000)), containerId], {
+            await cleanupDockerCommand(backend, ["stop", "--time", String(Math.ceil((options.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS) / 1000)), containerId], {
                 timeoutMs: options.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS,
                 maxStdoutBytes: 64 * 1024,
                 maxStderrBytes: 64 * 1024,
-            }).catch(() => {});
-            await backend.run(["rm", "--force", containerId], {
+            }, state, false);
+            await cleanupDockerCommand(backend, ["rm", "--force", containerId], {
                 timeoutMs: options.rmTimeoutMs ?? 15000,
                 maxStdoutBytes: 64 * 1024,
                 maxStderrBytes: 64 * 1024,
-            }).catch(() => {});
+            }, state, options.keepContainerOnFailure !== true);
         }
 
         function postgresConnectionString(options, host, port) {
@@ -11651,13 +11687,26 @@ Reason:
             return `postgresql://${user}:${password}@${host}:${port}/${database}`;
         }
 
+        function odbcEscapeValue(value) {
+            const text = String(value);
+            const escaped = text.replaceAll("}", "}}");
+            if (/[;{}]/u.test(text) || /^\s|\s$/u.test(text)) {
+                return "{" + escaped + "}";
+            }
+            return text;
+        }
+
+        function odbcBraceValue(value) {
+            return "{" + String(value).replaceAll("}", "}}") + "}";
+        }
+
         function sqlServerConnectionString(options, host, port) {
             return [
-                "Driver={ODBC Driver 18 for SQL Server}",
+                `Driver=${odbcBraceValue(options.driver)}`,
                 `Server=${host},${port}`,
-                `Database=${options.database}`,
-                `UID=${options.username}`,
-                `PWD=${options.password}`,
+                `Database=${odbcEscapeValue(options.database)}`,
+                `UID=${odbcEscapeValue(options.username)}`,
+                `PWD=${odbcEscapeValue(options.password)}`,
                 "Encrypt=yes",
                 "TrustServerCertificate=yes",
             ].join(";");
@@ -11671,6 +11720,12 @@ Reason:
             const password = normalizeNonEmptyString(options.password, "sloppy", "PostgreSQL password");
             const database = normalizeNonEmptyString(options.database, "app_test", "PostgreSQL database");
             const image = normalizeNonEmptyString(options.image, DEFAULT_POSTGRES_IMAGE, "PostgreSQL image");
+            const hostPort = normalizePort(options.hostPort, undefined, "PostgreSQL hostPort");
+            const startupTimeoutMs = normalizeTimeout(options.startupTimeoutMs, DEFAULT_STARTUP_TIMEOUT_MS, "PostgreSQL startupTimeoutMs");
+            const stopTimeoutMs = normalizeTimeout(options.stopTimeoutMs, DEFAULT_STOP_TIMEOUT_MS, "PostgreSQL stopTimeoutMs");
+            const dockerTimeoutMs = normalizeTimeout(options.dockerTimeoutMs, undefined, "PostgreSQL dockerTimeoutMs");
+            const pullTimeoutMs = normalizeTimeout(options.pullTimeoutMs, undefined, "PostgreSQL pullTimeoutMs");
+            const rmTimeoutMs = normalizeTimeout(options.rmTimeoutMs, undefined, "PostgreSQL rmTimeoutMs");
             const name = options.containerName === undefined
                 ? randomContainerName("postgres")
                 : normalizeNonEmptyString(options.containerName, undefined, "PostgreSQL containerName");
@@ -11682,11 +11737,14 @@ Reason:
                 database,
                 host: LOCALHOST,
                 containerName: name,
-                hostPort: normalizePort(options.hostPort, undefined, "PostgreSQL hostPort"),
-                startupTimeoutMs: normalizeTimeout(options.startupTimeoutMs, DEFAULT_STARTUP_TIMEOUT_MS, "PostgreSQL startupTimeoutMs"),
-                stopTimeoutMs: normalizeTimeout(options.stopTimeoutMs, DEFAULT_STOP_TIMEOUT_MS, "PostgreSQL stopTimeoutMs"),
+                hostPort,
+                startupTimeoutMs,
+                stopTimeoutMs,
+                dockerTimeoutMs,
+                pullTimeoutMs,
+                rmTimeoutMs,
                 keepContainerOnFailure: options.keepContainerOnFailure === true,
-                DataMigrations: options.DataMigrations,
+                migrations: options.migrations,
                 dockerBackend: options.dockerBackend,
                 docker: options.docker,
             });
@@ -11696,12 +11754,22 @@ Reason:
             if (!isPlainObject(options)) {
                 throw new TypeError("Sloppy TestServices.sqlServer options must be a plain object.");
             }
+            const database = normalizeNonEmptyString(options.database, "app_test", "SQL Server database");
+            const driver = normalizeNonEmptyString(options.driver, DEFAULT_SQLSERVER_ODBC_DRIVER, "SQL Server ODBC driver");
+            const username = normalizeNonEmptyString(options.username, "sa", "SQL Server username");
+            if (username !== "sa") {
+                throw new TypeError('Sloppy TestServices SQL Server currently supports only username "sa".');
+            }
+            const image = normalizeNonEmptyString(options.image, DEFAULT_SQLSERVER_IMAGE, "SQL Server image");
+            const hostPort = normalizePort(options.hostPort, undefined, "SQL Server hostPort");
+            const startupTimeoutMs = normalizeTimeout(options.startupTimeoutMs, DEFAULT_SQLSERVER_STARTUP_TIMEOUT_MS, "SQL Server startupTimeoutMs");
+            const stopTimeoutMs = normalizeTimeout(options.stopTimeoutMs, DEFAULT_STOP_TIMEOUT_MS, "SQL Server stopTimeoutMs");
+            const dockerTimeoutMs = normalizeTimeout(options.dockerTimeoutMs, undefined, "SQL Server dockerTimeoutMs");
+            const pullTimeoutMs = normalizeTimeout(options.pullTimeoutMs, undefined, "SQL Server pullTimeoutMs");
+            const rmTimeoutMs = normalizeTimeout(options.rmTimeoutMs, undefined, "SQL Server rmTimeoutMs");
             const password = options.password === undefined
                 ? generatedSqlServerPassword()
                 : normalizeNonEmptyString(options.password, undefined, "SQL Server password");
-            const database = normalizeNonEmptyString(options.database, "app_test", "SQL Server database");
-            const username = normalizeNonEmptyString(options.username, "sa", "SQL Server username");
-            const image = normalizeNonEmptyString(options.image, DEFAULT_SQLSERVER_IMAGE, "SQL Server image");
             const name = options.containerName === undefined
                 ? randomContainerName("sqlserver")
                 : normalizeNonEmptyString(options.containerName, undefined, "SQL Server containerName");
@@ -11711,13 +11779,17 @@ Reason:
                 username,
                 password,
                 database,
+                driver,
                 host: LOCALHOST,
                 containerName: name,
-                hostPort: normalizePort(options.hostPort, undefined, "SQL Server hostPort"),
-                startupTimeoutMs: normalizeTimeout(options.startupTimeoutMs, DEFAULT_SQLSERVER_STARTUP_TIMEOUT_MS, "SQL Server startupTimeoutMs"),
-                stopTimeoutMs: normalizeTimeout(options.stopTimeoutMs, DEFAULT_STOP_TIMEOUT_MS, "SQL Server stopTimeoutMs"),
+                hostPort,
+                startupTimeoutMs,
+                stopTimeoutMs,
+                dockerTimeoutMs,
+                pullTimeoutMs,
+                rmTimeoutMs,
                 keepContainerOnFailure: options.keepContainerOnFailure === true,
-                DataMigrations: options.DataMigrations,
+                migrations: options.migrations,
                 dockerBackend: options.dockerBackend,
                 docker: options.docker,
             });
@@ -11751,6 +11823,7 @@ Reason:
             const startedAt = Date.now();
             state.startupState = "waiting";
             while (Date.now() - startedAt < options.startupTimeoutMs) {
+                const remainingMs = options.startupTimeoutMs - (Date.now() - startedAt);
                 state.readinessAttempts += 1;
                 try {
                     if (kind === "sqlserver") {
@@ -11759,18 +11832,21 @@ Reason:
                             database: "master",
                         }, LOCALHOST, state.port);
                         await withDb(kind, masterConnectionString, async (db) => {
-                            await db.exec(`if db_id(N'${options.database.replaceAll("'", "''")}') is null create database [${options.database.replaceAll("]", "]]")}]`, []);
+                            await db.exec(`if db_id(N'${options.database.replaceAll("'", "''")}') is null create database [${options.database.replaceAll("]", "]]")}]`, [], { timeoutMs: remainingMs });
                         });
                     }
                     await withDb(kind, connectionString, async (db) => {
-                        await db.queryOne("select 1 as ok", []);
+                        await db.queryOne("select 1 as ok", [], { timeoutMs: remainingMs });
                     });
                     state.startupState = "ready";
                     state.timings.readyAt = new Date().toISOString();
                     return;
                 } catch (error) {
                     state.lastReadinessError = String(error?.message ?? error);
-                    await sleep(Math.min(1000, 100 + state.readinessAttempts * 100));
+                    const retryDelayMs = Math.min(1000, 100 + state.readinessAttempts * 100, Math.max(0, options.startupTimeoutMs - (Date.now() - startedAt)));
+                    if (retryDelayMs > 0) {
+                        await sleep(retryDelayMs);
+                    }
                 }
             }
             throw new Error(`readiness timed out after ${options.startupTimeoutMs}ms: ${state.lastReadinessError ?? "no readiness result"}`);
@@ -11814,7 +11890,7 @@ Reason:
         }
 
         function providerPlaceholder(kind) {
-            return kind === "postgres" ? "postgres" : "question";
+            return kind === "postgres" ? "postgres" : "named";
         }
 
         function envWithPrefix(entries, prefix) {
@@ -11842,7 +11918,7 @@ Reason:
                     throw new TypeError("Sloppy TestServices migration paths must be non-empty strings without NUL.");
                 }
                 return entry;
-            }).sort((left, right) => left.localeCompare(right, "en"));
+            });
         }
 
         function isSqlGlob(path) {
@@ -11884,22 +11960,46 @@ Reason:
 
         function resetSql(kind) {
             if (kind === "postgres") {
-                return "drop schema if exists public cascade; create schema public;";
+                return Object.freeze([
+                    "drop schema if exists public cascade",
+                    "create schema public",
+                ]);
             }
+            throw new Error("SQL Server reset uses database recreation from master.");
+        }
+
+        function sqlServerIdentifier(value) {
+            return `[${String(value).replaceAll("]", "]]")}]`;
+        }
+
+        function sqlServerStringLiteral(value) {
+            return `N'${String(value).replaceAll("'", "''")}'`;
+        }
+
+        function resetSqlServerDatabaseSql(database) {
+            const name = sqlServerIdentifier(database);
+            const literal = sqlServerStringLiteral(database);
             return `
-        declare @sql nvarchar(max) = N'';
-        select @sql = @sql + N'alter table ' + quotename(object_schema_name(parent_object_id)) + N'.' + quotename(object_name(parent_object_id)) + N' drop constraint ' + quotename(name) + N';'
-        from sys.foreign_keys;
-        exec sp_executesql @sql;
-        set @sql = N'';
-        select @sql = @sql + N'drop table ' + quotename(schema_name(schema_id)) + N'.' + quotename(name) + N';'
-        from sys.tables where is_ms_shipped = 0;
-        exec sp_executesql @sql;`;
+        if db_id(${literal}) is not null
+        begin
+            alter database ${name} set single_user with rollback immediate;
+            drop database ${name};
+        end;
+        create database ${name};`;
+        }
+
+        async function resetSqlServerDatabase(options, port) {
+            const masterConnectionString = sqlServerConnectionString({
+                ...options,
+                database: "master",
+            }, LOCALHOST, port);
+            await withDb("sqlserver", masterConnectionString, (db) =>
+                db.exec(resetSqlServerDatabaseSql(options.database), []));
         }
 
         function createService(kind, options, backend, state, connectionString, port) {
             const ownedProviders = new Set();
-            const DataMigrations = [];
+            const migrations = [];
             let disposed = false;
             state.port = port;
 
@@ -11920,13 +12020,13 @@ Reason:
                     if (disposed) {
                         return;
                     }
-                    disposed = true;
                     state.startupState = "disposing";
                     for (const provider of ownedProviders) {
                         await Promise.resolve(provider.close?.()).catch(() => {});
                     }
                     ownedProviders.clear();
-                    await removeContainer(backend, state.containerId, options);
+                    await removeContainer(backend, state.containerId, options, state);
+                    disposed = true;
                     state.startupState = "disposed";
                     state.timings.disposedAt = new Date().toISOString();
                 },
@@ -11944,7 +12044,7 @@ Reason:
                     await withDb(kind, connectionString, async (db) => {
                         for (const path of paths) {
                             await applyMigrationPath(db, kind, path);
-                            DataMigrations.push(path);
+                            migrations.push(path);
                         }
                     });
                 },
@@ -11958,14 +12058,27 @@ Reason:
                     if (!isPlainObject(resetOptions)) {
                         throw new TypeError("Sloppy TestServices reset options must be a plain object.");
                     }
-                    const rerun = resetOptions.rerunDataMigrations === true || resetOptions.migrate === true;
-                    const selectedDataMigrations = resetOptions.DataMigrations === undefined
-                        ? DataMigrations
-                        : normalizeMigrationList(resetOptions.DataMigrations);
-                    await withDb(kind, connectionString, async (db) => {
-                        await db.exec(resetSql(kind), []);
+                    const rerun = resetOptions.rerunMigrations === true || resetOptions.migrate === true;
+                    const selectedMigrations = resetOptions.migrations === undefined
+                        ? migrations
+                        : normalizeMigrationList(resetOptions.migrations);
+                    if (kind === "sqlserver") {
+                        await resetSqlServerDatabase(options, port);
                         if (rerun) {
-                            for (const path of selectedDataMigrations) {
+                            await withDb(kind, connectionString, async (db) => {
+                                for (const path of selectedMigrations) {
+                                    await applyMigrationPath(db, kind, path);
+                                }
+                            });
+                        }
+                        return;
+                    }
+                    await withDb(kind, connectionString, async (db) => {
+                        for (const sqlText of resetSql(kind)) {
+                            await db.exec(sqlText, []);
+                        }
+                        if (rerun) {
+                            for (const path of selectedMigrations) {
                                 await applyMigrationPath(db, kind, path);
                             }
                         }
@@ -11993,6 +12106,7 @@ Reason:
                         SQLSERVER_USER: options.username,
                         SQLSERVER_PASSWORD: options.password,
                         SQLSERVER_DATABASE: options.database,
+                        SQLSERVER_DRIVER: options.driver,
                         SQLSERVER_CONNECTION_STRING: connectionString,
                     }, prefix);
                 },
@@ -12013,6 +12127,7 @@ Reason:
                         startupState: state.startupState,
                         readinessAttempts: state.readinessAttempts,
                         lastReadinessError: state.lastReadinessError,
+                        cleanupErrors: state.cleanupErrors,
                         logTail: state.logTail,
                         timings: state.timings,
                         provider: {
@@ -12046,6 +12161,9 @@ Reason:
 
         Reason:
           ${lastReadinessError}
+
+        Cleanup failures:
+        ${state.cleanupErrors.length === 0 ? "  <none>" : state.cleanupErrors.map((entry) => `  - ${entry.operation}: ${entry.message}`).join("\n")}
 
         Docker logs tail:
         ${logTail.length === 0 ? "  <empty>" : logTail}
@@ -12094,9 +12212,9 @@ Reason:
                     ? postgresConnectionString(options, LOCALHOST, inspected.port)
                     : sqlServerConnectionString(options, LOCALHOST, inspected.port);
                 await waitForReady(kind, state, connectionString, options);
-                if (options.DataMigrations !== undefined) {
+                if (options.migrations !== undefined) {
                     const pendingService = createService(kind, options, backend, state, connectionString, inspected.port);
-                    await pendingService.migrate(options.DataMigrations);
+                    await pendingService.migrate(options.migrations);
                     return pendingService;
                 }
                 return createService(kind, options, backend, state, connectionString, inspected.port);
@@ -12104,13 +12222,13 @@ Reason:
                 state.startupState = "failed";
                 state.lastReadinessError = String(error?.message ?? error);
                 state.logTail = await dockerLogs(backend, state.containerId, DEFAULT_LOG_TAIL, options);
+                if (!options.keepContainerOnFailure) {
+                    await removeContainer(backend, state.containerId, options, state).catch(() => {});
+                }
                 const startupError = error?.code === "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE" ||
                     error?.code === "SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE"
                     ? error
                     : new Error(startupFailureMessage(kind, options, state, error?.message ?? error), { cause: error });
-                if (!options.keepContainerOnFailure) {
-                    await removeContainer(backend, state.containerId, options);
-                }
                 throw startupError;
             }
         }

@@ -88,6 +88,20 @@ globalThis.__sloppy_handler_1 = async () => {
     );
     assertContract(commands.some((args) => args[0] === "create") === false, "provider-unavailable path must not create a container");
 
+    let usernameError = "";
+    try {
+      await TestServices.sqlServer({
+        username: "sloppy",
+        password: "Strong_test_password_123!",
+      });
+    } catch (error) {
+      usernameError = String(error && error.message ? error.message : error);
+    }
+    assertContract(
+      usernameError.includes('currently supports only username "sa"'),
+      "sqlServer should reject custom usernames until it provisions custom logins",
+    );
+
     return Results.json({
       ok: true,
       dockerProbe: realDocker.ok ? "available" : "unavailable",

@@ -1,6 +1,6 @@
 # TestServices Internals
 
-`TestServices` is a bootstrap JavaScript layer in
+`TestServices` is an experimental bootstrap JavaScript layer in
 `stdlib/sloppy/testservices.js`. It deliberately stays small: Docker process
 control, provider-backed readiness, SQL setup helpers, diagnostics, and
 cleanup.
@@ -54,18 +54,21 @@ TestServices proves real database behavior and never returns a fake provider.
 ## Lifecycle
 
 Startup records container id/name, mapped port, readiness attempts, last
-readiness error, log tail, and timestamps. Startup failure removes the partial
-container unless `keepContainerOnFailure` is set.
+readiness error, log tail, cleanup errors, and timestamps. Startup failure
+removes the partial container unless `keepContainerOnFailure` is set, and
+records cleanup failures in diagnostics and startup errors.
 
 Service disposal:
 
 1. closes provider objects returned by `provider()`;
 2. stops the container with a bounded timeout;
 3. force-removes it;
-4. marks disposal complete.
+4. records cleanup failures in diagnostics;
+5. marks disposal complete only after removal succeeds.
 
-`dispose()` is idempotent and is also attached to `Symbol.asyncDispose` when
-the runtime provides it.
+`dispose()` is idempotent after successful removal and is also attached to
+`Symbol.asyncDispose` when the runtime provides it. A remove failure makes
+`dispose()` throw unless `keepContainerOnFailure` is set for debugging.
 
 ## Migrations And Reset
 
@@ -75,7 +78,8 @@ through `sloppy/fs` and executed directly. Lists are sorted before applying.
 Reset is intentionally provider-specific:
 
 - PostgreSQL drops and recreates `public`.
-- SQL Server drops foreign keys and user tables.
+- SQL Server recreates the test database from `master`, then reconnects before
+  rerunning migrations.
 
 ## Redaction
 

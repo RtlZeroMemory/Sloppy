@@ -18,7 +18,7 @@ the compiler before every runtime path is available.
 | Typed handler injection | `Sqlite<"main">`, `Postgres<"main">`, `SqlServer<"main">` | Compiler metadata and generated injection wrappers exist; runtime execution depends on active bridge, config, and live service setup |
 | Runtime data API | `data.sqlite`, `data.postgres`, `data.sqlserver` from `sloppy/data` | Provider-specific runtime APIs with V8/native/live requirements |
 | Migrations | `Migrations` from `sloppy/data`, `sloppy db status`, `sloppy db migrate` | SQLite, PostgreSQL, and SQL Server migration execution; PostgreSQL/SQL Server are optional and require live provider configuration only when used |
-| TestServices | `TestServices.postgres()`, `TestServices.sqlServer()` | Docker-backed real dependency tests; opt-in and provider-bridge-gated |
+| TestServices | `TestServices.postgres()`, `TestServices.sqlServer()` | Experimental Docker-backed real dependency tests; opt-in and provider-bridge-gated |
 | Native and service checks | provider native tests and `test-live-*.ps1` scripts | SQLite embedded by default; PostgreSQL/SQL Server dependency and service checks are opt-in |
 | V8 provider bridge checks | `conformance.<provider>.bridge_live` | Exercises JavaScript provider calls through a V8-enabled runtime |
 
@@ -159,7 +159,7 @@ provider carries an explicit `configKey`.
 
 ## TestServices Provider Descriptors
 
-`TestServices.postgres()` and `TestServices.sqlServer()` start real Docker
+`TestServices.postgres()` and `TestServices.sqlServer()` are experimental and start real Docker
 containers, wait for provider-backed `select 1` readiness, and expose
 `provider()` for `TestHost.create(..., { providers })`.
 

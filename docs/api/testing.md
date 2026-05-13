@@ -2,8 +2,10 @@
 
 For the full first-party testing API, including artifact/package mode and
 loopback mode, see [TestHost](testhost.md). For real Docker-backed PostgreSQL
-and SQL Server dependencies, see [TestServices](testservices.md). This page
-documents the in-memory app-host helper that backs `TestHost.create(app)`.
+and SQL Server dependencies, see [TestServices](testservices.md)
+(experimental). It requires the Docker CLI plus the matching native provider
+bridge. This page documents the in-memory app-host helper that backs
+`TestHost.create(app)`.
 
 `Testing.createHost(app)` creates an in-memory host for Sloppy app tests. It
 dispatches HTTP-like requests through the JavaScript app-host route table,

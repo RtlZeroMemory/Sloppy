@@ -1,7 +1,7 @@
 # TestServices PostgreSQL
 
-This example shows the recommended shape for a PostgreSQL-backed integration
-test with `TestServices` and `TestHost`.
+This experimental example shows the recommended shape for a PostgreSQL-backed
+integration test with `TestServices` and `TestHost`.
 
 Requirements:
 
@@ -10,18 +10,16 @@ Requirements:
 - V8/native PostgreSQL provider bridge
 - opt-in test gate, for example `SLOPPY_TESTSERVICES=1`
 
+The test harness or CI job should perform skip/exit behavior when the opt-in
+gate or Docker probe is unavailable. Keep the application snippet runtime
+neutral.
+
 ```ts
 import { Results, Sloppy, TestHost, TestServices, sql } from "sloppy";
 
-if (process.env.SLOPPY_TESTSERVICES !== "1") {
-    console.log("SKIPPED: set SLOPPY_TESTSERVICES=1 to run PostgreSQL containers");
-    process.exit(0);
-}
-
 const docker = await TestServices.docker.available();
 if (!docker.ok) {
-    console.log(`SKIPPED: Docker unavailable: ${docker.reason}`);
-    process.exit(0);
+    throw new Error(`Docker unavailable for TestServices: ${docker.reason}`);
 }
 
 await using pg = await TestServices.postgres({
