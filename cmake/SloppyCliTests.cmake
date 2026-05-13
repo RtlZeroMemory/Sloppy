@@ -266,6 +266,21 @@
         "Driver={Sloppy Missing Driver For Tests}\\;PWD=sql-secret-leak" db status
         tests/fixtures/cli/db-sqlserver-missing/compiled --provider main)
     sloppy_add_cli_golden_test(
+        sloppy.cli.orm_migration_script_text tests/golden/cli/orm-migration-script-text.txt orm
+        migration script tests/fixtures/cli/orm-migration/compiled --provider main)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.orm_migration_script_json tests/golden/cli/orm-migration-script-json.json orm
+        migration script tests/fixtures/cli/orm-migration/compiled --provider main --format json)
+    add_test(
+        NAME sloppy.cli.orm_migration_add
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DSLOPPY_EXPECTED=${PROJECT_SOURCE_DIR}/tests/golden/cli/orm-migration-script-text.txt"
+            -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_orm_migration_add.cmake")
+    set_tests_properties(sloppy.cli.orm_migration_add PROPERTIES
+                         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    sloppy_add_cli_golden_test(
         sloppy.cli.audit_partial_json tests/golden/cli/audit-partial-json.json audit --plan
         compiler/tests/fixtures/partial-body-without-schema/expected/app.plan.json --format json)
     sloppy_add_cli_golden_test(
@@ -395,6 +410,14 @@
                 "-DSLOPPY_ENABLE_V8=$<BOOL:${SLOPPY_ENABLE_V8}>" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_create_package_command.cmake")
         set_tests_properties(sloppy.cli.create_package_command PROPERTIES LABELS "cli;source-input")
+        add_test(
+            NAME sloppy.cli.orm_package_metadata
+            COMMAND
+                "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+                "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPYC_EXECUTABLE=${SLOPPYC_BUILT_EXECUTABLE}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_orm_package_metadata.cmake")
+        set_tests_properties(sloppy.cli.orm_package_metadata PROPERTIES LABELS "cli;source-input;orm")
     endif()
 
     add_test(

@@ -15,6 +15,7 @@
     "sloppy/metrics.js",
     "sloppy/net.js",
     "sloppy/os.js",
+    "sloppy/orm.js",
     "sloppy/time.js",
     "sloppy/workers.js",
     "sloppy/node/buffer.js",

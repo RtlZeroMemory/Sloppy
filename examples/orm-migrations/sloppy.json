@@ -1,0 +1,9 @@
+{
+  "entry": "src/app.ts",
+  "migrations": {
+    "main": {
+      "provider": "sqlite",
+      "path": "migrations/*.sql"
+    }
+  }
+}

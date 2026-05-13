@@ -392,6 +392,9 @@ static void sl_cli_print_help(void)
            "text|json] [--dispatch] [--report]\n");
     printf("  sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> [--format "
            "text|json]\n");
+    printf("  sloppy orm migration add <name> [artifacts-dir|package-dir] --provider <name>\n");
+    printf("  sloppy orm migration script|status|apply [artifacts-dir|package-dir] --provider <name> "
+           "[--format text|json]\n");
     printf("  sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json]\n");
     printf("  sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--output "
@@ -506,6 +509,17 @@ static void sl_cli_print_command_help(const char* command)
     if (strcmp(command, "db") == 0) {
         printf("Usage: sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> "
                "[--format text|json]\n");
+        return;
+    }
+    if (strcmp(command, "orm") == 0) {
+        printf("Usage: sloppy orm migration add <name> [artifacts-dir|package-dir] --provider "
+               "<name>\n");
+        printf("       sloppy orm migration script|status|apply [artifacts-dir|package-dir] "
+               "--provider <name> [--format text|json]\n");
+        printf("\n");
+        printf("ORM migration script/add generates provider-specific SQL from Plan ORM metadata.\n");
+        printf("ORM migration status/apply delegates to the same provider-matched migration engine "
+               "as sloppy db.\n");
         return;
     }
     if (strcmp(command, "audit") == 0) {
@@ -1057,15 +1071,20 @@ static int sl_cli_parse_create_option(int argc, char** argv, int* index, SlCliOp
 
 static int sl_cli_parse_db_option(int argc, char** argv, int* index, SlCliOptions* out)
 {
-    if (argc <= 0 || argv == NULL || index == NULL || out == NULL ||
-        strcmp(out->command, "db") != 0)
+    const bool db_like = out != NULL && out->command != NULL &&
+                         (strcmp(out->command, "db") == 0 || strcmp(out->command, "orm") == 0);
+    const char* label = out != NULL && out->command != NULL && strcmp(out->command, "orm") == 0
+                            ? "sloppy orm"
+                            : "sloppy db";
+    if (argc <= 0 || argv == NULL || index == NULL || out == NULL || !db_like)
     {
         return 0;
     }
 
     if (strcmp(argv[*index], "--provider") == 0) {
         if (*index + 1 >= argc || argv[*index + 1][0] == '\0') {
-            sl_cli_write_cstr(stderr, "sloppy db: --provider requires a provider name\n");
+            sl_cli_write_cstr(stderr, label);
+            sl_cli_write_cstr(stderr, ": --provider requires a provider name\n");
             return -1;
         }
         out->db_provider = argv[*index + 1];
@@ -1084,7 +1103,8 @@ static int sl_cli_parse_db_option(int argc, char** argv, int* index, SlCliOption
             return 1;
         }
         if (out->db_target_path != NULL) {
-            sl_cli_write_cstr(stderr, "sloppy db: expected only one artifact or package path\n");
+            sl_cli_write_cstr(stderr, label);
+            sl_cli_write_cstr(stderr, ": expected only one artifact or package path\n");
             return -1;
         }
         out->db_target_path = argv[*index];
@@ -1308,6 +1328,47 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
     }
 
     out->command = argv[1];
+    if (strcmp(argv[1], "orm") == 0) {
+        if (argc >= 3 && (strcmp(argv[2], "--help") == 0 || strcmp(argv[2], "-h") == 0)) {
+            out->help = true;
+            return 0;
+        }
+        if (argc < 4 || strcmp(argv[2], "migration") != 0) {
+            sl_cli_write_cstr(
+                stderr, "sloppy orm: expected migration add, script, status, or apply\n");
+            return 1;
+        }
+        if (strcmp(argv[3], "add") == 0) {
+            if (argc < 5 || argv[4][0] == '\0' || argv[4][0] == '-') {
+                sl_cli_write_cstr(stderr, "sloppy orm: migration add requires a name\n");
+                return 1;
+            }
+            out->command = "orm";
+            out->db_action = "add";
+            out->create_name = argv[4];
+            index = 5;
+        }
+        else if (strcmp(argv[3], "script") == 0) {
+            out->command = "orm";
+            out->db_action = "script";
+            index = 4;
+        }
+        else if (strcmp(argv[3], "status") == 0) {
+            out->db_action = "status";
+            out->command = "db";
+            index = 4;
+        }
+        else if (strcmp(argv[3], "apply") == 0) {
+            out->db_action = "migrate";
+            out->command = "db";
+            index = 4;
+        }
+        else {
+            sl_cli_write_cstr(
+                stderr, "sloppy orm: expected migration add, script, status, or apply\n");
+            return 1;
+        }
+    }
 
     while (index < argc) {
         int common_parse = sl_cli_parse_common_option(argc, argv, &index, out);
@@ -1387,6 +1448,19 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
         }
         if (out->db_provider == NULL) {
             sl_cli_write_cstr(stderr, "sloppy db: --provider is required\n");
+            return 1;
+        }
+        if (out->db_target_path == NULL) {
+            out->db_target_path = ".sloppy";
+        }
+    }
+    if (!out->help && strcmp(out->command, "orm") == 0) {
+        if (out->db_action == NULL) {
+            sl_cli_write_cstr(stderr, "sloppy orm: expected migration add or script\n");
+            return 1;
+        }
+        if (out->db_provider == NULL) {
+            sl_cli_write_cstr(stderr, "sloppy orm: --provider is required\n");
             return 1;
         }
         if (out->db_target_path == NULL) {

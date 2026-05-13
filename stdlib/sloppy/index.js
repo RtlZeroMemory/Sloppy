@@ -8,6 +8,7 @@ export { t, unsafeFfi } from "./ffi.js";
 export { Directory, File, FileHandle, FileWatcher, Path } from "./fs.js";
 export { Health } from "./health.js";
 export { Metrics } from "./metrics.js";
+export { column, orm, relation, table } from "./orm.js";
 export {
     HttpClient,
     LocalEndpoint,
@@ -26,7 +27,7 @@ export { RequestLogging } from "./request-logging.js";
 export { Results } from "./results.js";
 export { Schema } from "./schema.js";
 export { schema } from "./schema.js";
-export { FakeClock, TestData, TestHost, Testing } from "./testing.js";
+export { FakeClock, TestData, TestHost, TestServices, Testing } from "./testing.js";
 export {
     CancelledError,
     CancellationController,

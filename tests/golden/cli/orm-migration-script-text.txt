@@ -1,0 +1,13 @@
+create table "teams" (
+  "id" text primary key,
+  "slug" text not null unique,
+  "createdAt" text not null default CURRENT_TIMESTAMP
+);
+
+create table "users" (
+  "id" text primary key,
+  "teamId" text not null references "teams" ("id"),
+  "email" text not null unique,
+  "deletedAt" text
+);
+create index "ix_users_deletedAt" on "users" ("deletedAt");

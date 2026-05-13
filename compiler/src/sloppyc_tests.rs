@@ -1989,6 +1989,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         program_modules: Vec::new(),
         uses_data_runtime: true,
         uses_sql_runtime: false,
+        uses_orm_runtime: false,
         uses_migrations_runtime: false,
         uses_provider_health_runtime: false,
         source_files: Vec::new(),
@@ -6621,6 +6622,190 @@ export default app;
     assert!(value.get("requiredFeatures").is_none());
     assert!(value["features"].get("filesystem").is_none());
     assert!(value["strongPlan"]["evidence"].get("filesystem").is_none());
+}
+
+#[test]
+fn sloppy_orm_import_emits_runtime_bindings() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { orm, table, column, relation } from "sloppy/orm";
+const Teams = table("teams", { id: column.uuid().primaryKey() });
+const Users = table("users", { id: column.uuid().primaryKey(), teamId: column.uuid().references(() => Teams.id) });
+relation(Users, ({ one }) => ({ team: one(Teams, { local: Users.teamId, foreign: Teams.id }) }));
+const app = Sloppy.create();
+app.mapGet("/", () => Results.json({ provider: Boolean(orm.from) }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("sloppy/orm runtime import should be recognized");
+    assert!(app.uses_orm_runtime);
+    assert!(app.uses_data_runtime);
+    assert!(app.uses_sql_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains(
+        "const { Results, data, sql, orm, table, column, relation, SloppyOrmError, SloppyOrmConcurrencyError } = __sloppyRuntime;"
+    ));
+    assert!(emitted_js.source.contains("const Teams = table(\"teams\""));
+    assert!(emitted_js.source.contains("relation(Users"));
+
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    assert_eq!(value["features"]["orm"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["orm"],
+        serde_json::json!(true)
+    );
+    assert_eq!(value["orm"]["mode"], serde_json::json!("runtime-dynamic"));
+    assert_eq!(
+        value["orm"]["extraction"]["status"],
+        serde_json::json!("partial")
+    );
+    let tables = value["orm"]["tables"]
+        .as_array()
+        .expect("ORM tables should be an array");
+    assert!(tables.iter().any(|table| {
+        table["model"] == "Teams"
+            && table["name"] == "teams"
+            && table["columns"]
+                .as_array()
+                .expect("columns should be an array")
+                .iter()
+                .any(|column| column["name"] == "id" && column["primaryKey"] == true)
+    }));
+    assert!(tables.iter().any(|table| {
+        table["model"] == "Users"
+            && table["columns"]
+                .as_array()
+                .expect("columns should be an array")
+                .iter()
+                .any(|column| {
+                    column["name"] == "teamId"
+                        && column["reference"]["tableModel"] == "Teams"
+                        && column["reference"]["column"] == "id"
+                })
+    }));
+    let relations = value["orm"]["relations"]
+        .as_array()
+        .expect("ORM relations should be an array");
+    assert!(relations.iter().any(|relation| {
+        relation["tableModel"] == "Users"
+            && relation["name"] == "team"
+            && relation["kind"] == "one"
+            && relation["targetModel"] == "Teams"
+            && relation["local"]["tableModel"] == "Users"
+            && relation["local"]["column"] == "teamId"
+            && relation["foreign"]["tableModel"] == "Teams"
+            && relation["foreign"]["column"] == "id"
+    }));
+    assert!(value["doctorChecks"]
+        .as_array()
+        .expect("doctor checks should be an array")
+        .iter()
+        .any(|check| check["id"] == "stdlib.orm.dynamic_metadata"));
+}
+
+#[test]
+fn sloppy_orm_table_diagnostics_include_valid_shape_hint() {
+    let cases = [
+        (
+            "missing column object",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table } from "sloppy/orm";
+const Users = table("users");
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "dynamic table name",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table } from "sloppy/orm";
+const tableName = "users";
+const Users = table(tableName, {});
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "dynamic column object",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table } from "sloppy/orm";
+const columns = {};
+const Users = table("users", columns);
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+    ];
+    for (name, source) in cases {
+        let diagnostic = extract(std::path::Path::new("app.ts"), source)
+            .expect_err(&format!("{name} should fail"));
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_ORM_TABLE");
+        let hint = diagnostic.hint.as_deref().expect("ORM table hint");
+        assert!(
+            hint.contains("const Users = table(\"users\""),
+            "{name} should include table shape hint"
+        );
+    }
+}
+
+#[test]
+fn sloppy_orm_relation_diagnostics_include_valid_shape_hint() {
+    let cases = [
+        (
+            "missing callback",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column, relation } from "sloppy/orm";
+const Users = table("users", { id: column.uuid().primaryKey() });
+relation(Users);
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "dynamic relation table",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column, relation } from "sloppy/orm";
+const Users = table("users", { id: column.uuid().primaryKey() });
+relation(Users.name, ({ one }) => ({}));
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "dynamic callback",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column, relation } from "sloppy/orm";
+const Users = table("users", { id: column.uuid().primaryKey() });
+const configure = ({ one }) => ({});
+relation(Users, configure);
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+    ];
+    for (name, source) in cases {
+        let diagnostic = extract(std::path::Path::new("app.ts"), source)
+            .expect_err(&format!("{name} should fail"));
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_ORM_RELATION");
+        let hint = diagnostic.hint.as_deref().expect("ORM relation hint");
+        assert!(
+            hint.contains("relation(Users, ({ one, many })"),
+            "{name} should include relation shape hint"
+        );
+    }
 }
 
 #[test]

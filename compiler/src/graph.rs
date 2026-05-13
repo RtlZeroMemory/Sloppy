@@ -141,6 +141,7 @@ pub(crate) struct AppGraph {
     pub(crate) program_modules: Vec<ProgramModule>,
     pub(crate) uses_data_runtime: bool,
     pub(crate) uses_sql_runtime: bool,
+    pub(crate) uses_orm_runtime: bool,
     pub(crate) uses_migrations_runtime: bool,
     pub(crate) uses_provider_health_runtime: bool,
     pub(crate) source_files: Vec<SourceFile>,

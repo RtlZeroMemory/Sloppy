@@ -123,6 +123,7 @@
 #include "cli/cli_create.inc"
 #include "cli/cli_package.inc"
 #include "cli/cli_db.inc"
+#include "cli/cli_orm.inc"
 #include "cli/cli_routes.inc"
 #include "cli/cli_ops.inc"
 #include "cli/cli_deps.inc"
@@ -188,6 +189,9 @@ int main(int argc, char** argv)
     }
     if (strcmp(options.command, "db") == 0) {
         return sl_cli_command_db(&options);
+    }
+    if (strcmp(options.command, "orm") == 0) {
+        return sl_cli_command_orm(&options);
     }
     if (strcmp(options.command, "audit") == 0) {
         return sl_cli_command_audit(&options);

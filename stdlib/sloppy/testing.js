@@ -1013,8 +1013,10 @@ function signalObject() {
 
 function createContext(app, hostState, method, targetParts, headers, route, matchedRoute, bodyKind, bodyBytes, options = undefined) {
     const request = createRequestObject(method, targetParts, headers, bodyKind, bodyBytes);
+    const services = hostState.services.createScope();
     const context = {
-        services: hostState.services.createScope(),
+        services,
+        db: services.tryGet("data.main") ?? services.tryGet("main"),
         capabilities: app.capabilities,
         config: hostState.config,
         log: app.log,
@@ -3457,6 +3459,112 @@ const TestData = Object.freeze({
     },
 });
 
+function environmentValue(name) {
+    return globalThis.process?.env?.[name];
+}
+
+function createUnavailableService(kind, reason) {
+    const service = {
+        kind,
+        available: false,
+        status: "SKIPPED",
+        reason,
+        provider() {
+            throw new Error(`Sloppy TestServices ${kind} is unavailable: ${reason}`);
+        },
+        open() {
+            throw new Error(`Sloppy TestServices ${kind} is unavailable: ${reason}`);
+        },
+        env() {
+            return Object.freeze({});
+        },
+        async close() {},
+        async [Symbol.asyncDispose]() {
+            await service.close();
+        },
+    };
+    return Object.freeze(service);
+}
+
+function createLiveService(kind, connectionString, open, envName) {
+    let current = null;
+    const service = {
+        kind,
+        available: true,
+        status: "PASS",
+        provider(options = {}) {
+            current = open({ connectionString, ...options });
+            return current;
+        },
+        open(options = {}) {
+            return service.provider(options);
+        },
+        env() {
+            return Object.freeze({ [envName]: connectionString });
+        },
+        async close() {
+            const db = current;
+            current = null;
+            if (typeof db?.close === "function") {
+                await db.close();
+            }
+        },
+        async [Symbol.asyncDispose]() {
+            await service.close();
+        },
+    };
+    return Object.freeze(service);
+}
+
+const TestServices = Object.freeze({
+    async postgres(options = {}) {
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy TestServices.postgres options must be a plain object.");
+        }
+        const envName = options.envName ?? "SLOPPY_POSTGRES_TEST_URL";
+        const connectionString = options.connectionString ?? environmentValue(envName);
+        if (typeof connectionString !== "string" || connectionString.length === 0) {
+            return createUnavailableService("postgres", `${envName} is not set`);
+        }
+        if (data.postgres.__debug().nativeStdlibBridge !== true) {
+            return createUnavailableService("postgres", "PostgreSQL native stdlib bridge is unavailable");
+        }
+        const service = createLiveService("postgres", connectionString, data.postgres.open, envName);
+        if (options.migrations !== undefined) {
+            const db = service.provider();
+            try {
+                await Migrations.apply(db, { provider: "postgres", path: options.migrations });
+            } finally {
+                await service.close();
+            }
+        }
+        return service;
+    },
+    async sqlserver(options = {}) {
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy TestServices.sqlserver options must be a plain object.");
+        }
+        const envName = options.envName ?? "SLOPPY_SQLSERVER_TEST_CONNECTION_STRING";
+        const connectionString = options.connectionString ?? environmentValue(envName);
+        if (typeof connectionString !== "string" || connectionString.length === 0) {
+            return createUnavailableService("sqlserver", `${envName} is not set`);
+        }
+        if (data.sqlserver.__debug().nativeStdlibBridge !== true) {
+            return createUnavailableService("sqlserver", "SQL Server native stdlib bridge is unavailable");
+        }
+        const service = createLiveService("sqlserver", connectionString, data.sqlserver.open, envName);
+        if (options.migrations !== undefined) {
+            const db = service.provider();
+            try {
+                await Migrations.apply(db, { provider: "sqlserver", path: options.migrations });
+            } finally {
+                await service.close();
+            }
+        }
+        return service;
+    },
+});
+
 const TestHost = Object.freeze({
     async create(app, options = {}) {
         ensureSupportedCreateMode(options.mode ?? "inProcess");
@@ -3475,6 +3583,7 @@ const Testing = Object.freeze({
     TestHost,
     FakeClock,
     TestData,
+    TestServices,
 });
 
-export { createTestHost, FakeClock, TestData, TestHost, Testing };
+export { createTestHost, FakeClock, TestData, TestHost, TestServices, Testing };

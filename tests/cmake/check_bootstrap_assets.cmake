@@ -12,6 +12,7 @@ set(required_bootstrap_assets
     metrics.js
     net.js
     os.js
+    orm.js
     problem-details.js
     request-id.js
     request-logging.js

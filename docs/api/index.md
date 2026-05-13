@@ -27,6 +27,7 @@ configuration, services, validation, or data access.
 - [Request IDs](request-id.md) — request ID middleware and response header behavior
 - [Request logging](request-logging.md) — structured request completion logs
 - [TestHost](testhost.md) — first-party app, artifact, package, and loopback API testing
+- [TestServices](testservices.md) — opt-in live PostgreSQL and SQL Server test services
 - [App test host](testing.md) — in-memory app-host dispatch for tests
 - [Request context](request-context.md) — what's on `ctx` inside a handler
 - [Results](results.md) — every response helper
@@ -39,6 +40,7 @@ configuration, services, validation, or data access.
 - [Logging](logging.md) — levels, sinks
 - [Capabilities](capabilities.md) — declaring database/provider capabilities
 - [Data](data.md) — `data.sqlite`, `data.postgres`, `data.sqlserver`, `sql\`…\`` templates
+- [ORM](orm.md) — `sloppy/orm` tables, columns, schemas, CRUD, includes, and migrations
 - [Workers](workers.md) — background services, work queues, cancellation
 - [Schema](schema.md) — value validation
 - [Filesystem](filesystem.md) — `sloppy/fs` files, directories, handles, watchers

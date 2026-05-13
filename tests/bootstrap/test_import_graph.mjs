@@ -16,6 +16,7 @@ const modules = [
     "metrics.js",
     "net.js",
     "os.js",
+    "orm.js",
     "time.js",
     "workers.js",
     "providers/sqlite.js",
