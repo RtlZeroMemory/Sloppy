@@ -432,6 +432,9 @@ struct AppState {
     helper_sources: BTreeMap<String, String>,
     helper_effects: BTreeMap<String, FunctionEffectSummary>,
     orm_metadata_sources: Vec<(u32, String)>,
+    orm_tables: Vec<Value>,
+    orm_relations: Vec<Value>,
+    orm_extraction_partial: bool,
     middleware: Vec<FrameworkMiddleware>,
     next_middleware_sequence: usize,
     cors_policy: Option<CorsPolicy>,
@@ -498,6 +501,9 @@ impl AppState {
             helper_sources: BTreeMap::new(),
             helper_effects: BTreeMap::new(),
             orm_metadata_sources: Vec::new(),
+            orm_tables: Vec::new(),
+            orm_relations: Vec::new(),
+            orm_extraction_partial: false,
             middleware: Vec::new(),
             next_middleware_sequence: 0,
             cors_policy: None,
@@ -1556,6 +1562,9 @@ fn extract_program_with_metrics(
         uses_data_runtime: graph.uses_data_runtime,
         uses_sql_runtime: graph.uses_sql_runtime,
         uses_orm_runtime: graph.uses_orm_runtime,
+        orm_tables: Vec::new(),
+        orm_relations: Vec::new(),
+        orm_extraction_partial: graph.uses_orm_runtime,
         uses_migrations_runtime: graph.uses_migrations_runtime,
         uses_provider_health_runtime: graph.uses_provider_health_runtime,
         source_files,
@@ -4418,6 +4427,9 @@ fn extract_entry(
             }),
         uses_sql_runtime: state.sql_imported || graph.uses_sql_runtime,
         uses_orm_runtime: state.orm_imported || graph.uses_orm_runtime,
+        orm_tables: state.orm_tables,
+        orm_relations: state.orm_relations,
+        orm_extraction_partial: state.orm_extraction_partial,
         uses_migrations_runtime: state.migrations_imported || graph.uses_migrations_runtime,
         uses_provider_health_runtime: state.provider_health_imported
             || graph.uses_provider_health_runtime,
@@ -12565,7 +12577,7 @@ fn orm_table_declaration_source(
     source: &str,
     name: &str,
     expression: &Expression<'_>,
-    state: &AppState,
+    state: &mut AppState,
 ) -> Result<Option<String>, Diagnostic> {
     let Expression::CallExpression(call) = expression else {
         return Ok(None);
@@ -12576,7 +12588,7 @@ fn orm_table_declaration_source(
     if callee.name.as_str() != "table" || !state.orm_imported {
         return Ok(None);
     }
-    if call.arguments.len() != 2 {
+    if call.arguments.len() < 2 {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ORM_TABLE",
             "ORM table declarations require a literal table name and static column object",
@@ -12585,29 +12597,26 @@ fn orm_table_declaration_source(
         .with_span(call.span)
         .with_hint(orm_table_hint()));
     }
-    let Some(name_argument) = call.arguments.first() else {
-        return Ok(None);
-    };
-    if string_argument(name_argument).is_none() {
-        return Err(Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_ORM_TABLE",
-            "ORM table declarations require a literal table name",
-        )
-        .with_path(path)
-        .with_span(argument_span(name_argument).unwrap_or(call.span))
-        .with_hint(orm_table_hint()));
-    }
     let Some(columns_argument) = call.arguments.get(1) else {
         return Ok(None);
     };
-    if !matches!(columns_argument, Argument::ObjectExpression(_)) {
-        return Err(Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_ORM_TABLE",
-            "ORM table declarations require a static column object",
-        )
-        .with_path(path)
-        .with_span(argument_span(columns_argument).unwrap_or(call.span))
-        .with_hint(orm_table_hint()));
+    if let Argument::ObjectExpression(columns) = columns_argument {
+        if columns.properties.is_empty() {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_ORM_TABLE",
+                "ORM table declarations require a non-empty column object",
+            )
+            .with_path(path)
+            .with_span(argument_span(columns_argument).unwrap_or(call.span))
+            .with_hint(orm_table_hint()));
+        }
+    }
+    if let Some(metadata) =
+        orm_table_metadata_from_call(source_name_from_path(path), source, name, call)
+    {
+        state.orm_tables.push(metadata);
+    } else {
+        state.orm_extraction_partial = true;
     }
     let Some(init_source) = source_slice(source, expression.span()) else {
         return Err(Diagnostic::new(
@@ -12619,6 +12628,118 @@ fn orm_table_declaration_source(
         .with_hint(orm_table_hint()));
     };
     Ok(Some(format!("const {name} = {init_source};")))
+}
+
+fn source_name_from_path(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("app")
+        .to_string()
+}
+
+fn orm_table_metadata_from_call(
+    source_name: String,
+    source: &str,
+    model: &str,
+    call: &CallExpression<'_>,
+) -> Option<Value> {
+    let table_name = string_argument(call.arguments.first()?)?;
+    let columns_object = object_argument(call.arguments.get(1)?)?;
+    let mut columns = Vec::new();
+    for property in &columns_object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return None;
+        };
+        if property.computed || property.method || property.shorthand {
+            return None;
+        }
+        let column_name = property_key_name(&property.key)?.to_string();
+        let column_expression = source_slice(source, property.value.span())?;
+        let column_type = orm_column_type_from_expression(&property.value)?;
+        columns.push(json!({
+            "name": column_name,
+            "type": column_type,
+            "primaryKey": orm_column_has_modifier(&property.value, "primaryKey"),
+            "nullable": orm_column_has_modifier(&property.value, "nullable"),
+            "notNull": orm_column_has_modifier(&property.value, "notNull"),
+            "unique": orm_column_has_modifier(&property.value, "unique"),
+            "index": orm_column_has_modifier(&property.value, "index"),
+            "private": orm_column_has_modifier(&property.value, "private"),
+            "softDelete": orm_column_has_modifier(&property.value, "softDelete"),
+            "concurrencyToken": orm_column_has_modifier(&property.value, "concurrencyToken"),
+            "default": orm_column_has_modifier(&property.value, "default"),
+            "defaultNow": orm_column_has_modifier(&property.value, "defaultNow"),
+            "generated": orm_column_has_modifier(&property.value, "generated"),
+            "reference": crate::plan_emit::parse_reference(&column_expression),
+        }));
+    }
+    Some(json!({
+        "model": model,
+        "name": table_name,
+        "source": source_name,
+        "columns": columns,
+    }))
+}
+
+fn orm_column_type_from_expression<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
+    let mut current = expression;
+    loop {
+        let Expression::CallExpression(call) = current else {
+            return None;
+        };
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            return None;
+        };
+        if let Expression::Identifier(object) = &member.object {
+            if object.name.as_str() == "column" {
+                let column_type = member.property.name.as_str();
+                return if orm_column_type_supported(column_type) {
+                    Some(column_type)
+                } else {
+                    None
+                };
+            }
+        }
+        current = &member.object;
+    }
+}
+
+fn orm_column_type_supported(column_type: &str) -> bool {
+    matches!(
+        column_type,
+        "text"
+            | "string"
+            | "int"
+            | "integer"
+            | "bigint"
+            | "number"
+            | "float"
+            | "decimal"
+            | "bool"
+            | "boolean"
+            | "uuid"
+            | "instant"
+            | "timestamp"
+            | "date"
+            | "json"
+            | "blob"
+            | "bytes"
+            | "enum"
+    )
+}
+
+fn orm_column_has_modifier(expression: &Expression<'_>, modifier: &str) -> bool {
+    let mut current = expression;
+    while let Expression::CallExpression(call) = current {
+        let Expression::StaticMemberExpression(member) = &call.callee else {
+            return false;
+        };
+        if member.property.name.as_str() == modifier {
+            return true;
+        }
+        current = &member.object;
+    }
+    false
 }
 
 fn orm_table_hint() -> &'static str {
@@ -12648,7 +12769,7 @@ fn orm_relation_metadata_call(
     if !state.orm_imported {
         return Ok(false);
     }
-    if call.arguments.len() != 2 {
+    if call.arguments.len() < 2 {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ORM_RELATION",
             "ORM relation declarations require a table identifier and an inline callback",
@@ -12672,18 +12793,6 @@ fn orm_relation_metadata_call(
     let Some(callback_argument) = call.arguments.get(1) else {
         return Ok(false);
     };
-    if !matches!(
-        callback_argument,
-        Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
-    ) {
-        return Err(Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_ORM_RELATION",
-            "ORM relation declarations require an inline callback",
-        )
-        .with_path(path)
-        .with_span(argument_span(callback_argument).unwrap_or(call.span))
-        .with_hint(orm_relation_hint()));
-    }
     let Some(statement_source) = source_slice(source, statement.span) else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_ORM_RELATION",
@@ -12696,6 +12805,50 @@ fn orm_relation_metadata_call(
     state
         .orm_metadata_sources
         .push((statement.span.start, statement_source.to_string()));
+    if matches!(
+        callback_argument,
+        Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
+    ) {
+        if let Some(callback_source) = source_slice(
+            source,
+            argument_span(callback_argument).unwrap_or(call.span),
+        ) {
+            if let Some(object_source) = crate::plan_emit::relation_object_source(&callback_source)
+            {
+                let Argument::Identifier(table_identifier) = table_argument else {
+                    unreachable!("table argument shape checked above");
+                };
+                for part in crate::plan_emit::split_top_level_properties(object_source) {
+                    let Some((relation_name, expression)) =
+                        crate::plan_emit::parse_property_name(part)
+                    else {
+                        state.orm_extraction_partial = true;
+                        continue;
+                    };
+                    let Some(mut relation) =
+                        crate::plan_emit::parse_relation_definition(relation_name, expression)
+                    else {
+                        state.orm_extraction_partial = true;
+                        continue;
+                    };
+                    if let Value::Object(ref mut object) = relation {
+                        object.insert(
+                            "tableModel".to_string(),
+                            json!(table_identifier.name.as_str()),
+                        );
+                        object.insert("source".to_string(), json!(source_name_from_path(path)));
+                    }
+                    state.orm_relations.push(relation);
+                }
+            } else {
+                state.orm_extraction_partial = true;
+            }
+        } else {
+            state.orm_extraction_partial = true;
+        }
+    } else {
+        state.orm_extraction_partial = true;
+    }
     Ok(true)
 }
 

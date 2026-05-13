@@ -45,7 +45,10 @@ sloppy orm migration script .sloppy --provider main --format json
 ```
 
 The generated SQL is a review draft. It is based on current Plan metadata and
-does not inspect live schema state.
+does not inspect live schema state. Static ORM metadata comes from AST call
+expression extraction; comments, strings, template literals, and dynamic shapes
+do not produce fake table metadata. Runtime-valid dynamic models still compile,
+but migration scripting needs statically extracted table metadata.
 
 ## Add
 
@@ -59,6 +62,13 @@ sloppy orm migration add CreateUsers .sloppy --provider main
 The file name uses the next four-digit prefix and a slugified migration name,
 for example `0001_create_users.sql`. Review the generated file before running
 `sloppy orm migration apply`.
+
+## Status and Apply
+
+`status` lists configured migrations as pending or applied. `apply` applies
+pending migrations in order and records their hashes in the provider migration
+history table. A changed migration hash or provider mismatch fails with the
+same diagnostics as `sloppy db`.
 
 ## JavaScript Helpers
 

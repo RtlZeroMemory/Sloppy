@@ -6,6 +6,7 @@ const ORM_TABLE = Symbol("SloppyOrmTable");
 const ORM_COLUMN = Symbol("SloppyOrmColumn");
 const ORM_EXPR = Symbol("SloppyOrmExpression");
 const ORM_RAW = Symbol("SloppyOrmRawSql");
+const ORM_RELATIONS = Symbol("SloppyOrmRelations");
 
 const COLUMN_TYPES = Object.freeze({
     text: { schema: () => Schema.string() },
@@ -714,6 +715,10 @@ function table(name, definition) {
         [ORM_TABLE]: true,
         name,
     };
+    Object.defineProperty(tableObject, ORM_RELATIONS, {
+        value: [],
+        enumerable: false,
+    });
     const seenColumns = new Set();
     for (const [columnName, builder] of Object.entries(definition)) {
         assertIdentifier(columnName, "column name");
@@ -870,7 +875,9 @@ function addPick(objectSchema) {
 function normalizeColumnNames(tableObject, names, options = {}) {
     assertTable(tableObject);
     const allNames = Object.keys(tableObject.metadata.columns);
-    const selected = names === undefined ? allNames : names.flat();
+    const selected = names === undefined && options.includePrivate !== true
+        ? allNames.filter((name) => !tableObject.metadata.columns[name].private)
+        : (names === undefined ? allNames : names.flat());
     for (const name of selected) {
         if (!Object.prototype.hasOwnProperty.call(tableObject.metadata.columns, name)) {
             throw ormError("SLOPPY_ORM_UNKNOWN_COLUMN", `Sloppy ORM column '${name}' does not exist on '${tableName(tableObject)}'.`);
@@ -1060,6 +1067,9 @@ function compileExpression(expression, dialect, params, aliases = new Map()) {
         params.push(expression.value);
         return dialect.placeholder(params.length);
     case "binary":
+        if (expression.operator === "ilike" && dialect.provider !== "postgres") {
+            return `(lower(${compileExpression(expression.left, dialect, params, aliases)}) like lower(${compileExpression(expression.right, dialect, params, aliases)}))`;
+        }
         return `(${compileExpression(expression.left, dialect, params, aliases)} ${expression.operator} ${compileExpression(expression.right, dialect, params, aliases)})`;
     case "unary-suffix":
         return `(${compileExpression(expression.inner, dialect, params, aliases)} ${expression.suffix})`;
@@ -1247,6 +1257,26 @@ function lowerQuery(text, params, dialect) {
     return dataSql.lower(strings, params, { placeholderStyle: dialect.placeholderStyle });
 }
 
+function callProvider(db, method, query, options) {
+    const forwarded = providerOperationOptions(options);
+    return forwarded === undefined
+        ? db[method](query.text, [...query.parameters])
+        : db[method](query.text, [...query.parameters], forwarded);
+}
+
+function providerOperationOptions(options) {
+    if (options === undefined || options === null || typeof options !== "object") {
+        return undefined;
+    }
+    const forwarded = {};
+    for (const key of ["batchSize", "maxRows", "mode", "timeoutMs"]) {
+        if (options[key] !== undefined) {
+            forwarded[key] = options[key];
+        }
+    }
+    return Object.keys(forwarded).length === 0 ? undefined : Object.freeze(forwarded);
+}
+
 function createQueryBuilder(tableObject, state = undefined) {
     assertTable(tableObject);
     const current = state ?? {
@@ -1264,7 +1294,7 @@ function createQueryBuilder(tableObject, state = undefined) {
     async function toList(db, options = {}) {
         const compiled = buildSelectSql(current, db, options);
         const rows = await withProviderErrors("select", current.table, () =>
-            db.query(lowerQuery(compiled.text, compiled.params, compiled.dialect), options));
+            callProvider(db, "query", lowerQuery(compiled.text, compiled.params, compiled.dialect), options));
         const baseRows = immutableRows(applyJoinedIncludes(rows, compiled.joinIncludes));
         const splitIncludes = splitIncludesFor(current, compiled.joinIncludes);
         return loadIncludes(baseRows, { ...current, includes: splitIncludes }, db, options);
@@ -1276,7 +1306,7 @@ function createQueryBuilder(tableObject, state = undefined) {
         validateCursorOptions(options);
         const compiled = buildSelectSql(current, db, options);
         const cursorValue = await withProviderErrors("cursor", current.table, () =>
-            db.queryCursor(lowerQuery(compiled.text, compiled.params, compiled.dialect), options));
+            callProvider(db, "queryCursor", lowerQuery(compiled.text, compiled.params, compiled.dialect), options));
         return wrapOrmCursor(cursorValue, current, options);
     }
     const builder = {
@@ -1364,7 +1394,7 @@ function createQueryBuilder(tableObject, state = undefined) {
                 parts.push(`where ${compileExpression(current.where, dialect, params, aliases)}`);
             }
             const row = await withProviderErrors("count", tableObject, () =>
-                db.queryOne(lowerQuery(parts.join(" "), params, dialect), options));
+                callProvider(db, "queryOne", lowerQuery(parts.join(" "), params, dialect), options));
             return Number(row?.count ?? 0);
         },
         cursor,
@@ -1445,11 +1475,11 @@ async function executeInsert(tableObject, db, values, returning, options = {}) {
         : `insert into ${dialect.quote(tableName(tableObject))} (${columns.map((name) => dialect.quote(name)).join(", ")}) values (${placeholders.join(", ")})${returningSql}`;
     if (returning) {
         const rows = await withProviderErrors("insert returning", tableObject, () =>
-            db.query(lowerQuery(text, params, dialect), options));
+            callProvider(db, "query", lowerQuery(text, params, dialect), options));
         return immutableRows(rows);
     }
     return withProviderErrors("insert", tableObject, () =>
-        db.exec(lowerQuery(text, params, dialect), options));
+        callProvider(db, "exec", lowerQuery(text, params, dialect), options));
 }
 
 async function insertMany(tableObject, db, rows, options = {}) {
@@ -1517,7 +1547,7 @@ async function updateById(tableObject, db, id, patch, options = {}) {
     }
     const text = `update ${dialect.quote(tableName(tableObject))} set ${sets.join(", ")} where ${where.join(" and ")}`;
     const result = await withProviderErrors("update", tableObject, () =>
-        db.exec(lowerQuery(text, params, dialect), options));
+        callProvider(db, "exec", lowerQuery(text, params, dialect), options));
     if (tokenName !== null && expected[tokenName] !== undefined && Number(result?.affectedRows ?? 0) === 0) {
         throw new SloppyOrmConcurrencyError(`Sloppy ORM update on '${tableName(tableObject)}' did not match the expected concurrency token.`);
     }
@@ -1536,7 +1566,7 @@ async function deleteById(tableObject, db, id, options = {}) {
         where.push(`${dialect.quote(tokenName)} = ${dialect.placeholder(params.length)}`);
     }
     const result = await withProviderErrors("delete", tableObject, () =>
-        db.exec(lowerQuery(`delete from ${dialect.quote(tableName(tableObject))} where ${where.join(" and ")}`, params, dialect), options));
+        callProvider(db, "exec", lowerQuery(`delete from ${dialect.quote(tableName(tableObject))} where ${where.join(" and ")}`, params, dialect), options));
     if (tokenName !== null && expected[tokenName] !== undefined && Number(result?.affectedRows ?? 0) === 0) {
         throw new SloppyOrmConcurrencyError(`Sloppy ORM delete on '${tableName(tableObject)}' did not match the expected concurrency token.`);
     }
@@ -1599,8 +1629,6 @@ function createEditor(tableObject, row) {
     return Object.freeze(editor);
 }
 
-const RELATIONS = new WeakMap();
-
 function relation(tableObject, callback) {
     assertTable(tableObject);
     if (typeof callback !== "function") {
@@ -1608,32 +1636,44 @@ function relation(tableObject, callback) {
     }
     const helpers = Object.freeze({
         one(target, options) {
-            return relationDefinition("one", target, options);
+            return relationDefinition("one", tableObject, target, options);
         },
         many(target, options) {
-            return relationDefinition("many", target, options);
+            return relationDefinition("many", tableObject, target, options);
         },
     });
     const definitions = callback(helpers);
     if (!isPlainObject(definitions) || Object.keys(definitions).length === 0) {
         throw ormError("SLOPPY_ORM_INVALID_RELATION", "Sloppy ORM relation() must return a non-empty object.");
     }
-    const entries = [...(RELATIONS.get(tableObject) ?? [])];
+    const entries = tableObject[ORM_RELATIONS];
     for (const [name, definition] of Object.entries(definitions)) {
         assertIdentifier(name, "relation name");
-        entries.push(freezeDeep({ name, ...definition }));
+        const next = freezeDeep({ name, ...definition });
+        const existing = entries.findIndex((entry) => entry.name === name);
+        if (existing >= 0) {
+            entries[existing] = next;
+        } else {
+            entries.push(next);
+        }
     }
-    RELATIONS.set(tableObject, Object.freeze(entries));
     return tableObject;
 }
 
-function relationDefinition(kind, target, options) {
+function relationDefinition(kind, source, target, options) {
+    assertTable(source, "relation source");
     assertTable(target, "relation target");
     if (!isPlainObject(options)) {
         throw new TypeError("Sloppy ORM relation options must be a plain object.");
     }
     assertColumn(options.local, "relation local");
     assertColumn(options.foreign, "relation foreign");
+    if (options.local.table !== source) {
+        throw new TypeError("Sloppy ORM relation local column must belong to the source table.");
+    }
+    if (options.foreign.table !== target) {
+        throw new TypeError("Sloppy ORM relation foreign column must belong to the target table.");
+    }
     return {
         kind,
         target,
@@ -1643,7 +1683,7 @@ function relationDefinition(kind, target, options) {
 }
 
 function relationsFor(tableObject) {
-    return RELATIONS.get(tableObject) ?? Object.freeze([]);
+    return Object.freeze([...(tableObject[ORM_RELATIONS] ?? [])]);
 }
 
 function createIncludeBuilder(relationEntry, state = {}) {
@@ -1810,7 +1850,7 @@ async function query(db, raw, mapper = undefined, options = {}) {
         throw ormError("SLOPPY_ORM_PROVIDER_SQL_MISMATCH", `Sloppy ORM raw SQL for '${raw.provider}' cannot run on '${dialect.provider}'.`);
     }
     const rows = await withProviderErrors("raw query", undefined, () =>
-        db.query(raw.query, options));
+        callProvider(db, "query", raw.query, options));
     if (mapper === undefined) {
         return immutableRows(rows);
     }
@@ -1829,7 +1869,7 @@ function cursor(db, raw, options = {}) {
         throw ormError("SLOPPY_ORM_PROVIDER_SQL_MISMATCH", `Sloppy ORM raw SQL for '${raw.provider}' cannot run on '${dialect.provider}'.`);
     }
     return withProviderErrors("raw cursor", undefined, () =>
-        db.queryCursor(raw.query, options));
+        callProvider(db, "queryCursor", raw.query, options));
 }
 
 function ndjson(cursorValue, mapper = undefined) {
@@ -1859,8 +1899,15 @@ function ndjson(cursorValue, mapper = undefined) {
     return Object.freeze(stream);
 }
 
-function columnDefinitionSql(meta, dialect) {
-    const pieces = [dialect.quote(meta.name), dialect.types[meta.type]];
+function columnSqlType(meta, dialect) {
+    if (dialect.provider === "sqlserver" && meta.type === "text" && (meta.unique || meta.index)) {
+        return "nvarchar(450)";
+    }
+    return dialect.types[meta.type];
+}
+
+function columnDefinitionSql(meta, dialect, options = {}) {
+    const pieces = [dialect.quote(meta.name), columnSqlType(meta, dialect)];
     if (meta.primaryKey) {
         pieces.push("primary key");
     }
@@ -1875,7 +1922,7 @@ function columnDefinitionSql(meta, dialect) {
     } else if (meta.default !== undefined) {
         pieces.push("default " + literalSql(meta.default));
     }
-    if (meta.reference !== null) {
+    if (meta.reference !== null && options.inlineReferences !== false) {
         pieces.push(`references ${dialect.quote(meta.reference.table)} (${dialect.quote(meta.reference.column)})`);
     }
     return pieces.join(" ");
@@ -1885,7 +1932,7 @@ function createIndexSql(tableObject, meta, dialect) {
     return `create index ${dialect.quote(`ix_${tableName(tableObject)}_${meta.name}`)} on ${dialect.quote(tableName(tableObject))} (${dialect.quote(meta.name)});`;
 }
 
-function createTableSql(tableObject, provider = "sqlite") {
+function createTableSql(tableObject, provider = "sqlite", options = {}) {
     assertTable(tableObject);
     const dialect = DIALECTS[provider];
     if (dialect === undefined) {
@@ -1894,7 +1941,7 @@ function createTableSql(tableObject, provider = "sqlite") {
     const name = tableName(tableObject);
     const lines = [];
     for (const meta of Object.values(tableObject.metadata.columns)) {
-        lines.push(`  ${columnDefinitionSql(meta, dialect)}`);
+        lines.push(`  ${columnDefinitionSql(meta, dialect, options)}`);
     }
     const statements = [`create table ${dialect.quote(name)} (\n${lines.join(",\n")}\n);`];
     for (const meta of Object.values(tableObject.metadata.columns)) {
@@ -1903,6 +1950,48 @@ function createTableSql(tableObject, provider = "sqlite") {
         }
     }
     return statements.join("\n");
+}
+
+function tableDependsOn(tableObject, targetName) {
+    return tableObject.metadata.foreignKeys.some((foreignKey) => foreignKey.foreignTable === targetName && tableName(tableObject) !== targetName);
+}
+
+function orderMigrationTables(tables) {
+    const remaining = [...tables];
+    const ordered = [];
+    while (remaining.length !== 0) {
+        let moved = false;
+        for (let index = 0; index < remaining.length; index += 1) {
+            const candidate = remaining[index];
+            const blocked = remaining.some((other) => other !== candidate && tableDependsOn(candidate, tableName(other)));
+            if (!blocked) {
+                ordered.push(candidate);
+                remaining.splice(index, 1);
+                moved = true;
+                break;
+            }
+        }
+        if (!moved) {
+            ordered.push(...remaining.splice(0, remaining.length));
+        }
+    }
+    return ordered;
+}
+
+function constraintName(tableObject, meta) {
+    return `fk_${tableName(tableObject)}_${meta.name}_${meta.reference.table}_${meta.reference.column}`;
+}
+
+function deferredForeignKeySql(tableObject, provider) {
+    const dialect = DIALECTS[provider];
+    const statements = [];
+    for (const meta of Object.values(tableObject.metadata.columns)) {
+        if (meta.reference === null) {
+            continue;
+        }
+        statements.push(`alter table ${dialect.quote(tableName(tableObject))} add constraint ${dialect.quote(constraintName(tableObject, meta))} foreign key (${dialect.quote(meta.name)}) references ${dialect.quote(meta.reference.table)} (${dialect.quote(meta.reference.column)});`);
+    }
+    return statements;
 }
 
 function literalSql(value) {
@@ -1920,8 +2009,15 @@ function literalSql(value) {
 
 function migrationScript(tables, options = {}) {
     const provider = options.provider ?? "sqlite";
-    const tableList = Array.isArray(tables) ? tables : [tables];
-    return `${tableList.map((tableEntry) => createTableSql(tableEntry, provider)).join("\n\n")}\n`;
+    const tableList = orderMigrationTables(Array.isArray(tables) ? tables : [tables]);
+    const inlineReferences = provider === "sqlite";
+    const statements = tableList.map((tableEntry) => createTableSql(tableEntry, provider, { inlineReferences }));
+    if (!inlineReferences) {
+        for (const tableEntry of tableList) {
+            statements.push(...deferredForeignKeySql(tableEntry, provider));
+        }
+    }
+    return `${statements.join("\n\n")}\n`;
 }
 
 function stableStringify(value) {
@@ -2021,7 +2117,7 @@ function migrationDiff(previousSnapshot, nextTables, options = {}) {
         const previousTable = previousTables.get(name);
         const nextTableObject = nextTableObjects.get(name);
         if (previousTable === undefined) {
-            statements.push(createTableSql(nextTableObject, provider));
+            statements.push(migrationScript(nextTableObject, { provider }).trimEnd());
             continue;
         }
         const previousColumns = snapshotColumnMap(previousTable);

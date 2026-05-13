@@ -68,7 +68,14 @@ app.get("/teams/{teamId:uuid}", async (ctx) => {
         return Results.notFound();
     }
 
-    return Results.json(team);
+    return Results.json({
+        id: team.id,
+        slug: team.slug,
+        name: team.name,
+        createdAt: team.createdAt,
+        users: team.users.map((user) =>
+            Users.public(user, ["id", "email", "displayName", "createdAt"])),
+    });
 });
 
 export { Teams, Users };

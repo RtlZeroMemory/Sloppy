@@ -19,23 +19,43 @@ function indent(text) {
         .join("\n");
 }
 
+function replaceRequired(source, pattern, replacement, label) {
+    if (!pattern.test(source)) {
+        throw new Error(`sync-orm-runtime-classic: required pattern not found (${label}).`);
+    }
+    return source.replace(pattern, replacement);
+}
+
 function transformSchema(source) {
-    const body = normalizeNewlines(source)
-        .replace(
+    const body = replaceRequired(
+            normalizeNewlines(source),
             /\nexport const schema = schemaApi;\nexport const Schema = schemaApi;\nexport \{ SloppyValidationError, isSchema, isValidationError, validationProblem \};\s*$/u,
             "\nreturn Object.freeze({ schema: schemaApi, Schema: schemaApi, SloppyValidationError, isSchema, isValidationError, validationProblem });\n",
+            "schema exports",
         )
         .trimEnd();
     return `function createSloppySchemaRuntime() {\n${indent(body)}\n}`;
 }
 
 function transformOrm(source) {
-    const body = normalizeNewlines(source)
-        .replace(/^import \{ Migrations, sql as dataSql \} from "\.\/data\.js";\n/u, "")
-        .replace(/^import \{ schema as Schema, isSchema \} from "\.\/schema\.js";\n\n/u, "")
-        .replace(
+    let normalized = normalizeNewlines(source);
+    normalized = replaceRequired(
+        normalized,
+        /^import \{ Migrations, sql as dataSql \} from "\.\/data\.js";\n/u,
+        "",
+        "orm data import",
+    );
+    normalized = replaceRequired(
+        normalized,
+        /^import \{ schema as Schema, isSchema \} from "\.\/schema\.js";\n\n/u,
+        "",
+        "orm schema import",
+    );
+    const body = replaceRequired(
+            normalized,
             /\nexport \{\n    SloppyOrmConcurrencyError,\n    SloppyOrmError,\n    column,\n    orm,\n    rawSql as sql,\n    relation,\n    table,\n\};\s*$/u,
             "\nreturn Object.freeze({ SloppyOrmConcurrencyError, SloppyOrmError, column, orm, sql: rawSql, relation, table });\n",
+            "orm exports",
         )
         .trimEnd();
     const prelude = [

@@ -52,12 +52,28 @@ try {
         version: 1,
     }).ok, true);
 
+    function normalizeProviderCall(sqlOrQuery, paramsOrOptions, options) {
+        if (typeof sqlOrQuery === "string") {
+            return {
+                text: sqlOrQuery,
+                parameters: Array.isArray(paramsOrOptions) ? [...paramsOrOptions] : [],
+                options: Array.isArray(paramsOrOptions) ? options : paramsOrOptions,
+            };
+        }
+        return {
+            text: sqlOrQuery.text,
+            parameters: [...sqlOrQuery.parameters],
+            options: paramsOrOptions,
+        };
+    }
+
     const sql = 'select "t0"."id" as "id", "t0"."email" as "email" from "users" "t0" where ("t0"."email" = ?)';
     const calls = [];
     const db = Object.freeze({
-        query(query, options) {
-            calls.push(["query", query.text, [...query.parameters], options]);
-            return query.text === sql ? [{ id: "1", email: "ada@example.com" }] : [];
+        query(sqlOrQuery, paramsOrOptions, options) {
+            const call = normalizeProviderCall(sqlOrQuery, paramsOrOptions, options);
+            calls.push(["query", call.text, call.parameters, call.options]);
+            return call.text === sql ? [{ id: "1", email: "ada@example.com" }] : [];
         },
         __debug() {
             return Object.freeze({ provider: "sqlite", placeholderStyle: "question" });
@@ -81,9 +97,10 @@ try {
         .include((u) => u.team)
         .take(1)
         .toList(Object.freeze({
-            query(query) {
+            query(sqlOrQuery, paramsOrOptions, options) {
+                const query = normalizeProviderCall(sqlOrQuery, paramsOrOptions, options);
                 assert.equal(query.text, joinSql);
-                assert.deepEqual([...query.parameters], ["1"]);
+                assert.deepEqual(query.parameters, ["1"]);
                 return [{
                     id: "1",
                     teamId: "team-1",

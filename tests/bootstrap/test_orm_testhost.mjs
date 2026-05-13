@@ -15,9 +15,9 @@ const Users = table("users", {
 const expectedSql = 'select "t0"."id" as "id", "t0"."email" as "email", "t0"."displayName" as "displayName" from "users" "t0" where ("t0"."id" = ?) limit 2';
 const calls = [];
 const db = Object.freeze({
-    query(query, options) {
-        calls.push(["query", query.text, [...query.parameters], options]);
-        return query.text === expectedSql
+    query(sql, params, options) {
+        calls.push(["query", sql, [...params], options]);
+        return sql === expectedSql
             ? [{ id: "00000000-0000-4000-8000-000000000001", email: "ada@example.com", displayName: "Ada" }]
             : [];
     },

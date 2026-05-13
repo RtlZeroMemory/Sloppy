@@ -18,3 +18,7 @@ endif()
 if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace" OR NOT output MATCHES "postgresTimedOut.*true" OR NOT output MATCHES "materializedRejected.*true" OR NOT output MATCHES "cursorCount.*152" OR NOT output MATCHES "cursorMaxRowsRejected.*true" OR NOT output MATCHES "poolPinned.*true" OR NOT output MATCHES "cursorTimedOut.*true")
     message(FATAL_ERROR "PostgreSQL bridge live output did not include expected cursor, bounded materialization, pool pinning, and timeout evidence.\n${output}")
 endif()
+
+if(NOT output MATCHES "ormLane" OR NOT output MATCHES "selectedEmail.*ada\\.orm@example\\.com" OR NOT output MATCHES "conflict.*true" OR NOT output MATCHES "oneInclude.*Core" OR NOT output MATCHES "manyIncludeCount.*1" OR NOT output MATCHES "rolledBack.*true" OR NOT output MATCHES "cursorCount.*132")
+    message(FATAL_ERROR "PostgreSQL bridge live output did not include expected ORM migration, CRUD, include, rollback, and cursor evidence.\n${output}")
+endif()

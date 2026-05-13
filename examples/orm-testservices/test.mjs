@@ -1,4 +1,4 @@
-import { Results, Sloppy, TestHost, TestServices, column, orm, table } from "../../stdlib/sloppy/index.js";
+import { Results, Sloppy, TestHost, TestServices, column, orm, table } from "sloppy";
 
 const Users = table("users", {
   id: column.uuid().primaryKey(),
@@ -18,9 +18,15 @@ const pg = await TestServices.postgres({
 if (!pg.available) {
   console.log(`${pg.status}: ${pg.reason}`);
 } else {
-  await TestHost.create(app, {
+  const host = await TestHost.create(app, {
     providers: {
       main: pg.provider(),
     },
   });
+  try {
+    await host.get("/users").expectStatus(200);
+  } finally {
+    await host.close();
+    await pg.close();
+  }
 }

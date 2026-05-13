@@ -236,6 +236,8 @@ compiler-emitted ORM Plan metadata:
 ```sh
 sloppy orm migration script .sloppy --provider main
 sloppy orm migration add CreateUsers .sloppy --provider main
+sloppy orm migration status .sloppy --provider main
+sloppy orm migration apply .sloppy --provider main
 ```
 
 For reviewable migration drafts, capture a deterministic snapshot and diff it
@@ -257,8 +259,15 @@ and index SQL for SQLite, PostgreSQL, and SQL Server. Removed tables/columns or
 changed column definitions are reported as destructive changes and throw unless
 `allowDestructive: true` is passed so callers can inspect the change explicitly.
 
+`orm.migrations.script` orders table creation by foreign-key dependencies.
+SQLite keeps inline foreign keys. PostgreSQL and SQL Server create tables first
+and then add named foreign-key constraints, which lets first-run migrations
+handle child-before-parent declarations and cycles.
+
 `orm.migrations.apply` and `orm.migrations.status` delegate to the existing
-Sloppy data migration helpers.
+Sloppy data migration helpers. The CLI `status` and `apply` commands use the
+same provider configuration, migration history table, and checksum validation
+as `sloppy db status` and `sloppy db migrate`.
 
 ## Errors
 
@@ -282,12 +291,11 @@ migration option that usually fixes the error.
 
 The compiler recognizes `sloppy/orm` imports and generated app JavaScript reads
 ORM exports from `globalThis.__sloppy_runtime`. Plan output marks ORM usage as
-Plan-visible dynamic metadata:
+Plan-visible metadata:
 
 ```json
 {
   "features": { "orm": true },
-  "strongPlan": { "evidence": { "orm": true } },
   "orm": {
     "mode": "runtime-dynamic",
     "extraction": { "status": "partial" }
@@ -296,7 +304,11 @@ Plan-visible dynamic metadata:
 ```
 
 Runtime ORM usage works dynamically even when table and relation definitions are
-too dynamic for static extraction. Obvious static `table("name", { ... })`
-definitions are emitted in `orm.tables` with column/modifier metadata, while
-the overall extraction status remains `partial` until the compiler can prove a
-complete table and relation catalog.
+too dynamic for static extraction. The compiler extracts ORM metadata from AST
+call expressions, not raw source text. Static `table("name", { ... })` and
+inline `relation(Table, ({ one, many }) => ({ ... }))` shapes are emitted in the
+Plan. Comments, strings, and template literals do not create ORM metadata.
+
+Dynamic but runtime-valid shapes still compile and run. They mark ORM
+extraction as partial, and doctor output reports that migration scripting needs
+static table metadata before it can produce a complete draft.

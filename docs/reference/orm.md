@@ -75,7 +75,10 @@ where supported.
 ## Migrations
 
 `orm.migrations.script(tables, { provider })` emits deterministic create-table
-SQL.
+SQL. Tables are ordered by foreign-key dependencies where possible. SQLite
+keeps inline references; PostgreSQL and SQL Server emit named foreign-key
+constraints after table creation so child-before-parent declarations and cycles
+do not break first-run migrations.
 
 `orm.migrations.snapshot(tables)` returns `sloppy.orm.snapshot.v1` metadata with
 a checksum.
@@ -85,7 +88,18 @@ additive SQL for new tables, columns, and indexes. Destructive changes throw
 unless `allowDestructive: true` is passed.
 
 `orm.migrations.apply` and `orm.migrations.status` are the existing Sloppy data
-migration functions.
+migration functions. The CLI mirrors the ORM vocabulary with
+`sloppy orm migration script|add|status|apply`; `status` and `apply` reuse the
+same migration history and checksum rules as `sloppy db`.
+
+## Compiler Extraction
+
+Runtime ORM table and relation definitions can be dynamic. The compiler only
+emits static Plan metadata for AST call shapes it can prove, such as
+`table("users", { ... })` and inline relation callbacks. Runtime-valid dynamic
+shapes compile with partial ORM metadata instead of fatal diagnostics. Invalid
+static shapes still fail with `SLOPPYC_E_*` diagnostics and a short valid-shape
+hint.
 
 ## Error Codes
 

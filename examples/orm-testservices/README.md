@@ -5,6 +5,11 @@ provider helpers for app-host tests. They report `SKIPPED` when the matching
 environment variable or native bridge is unavailable.
 
 ```ts
+import { Sloppy, TestHost, TestServices } from "sloppy";
+
+const app = Sloppy.create();
+// Register routes that use ctx.db.
+
 const pg = await TestServices.postgres({
   migrations: "migrations/postgres/*.sql",
 });
@@ -17,6 +22,12 @@ if (!pg.available) {
       main: pg.provider(),
     },
   });
+  try {
+    // Run requests and assertions.
+  } finally {
+    await host.close();
+    await pg.close();
+  }
 }
 ```
 

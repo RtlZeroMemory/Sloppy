@@ -3487,14 +3487,15 @@ function createUnavailableService(kind, reason) {
 }
 
 function createLiveService(kind, connectionString, open, envName) {
-    let current = null;
+    const opened = new Set();
     const service = {
         kind,
         available: true,
         status: "PASS",
         provider(options = {}) {
-            current = open({ connectionString, ...options });
-            return current;
+            const db = open({ connectionString, ...options });
+            opened.add(db);
+            return db;
         },
         open(options = {}) {
             return service.provider(options);
@@ -3503,11 +3504,14 @@ function createLiveService(kind, connectionString, open, envName) {
             return Object.freeze({ [envName]: connectionString });
         },
         async close() {
-            const db = current;
-            current = null;
-            if (typeof db?.close === "function") {
-                await db.close();
+            const pending = [];
+            for (const db of opened) {
+                if (typeof db?.close === "function") {
+                    pending.push(Promise.resolve(db.close()));
+                }
             }
+            opened.clear();
+            await Promise.all(pending);
         },
         async [Symbol.asyncDispose]() {
             await service.close();

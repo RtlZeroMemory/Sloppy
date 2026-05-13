@@ -1,5 +1,4 @@
-import { Sloppy, Results } from "../../stdlib/sloppy/index.js";
-import { column, orm, table } from "../../stdlib/sloppy/orm.js";
+import { Sloppy, Results, column, orm, table } from "sloppy";
 
 const Users = table("users", {
     id: column.uuid().primaryKey(),

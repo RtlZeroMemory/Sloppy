@@ -19,6 +19,10 @@ import { TestServices } from "../../stdlib/sloppy/testing.js";
     assert.equal(service.available, false);
     assert.equal(service.status, "SKIPPED");
     assert.match(service.reason, /native stdlib bridge is unavailable/u);
+    assert.throws(() => service.provider(), /unavailable/u);
+    assert.throws(() => service.open(), /unavailable/u);
+    assert.deepEqual(service.env(), {});
+    await service.close();
 }
 
 {
@@ -38,4 +42,8 @@ import { TestServices } from "../../stdlib/sloppy/testing.js";
     assert.equal(service.available, false);
     assert.equal(service.status, "SKIPPED");
     assert.match(service.reason, /native stdlib bridge is unavailable/u);
+    assert.throws(() => service.provider(), /unavailable/u);
+    assert.throws(() => service.open(), /unavailable/u);
+    assert.deepEqual(service.env(), {});
+    await service.close();
 }

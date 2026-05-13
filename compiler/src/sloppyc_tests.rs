@@ -1990,6 +1990,9 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         uses_data_runtime: true,
         uses_sql_runtime: false,
         uses_orm_runtime: false,
+        orm_tables: Vec::new(),
+        orm_relations: Vec::new(),
+        orm_extraction_partial: false,
         uses_migrations_runtime: false,
         uses_provider_health_runtime: false,
         source_files: Vec::new(),
@@ -6664,7 +6667,7 @@ export default app;
     assert_eq!(value["orm"]["mode"], serde_json::json!("runtime-dynamic"));
     assert_eq!(
         value["orm"]["extraction"]["status"],
-        serde_json::json!("partial")
+        serde_json::json!("static")
     );
     let tables = value["orm"]["tables"]
         .as_array()
@@ -6724,22 +6727,10 @@ export default app;
 "#,
         ),
         (
-            "dynamic table name",
+            "empty column object",
             r#"import { Sloppy, Results } from "sloppy";
 import { table } from "sloppy/orm";
-const tableName = "users";
-const Users = table(tableName, {});
-const app = Sloppy.create();
-app.mapGet("/", () => Results.text("ok"));
-export default app;
-"#,
-        ),
-        (
-            "dynamic column object",
-            r#"import { Sloppy, Results } from "sloppy";
-import { table } from "sloppy/orm";
-const columns = {};
-const Users = table("users", columns);
+const Users = table("users", {});
 const app = Sloppy.create();
 app.mapGet("/", () => Results.text("ok"));
 export default app;
@@ -6754,6 +6745,80 @@ export default app;
         assert!(
             hint.contains("const Users = table(\"users\""),
             "{name} should include table shape hint"
+        );
+    }
+}
+
+#[test]
+fn sloppy_orm_dynamic_table_shapes_compile_with_partial_metadata() {
+    let cases = [
+        (
+            "computed table name",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column } from "sloppy/orm";
+const tableName = "users";
+const Users = table(tableName, { id: column.uuid().primaryKey() });
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "reused column object",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column } from "sloppy/orm";
+const Id = column.uuid().primaryKey();
+const Users = table("users", { id: Id });
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "factory column object",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column } from "sloppy/orm";
+function makeColumns() {
+  return { id: column.uuid().primaryKey() };
+}
+const Users = table("users", makeColumns());
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+        (
+            "column object variable",
+            r#"import { Sloppy, Results } from "sloppy";
+import { table, column } from "sloppy/orm";
+const columns = { id: column.uuid().primaryKey() };
+const Users = table("users", columns);
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#,
+        ),
+    ];
+    for (name, source) in cases {
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .unwrap_or_else(|_| panic!("{name} should compile"));
+        let emitted_js = super::emit_app_js(&app);
+        assert!(
+            emitted_js.source.contains("const Users = table("),
+            "{name} should keep the runtime table declaration"
+        );
+        let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+        let plan = super::emit_plan(
+            &app,
+            &super::sha256_hex(&emitted_js.source),
+            &super::sha256_hex(&emitted_source_map),
+        )
+        .expect("plan should emit");
+        let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+        assert_eq!(
+            value["orm"]["extraction"]["status"],
+            serde_json::json!("partial"),
+            "{name} should mark ORM metadata partial"
         );
     }
 }
@@ -6784,12 +6849,11 @@ export default app;
 "#,
         ),
         (
-            "dynamic callback",
+            "invalid relation table expression",
             r#"import { Sloppy, Results } from "sloppy";
 import { table, column, relation } from "sloppy/orm";
 const Users = table("users", { id: column.uuid().primaryKey() });
-const configure = ({ one }) => ({});
-relation(Users, configure);
+relation(Users.name, ({ one }) => ({}));
 const app = Sloppy.create();
 app.mapGet("/", () => Results.text("ok"));
 export default app;
@@ -6806,6 +6870,67 @@ export default app;
             "{name} should include relation shape hint"
         );
     }
+}
+
+#[test]
+fn sloppy_orm_dynamic_relation_callback_compiles_with_partial_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { table, column, relation } from "sloppy/orm";
+const Users = table("users", { id: column.uuid().primaryKey() });
+const configure = ({ one }) => ({});
+relation(Users, configure);
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("runtime-valid relation callback variable should compile");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("relation(Users, configure);"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    assert_eq!(
+        value["orm"]["extraction"]["status"],
+        serde_json::json!("partial")
+    );
+}
+
+#[test]
+fn sloppy_orm_plan_ignores_table_and_relation_text_outside_ast_calls() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { table, column, relation } from "sloppy/orm";
+// const Ghost = table("ghosts", { id: column.uuid().primaryKey() });
+const template = `relation(Ghost, ({ one }) => ({ team: one(Teams, { local: Ghost.teamId, foreign: Teams.id }) }))`;
+const quoted = "table(\"quoted\", { id: column.uuid().primaryKey() })";
+const Users = table("users", { id: column.uuid().primaryKey() });
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text("ok"));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("AST extraction should ignore inert text");
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    let tables = value["orm"]["tables"].as_array().expect("table array");
+    assert_eq!(tables.len(), 1);
+    assert_eq!(tables[0]["name"], "users");
+    assert!(value["orm"]["relations"]
+        .as_array()
+        .expect("relations")
+        .is_empty());
 }
 
 #[test]

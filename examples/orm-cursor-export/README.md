@@ -1,6 +1,6 @@
 # ORM Cursor Export
 
-This documentation example shows the ORM cursor-to-NDJSON adapter:
+This experimental documentation example shows the ORM cursor-to-NDJSON adapter:
 
 ```ts
 const cursor = await orm.from(Users).cursor(ctx.db, {

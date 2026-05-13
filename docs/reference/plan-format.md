@@ -365,7 +365,8 @@ When source imports `sloppy/orm`, the compiler emits:
     "relations": [],
     "migrationSnapshots": [],
     "extraction": {
-      "status": "partial"
+      "status": "partial",
+      "reason": "runtime ORM is available; dynamic table or relation shapes compile and run while static metadata remains partial"
     }
   }
 }

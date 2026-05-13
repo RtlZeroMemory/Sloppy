@@ -56,7 +56,7 @@ execute_process(
 if(NOT package_result EQUAL 0)
     message(FATAL_ERROR "ORM package metadata fixture failed\nstdout:\n${package_stdout}\nstderr:\n${package_stderr}")
 endif()
-if(NOT package_stdout MATCHES "\"packaged\":true")
+if(NOT package_stdout MATCHES "\"packaged\"[ \t\r\n]*:[ \t\r\n]*true")
     message(FATAL_ERROR "ORM package metadata fixture did not report package success\nstdout:\n${package_stdout}")
 endif()
 
@@ -67,14 +67,13 @@ endif()
 
 file(READ "${plan_path}" plan_json)
 foreach(required IN ITEMS
-        "\"orm\": true"
-        "\"orm\": {"
-        "\"tables\": ["
-        "\"relations\": ["
-        "\"name\": \"users\""
-        "\"name\": \"team\"")
-    string(FIND "${plan_json}" "${required}" required_index)
-    if(required_index EQUAL -1)
+        "\"orm\"[ \t\r\n]*:[ \t\r\n]*true"
+        "\"orm\"[ \t\r\n]*:[ \t\r\n]*\\{"
+        "\"tables\"[ \t\r\n]*:[ \t\r\n]*\\["
+        "\"relations\"[ \t\r\n]*:[ \t\r\n]*\\["
+        "\"name\"[ \t\r\n]*:[ \t\r\n]*\"users\""
+        "\"name\"[ \t\r\n]*:[ \t\r\n]*\"team\"")
+    if(NOT plan_json MATCHES "${required}")
         message(FATAL_ERROR "packaged Plan is missing ORM metadata pattern ${required}\n${plan_json}")
     endif()
 endforeach()

@@ -30,20 +30,38 @@ async function assertRejectsMessage(fn, expected) {
     });
 }
 
+function normalizeProviderCall(sqlOrQuery, paramsOrOptions, options) {
+    if (typeof sqlOrQuery === "string") {
+        return {
+            text: sqlOrQuery,
+            parameters: Array.isArray(paramsOrOptions) ? [...paramsOrOptions] : [],
+            options: Array.isArray(paramsOrOptions) ? options : paramsOrOptions,
+        };
+    }
+    return {
+        text: sqlOrQuery.text,
+        parameters: [...sqlOrQuery.parameters],
+        options: paramsOrOptions,
+    };
+}
+
 function createFakeDb(rowsByText = new Map()) {
     const calls = [];
     const db = {
         calls,
-        query(query, options) {
-            calls.push(["query", query.text, [...query.parameters], options]);
-            return rowsByText.get(query.text) ?? [];
+        query(sqlOrQuery, paramsOrOptions, options) {
+            const call = normalizeProviderCall(sqlOrQuery, paramsOrOptions, options);
+            calls.push(["query", call.text, call.parameters, call.options]);
+            return rowsByText.get(call.text) ?? [];
         },
-        queryOne(query, options) {
-            calls.push(["queryOne", query.text, [...query.parameters], options]);
-            return (rowsByText.get(query.text) ?? [])[0] ?? null;
+        queryOne(sqlOrQuery, paramsOrOptions, options) {
+            const call = normalizeProviderCall(sqlOrQuery, paramsOrOptions, options);
+            calls.push(["queryOne", call.text, call.parameters, call.options]);
+            return (rowsByText.get(call.text) ?? [])[0] ?? null;
         },
-        exec(query, options) {
-            calls.push(["exec", query.text, [...query.parameters], options]);
+        exec(sqlOrQuery, paramsOrOptions, options) {
+            const call = normalizeProviderCall(sqlOrQuery, paramsOrOptions, options);
+            calls.push(["exec", call.text, call.parameters, call.options]);
             return { affectedRows: 1 };
         },
         transaction(callback) {
@@ -58,11 +76,12 @@ function createFakeDb(rowsByText = new Map()) {
                     throw error;
                 });
         },
-        async queryCursor(query, options) {
-            calls.push(["cursor", query.text, [...query.parameters], options]);
+        async queryCursor(sqlOrQuery, paramsOrOptions, options) {
+            const call = normalizeProviderCall(sqlOrQuery, paramsOrOptions, options);
+            calls.push(["cursor", call.text, call.parameters, call.options]);
             let index = 0;
             let closed = false;
-            const rows = rowsByText.get(query.text) ?? [];
+            const rows = rowsByText.get(call.text) ?? [];
             return Object.freeze({
                 provider: "sqlite",
                 mode: "object",
@@ -96,6 +115,17 @@ function createFakeDb(rowsByText = new Map()) {
         },
     };
     return Object.freeze(db);
+}
+
+function createAffectedRowsDb(affectedRows) {
+    return Object.freeze({
+        exec() {
+            return { affectedRows };
+        },
+        __debug() {
+            return Object.freeze({ provider: "sqlite", placeholderStyle: "question" });
+        },
+    });
 }
 
 const Teams = table("teams", {
@@ -207,6 +237,16 @@ relation(Teams, ({ many }) => ({
         id: "1",
         email: "ada@example.com",
     });
+    assert.deepEqual(Users.public({
+        id: "1",
+        email: "ada@example.com",
+        passwordHash: "secret",
+        createdAt: "now",
+    }), {
+        id: "1",
+        email: "ada@example.com",
+        createdAt: "now",
+    });
     assertThrowsMessage(() => Users.publicSchema(["passwordHash"]), /private/);
 }
 
@@ -240,6 +280,20 @@ relation(Teams, ({ many }) => ({
 
     await Users.softDeleteById(db, "00000000-0000-4000-8000-000000000001");
     assert.match(db.calls[2][1], /"deletedAt" = CURRENT_TIMESTAMP/u);
+    await assert.rejects(
+        () => Users.updateById(createAffectedRowsDb(0), "00000000-0000-4000-8000-000000000001", {
+            displayName: "Ada",
+        }, {
+            expected: { version: 9 },
+        }),
+        (error) => error.code === "SLOPPY_ORM_CONCURRENCY_CONFLICT",
+    );
+    await assert.rejects(
+        () => Users.deleteById(createAffectedRowsDb(0), "00000000-0000-4000-8000-000000000001", {
+            expected: { version: 9 },
+        }),
+        (error) => error.code === "SLOPPY_ORM_CONCURRENCY_CONFLICT",
+    );
 
     const edit = Users.edit({
         id: "00000000-0000-4000-8000-000000000001",
@@ -248,6 +302,14 @@ relation(Teams, ({ many }) => ({
     edit.set("displayName", null);
     assert.deepEqual(edit.patch(), { displayName: null });
     await edit.save(db, { expected: { version: 2 } });
+    const NoSoftDelete = table("no_soft_delete", {
+        id: column.uuid().primaryKey(),
+        name: column.text().notNull(),
+    });
+    assert.throws(
+        () => NoSoftDelete.softDeleteById(db, "00000000-0000-4000-8000-000000000001"),
+        (error) => error.code === "SLOPPY_ORM_SOFT_DELETE_UNAVAILABLE",
+    );
 }
 
 {
@@ -300,6 +362,10 @@ relation(Teams, ({ many }) => ({
     assert.equal(Object.isFrozen(user.team), true);
     assert.equal(Object.hasOwn(user, "team__id"), false);
     assert.equal(db.calls.length, 1);
+    await assert.rejects(
+        () => orm.from(Users).include((u) => u.team).cursor(db),
+        (error) => error.code === "SLOPPY_ORM_CURSOR_INCLUDE_UNSUPPORTED",
+    );
 }
 
 {
@@ -328,10 +394,16 @@ relation(Teams, ({ many }) => ({
     assert.match(sqliteSql, /create index "ix_users_deletedAt" on "users" \("deletedAt"\);/u);
     const postgresSql = orm.migrations.script(Users, { provider: "postgres" });
     assert.match(postgresSql, /"id" uuid primary key/u);
+    assert.doesNotMatch(postgresSql, /"teamId" uuid not null references/u);
+    assert.match(postgresSql, /alter table "users" add constraint "fk_users_teamId_teams_id" foreign key \("teamId"\) references "teams" \("id"\);/u);
     const sqlServerSql = orm.migrations.script(Users, { provider: "sqlserver" });
     assert.match(sqlServerSql, /create table \[users\]/u);
-    assert.match(sqlServerSql, /references \[teams\] \(\[id\]\)/u);
+    assert.doesNotMatch(sqlServerSql, /\[teamId\] uniqueidentifier not null references/u);
+    assert.match(sqlServerSql, /alter table \[users\] add constraint \[fk_users_teamId_teams_id\] foreign key \(\[teamId\]\) references \[teams\] \(\[id\]\);/u);
     assert.match(sqlServerSql, /create index \[ix_users_deletedAt\] on \[users\] \(\[deletedAt\]\);/u);
+    const childFirstPostgresSql = orm.migrations.script([Users, Teams], { provider: "postgres" });
+    assert.ok(childFirstPostgresSql.indexOf('create table "teams"') < childFirstPostgresSql.indexOf('create table "users"'));
+    assert.ok(childFirstPostgresSql.indexOf('alter table "users" add constraint') > childFirstPostgresSql.indexOf('create table "users"'));
     assert.equal(orm.migrations.script(Users, { provider: "sqlite" }), goldenText("../golden/orm/sql/users-create.sqlite.sql"));
     assert.equal(postgresSql, goldenText("../golden/orm/sql/users-create.postgres.sql"));
     assert.equal(sqlServerSql, goldenText("../golden/orm/sql/users-create.sqlserver.sql"));
@@ -515,6 +587,37 @@ relation(Teams, ({ many }) => ({
 }
 
 {
+    const rows = new Map();
+    rows.set(
+        'select "t0"."id" as "id" from "users" "t0" where (lower("t0"."email") like lower(?))',
+        [{ id: "1" }],
+    );
+    const db = createFakeDb(rows);
+    const result = await orm
+        .from(Users)
+        .where((u) => u.email.ilike("ADA@EXAMPLE.COM"))
+        .select((u) => ({ id: u.id }))
+        .toList(db);
+    assert.deepEqual(result, [{ id: "1" }]);
+    assert.deepEqual(db.calls[0][2], ["ADA@EXAMPLE.COM"]);
+}
+
+{
+    const rows = new Map();
+    rows.set(
+        "select [t0].[id] as [id] from [users] [t0] where (lower([t0].[email]) like lower(?))",
+        [{ id: "1" }],
+    );
+    const db = createFakeDb(rows);
+    const result = await orm
+        .from(Users)
+        .where((u) => u.email.ilike("ADA@EXAMPLE.COM"))
+        .select((u) => ({ id: u.id }))
+        .toList(db, { provider: "sqlserver" });
+    assert.deepEqual(result, [{ id: "1" }]);
+}
+
+{
     const returned = [{
         id: "00000000-0000-4000-8000-000000000001",
         teamId: "00000000-0000-4000-8000-000000000002",
@@ -564,4 +667,8 @@ relation(Teams, ({ many }) => ({
     assert.deepEqual(rows, [{ id: "1" }]);
     assert.deepEqual(db.calls[0][2], ["ada@example.com"]);
     await assertRejectsMessage(() => orm.query(db, orm.sql.postgres`select 1`), /cannot run/);
+    await assert.rejects(
+        () => orm.from(Users).where((u, { sql }) => u.email.eq(sql.postgres`select email from users`)).toList(db),
+        (error) => error.code === "SLOPPY_ORM_PROVIDER_SQL_MISMATCH",
+    );
 }

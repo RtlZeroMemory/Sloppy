@@ -490,7 +490,7 @@ const properties = Object.freeze({
             added: column.int().default(0),
         });
         const diff = orm.migrations.diff(snapshot, Expanded, { provider: "sqlite" });
-        assert.match(diff.sql, /alter table/u);
+        assert.match(diff.sql, /\balter\s+table\b/iu);
         assert.equal(diff.destructive, false);
 
         const text = randomText(random, 16);

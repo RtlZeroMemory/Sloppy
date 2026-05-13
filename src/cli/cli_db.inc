@@ -585,6 +585,66 @@ static int sl_db_load_applied(SlArena* arena, SlSqliteConnection* connection,
     return 0;
 }
 
+static bool sl_db_sql_script_has_sql(const char* sql, size_t length)
+{
+    for (size_t index = 0U; index < length; index += 1U) {
+        char ch = sql[index];
+        if (ch != ' ' && ch != '\t' && ch != '\r' && ch != '\n') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static SlStatus sl_db_sqlite_transaction_exec_script(SlArena* arena, SlSqliteTransaction* tx,
+                                                     SlStr sql, SlSqliteExecResult* result)
+{
+    const char* text = sql.ptr;
+    size_t statement_start = 0U;
+    bool in_string = false;
+    char quote = '\0';
+
+    if (text == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    for (size_t index = 0U; index <= sql.length; index += 1U) {
+        bool at_end = index == sql.length;
+        char ch = '\0';
+        if (!at_end) {
+            ch = text[index];
+        }
+        if (!at_end && in_string) {
+            if (ch == quote) {
+                if (index + 1U < sql.length && text[index + 1U] == quote) {
+                    index += 1U;
+                }
+                else {
+                    in_string = false;
+                }
+            }
+            continue;
+        }
+        if (!at_end && (ch == '\'' || ch == '"')) {
+            in_string = true;
+            quote = ch;
+            continue;
+        }
+        if (at_end || ch == ';') {
+            size_t statement_length = index - statement_start;
+            if (sl_db_sql_script_has_sql(text + statement_start, statement_length)) {
+                SlStatus status = sl_sqlite_transaction_exec(
+                    arena, tx, sl_str_from_parts(text + statement_start, statement_length), NULL,
+                    0U, result, NULL);
+                if (!sl_status_is_ok(status)) {
+                    return status;
+                }
+            }
+            statement_start = index + 1U;
+        }
+    }
+    return sl_status_ok();
+}
+
 static int sl_db_apply_file(SlArena* arena, SlSqliteConnection* connection,
                             const SlCliDbMigrationFile* file)
 {
@@ -607,9 +667,8 @@ static int sl_db_apply_file(SlArena* arena, SlSqliteConnection* connection,
         sl_cli_write_cstr(stderr, "sloppy db: failed to begin migration transaction\n");
         return 1;
     }
-    status = sl_sqlite_transaction_exec(arena, &tx,
-                                        sl_str_from_parts((const char*)bytes.ptr, bytes.length),
-                                        NULL, 0U, &result, NULL);
+    status = sl_db_sqlite_transaction_exec_script(
+        arena, &tx, sl_str_from_parts((const char*)bytes.ptr, bytes.length), &result);
     if (!sl_status_is_ok(status)) {
         sl_sqlite_transaction_rollback(arena, &tx, NULL);
         sl_cli_write_error_with_value(
