@@ -173,6 +173,9 @@ const host = await TestHost.create(app, {
     providers: {
         main: TestData.sqliteMemory(),
     },
+    caches: {
+        main: Cache.memory({ maxEntries: 100 }),
+    },
 });
 ```
 
@@ -180,6 +183,8 @@ Config and secret overrides are visible through `ctx.config` during app-host
 requests. Service overrides are resolved before the app's service provider for
 matching tokens. Provider overrides are exposed under both the provider name
 and `data.<name>` service token.
+Cache overrides are exposed under `cache.<name>` service tokens and work with
+route `.outputCache(...)` in app-host tests.
 
 `FakeClock.fixed(...)` implements Sloppy's test clock shape for app-host code
 that accepts clock injection.

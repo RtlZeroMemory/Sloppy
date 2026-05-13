@@ -143,6 +143,7 @@ set(
     app.js
     auth.js
     bootstrap.manifest.json
+    cache.js
     codec.js
     config.js
     data.js

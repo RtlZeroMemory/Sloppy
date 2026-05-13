@@ -307,6 +307,36 @@ static void sl_cli_doctor_emit_workers(const SlCliOptions* options, SlArena* are
         sl_cli_span_cstr("worker doctor metadata omits payload and secret values"), emitted);
 }
 
+static void sl_cli_doctor_emit_cache(const SlCliOptions* options, SlArena* arena,
+                                     const SlCliMetadata* metadata, bool* emitted)
+{
+    bool has_cache_feature = sl_cli_metadata_requires_feature(metadata, "stdlib.cache");
+    bool has_output_cache = false;
+    bool has_cache_headers = false;
+
+    for (size_t index = 0U; index < metadata->route_count; index += 1U) {
+        has_output_cache = has_output_cache || metadata->routes[index].output_cache_value != NULL;
+        has_cache_headers = has_cache_headers || metadata->routes[index].cache_headers_value != NULL;
+    }
+
+    if (has_cache_feature) {
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.cache.required"),
+                           sl_cli_span_cstr("ok"),
+                           sl_cli_span_cstr("Cache feature metadata is Plan-visible"), emitted);
+    }
+    if (has_output_cache) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("route.output-cache.metadata"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("OutputCache route metadata is visible without raw cache keys"),
+            emitted);
+    }
+    if (has_cache_headers) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("route.cache-headers.metadata"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("cache header route metadata is visible"), emitted);
+    }
+}
+
 static void sl_cli_doctor_emit_ffi(const SlCliOptions* options, SlArena* arena,
                                    const SlCliMetadata* metadata, bool* emitted)
 {
@@ -793,6 +823,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
     sl_cli_doctor_emit_os_capabilities(options, arena, metadata, emitted);
     sl_cli_doctor_emit_http_clients(options, arena, metadata, emitted);
     sl_cli_doctor_emit_workers(options, arena, metadata, emitted);
+    sl_cli_doctor_emit_cache(options, arena, metadata, emitted);
     sl_cli_doctor_emit_ffi(options, arena, metadata, emitted);
     sl_cli_doctor_emit_config_requirements(options, arena, metadata, emitted);
     sl_cli_doctor_emit_auth(options, arena, metadata, emitted);

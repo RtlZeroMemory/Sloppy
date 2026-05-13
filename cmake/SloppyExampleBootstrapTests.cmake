@@ -121,6 +121,10 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_data_foundation.mjs")
         add_test(
+            NAME bootstrap.stdlib.cache_platform
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_cache_platform.mjs")
+        add_test(
             NAME bootstrap.stdlib.codec
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec.mjs")
         add_test(NAME bootstrap.stdlib.auth
@@ -159,7 +163,8 @@
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.testhost_process_modes
             bootstrap.stdlib.prealpha_control_plane_dogfood
             bootstrap.stdlib.modules
-            bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.auth
+            bootstrap.stdlib.data_foundation bootstrap.stdlib.cache_platform
+            bootstrap.stdlib.codec bootstrap.stdlib.auth
             bootstrap.stdlib.ops_management bootstrap.stdlib.ops_properties bootstrap.stdlib.property
             bootstrap.stdlib.os
             bootstrap.stdlib.http_client bootstrap.stdlib.workers bootstrap.stdlib.ffi

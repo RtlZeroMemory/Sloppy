@@ -3,4 +3,4 @@
    |
 1 | import Sloppy from "sloppy";
    |                    ^^^^^^^^
-hint: Use documented named imports from "sloppy", "sloppy/time", "sloppy/fs", "sloppy/crypto", "sloppy/codec", "sloppy/net", "sloppy/os", "sloppy/workers", or "sloppy/ffi"; Sloppy does not implement Node or npm resolution.
+hint: Use documented named imports from "sloppy", "sloppy/time", "sloppy/fs", "sloppy/crypto", "sloppy/codec", "sloppy/cache", "sloppy/net", "sloppy/os", "sloppy/workers", or "sloppy/ffi"; Sloppy does not implement Node or npm resolution.

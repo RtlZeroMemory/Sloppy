@@ -63,8 +63,13 @@ import {
     unsafeFfi,
 } from "../../stdlib/sloppy/ffi.js";
 import {
+    Cache as CacheSubpath,
+    SloppyCacheError,
+} from "../../stdlib/sloppy/cache.js";
+import {
     Auth,
     BackgroundService as RootBackgroundService,
+    Cache,
     Config,
     FakeClock,
     Health,
@@ -106,6 +111,7 @@ const documentedSubpathExports = {
         SloppyWorkerError,
     ],
     "sloppy/ffi": [t, unsafeFfi],
+    "sloppy/cache": [CacheSubpath, SloppyCacheError],
 };
 
 for (const [specifier, exports] of Object.entries(documentedSubpathExports)) {
@@ -115,6 +121,10 @@ for (const [specifier, exports] of Object.entries(documentedSubpathExports)) {
 }
 
 assert.equal(RootHttpClient, HttpClient);
+assert.equal(Cache, CacheSubpath);
+assert.equal(typeof Cache.memory, "function");
+assert.equal(typeof Cache.hybrid, "function");
+assert.equal(typeof Cache.token, "function");
 assert.equal(typeof Auth.jwtBearer, "function");
 assert.equal(typeof Auth.apiKey, "function");
 assert.equal(typeof Auth.cookieSession, "function");

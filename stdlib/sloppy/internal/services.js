@@ -6,6 +6,19 @@ function validateServiceToken(token) {
     }
 }
 
+function cacheServiceToken(name = "default") {
+    if (typeof name !== "string" || name.length === 0) {
+        throw new TypeError("Sloppy cache service name must be a non-empty string.");
+    }
+    return `cache.${name}`;
+}
+
+function validateCacheInstance(cache) {
+    if (cache === null || typeof cache !== "object" || cache.__sloppyCache !== true || typeof cache.stats !== "function") {
+        throw new TypeError("Sloppy services.addCache expects a Cache instance.");
+    }
+}
+
 function createServicesBuilder(guard) {
     const registrations = new Map();
     let currentModule = null;
@@ -35,6 +48,18 @@ function createServicesBuilder(guard) {
             };
 
             return addRegistration(token, registration);
+        },
+
+        addCache(cache, name = undefined) {
+            guard.assertMutable();
+            validateCacheInstance(cache);
+            const cacheName = name ?? cache.name ?? "default";
+            return addRegistration(cacheServiceToken(cacheName), {
+                lifetime: "singleton",
+                factory: null,
+                value: cache,
+                initialized: true,
+            });
         },
 
         addTransient(token, factory) {
@@ -402,6 +427,25 @@ function createServiceProvider(registrations, capabilities) {
         },
 
         createScope,
+
+        addCache(cache, name = undefined) {
+            validateCacheInstance(cache);
+            if (providerDisposed) {
+                throw new Error("Sloppy service provider is disposed.");
+            }
+            const token = cacheServiceToken(name ?? cache.name ?? "default");
+            if (registrations.has(token)) {
+                throw new Error(`Sloppy service '${token}' is already registered.`);
+            }
+            registrations.set(token, {
+                lifetime: "singleton",
+                factory: null,
+                value: cache,
+                initialized: true,
+            });
+            singletonDisposables.push(cache);
+            return provider;
+        },
 
         dispose() {
             if (providerDisposed) {

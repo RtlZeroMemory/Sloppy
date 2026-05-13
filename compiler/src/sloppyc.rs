@@ -267,6 +267,8 @@ struct RouteMetadata {
     query_schema: Option<String>,
     params_schema: Option<String>,
     openapi_override: Option<Value>,
+    output_cache: Option<Value>,
+    cache_headers: Option<Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -405,6 +407,7 @@ struct AppState {
     noncrypto_hash_security_context_visible: bool,
     codec_imported: bool,
     checksum_security_context_visible: bool,
+    cache_imported: bool,
     net_imported: bool,
     os_imported: bool,
     http_client_imported: bool,
@@ -469,6 +472,7 @@ impl AppState {
             noncrypto_hash_security_context_visible: false,
             codec_imported: false,
             checksum_security_context_visible: false,
+            cache_imported: false,
             net_imported: false,
             os_imported: false,
             http_client_imported: false,
@@ -1030,6 +1034,7 @@ struct ModuleGraph {
     noncrypto_hash_security_context_visible: bool,
     uses_codec_runtime: bool,
     checksum_security_context_visible: bool,
+    uses_cache_runtime: bool,
     uses_net_runtime: bool,
     uses_os_runtime: bool,
     uses_http_client_runtime: bool,
@@ -1080,6 +1085,7 @@ impl ModuleGraph {
             noncrypto_hash_security_context_visible: false,
             uses_codec_runtime: false,
             checksum_security_context_visible: false,
+            uses_cache_runtime: false,
             uses_net_runtime: false,
             uses_os_runtime: false,
             uses_http_client_runtime: false,
@@ -1568,6 +1574,7 @@ fn extract_program_with_metrics(
         noncrypto_hash_security_context_visible: graph.noncrypto_hash_security_context_visible,
         uses_codec_runtime: graph.uses_codec_runtime,
         checksum_security_context_visible: graph.checksum_security_context_visible,
+        uses_cache_runtime: graph.uses_cache_runtime,
         uses_net_runtime: graph.uses_net_runtime,
         uses_os_runtime: graph.uses_os_runtime,
         uses_http_client_runtime: graph.uses_http_client_runtime,
@@ -2384,6 +2391,7 @@ fn analyze_program_import(
         | resolver::ImportKind::SlopFilesystem
         | resolver::ImportKind::SlopCrypto
         | resolver::ImportKind::SlopCodec
+        | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
@@ -3076,6 +3084,7 @@ fn validate_program_stdlib_import(
         resolver::ImportKind::SlopTime => validate_module_sloppy_time_import(path, import),
         resolver::ImportKind::SlopCrypto => validate_module_sloppy_crypto_import(path, import),
         resolver::ImportKind::SlopCodec => validate_module_sloppy_codec_import(path, import),
+        resolver::ImportKind::SlopCache => validate_module_sloppy_cache_import(path, import),
         resolver::ImportKind::SlopNet => validate_module_sloppy_net_import(path, import),
         resolver::ImportKind::SlopOs => validate_module_sloppy_os_import(path, import),
         resolver::ImportKind::SlopWorkers => validate_module_sloppy_workers_import(path, import),
@@ -3574,6 +3583,7 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopFilesystem
         | resolver::ImportKind::SlopCrypto
         | resolver::ImportKind::SlopCodec
+        | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
@@ -3840,6 +3850,7 @@ fn program_reexport_require_expr(
         | resolver::ImportKind::SlopFilesystem
         | resolver::ImportKind::SlopCrypto
         | resolver::ImportKind::SlopCodec
+        | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
@@ -4017,6 +4028,7 @@ fn mark_program_import(
         resolver::ImportKind::SlopFilesystem => graph.uses_fs_runtime = true,
         resolver::ImportKind::SlopCrypto => graph.uses_crypto_runtime = true,
         resolver::ImportKind::SlopCodec => graph.uses_codec_runtime = true,
+        resolver::ImportKind::SlopCache => graph.uses_cache_runtime = true,
         resolver::ImportKind::SlopNet => {
             if let Some(specifiers) = &import.specifiers {
                 for specifier in specifiers {
@@ -4041,6 +4053,7 @@ fn mark_program_import(
             graph.uses_fs_runtime = true;
             graph.uses_crypto_runtime = true;
             graph.uses_codec_runtime = true;
+            graph.uses_cache_runtime = true;
             graph.uses_net_runtime = true;
             graph.uses_os_runtime = true;
             graph.uses_workers_runtime = true;
@@ -4167,7 +4180,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-                .with_hint("Use documented named imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"; Sloppy does not implement Node or npm resolution."));
+                .with_hint("Use documented named imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/cache\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"; Sloppy does not implement Node or npm resolution."));
     }
 
     if let Some((specifier, span)) = &state.unsupported_import_name {
@@ -4177,7 +4190,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-        .with_hint("Use documented imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"."));
+        .with_hint("Use documented imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/cache\", \"sloppy/net\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"."));
     }
 
     if !state.sloppy_imported {
@@ -4426,6 +4439,7 @@ fn extract_entry(
             }),
         checksum_security_context_visible: state.checksum_security_context_visible
             || graph.checksum_security_context_visible,
+        uses_cache_runtime: state.cache_imported || graph.uses_cache_runtime,
         uses_net_runtime: state.net_imported || graph.uses_net_runtime,
         uses_os_runtime: state.os_imported
             || graph.uses_os_runtime
@@ -4712,6 +4726,10 @@ fn sloppy_codec_import_name_supported(name: &str) -> bool {
     CODEC_EXPORTS.contains(&name)
 }
 
+fn sloppy_cache_import_name_supported(name: &str) -> bool {
+    matches!(name, "Cache" | "SloppyCacheError")
+}
+
 fn sloppy_net_import_name_supported(name: &str) -> bool {
     matches!(
         name,
@@ -4748,6 +4766,7 @@ enum SloppyStdlibImport {
     Time,
     Crypto,
     Codec,
+    Cache,
     Net,
     Os,
     Workers,
@@ -4761,6 +4780,7 @@ impl SloppyStdlibImport {
             "sloppy/time" => Some(Self::Time),
             "sloppy/crypto" => Some(Self::Crypto),
             "sloppy/codec" => Some(Self::Codec),
+            "sloppy/cache" => Some(Self::Cache),
             "sloppy/net" => Some(Self::Net),
             "sloppy/os" => Some(Self::Os),
             "sloppy/workers" => Some(Self::Workers),
@@ -4775,6 +4795,7 @@ impl SloppyStdlibImport {
             Self::Time => sloppy_time_import_name_supported(name),
             Self::Crypto => sloppy_crypto_import_name_supported(name),
             Self::Codec => sloppy_codec_import_name_supported(name),
+            Self::Cache => sloppy_cache_import_name_supported(name),
             Self::Net => sloppy_net_import_name_supported(name),
             Self::Os => sloppy_os_import_name_supported(name),
             Self::Workers => sloppy_workers_import_name_supported(name),
@@ -4960,6 +4981,18 @@ fn validate_module_sloppy_codec_import(
         import,
         "sloppy/codec",
         sloppy_codec_import_name_supported,
+    )
+}
+
+fn validate_module_sloppy_cache_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/cache",
+        sloppy_cache_import_name_supported,
     )
 }
 
@@ -5816,6 +5849,7 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
         SloppyStdlibImport::Time => state.time_imported = true,
         SloppyStdlibImport::Crypto => state.crypto_imported = true,
         SloppyStdlibImport::Codec => state.codec_imported = true,
+        SloppyStdlibImport::Cache => state.cache_imported = true,
         SloppyStdlibImport::Net => state.net_imported = true,
         SloppyStdlibImport::Os => state.os_imported = true,
         SloppyStdlibImport::Workers => state.workers_imported = true,
@@ -6183,6 +6217,8 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
         "Sloppy"
             | "Results"
             | "Auth"
+            | "Cache"
+            | "SloppyCacheError"
             | "Realtime"
             | "ProblemDetails"
             | "RequestId"
@@ -6812,6 +6848,8 @@ fn extract_expression_statement(
         query_schema: contract_metadata.query_schema.clone(),
         params_schema: contract_metadata.params_schema.clone(),
         openapi_override: contract_metadata.openapi_override.clone(),
+        output_cache: contract_metadata.output_cache.clone(),
+        cache_headers: contract_metadata.cache_headers.clone(),
         docs: None,
         health: None,
         middleware: route_middleware_metadata(&route_middleware),
@@ -8716,6 +8754,8 @@ fn static_asset_route(
         query_schema: None,
         params_schema: None,
         openapi_override: None,
+        output_cache: None,
+        cache_headers: None,
         docs: None,
         health: None,
         middleware: route_middleware_metadata(context.middleware),
@@ -10064,6 +10104,8 @@ fn app_map_controller_call(
             query_schema: contract_metadata.query_schema.clone(),
             params_schema: contract_metadata.params_schema.clone(),
             openapi_override: contract_metadata.openapi_override.clone(),
+            output_cache: contract_metadata.output_cache.clone(),
+            cache_headers: contract_metadata.cache_headers.clone(),
             docs: None,
             health: None,
             middleware,
@@ -10437,6 +10479,8 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
             query_schema: None,
             params_schema: None,
             openapi_override: None,
+            output_cache: None,
+            cache_headers: None,
             docs: None,
             health: None,
             middleware: route.middleware.clone(),
@@ -11917,6 +11961,8 @@ fn ops_route(
         query_schema: None,
         params_schema: None,
         openapi_override: None,
+        output_cache: None,
+        cache_headers: None,
         docs: None,
         health: None,
         middleware: route_middleware_metadata(context.middleware),
@@ -11988,6 +12034,8 @@ fn health_route(
         query_schema: None,
         params_schema: None,
         openapi_override: None,
+        output_cache: None,
+        cache_headers: None,
         docs: None,
         health: Some(HealthRouteMetadata {
             kind: spec.kind,
@@ -12330,6 +12378,8 @@ fn docs_route(input: DocsRouteInput<'_>) -> Result<Route, Diagnostic> {
         query_schema: None,
         params_schema: None,
         openapi_override: None,
+        output_cache: None,
+        cache_headers: None,
         docs: input.docs,
         health: None,
         middleware: route_middleware_metadata(input.middleware),
@@ -13042,6 +13092,13 @@ fn extract_relative_helper_import(
             }
             continue;
         }
+        if import_source == "sloppy/cache" {
+            validate_module_sloppy_cache_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_cache_runtime = true;
+            }
+            continue;
+        }
         if import_source == "sloppy/net" {
             validate_module_sloppy_net_import(&imported.path, import)?;
             if let Some(specifiers) = &import.specifiers {
@@ -13408,6 +13465,13 @@ fn extract_relative_module(
             validate_module_sloppy_codec_import(&imported.path, import)?;
             if import_has_runtime_value_specifier(import) {
                 graph.uses_codec_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/cache" {
+            validate_module_sloppy_cache_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_cache_runtime = true;
             }
             continue;
         }
@@ -14103,6 +14167,8 @@ fn extract_module_function_routes(
                     query_schema: contract_metadata.query_schema.clone(),
                     params_schema: contract_metadata.params_schema.clone(),
                     openapi_override: contract_metadata.openapi_override.clone(),
+                    output_cache: contract_metadata.output_cache.clone(),
+                    cache_headers: contract_metadata.cache_headers.clone(),
                     docs: None,
                     health: None,
                     middleware: Vec::new(),
@@ -14604,6 +14670,24 @@ fn route_metadata_chain<'a>(
                 }
                 current = &member.object;
             }
+            "outputCache" => {
+                if metadata.output_cache.is_none() {
+                    metadata.output_cache =
+                        Some(route_static_metadata_from_call(call, "outputCache")?);
+                }
+                current = &member.object;
+            }
+            "noOutputCache" => {
+                metadata.output_cache = None;
+                current = &member.object;
+            }
+            "cacheHeaders" => {
+                if metadata.cache_headers.is_none() {
+                    metadata.cache_headers =
+                        Some(route_static_metadata_from_call(call, "cacheHeaders")?);
+                }
+                current = &member.object;
+            }
             _ => break,
         }
     }
@@ -14691,6 +14775,12 @@ fn merged_route_metadata(options: &RouteMetadata, fluent: &RouteMetadata) -> Rou
     }
     if fluent.openapi_override.is_some() {
         merged.openapi_override = fluent.openapi_override.clone();
+    }
+    if fluent.output_cache.is_some() {
+        merged.output_cache = fluent.output_cache.clone();
+    }
+    if fluent.cache_headers.is_some() {
+        merged.cache_headers = fluent.cache_headers.clone();
     }
     merged
 }
@@ -15069,6 +15159,31 @@ fn route_openapi_override_from_call(call: &CallExpression<'_>) -> Result<Value, 
         .with_span(call.span));
     }
     Ok(value)
+}
+
+fn route_static_metadata_from_call(
+    call: &CallExpression<'_>,
+    method: &str,
+) -> Result<Value, Diagnostic> {
+    if call.arguments.len() != 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            format!("{method} requires exactly one options object"),
+        )
+        .with_span(call.span));
+    }
+    let Some(value) = call.arguments.first().and_then(argument_json_value) else {
+        return Ok(json!({
+            "static": false
+        }));
+    };
+    if value.is_object() {
+        Ok(value)
+    } else {
+        Ok(json!({
+            "static": false
+        }))
+    }
 }
 
 fn validate_route_schema_reference(
@@ -20168,6 +20283,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     if app.uses_codec_runtime {
         runtime_exports.extend(CODEC_EXPORTS.iter().copied());
     }
+    if app.uses_cache_runtime {
+        runtime_exports.extend(["Cache", "SloppyCacheError"]);
+    }
     if app.uses_net_runtime {
         runtime_exports.extend([
             "TcpClient",
@@ -21329,6 +21447,12 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
                     "kind": health.kind,
                     "checks": health.checks
                 });
+            }
+            if let Some(output_cache) = &route.output_cache {
+                route_json["outputCache"] = output_cache.clone();
+            }
+            if let Some(cache_headers) = &route.cache_headers {
+                route_json["cacheHeaders"] = cache_headers.clone();
             }
             if !route.middleware.is_empty() {
                 route_json["middleware"] = json!(route

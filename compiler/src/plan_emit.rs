@@ -774,6 +774,12 @@ pub(crate) fn emit_plan_with_route_artifact(
             if let Some(override_value) = &route.openapi_override {
                 route_json["openapi"] = override_value.clone();
             }
+            if let Some(output_cache) = &route.output_cache {
+                route_json["outputCache"] = output_cache.clone();
+            }
+            if let Some(cache_headers) = &route.cache_headers {
+                route_json["cacheHeaders"] = cache_headers.clone();
+            }
             if let Some(docs) = &route.docs {
                 route_json["docsInternal"] = json!(true);
                 route_json["docs"] = json!({
@@ -1650,6 +1656,33 @@ pub(crate) fn emit_plan_with_route_artifact(
         required_features.push("stdlib.codec".to_string());
         value["strongPlan"]["evidence"]["codec"] = json!(true);
         value["features"]["codec"] = json!(true);
+    }
+    let output_cache_routes = app
+        .routes
+        .iter()
+        .filter(|route| route.output_cache.is_some())
+        .map(|route| {
+            json!({
+                "method": route.method,
+                "pattern": route.pattern,
+                "cache": route.output_cache
+            })
+        })
+        .collect::<Vec<_>>();
+    if app.uses_cache_runtime || !output_cache_routes.is_empty() {
+        required_features.push("stdlib.cache".to_string());
+        value["strongPlan"]["evidence"]["cache"] = json!(true);
+        value["features"]["cache"] = json!(true);
+        value["cache"] = json!({
+            "enabled": true,
+            "staticMetadata": if output_cache_routes.is_empty() { "import-visible" } else { "route-visible" },
+            "outputCacheRoutes": output_cache_routes
+        });
+        doctor_checks.push(json!({
+            "id": "stdlib.cache.contract",
+            "status": "info",
+            "message": "Cache is Plan-visible; output cache route metadata is emitted when statically available"
+        }));
     }
     if app.uses_crypto_runtime && app.noncrypto_hash_security_context_visible {
         value["strongPlan"]["evidence"]["nonCryptoHashSecurityContext"] = json!(true);

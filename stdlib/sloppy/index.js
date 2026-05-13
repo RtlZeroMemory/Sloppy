@@ -1,5 +1,6 @@
 export { Router, Sloppy } from "./app.js";
 export { Auth } from "./auth.js";
+export { Cache, SloppyCacheError } from "./cache.js";
 export { Base64, Base64Url, Binary, Checksums, Compression, Hex, Text } from "./codec.js";
 export { Config } from "./config.js";
 export { ConstantTime, Hash, Hmac, NonCryptoHash, Password, Random, Secret } from "./crypto.js";

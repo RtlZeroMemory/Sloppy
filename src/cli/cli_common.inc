@@ -1489,8 +1489,9 @@ static unsigned char* sl_cli_scratch_plan_arena_storage(void)
 static SlCliMetadata* sl_cli_scratch_metadata(void)
 {
     static SlCliMetadata metadata;
+    static const SlCliMetadata empty_metadata;
 
-    metadata = (SlCliMetadata){0};
+    metadata = empty_metadata;
     return &metadata;
 }
 

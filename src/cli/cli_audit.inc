@@ -622,6 +622,50 @@ static void sl_cli_audit_workers(const SlCliOptions* options, const SlCliMetadat
                       "workers", findings, errors);
 }
 
+static void sl_cli_audit_cache(const SlCliOptions* options, const SlCliMetadata* metadata,
+                               size_t* findings, size_t* errors)
+{
+    bool has_cache_feature = sl_cli_metadata_requires_feature(metadata, "stdlib.cache");
+    bool has_output_cache = false;
+    bool has_cache_headers = false;
+    bool has_auth_output_cache = false;
+
+    for (size_t index = 0U; index < metadata->route_count; index += 1U) {
+        const SlCliRoute* route = &metadata->routes[index];
+        if (route->output_cache_value != NULL) {
+            has_output_cache = true;
+            if (route->auth_required) {
+                has_auth_output_cache = true;
+            }
+        }
+        if (route->cache_headers_value != NULL) {
+            has_cache_headers = true;
+        }
+    }
+
+    if (has_cache_feature) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_CACHE_PLAN_VISIBLE",
+                          "sloppy/cache is Plan-visible as stdlib.cache", "requiredFeatures",
+                          findings, errors);
+    }
+    if (has_output_cache) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_OUTPUT_CACHE_VISIBLE",
+                          "OutputCache route metadata is visible without raw cache keys",
+                          "routes.outputCache", findings, errors);
+    }
+    if (has_auth_output_cache) {
+        sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OUTPUT_CACHE_AUTH_ROUTE",
+                          "protected OutputCache routes must vary by user, role, claim, or bypass "
+                          "authenticated requests at runtime",
+                          "routes.outputCache", findings, errors);
+    }
+    if (has_cache_headers) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_CACHE_HEADERS_VISIBLE",
+                          "cache header route metadata is visible in OpenAPI extensions",
+                          "routes.cacheHeaders", findings, errors);
+    }
+}
+
 static void sl_cli_audit_ffi(const SlCliOptions* options, const SlCliMetadata* metadata,
                              size_t* findings, size_t* errors)
 {
@@ -752,6 +796,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     sl_cli_audit_os_features(options, metadata, &findings, &errors);
     sl_cli_audit_http_clients(options, metadata, &findings, &errors);
     sl_cli_audit_workers(options, metadata, &findings, &errors);
+    sl_cli_audit_cache(options, metadata, &findings, &errors);
     sl_cli_audit_ffi(options, metadata, &findings, &errors);
     sl_cli_audit_ops(options, metadata, &findings, &errors);
 

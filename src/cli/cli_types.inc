@@ -22,6 +22,8 @@ typedef struct SlCliRoute
     size_t produce_count;
     size_t header_count;
     yyjson_val* openapi_override_value;
+    yyjson_val* output_cache_value;
+    yyjson_val* cache_headers_value;
     size_t tag_count;
     size_t auth_scheme_count;
     size_t auth_scope_count;
@@ -46,6 +48,8 @@ typedef struct SlCliRoute
     SlCliSpan query_schema;
     SlCliSpan params_schema;
     SlCliSpan openapi_override;
+    SlCliSpan output_cache;
+    SlCliSpan cache_headers;
     SlCliSpan docs_kind;
     SlCliSpan auth_policy;
     SlCliSpan completeness;

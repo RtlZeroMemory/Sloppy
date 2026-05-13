@@ -1,0 +1,17 @@
+Sloppy Doctor
+
+[ok] bootstrap.assets: bootstrap runtime asset found
+[warn] engine.v8: V8 bridge disabled in this build; V8 runtime tests not run
+[warn] providers.live: live provider checks are not configured by default and no live DB was contacted
+[warn] package.runtime: package release status requires package smoke
+[ok] app.plan.parse: app plan parsed by native Plan v1 parser
+[ok] app.plan.routes: route metadata present
+[warn] app.plan.providers: provider metadata not present
+[warn] app.plan.capabilities: capability metadata not present
+[ok] stdlib.cache.required: Cache feature metadata is Plan-visible
+[ok] route.output-cache.metadata: OutputCache route metadata is visible without raw cache keys
+[ok] route.cache-headers.metadata: cache header route metadata is visible
+[ok] app.auth.schemes: auth scheme metadata is Plan-visible without secret values
+[ok] app.auth.protected-routes: protected route auth metadata is Plan-visible
+[ok] optimization.native-json-candidate: route has response metadata for future native JSON analysis
+[ok] stdlib.cache.contract: Cache feature metadata is Plan-visible; app-host cache execution depends on configured cache services and provider-backed cache bridges

@@ -29,6 +29,7 @@ Run native smoke/list checks locally:
 ```powershell
 .\tools\windows\bench.ps1 -List
 .\tools\windows\bench.ps1 -Smoke -Json
+node benchmarks/cache/cache_bench.mjs
 ```
 
 Run a measured local benchmark from a Release build:
@@ -78,6 +79,12 @@ uses the same Node-backed generator and compiler harness.
 Debug numbers are not meaningful. Smoke mode only validates the harness starts and each default
 benchmark path can execute a tiny iteration count; smoke output is not a performance
 conclusion. Use larger measured runs on the same machine for branch-to-branch comparisons.
+
+`benchmarks/cache/cache_bench.mjs` is a JavaScript app-host cache smoke
+benchmark. It measures memory hit/miss/set, cache-aside hit, same-process
+coalesced misses, and output cache hits. It reports local elapsed nanoseconds
+per operation only; it does not compare Sloppy to Redis, ASP.NET, Spring, or
+any external cache service.
 
 ## Methodology
 

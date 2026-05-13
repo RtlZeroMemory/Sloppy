@@ -6,6 +6,7 @@ import {
     normalizeAuthRequirement,
     snapshotAuthRequirement,
 } from "../auth.js";
+import { Cache, isCache, stableHash } from "../cache.js";
 import {
     createSseRouteHandler,
     createWebSocketRouteHandler,
@@ -23,6 +24,8 @@ const PREFLIGHT_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEA
 const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
 const ROUTE_PARAM_PATTERN = /^\{([A-Za-z_][0-9A-Za-z_]*)(?::(str|int|uuid|alpha|float))?\}$/u;
 const MEDIA_TYPE_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+\/[!#$%&'*+\-.^_`|~0-9A-Za-z]+(?:\s*;\s*[!#$%&'*+\-.^_`|~0-9A-Za-z]+=[!#$%&'*+\-.^_`|~0-9A-Za-z]+)*$/u;
+const DEFAULT_OUTPUT_CACHE_STATUS_CODES = Object.freeze([200, 203, 204]);
+const DEFAULT_OUTPUT_CACHE_MAX_BODY_BYTES = 1024 * 1024;
 
 function validatePattern(pattern) {
     if (typeof pattern !== "string" || pattern.length === 0 || !pattern.startsWith("/")) {
@@ -530,6 +533,270 @@ function mergeVary(existing, value) {
     return tokens.includes(value.toLowerCase()) ? existing : `${existing}, ${value}`;
 }
 
+function normalizeRouteStringList(value, subject, { lower = false, allowAll = false } = {}) {
+    if (value === undefined) {
+        return Object.freeze([]);
+    }
+    if (allowAll && value === "all") {
+        return "all";
+    }
+    if (!Array.isArray(value)) {
+        throw new TypeError(`Sloppy ${subject} must be an array${allowAll ? " or 'all'" : ""}.`);
+    }
+    const output = [];
+    for (const item of value) {
+        if (typeof item !== "string" || item.length === 0 || /[\x00-\x1F\x7F]/u.test(item)) {
+            throw new TypeError(`Sloppy ${subject} entries must be non-empty strings without control characters.`);
+        }
+        output.push(lower ? item.toLowerCase() : item);
+    }
+    return Object.freeze([...new Set(output)]);
+}
+
+function normalizeOutputCacheOptions(options) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy outputCache options must be a plain object.");
+    }
+    if (!Number.isInteger(options.ttlMs) || options.ttlMs < 1 || options.ttlMs > 0x7fffffff) {
+        throw new TypeError("Sloppy outputCache ttlMs must be an integer from 1 to 2147483647.");
+    }
+    const statusCodes = options.statusCodes === undefined ? DEFAULT_OUTPUT_CACHE_STATUS_CODES : options.statusCodes;
+    if (!Array.isArray(statusCodes) || statusCodes.length === 0 ||
+        !statusCodes.every((status) => Number.isInteger(status) && status >= 100 && status <= 599))
+    {
+        throw new TypeError("Sloppy outputCache statusCodes must be a non-empty array of HTTP status codes.");
+    }
+    const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_OUTPUT_CACHE_MAX_BODY_BYTES;
+    if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 0) {
+        throw new TypeError("Sloppy outputCache maxBodyBytes must be a non-negative integer.");
+    }
+    if (options.allowAuthenticated === true &&
+        options.varyByUser !== true &&
+        options.varyByRole !== true &&
+        options.varyByClaim === undefined)
+    {
+        throw new TypeError("Sloppy outputCache allowAuthenticated requires varyByUser, varyByRole, or varyByClaim.");
+    }
+    if (options.tags !== undefined && typeof options.tags !== "function" && !Array.isArray(options.tags)) {
+        throw new TypeError("Sloppy outputCache tags must be an array or function.");
+    }
+    return Object.freeze({
+        ttlMs: options.ttlMs,
+        cacheName: options.cacheName ?? "default",
+        varyByQuery: normalizeRouteStringList(options.varyByQuery, "outputCache varyByQuery", { allowAll: true }),
+        varyByHeader: normalizeRouteStringList(options.varyByHeader, "outputCache varyByHeader", { lower: true }),
+        varyByRouteParams: normalizeRouteStringList(options.varyByRouteParams, "outputCache varyByRouteParams"),
+        varyByUser: options.varyByUser === true,
+        varyByClaim: normalizeRouteStringList(options.varyByClaim, "outputCache varyByClaim"),
+        varyByRole: options.varyByRole === true,
+        tags: options.tags,
+        statusCodes: Object.freeze([...new Set(statusCodes)]),
+        maxBodyBytes,
+        allowSetCookie: options.allowSetCookie === true,
+        allowAuthenticated: options.allowAuthenticated === true || options.varyByUser === true ||
+            options.varyByRole === true || options.varyByClaim !== undefined,
+    });
+}
+
+function normalizeCacheHeaderOptions(options) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy cacheHeaders options must be a plain object.");
+    }
+    if (options.cacheControl !== undefined && (typeof options.cacheControl !== "string" || options.cacheControl.length === 0)) {
+        throw new TypeError("Sloppy cacheHeaders cacheControl must be a non-empty string.");
+    }
+    if (options.vary !== undefined && !Array.isArray(options.vary)) {
+        throw new TypeError("Sloppy cacheHeaders vary must be an array.");
+    }
+    return Object.freeze({
+        cacheControl: options.cacheControl,
+        vary: options.vary === undefined ? Object.freeze([]) : normalizeRouteStringList(options.vary, "cacheHeaders vary"),
+        etag: options.etag === true,
+        lastModified: options.lastModified,
+    });
+}
+
+function appendResponseHeaders(result, headers) {
+    if (result === null || typeof result !== "object") {
+        return result;
+    }
+    return Object.freeze({
+        ...result,
+        headers: Object.freeze({
+            ...(isPlainObject(result.headers) ? result.headers : {}),
+            ...headers,
+        }),
+    });
+}
+
+function resultBodySize(result) {
+    if (result?.body === undefined) {
+        return 0;
+    }
+    if (typeof result.body === "string") {
+        return result.body.length;
+    }
+    if (result.body instanceof Uint8Array) {
+        return result.body.byteLength;
+    }
+    return JSON.stringify(result.body).length;
+}
+
+function outputCacheBypassReason(result, options, context, routeInfo) {
+    const method = context.request?.method ?? routeInfo.method;
+    if (method !== "GET" && method !== "HEAD") {
+        return "method";
+    }
+    if (routeInfo.auth !== undefined && options.allowAuthenticated !== true) {
+        return "auth-unsafe";
+    }
+    if (result?.__sloppyResult !== true) {
+        return "unsupported-result";
+    }
+    if (result.kind === "stream") {
+        return "streaming";
+    }
+    if (!options.statusCodes.includes(result.status)) {
+        return "status";
+    }
+    if (Array.isArray(result.setCookies) && result.setCookies.length !== 0 && options.allowSetCookie !== true) {
+        return "set-cookie";
+    }
+    if (resultBodySize(result) > options.maxBodyBytes) {
+        return "body-too-large";
+    }
+    return undefined;
+}
+
+function outputCachePartition(options, context) {
+    const parts = [];
+    if (options.varyByUser) {
+        const sub = context.user?.sub ?? context.user?.id;
+        if (typeof sub !== "string" || sub.length === 0) {
+            throw new Error("Sloppy outputCache varyByUser requires an authenticated user subject.");
+        }
+        parts.push(["user", stableHash(sub)]);
+    }
+    if (options.varyByRole) {
+        const roles = Array.isArray(context.user?.roles) ? context.user.roles : [];
+        parts.push(["roles", roles.map(String).sort().join(",")]);
+    }
+    for (const claim of options.varyByClaim) {
+        const value = typeof context.user?.claim === "function" ? context.user.claim(claim) : context.user?.claims?.[claim];
+        parts.push([`claim:${claim}`, stableHash(String(value ?? ""))]);
+    }
+    return parts;
+}
+
+function outputCacheKey(options, context, routeInfo) {
+    const query = context.query ?? {};
+    const queryParts = options.varyByQuery === "all"
+        ? Object.entries(query).sort(([left], [right]) => left.localeCompare(right))
+        : options.varyByQuery.map((name) => [name, query[name] ?? ""]);
+    const headerParts = options.varyByHeader.map((name) => [name, getRequestHeader(context, name) ?? ""]);
+    const routeParts = options.varyByRouteParams.map((name) => [name, context.route?.[name] ?? ""]);
+    return `output:${stableHash(JSON.stringify({
+        method: context.request?.method ?? routeInfo.method,
+        route: routeInfo.pattern,
+        query: queryParts,
+        headers: headerParts,
+        params: routeParts,
+        partition: outputCachePartition(options, context),
+    }))}`;
+}
+
+function outputCacheTags(options, context, routeInfo) {
+    const source = typeof options.tags === "function" ? options.tags(context) : options.tags;
+    const tags = Array.isArray(source) ? source : [];
+    return Object.freeze([`route:${routeInfo.pattern}`, ...tags]);
+}
+
+function recordOutputCacheDiagnostic(context, code, fields = {}) {
+    context.diagnostics?.record?.({
+        code,
+        subsystem: "output-cache",
+        severity: code.endsWith("BYPASS") ? "debug" : "info",
+        fields,
+    });
+}
+
+function recordOutputCacheMetric(context, labels) {
+    const metrics = context.metrics;
+    if (metrics === undefined || metrics === null) {
+        return;
+    }
+    const safeLabels = Object.freeze({
+        route: labels.route,
+        outcome: labels.outcome,
+        reason: labels.reason ?? "",
+        statusClass: labels.statusClass ?? "",
+    });
+    try {
+        if (typeof metrics.increment === "function") {
+            metrics.increment("output_cache.requests.total", safeLabels);
+            return;
+        }
+        metrics.counter?.("output_cache.requests.total", {
+            description: "Output cache requests by route pattern and outcome.",
+        })?.inc(safeLabels);
+    } catch {
+        // Metrics must not change route behavior.
+    }
+}
+
+async function invokeWithOutputCache(context, routeInfo, outputCache, handler) {
+    const cache = context.services?.tryGet?.(Cache.token(outputCache.cacheName));
+    if (!isCache(cache)) {
+        throw new Error(`Sloppy outputCache cache '${outputCache.cacheName}' is not registered.`);
+    }
+    if (routeInfo.auth !== undefined && outputCache.allowAuthenticated !== true) {
+        recordOutputCacheDiagnostic(context, "SLOPPY_OUTPUT_CACHE_BYPASS", { reason: "auth-unsafe", route: routeInfo.pattern });
+        return appendResponseHeaders(await handler(), { "X-Sloppy-Output-Cache": "BYPASS" });
+    }
+    const key = outputCacheKey(outputCache, context, routeInfo);
+    const cached = await cache.get(key);
+    if (cached !== undefined) {
+        recordOutputCacheMetric(context, { route: routeInfo.pattern, outcome: "hit", statusClass: `${Math.trunc(cached.status / 100)}xx` });
+        recordOutputCacheDiagnostic(context, "SLOPPY_OUTPUT_CACHE_HIT", { route: routeInfo.pattern, keyHash: stableHash(key) });
+        return appendResponseHeaders(cached, { "X-Sloppy-Output-Cache": "HIT" });
+    }
+    const result = await handler();
+    const reason = outputCacheBypassReason(result, outputCache, context, routeInfo);
+    if (reason !== undefined) {
+        recordOutputCacheMetric(context, { route: routeInfo.pattern, outcome: "bypass", reason, statusClass: result?.status === undefined ? "" : `${Math.trunc(result.status / 100)}xx` });
+        recordOutputCacheDiagnostic(context, "SLOPPY_OUTPUT_CACHE_BYPASS", { route: routeInfo.pattern, reason });
+        return appendResponseHeaders(result, { "X-Sloppy-Output-Cache": "BYPASS" });
+    }
+    await cache.set(key, result, {
+        ttlMs: outputCache.ttlMs,
+        tags: outputCacheTags(outputCache, context, routeInfo),
+    });
+    recordOutputCacheMetric(context, { route: routeInfo.pattern, outcome: "miss", statusClass: `${Math.trunc(result.status / 100)}xx` });
+    recordOutputCacheDiagnostic(context, "SLOPPY_OUTPUT_CACHE_MISS", { route: routeInfo.pattern, keyHash: stableHash(key) });
+    return appendResponseHeaders(result, { "X-Sloppy-Output-Cache": "MISS" });
+}
+
+function applyCacheHeaders(result, options) {
+    const headers = {};
+    if (options.cacheControl !== undefined) {
+        headers["Cache-Control"] = options.cacheControl;
+    }
+    for (const value of options.vary) {
+        const current = headers.Vary ?? result?.headers?.Vary ?? result?.headers?.vary;
+        headers.Vary = mergeVary(current, value);
+    }
+    if (options.lastModified !== undefined) {
+        const date = options.lastModified instanceof Date ? options.lastModified : new Date(options.lastModified);
+        if (Number.isFinite(date.getTime())) {
+            headers["Last-Modified"] = date.toUTCString();
+        }
+    }
+    if (options.etag) {
+        headers.ETag = `"${stableHash(JSON.stringify(result?.body ?? ""))}"`;
+    }
+    return appendResponseHeaders(result, headers);
+}
+
 function appendCorsHeaders(result, policy, context) {
     if (policy === null) {
         return result;
@@ -798,7 +1065,13 @@ function createRouteHandler(host, handler, middleware = [], corsPolicy = null, r
         if (denied !== undefined) {
             return denied;
         }
-        return handler(ctx);
+        const output = routeInfo.outputCache === undefined
+            ? handler(ctx)
+            : invokeWithOutputCache(ctx, routeInfo, routeInfo.outputCache, () => handler(ctx));
+        if (routeInfo.cacheHeaders === undefined) {
+            return output;
+        }
+        return Promise.resolve(output).then((result) => applyCacheHeaders(result, routeInfo.cacheHeaders));
     }
 
     function routeHandler(context) {
@@ -1220,6 +1493,26 @@ function createEndpointBuilder(route, assertAppMutable) {
             route.metadata.openapi = cloneFrozenJson(override, "endpoint OpenAPI override");
             return endpoint;
         },
+        outputCache(options) {
+            assertAppMutable();
+            const normalized = normalizeOutputCacheOptions(options);
+            route.metadata.outputCache = normalized;
+            route.routeInfo.outputCache = normalized;
+            return endpoint;
+        },
+        noOutputCache() {
+            assertAppMutable();
+            route.metadata.outputCache = undefined;
+            route.routeInfo.outputCache = undefined;
+            return endpoint;
+        },
+        cacheHeaders(options) {
+            assertAppMutable();
+            const normalized = normalizeCacheHeaderOptions(options);
+            route.metadata.cacheHeaders = normalized;
+            route.routeInfo.cacheHeaders = normalized;
+            return endpoint;
+        },
     };
 
     return Object.freeze(endpoint);
@@ -1368,6 +1661,8 @@ function registerRoute(
         pattern: args.pattern,
         name: typeof args.metadata?.name === "string" ? args.metadata.name : null,
         auth: metadata.auth,
+        outputCache: metadata.outputCache,
+        cacheHeaders: metadata.cacheHeaders,
         kind,
         urlFor(name, params = {}, query = undefined) {
             return urlForRoute(routes, name, params, query);
