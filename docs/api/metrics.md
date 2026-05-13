@@ -1,0 +1,105 @@
+# Metrics
+
+`Metrics` provides first-party counters, gauges, histograms, timers, JSON
+snapshots, and Prometheus text output.
+
+```ts
+import { Metrics } from "sloppy";
+
+const orders = Metrics.counter("orders_created_total");
+orders.inc();
+
+const queueDepth = Metrics.gauge("queue_depth");
+queueDepth.set(42);
+
+const dbQuery = Metrics.histogram("db_query_ms", { buckets: [1, 5, 10, 50, 100] });
+dbQuery.observe({ provider: "sqlite" }, 12.5);
+```
+
+## Registry
+
+`Metrics.createRegistry()` creates an isolated registry. The top-level
+`Metrics.counter`, `Metrics.gauge`, `Metrics.histogram`, and `Metrics.timer`
+helpers use the default registry.
+
+Counters are monotonic. Gauges support `set`, `inc`, and `dec`. Histograms
+support `observe`, `timer`, and `measure`.
+
+```ts
+const registry = Metrics.createRegistry();
+const duration = registry.histogram("handler_duration_ms");
+
+await duration.measure(async () => {
+    await handleRequest();
+}, { route: "/orders/{id}" });
+```
+
+## Labels
+
+Labels must have stable names and bounded values. Each metric has a
+`maxLabelSets` guard, defaulting to 128. When a metric exceeds its labelset
+limit, the registry drops the new labelset and increments
+`sloppy_metrics_cardinality_drops_total` in Prometheus output.
+
+Route metrics use route patterns such as `/orders/{id}`, not raw request paths.
+Do not place user IDs, request IDs, tokens, cookies, raw URLs, or SQL parameter
+values in labels.
+
+## Output
+
+`registry.snapshot()` returns deterministic JSON data:
+
+```json
+{
+  "metrics": [
+    {
+      "name": "orders_created_total",
+      "type": "counter",
+      "description": "",
+      "series": [
+        { "labels": {}, "value": 1 }
+      ]
+    }
+  ],
+  "cardinalityDrops": 0
+}
+```
+
+`registry.renderPrometheus()` returns Prometheus text format with `HELP` and
+`TYPE` lines. Dots and dashes in Sloppy metric names are rendered as underscores
+for Prometheus compatibility.
+
+The app test host records built-in HTTP metrics for matched routes:
+
+- `http.requests.total`
+- `http.requests.active`
+- `http.route.hits`
+- `http.request.bytes`
+- `http.request.duration.ms`
+- `http.response.bytes`
+- `http.status.total`
+- `http.errors.total`
+
+The native dispatch path records the same low-cardinality route-pattern
+counters through `SlOpsMetricsRegistry` when a dispatch table is configured
+with a registry. Native labels use the compiled route pattern, not the raw
+request target.
+
+Management metrics refresh safe runtime gauges before rendering:
+
+- `runtime.uptime.seconds`
+- `runtime.memory.rss.bytes`
+- `runtime.memory.heap.bytes`
+- `runtime.shutdown.state`
+- `routing.route_table.size`
+
+Provider executors can publish safe database/provider counters and gauges into
+the native registry:
+
+- `db.query.total`
+- `db.query.errors`
+- `db.timeouts`
+- `db.pool.active`
+- `db.pool.idle`
+- `db.pool.exhausted`
+- `db.queue.depth`

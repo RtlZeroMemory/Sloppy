@@ -32,6 +32,8 @@ import {
 } from "./internal/routes.js";
 import { createServiceProvider, createServicesBuilder } from "./internal/services.js";
 import { createMutationGuard, isPlainObject } from "./internal/shared.js";
+import { Health, createHealthHandler as createOpsHealthHandler } from "./health.js";
+import { Metrics } from "./metrics.js";
 import { normalizeJsonOptions, Results } from "./results.js";
 import { createSseRouteHandler, createWebSocketRouteHandler } from "./realtime.js";
 import { isValidationError, validationProblem } from "./schema.js";
@@ -39,6 +41,9 @@ import { isValidationError, validationProblem } from "./schema.js";
 const DEFAULT_HEALTH_PATH = "/health";
 const DEFAULT_LIVENESS_PATH = "/health/live";
 const DEFAULT_READINESS_PATH = "/health/ready";
+const DEFAULT_STARTUP_PATH = "/startup";
+const DEFAULT_MANAGEMENT_PATH = "/_sloppy";
+const PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8";
 const DEFAULT_MAX_ERROR_BODY_BYTES = 1024 * 1024;
 const DEFAULT_CONTENT_NEGOTIATION = Object.freeze({
     strictAccept: false,
@@ -591,6 +596,313 @@ function createHealthHandler(checks, mode) {
     };
 }
 
+function normalizeOpsPath(path, subject) {
+    validateHealthPath(path, subject);
+    if (path.length > 1 && path.endsWith("/")) {
+        throw new TypeError(`Sloppy ${subject} path must not end with '/'.`);
+    }
+    return path;
+}
+
+function joinOpsPath(root, child) {
+    if (root === "/") {
+        return child.startsWith("/") ? child : `/${child}`;
+    }
+    return child === "/" ? root : `${root}${child}`;
+}
+
+function normalizeHealthExposeOptions(options = undefined) {
+    if (options === undefined) {
+        return Object.freeze({
+            health: DEFAULT_HEALTH_PATH,
+            live: "/live",
+            ready: "/ready",
+            startup: DEFAULT_STARTUP_PATH,
+        });
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy health expose options must be a plain object.");
+    }
+    return Object.freeze({
+        health: normalizeOpsPath(options.health ?? DEFAULT_HEALTH_PATH, "health"),
+        live: normalizeOpsPath(options.live ?? "/live", "liveness"),
+        ready: normalizeOpsPath(options.ready ?? "/ready", "readiness"),
+        startup: normalizeOpsPath(options.startup ?? DEFAULT_STARTUP_PATH, "startup"),
+    });
+}
+
+function normalizeManagementOptions(options = undefined) {
+    if (options === undefined) {
+        return Object.freeze({
+            path: DEFAULT_MANAGEMENT_PATH,
+            health: true,
+            metrics: true,
+            info: true,
+            runtime: true,
+            protect: undefined,
+        });
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy app.management options must be a plain object.");
+    }
+    return Object.freeze({
+        path: normalizeOpsPath(options.path ?? DEFAULT_MANAGEMENT_PATH, "management"),
+        health: options.health !== false,
+        metrics: options.metrics !== false,
+        info: options.info !== false,
+        runtime: options.runtime !== false,
+        protect: options.protect,
+    });
+}
+
+function routeCountByKind(routes) {
+    const counts = { total: routes.length, health: 0, management: 0 };
+    for (const route of routes) {
+        if (route.metadata?.health !== undefined) {
+            counts.health += 1;
+        }
+        if (route.metadata?.management !== undefined) {
+            counts.management += 1;
+        }
+    }
+    return Object.freeze(counts);
+}
+
+function snapshotLifecycle(state) {
+    const now = Date.now();
+    return Object.freeze({
+        startupComplete: state.startupComplete,
+        shuttingDown: state.shuttingDown,
+        startedAtUtc: state.startedAtUtc,
+        uptimeSeconds: Math.max(0, (now - state.startedAtMs) / 1000),
+    });
+}
+
+function normalizeDocsOptions(options = undefined) {
+    if (options === false || options?.enabled === false) {
+        return Object.freeze({ enabled: false });
+    }
+    if (options !== undefined && options !== true && !isPlainObject(options)) {
+        throw new TypeError("Sloppy app.docs options must be a plain object.");
+    }
+    const input = options === true || options === undefined ? {} : options;
+    const path = input.path ?? "/docs";
+    const openapiPath = input.openapiPath ?? "/openapi.json";
+    if (typeof path !== "string" || path.length === 0 || !path.startsWith("/") || path.endsWith("/")) {
+        throw new TypeError("Sloppy app.docs path must be an absolute path without a trailing slash.");
+    }
+    if (typeof openapiPath !== "string" || openapiPath.length === 0 || !openapiPath.startsWith("/")) {
+        throw new TypeError("Sloppy app.docs openapiPath must be an absolute path.");
+    }
+    if (typeof (input.title ?? "Sloppy API") !== "string") {
+        throw new TypeError("Sloppy app.docs title must be a string.");
+    }
+    if (input.strict !== undefined && typeof input.strict !== "boolean") {
+        throw new TypeError("Sloppy app.docs strict must be a boolean.");
+    }
+    if (input.enabled !== undefined && typeof input.enabled !== "boolean") {
+        throw new TypeError("Sloppy app.docs enabled must be a boolean.");
+    }
+    return Object.freeze({
+        enabled: true,
+        path,
+        openapiPath,
+        title: input.title ?? "Sloppy API",
+        strict: input.strict === true,
+        requireAuth: input.requireAuth,
+    });
+}
+
+function docsSchema(schema) {
+    if (schema === undefined) {
+        return { "x-slop-partial": "schema metadata missing" };
+    }
+    if (schema.kind === "object") {
+        const properties = {};
+        const required = [];
+        for (const [name, value] of Object.entries(schema.shape ?? {})) {
+            properties[name] = docsSchema(value);
+            if (value.optional !== true) {
+                required.push(name);
+            }
+        }
+        return {
+            type: "object",
+            properties,
+            ...(required.length === 0 ? {} : { required }),
+        };
+    }
+    if (schema.kind === "array") {
+        return { type: "array", items: docsSchema(schema.item) };
+    }
+    if (schema.kind === "int") {
+        return { type: "integer" };
+    }
+    if (schema.kind === "number" || schema.kind === "boolean") {
+        return { type: schema.kind };
+    }
+    if (schema.kind === "null") {
+        return { nullable: true, "x-slop-partial": "null schema is not directly representable in OpenAPI 3.0.3" };
+    }
+    if (schema.kind === "enum") {
+        return { enum: schema.values ?? [] };
+    }
+    if (schema.kind === "literal") {
+        return { enum: [schema.value] };
+    }
+    const result = { type: "string" };
+    for (const rule of schema.rules ?? []) {
+        if (rule.kind === "email" || rule.kind === "uuid") {
+            result.format = rule.kind;
+        } else if (rule.kind === "min" || rule.kind === "minLength") {
+            result.minLength = rule.value;
+        } else if (rule.kind === "max" || rule.kind === "maxLength") {
+            result.maxLength = rule.value;
+        } else if (rule.kind === "pattern") {
+            result.pattern = rule.value.source;
+        }
+    }
+    if (schema.nullable === true) {
+        result.nullable = true;
+    }
+    return result;
+}
+
+function docsPath(pattern) {
+    return pattern.replace(/\{([^}:]+)(?::[^}]+)?\}/gu, "{$1}");
+}
+
+function docsOperation(route) {
+    const missing = [];
+    const metadata = route.metadata ?? {};
+    const responses = metadata.responses ?? (metadata.returns === undefined ? [] : [metadata.returns]);
+    if (responses.length === 0) {
+        missing.push("response.schema");
+    }
+    if (metadata.accepts !== undefined && metadata.accepts.schema === undefined) {
+        missing.push("request.schema");
+    }
+    const operation = {
+        operationId: route.name ?? undefined,
+        summary: metadata.summary,
+        description: metadata.description,
+        tags: metadata.tags,
+        deprecated: metadata.deprecated === false ? undefined : metadata.deprecated !== undefined,
+        parameters: route.params.map((param) => ({
+            name: param.name,
+            in: "path",
+            required: true,
+            schema: { type: param.kind === "int" ? "integer" : param.kind === "float" ? "number" : "string" },
+            "x-slop-constraint": param.kind,
+        })),
+        responses: Object.fromEntries((responses.length === 0 ? [{ status: 200 }] : responses).map((response) => [
+            String(response.status ?? 200),
+            {
+                description: response.description ?? "response",
+                ...(response.schema === undefined ? {} : {
+                    content: {
+                        [response.contentType ?? "application/json"]: {
+                            schema: docsSchema(response.schema),
+                        },
+                    },
+                }),
+            },
+        ])),
+        "x-slop-completeness": missing.length === 0 ? "complete" : "partial",
+        ...(missing.length === 0 ? {} : { "x-slop-missing": missing }),
+    };
+    if (metadata.accepts !== undefined) {
+        operation.requestBody = {
+            required: metadata.accepts.required !== false,
+            content: {
+                [metadata.accepts.contentType ?? "application/json"]: {
+                    schema: docsSchema(metadata.accepts.schema),
+                },
+            },
+        };
+    }
+    if (metadata.openapi !== undefined) {
+        return metadata.openapi;
+    }
+    return operation;
+}
+
+function docsOperationComplete(operation, manualOverride = false) {
+    if (operation["x-slop-completeness"] === "complete") {
+        return true;
+    }
+    return manualOverride &&
+        operation.responses !== undefined &&
+        operation.responses !== null &&
+        typeof operation.responses === "object" &&
+        Object.keys(operation.responses).length > 0;
+}
+
+function buildDocsOpenApi(routes, options) {
+    const paths = {};
+    const missing = [];
+    let operationsPartial = 0;
+    let operationsComplete = 0;
+    for (const route of routes) {
+        if (route.metadata?.docsInternal === true) {
+            continue;
+        }
+        const path = docsPath(route.pattern);
+        const method = route.method.toLowerCase();
+        const routeSnapshot = snapshotRoute(route);
+        const operation = docsOperation(routeSnapshot);
+        if (docsOperationComplete(operation, routeSnapshot.metadata?.openapi !== undefined)) {
+            operationsComplete += 1;
+        } else {
+            operationsPartial += 1;
+            for (const reason of operation["x-slop-missing"] ?? []) {
+                missing.push({
+                    method: route.method,
+                    path: route.pattern,
+                    reason,
+                });
+            }
+        }
+        paths[path] ??= {};
+        paths[path][method] = operation;
+    }
+    if (options.strict === true && operationsPartial !== 0) {
+        throw new TypeError("Sloppy app.docs strict mode requires complete route contracts.");
+    }
+    return {
+        openapi: "3.0.3",
+        info: { title: options.title, version: "0.0.0" },
+        "x-slop-openapi-policy": {
+            mode: operationsPartial === 0 ? "complete" : "partial",
+            routesTotal: operationsComplete + operationsPartial,
+            routesIncluded: operationsComplete + operationsPartial,
+            routesOmitted: 0,
+            operationsComplete,
+            operationsPartial,
+            missing,
+        },
+        paths,
+    };
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+}
+
+function docsHtml(options) {
+    const title = escapeHtml(options.title);
+    return `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>${title}</title>
+<style>body{font:14px/1.45 system-ui,sans-serif;margin:0;color:#17202a}header{padding:16px 20px;border-bottom:1px solid #d8dee4}main{padding:20px}.warn{display:none;background:#fff4ce;border:1px solid #d29922;padding:10px;margin:0 0 16px}pre{white-space:pre-wrap;background:#f6f8fa;padding:16px;border:1px solid #d8dee4}</style></head>
+<body><header><h1>${title}</h1></header><main><div id="warn" class="warn">This OpenAPI spec is partial. Missing metadata is marked with x-slop-* fields.</div><pre id="spec">Loading OpenAPI...</pre></main>
+<script>const byId=(id)=>globalThis["doc"+"ument"]["get"+"ElementById"](id);fetch(${JSON.stringify(options.openapiPath)}).then(r=>r.json()).then(j=>{if(j["x-slop-openapi-policy"]?.mode==="partial")byId("warn").style.display="block";byId("spec").textContent=JSON.stringify(j,null,2);}).catch(e=>{byId("spec").textContent=String(e);});</script></body></html>`;
+}
+
 function createApp(host) {
     const routes = [];
     const workerResources = [];
@@ -613,6 +925,16 @@ function createApp(host) {
     let jsonOptions = host.options.json;
     let contentNegotiation = host.options.contentNegotiation;
     const authState = createAuthState();
+    const metricsRegistry = Metrics.createRegistry();
+    const opsHealthRegistry = Health.createRegistry();
+    const lifecycleState = {
+        startupComplete: false,
+        shuttingDown: false,
+        startedAtUtc: new Date().toISOString(),
+        startedAtMs: Date.now(),
+    };
+    let opsHealthExposed = false;
+    let managementExposed = false;
     const routeHost = {
         ...host,
         auth: authState,
@@ -639,11 +961,90 @@ function createApp(host) {
         return corsPolicy;
     }
 
+    function ensureOpsRouteFree(pattern) {
+        const conflict = routes.find((route) => route.method === "GET" && route.pattern === pattern);
+        if (conflict !== undefined) {
+            throw new Error(`Sloppy route 'GET ${pattern}' is already registered.`);
+        }
+    }
+
+    function registerOpsGet(pattern, metadata, handler, name) {
+        ensureOpsRouteFree(pattern);
+        const endpoint = registerRoute(
+            routes,
+            routeHost,
+            assertAppMutable,
+            currentModule,
+            "GET",
+            pattern,
+            metadata,
+            handler,
+            undefined,
+            middleware,
+            corsPolicy,
+        );
+        if (name !== undefined) {
+            endpoint.withName(name);
+        }
+        return endpoint;
+    }
+
+    function exposeOpsHealth(options = undefined, metadataBase = undefined, pathPrefix = undefined, wrapHandler = (handler) => handler) {
+        const health = normalizeHealthExposeOptions(options);
+        const paths = {
+            health: pathPrefix === undefined ? health.health : joinOpsPath(pathPrefix, "/health"),
+            live: pathPrefix === undefined ? health.live : joinOpsPath(pathPrefix, "/live"),
+            ready: pathPrefix === undefined ? health.ready : joinOpsPath(pathPrefix, "/ready"),
+            startup: pathPrefix === undefined ? health.startup : joinOpsPath(pathPrefix, "/startup"),
+        };
+        for (const path of Object.values(paths)) {
+            ensureOpsRouteFree(path);
+        }
+        registerOpsGet(paths.health, {
+            ...metadataBase,
+            health: "aggregate",
+            checks: opsHealthRegistry.checks().map((check) => check.name),
+        }, wrapHandler(createOpsHealthHandler(opsHealthRegistry, "health")), metadataBase?.management ? "Management.Health" : "Health");
+        registerOpsGet(paths.live, {
+            ...metadataBase,
+            health: "liveness",
+            checks: opsHealthRegistry.checks().filter((check) => check.tags.includes("live")).map((check) => check.name),
+        }, wrapHandler(createOpsHealthHandler(opsHealthRegistry, "live")), metadataBase?.management ? "Management.Live" : "Health.Live");
+        registerOpsGet(paths.ready, {
+            ...metadataBase,
+            health: "readiness",
+            checks: opsHealthRegistry.checks().filter((check) => check.tags.includes("ready")).map((check) => check.name),
+        }, wrapHandler(createOpsHealthHandler(opsHealthRegistry, "ready")), metadataBase?.management ? "Management.Ready" : "Health.Ready");
+        registerOpsGet(paths.startup, {
+            ...metadataBase,
+            health: "startup",
+            checks: opsHealthRegistry.checks().filter((check) => check.tags.includes("startup")).map((check) => check.name),
+        }, wrapHandler(createOpsHealthHandler(opsHealthRegistry, "startup")), metadataBase?.management ? "Management.Startup" : "Health.Startup");
+        opsHealthExposed = true;
+    }
+
+    const healthBuilder = Object.freeze({
+        check(name, check, options = undefined) {
+            assertAppMutable();
+            opsHealthRegistry.check(name, check, options);
+            return healthBuilder;
+        },
+        expose(options = undefined) {
+            assertAppMutable();
+            exposeOpsHealth(options);
+            return app;
+        },
+        registry() {
+            return opsHealthRegistry;
+        },
+    });
+
     const app = {
         config: host.config,
         log: host.log,
         services: host.services,
         capabilities: host.capabilities,
+        metrics: metricsRegistry,
         auth: Object.freeze({
             addPolicy(name, policy) {
                 assertAppMutable();
@@ -657,6 +1058,120 @@ function createApp(host) {
                 return app.auth;
             },
         }),
+
+        health() {
+            return healthBuilder;
+        },
+
+        management(options = undefined) {
+            assertAppMutable();
+            if (managementExposed) {
+                throw new Error("Sloppy management endpoints are already registered.");
+            }
+            const management = normalizeManagementOptions(options);
+            const protect = management.protect;
+            if (protect !== undefined && typeof protect !== "function") {
+                throw new TypeError("Sloppy management protect hook must be a function.");
+            }
+            function protectedHandler(handler) {
+                return async (context) => {
+                    if (protect !== undefined && await protect(context) !== true) {
+                        return Results.status(403, {
+                            status: 403,
+                            title: "Forbidden",
+                            code: "SLOPPY_E_MANAGEMENT_FORBIDDEN",
+                        });
+                    }
+                    return handler(context);
+                };
+            }
+            function refreshRuntimeMetrics() {
+                const lifecycle = snapshotLifecycle(lifecycleState);
+                metricsRegistry.gauge("runtime.uptime.seconds", { description: "Runtime uptime in seconds." }).set(lifecycle.uptimeSeconds);
+                metricsRegistry.gauge("runtime.shutdown.state", { description: "Runtime shutdown state as 0 or 1." }).set(lifecycle.shuttingDown ? 1 : 0);
+                metricsRegistry.gauge("routing.route_table.size", { description: "Registered app-host route count." }).set(routes.length);
+                const memory = globalThis.process?.memoryUsage?.();
+                if (memory !== undefined) {
+                    metricsRegistry.gauge("runtime.memory.rss.bytes", { description: "Resident set size in bytes." }).set(memory.rss);
+                    metricsRegistry.gauge("runtime.memory.heap.bytes", { description: "Heap bytes in use." }).set(memory.heapUsed);
+                }
+            }
+            if (opsHealthRegistry.checks().length === 0) {
+                opsHealthRegistry
+                    .check("self", Health.self(), { tags: ["live", "ready", "startup"], critical: true, cacheMs: 250 })
+                    .check("runtime", Health.runtime(), { tags: ["ready", "startup"], critical: true, cacheMs: 250 })
+                    .check("memory", Health.memory(), { tags: ["health"], critical: false, cacheMs: 1000 });
+            }
+            if (management.health) {
+                exposeOpsHealth(undefined, { management: "health" }, management.path, protectedHandler);
+            }
+            if (management.metrics) {
+                registerOpsGet(
+                    joinOpsPath(management.path, "/metrics"),
+                    { management: "metrics", format: "prometheus" },
+                    protectedHandler(() => {
+                        refreshRuntimeMetrics();
+                        return Results.text(metricsRegistry.renderPrometheus(), { contentType: PROMETHEUS_CONTENT_TYPE });
+                    }),
+                    "Management.Metrics",
+                );
+                registerOpsGet(
+                    joinOpsPath(management.path, "/metrics.json"),
+                    { management: "metrics", format: "json" },
+                    protectedHandler(() => {
+                        refreshRuntimeMetrics();
+                        return Results.json(metricsRegistry.snapshot());
+                    }),
+                    "Management.MetricsJson",
+                );
+            }
+            if (management.info) {
+                registerOpsGet(
+                    joinOpsPath(management.path, "/info"),
+                    { management: "info" },
+                    protectedHandler(() => Results.ok({
+                        app: {
+                            name: host.config.get("Sloppy:AppName", host.config.get("App:Name", "sloppy-app")),
+                            version: host.config.get("Sloppy:AppVersion", host.config.get("App:Version", "0.0.0")),
+                        },
+                        sloppy: {
+                            runtime: "bootstrap",
+                            operations: "health-metrics-management",
+                        },
+                        security: {
+                            protected: protect !== undefined,
+                            detailedEndpoints: true,
+                        },
+                    })),
+                    "Management.Info",
+                );
+            }
+            if (management.runtime) {
+                registerOpsGet(
+                    joinOpsPath(management.path, "/runtime"),
+                    { management: "runtime" },
+                    protectedHandler(() => Results.ok({
+                        routes: routeCountByKind(routes),
+                        lifecycle: snapshotLifecycle(lifecycleState),
+                        providers: routes.filter((route) => route.metadata?.provider !== undefined).length,
+                        jobs: {
+                            resources: workerResources.length,
+                        },
+                        health: {
+                            checks: opsHealthRegistry.checks(),
+                            exposed: opsHealthExposed,
+                        },
+                        metrics: metricsRegistry.snapshot(),
+                        security: {
+                            protected: protect !== undefined,
+                        },
+                    })),
+                    "Management.Runtime",
+                );
+            }
+            managementExposed = true;
+            return app;
+        },
 
         use(provider) {
             assertAppMutable();
@@ -771,6 +1286,49 @@ function createApp(host) {
                 ...contentNegotiation,
                 ...(options ?? {}),
             });
+            return app;
+        },
+
+        docs(options = undefined) {
+            assertAppMutable();
+            const docs = normalizeDocsOptions(options);
+            if (!docs.enabled) {
+                return app;
+            }
+            const metadata = {
+                docsInternal: true,
+                tags: ["Documentation"],
+            };
+            const openapiEndpoint = registerRoute(
+                routes,
+                routeHost,
+                assertAppMutable,
+                currentModule,
+                "GET",
+                docs.openapiPath,
+                metadata,
+                () => Results.json(buildDocsOpenApi(routes, docs)),
+                undefined,
+                middleware,
+                corsPolicy,
+            ).withName("Docs.OpenApi");
+            const docsEndpoint = registerRoute(
+                routes,
+                routeHost,
+                assertAppMutable,
+                currentModule,
+                "GET",
+                docs.path,
+                metadata,
+                () => Results.html(docsHtml(docs)),
+                undefined,
+                middleware,
+                corsPolicy,
+            ).withName("Docs.Ui");
+            if (docs.requireAuth !== undefined) {
+                openapiEndpoint.requireAuth(docs.requireAuth);
+                docsEndpoint.requireAuth(docs.requireAuth);
+            }
             return app;
         },
 
@@ -1070,6 +1628,7 @@ function createApp(host) {
         },
 
         freeze() {
+            lifecycleState.startupComplete = true;
             guard.freeze();
             return app;
         },
@@ -1082,10 +1641,29 @@ function createApp(host) {
             return Object.freeze(routes.map(snapshotRoute));
         },
 
+        __getMetricsRegistry() {
+            return metricsRegistry;
+        },
+
+        __getHealthRegistry() {
+            return opsHealthRegistry;
+        },
+
+        __getLifecycle() {
+            return snapshotLifecycle(lifecycleState);
+        },
+
+        __beginShutdown() {
+            lifecycleState.shuttingDown = true;
+        },
+
         __debug() {
             return Object.freeze({
                 modules: moduleDebugRef.modules,
                 workers: Object.freeze(workerResources.map(snapshotWorkerResource)),
+                health: opsHealthRegistry.checks(),
+                metrics: metricsRegistry.snapshot(),
+                lifecycle: snapshotLifecycle(lifecycleState),
             });
         },
 
@@ -1103,6 +1681,12 @@ function createApp(host) {
                     detail: errorPolicyState.policy.detail,
                     missingRoute: errorPolicyState.policy.missingRoute,
                     mappings: errorPolicyState.mappings.length,
+                }),
+                ops: Object.freeze({
+                    healthChecks: opsHealthRegistry.checks(),
+                    healthExposed: opsHealthExposed,
+                    managementExposed,
+                    metrics: metricsRegistry.snapshot(),
                 }),
             });
         },

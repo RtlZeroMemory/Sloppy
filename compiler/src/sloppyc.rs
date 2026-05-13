@@ -12,8 +12,8 @@ use oxc_ast::ast::{
     ChainElement, ClassElement, Declaration, ExportAllDeclaration, ExportDefaultDeclaration,
     ExportNamedDeclaration, Expression, ExpressionStatement, ForStatementInit, ImportDeclaration,
     ImportDeclarationSpecifier, ImportOrExportKind, MethodDefinitionKind, ModuleExportName,
-    ObjectPropertyKind, PropertyKey, PropertyKind, Statement, TSLiteral, TSSignature, TSType,
-    TSTypeName, VariableDeclaration,
+    ObjectExpression, ObjectPropertyKind, PropertyKey, PropertyKind, Statement, TSLiteral,
+    TSSignature, TSType, TSTypeName, VariableDeclaration,
 };
 use oxc_codegen::Codegen;
 use oxc_parser::Parser;
@@ -65,6 +65,7 @@ const WORKER_EXPORTS: &[&str] = &[
 const DEFAULT_HEALTH_PATH: &str = "/health";
 const DEFAULT_LIVENESS_PATH: &str = "/health/live";
 const DEFAULT_READINESS_PATH: &str = "/health/ready";
+const DEFAULT_MANAGEMENT_PATH: &str = "/_sloppy";
 
 mod configuration;
 use configuration::*;
@@ -256,6 +257,16 @@ struct RouteMetadata {
     auth: Option<AuthRequirementMetadata>,
     accepts_schema: Option<String>,
     returns_schema: Option<String>,
+    returns_status: Option<u16>,
+    summary: Option<String>,
+    description: Option<String>,
+    deprecated: Option<String>,
+    consumes: Vec<String>,
+    produces: Vec<String>,
+    headers: Vec<RouteContractParameter>,
+    query_schema: Option<String>,
+    params_schema: Option<String>,
+    openapi_override: Option<Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -268,7 +279,18 @@ struct HealthOptions {
     path: String,
     liveness_path: String,
     readiness_path: String,
+    startup_path: Option<String>,
     checks: Vec<HealthCheck>,
+}
+
+#[derive(Debug, Clone)]
+struct DocsOptions {
+    enabled: bool,
+    strict: bool,
+    path: String,
+    openapi_path: String,
+    title: String,
+    require_auth: Option<AuthRequirementMetadata>,
 }
 
 #[derive(Debug, Clone)]
@@ -277,6 +299,19 @@ struct HealthCheck {
     check_source: String,
     liveness: bool,
     readiness: bool,
+    startup: bool,
+    critical: bool,
+    degraded_is_unhealthy: bool,
+    tags: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ManagementOptions {
+    path: String,
+    health: bool,
+    metrics: bool,
+    info: bool,
+    runtime: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -6152,6 +6187,8 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "ProblemDetails"
             | "RequestId"
             | "RequestLogging"
+            | "Health"
+            | "Metrics"
             | "Testing"
             | "TestHost"
             | "FakeClock"
@@ -6539,6 +6576,11 @@ fn extract_expression_statement(
         return Ok(());
     }
 
+    if let Some(routes) = app_docs_call(path, source, source_name, &statement.expression, state)? {
+        state.routes.extend(routes);
+        return Ok(());
+    }
+
     if app_use_middleware_call(path, source, source_name, &statement.expression, state)? {
         return Ok(());
     }
@@ -6551,6 +6593,22 @@ fn extract_expression_statement(
         app_map_health_checks_call(path, source, source_name, &statement.expression, state)?
     {
         state.uses_health = true;
+        state.routes.extend(routes);
+        return Ok(());
+    }
+
+    if let Some(routes) =
+        app_health_expose_call(path, source, source_name, &statement.expression, state)?
+    {
+        state.uses_health = true;
+        state.routes.extend(routes);
+        return Ok(());
+    }
+
+    if let Some(routes) =
+        app_management_call(path, source, source_name, &statement.expression, state)?
+    {
+        state.uses_health = state.uses_health || routes.iter().any(|route| route.health.is_some());
         state.routes.extend(routes);
         return Ok(());
     }
@@ -6717,12 +6775,9 @@ fn extract_expression_statement(
             handler.is_async,
         );
     }
-    tags.extend(route_metadata.tags);
-    tags.extend(fluent_metadata.tags);
-    let auth = fluent_metadata
-        .auth
-        .or(route_metadata.auth)
-        .or(inherited_auth);
+    let contract_metadata = merged_route_metadata(&route_metadata, &fluent_metadata);
+    tags.extend(contract_metadata.tags.clone());
+    let auth = contract_metadata.auth.clone().or(inherited_auth);
     let cors = state.cors_policy.clone();
     if let Some(requirement) = &auth {
         if requirement.required {
@@ -6746,8 +6801,18 @@ fn extract_expression_statement(
         kind,
         framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
         pattern: normalized_pattern,
-        name: fluent_metadata.name.or(route_metadata.name),
+        name: contract_metadata.name.clone(),
         tags,
+        summary: contract_metadata.summary.clone(),
+        description: contract_metadata.description.clone(),
+        deprecated: contract_metadata.deprecated.clone(),
+        consumes: contract_metadata.consumes.clone(),
+        produces: contract_metadata.produces.clone(),
+        headers: contract_metadata.headers.clone(),
+        query_schema: contract_metadata.query_schema.clone(),
+        params_schema: contract_metadata.params_schema.clone(),
+        openapi_override: contract_metadata.openapi_override.clone(),
+        docs: None,
         health: None,
         middleware: route_middleware_metadata(&route_middleware),
         auth,
@@ -8642,6 +8707,16 @@ fn static_asset_route(
         pattern: route_path,
         name: None,
         tags: vec!["static".to_string()],
+        summary: None,
+        description: None,
+        deprecated: None,
+        consumes: Vec::new(),
+        produces: vec![content_type.to_string()],
+        headers: Vec::new(),
+        query_schema: None,
+        params_schema: None,
+        openapi_override: None,
+        docs: None,
         health: None,
         middleware: route_middleware_metadata(context.middleware),
         auth: None,
@@ -9931,8 +10006,8 @@ fn app_map_controller_call(
             .with_span(statement.span)
             .with_hint("Use '/', static segments, {name}, {name:str}, or {name:int}."));
         }
-        let mut tags = route_metadata.tags;
-        tags.extend(fluent_metadata.tags.clone());
+        let contract_metadata = merged_route_metadata(&route_metadata, &fluent_metadata);
+        let tags = contract_metadata.tags.clone();
         let middleware = route_middleware_metadata(&state.middleware);
         let cors = state.cors_policy.clone();
         let handler_source = source_slice(&controller.source_text, controller_method.span)
@@ -9962,7 +10037,7 @@ fn app_map_controller_call(
             &fluent_metadata,
             &mut handler,
         )?;
-        let auth = fluent_metadata.auth.or(route_metadata.auth);
+        let auth = contract_metadata.auth.clone();
         if let Some(requirement) = &auth {
             handler.emitted_source = wrap_handler_with_auth(&handler.emitted_source, requirement);
             handler.is_async = true;
@@ -9978,8 +10053,18 @@ fn app_map_controller_call(
             kind: "http",
             framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
             pattern: normalized_pattern,
-            name: fluent_metadata.name.or(route_metadata.name),
+            name: contract_metadata.name.clone(),
             tags,
+            summary: contract_metadata.summary.clone(),
+            description: contract_metadata.description.clone(),
+            deprecated: contract_metadata.deprecated.clone(),
+            consumes: contract_metadata.consumes.clone(),
+            produces: contract_metadata.produces.clone(),
+            headers: contract_metadata.headers.clone(),
+            query_schema: contract_metadata.query_schema.clone(),
+            params_schema: contract_metadata.params_schema.clone(),
+            openapi_override: contract_metadata.openapi_override.clone(),
+            docs: None,
             health: None,
             middleware,
             auth,
@@ -10343,6 +10428,16 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
             pattern,
             name: None,
             tags: Vec::new(),
+            summary: None,
+            description: None,
+            deprecated: None,
+            consumes: Vec::new(),
+            produces: Vec::new(),
+            headers: Vec::new(),
+            query_schema: None,
+            params_schema: None,
+            openapi_override: None,
+            docs: None,
             health: None,
             middleware: route.middleware.clone(),
             auth: None,
@@ -10441,6 +10536,525 @@ fn app_map_health_checks_call(
     )?))
 }
 
+fn app_health_expose_call(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    expression: &Expression<'_>,
+    state: &AppState,
+) -> Result<Option<Vec<Route>>, Diagnostic> {
+    let Expression::CallExpression(expose_call) = expression else {
+        return Ok(None);
+    };
+    let Some((receiver, property)) = static_member_expression(&expose_call.callee) else {
+        return Ok(None);
+    };
+    if property != "expose" {
+        return Ok(None);
+    }
+    if expose_call.arguments.len() > 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "app.health().expose accepts at most one literal options argument",
+        )
+        .with_path(path)
+        .with_span(expose_call.span));
+    }
+
+    let mut options = health_expose_options_from_call(path, expose_call)?;
+    let Some(checks) = health_check_chain_from_expression(path, source, receiver, state)? else {
+        return Ok(None);
+    };
+    options.checks = checks;
+    Ok(Some(health_routes_from_options(
+        path,
+        source,
+        source_name,
+        expose_call.span,
+        &options,
+        &state.middleware,
+        state.cors_policy.as_ref(),
+    )?))
+}
+
+fn app_management_call(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    expression: &Expression<'_>,
+    state: &AppState,
+) -> Result<Option<Vec<Route>>, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(None);
+    };
+    let Some((receiver, property)) = static_member_name(&call.callee) else {
+        return Ok(None);
+    };
+    if property != "management" || !state.app_vars.contains(receiver) {
+        return Ok(None);
+    }
+    if call.arguments.len() > 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+            "app.management accepts at most one literal options argument",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    }
+    let options = management_options_from_call(path, call)?;
+    Ok(Some(management_routes_from_options(
+        path,
+        source,
+        source_name,
+        call.span,
+        &options,
+        &state.middleware,
+        state.cors_policy.as_ref(),
+    )?))
+}
+
+fn health_expose_options_from_call(
+    path: &Path,
+    call: &CallExpression<'_>,
+) -> Result<HealthOptions, Diagnostic> {
+    let mut options = HealthOptions {
+        path: DEFAULT_HEALTH_PATH.to_string(),
+        liveness_path: "/live".to_string(),
+        readiness_path: "/ready".to_string(),
+        startup_path: Some("/startup".to_string()),
+        checks: Vec::new(),
+    };
+
+    let Some(argument) = call.arguments.first() else {
+        health_paths_are_distinct(path, call.span, &options)?;
+        return Ok(options);
+    };
+    let Some(object) = object_argument(argument) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "app.health().expose options must be an object literal",
+        )
+        .with_path(path)
+        .with_span(argument_span(argument).unwrap_or(call.span)));
+    };
+
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                "health expose options do not support spread properties",
+            )
+            .with_path(path)
+            .with_span(object.span));
+        };
+        if property.computed
+            || property.shorthand
+            || property.method
+            || property.kind != PropertyKind::Init
+        {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                "health expose options must use simple literal properties",
+            )
+            .with_path(path)
+            .with_span(property.span));
+        }
+        let Some(key) = property_key_name(&property.key) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                "health expose option names must be literal",
+            )
+            .with_path(path)
+            .with_span(property.span));
+        };
+        match key {
+            "health" => {
+                options.path =
+                    health_path_from_expression(path, &property.value, "health", property.span)?;
+            }
+            "live" | "liveness" | "livenessPath" => {
+                options.liveness_path =
+                    health_path_from_expression(path, &property.value, "liveness", property.span)?;
+            }
+            "ready" | "readiness" | "readinessPath" => {
+                options.readiness_path =
+                    health_path_from_expression(path, &property.value, "readiness", property.span)?;
+            }
+            "startup" | "startupPath" => {
+                options.startup_path = Some(health_path_from_expression(
+                    path,
+                    &property.value,
+                    "startup",
+                    property.span,
+                )?);
+            }
+            _ => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    format!("unsupported health expose option '{key}'"),
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+        }
+    }
+    health_paths_are_distinct(path, object.span, &options)?;
+    Ok(options)
+}
+
+fn health_check_chain_from_expression(
+    path: &Path,
+    source: &str,
+    expression: &Expression<'_>,
+    state: &AppState,
+) -> Result<Option<Vec<HealthCheck>>, Diagnostic> {
+    let mut checks = Vec::new();
+    let mut current = expression;
+    loop {
+        let Expression::CallExpression(call) = current else {
+            return Ok(None);
+        };
+        let Some((receiver, property)) = static_member_expression(&call.callee) else {
+            return Ok(None);
+        };
+        match property {
+            "check" => {
+                checks.push(health_check_from_chain_call(path, source, call)?);
+                current = receiver;
+            }
+            "health" => {
+                if !call.arguments.is_empty() {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        "app.health does not accept compiler-visible arguments",
+                    )
+                    .with_path(path)
+                    .with_span(call.span));
+                }
+                let Some((root_receiver, root_property)) = static_member_name(&call.callee) else {
+                    return Ok(None);
+                };
+                if root_property != "health" || !state.app_vars.contains(root_receiver) {
+                    return Ok(None);
+                }
+                checks.reverse();
+                return Ok(Some(checks));
+            }
+            _ => return Ok(None),
+        }
+    }
+}
+
+fn health_check_from_chain_call(
+    path: &Path,
+    source: &str,
+    call: &CallExpression<'_>,
+) -> Result<HealthCheck, Diagnostic> {
+    if !(2..=3).contains(&call.arguments.len()) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "app.health().check requires a name, check function, and optional literal options",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    }
+    let Some(name) = call.arguments.first().and_then(string_argument) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "health check name must be a string literal",
+        )
+        .with_path(path)
+        .with_span(
+            call.arguments
+                .first()
+                .and_then(argument_span)
+                .unwrap_or(call.span),
+        ));
+    };
+    if name.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "health check name must be non-empty",
+        )
+        .with_path(path)
+        .with_span(
+            call.arguments
+                .first()
+                .and_then(argument_span)
+                .unwrap_or(call.span),
+        ));
+    }
+
+    let Some(check_argument) = call.arguments.get(1) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "health check requires a check callback or built-in check",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    };
+    let check_source = health_chain_check_source(path, source, check_argument)?;
+    let mut tags = Vec::new();
+    let mut critical = true;
+    let mut degraded_is_unhealthy = false;
+    if let Some(options_argument) = call.arguments.get(2) {
+        let Some(object) = object_argument(options_argument) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                "health check options must be an object literal",
+            )
+            .with_path(path)
+            .with_span(argument_span(options_argument).unwrap_or(call.span)));
+        };
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    "health check options do not support spread properties",
+                )
+                .with_path(path)
+                .with_span(object.span));
+            };
+            if property.computed
+                || property.shorthand
+                || property.method
+                || property.kind != PropertyKind::Init
+            {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    "health check options must use simple literal properties",
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+            let Some(key) = property_key_name(&property.key) else {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    "health check option names must be literal",
+                )
+                .with_path(path)
+                .with_span(property.span));
+            };
+            match key {
+                "tags" => {
+                    tags = route_tags_from_expression(&property.value)
+                        .map_err(|diagnostic| diagnostic.with_path(path))?;
+                }
+                "critical" => {
+                    let Expression::BooleanLiteral(value) = &property.value else {
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                            "health check critical flag must be a boolean literal",
+                        )
+                        .with_path(path)
+                        .with_span(property.value.span()));
+                    };
+                    critical = value.value;
+                }
+                "degradedIsUnhealthy" => {
+                    let Expression::BooleanLiteral(value) = &property.value else {
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                            "health check degradedIsUnhealthy flag must be a boolean literal",
+                        )
+                        .with_path(path)
+                        .with_span(property.value.span()));
+                    };
+                    degraded_is_unhealthy = value.value;
+                }
+                "timeoutMs" | "cacheMs" => {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        format!("compiler-generated health does not support health check option '{key}'"),
+                    )
+                    .with_path(path)
+                    .with_span(property.span));
+                }
+                _ => {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        format!("unsupported health check option '{key}'"),
+                    )
+                    .with_path(path)
+                    .with_span(property.span));
+                }
+            }
+        }
+    }
+
+    Ok(HealthCheck {
+        name: name.to_string(),
+        check_source,
+        liveness: tags.iter().any(|tag| tag == "live"),
+        readiness: tags.iter().any(|tag| tag == "ready"),
+        startup: tags.iter().any(|tag| tag == "startup"),
+        critical,
+        degraded_is_unhealthy,
+        tags,
+    })
+}
+
+fn health_chain_check_source(
+    path: &Path,
+    source: &str,
+    argument: &Argument<'_>,
+) -> Result<String, Diagnostic> {
+    match argument {
+        Argument::ArrowFunctionExpression(function) => {
+            health_check_arrow_source(path, source, function)
+        }
+        Argument::FunctionExpression(function) => {
+            health_check_function_source(path, source, function, false)
+        }
+        Argument::CallExpression(call) => {
+            let Some((receiver, property)) = static_member_name(&call.callee) else {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    "compiler-visible built-in health checks must use Health.*()",
+                )
+                .with_path(path)
+                .with_span(call.span));
+            };
+            if receiver != "Health" || !call.arguments.is_empty() {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    "compiler-visible built-in health checks support only zero-argument Health.self(), Health.runtime(), Health.memory(), and Health.openApi(); richer Health.* checks are app-host-only",
+                )
+                .with_path(path)
+                .with_span(call.span));
+            }
+            match property {
+                "self" => Ok("() => ({ status: \"healthy\" })".to_string()),
+                "runtime" => Ok("(ctx) => ((ctx && ctx.lifecycle && ctx.lifecycle.shuttingDown) ? { status: \"unhealthy\", errorCode: \"SLOPPY_HEALTH_SHUTTING_DOWN\" } : { status: \"healthy\" })".to_string()),
+                "memory" => Ok("() => ({ status: \"healthy\" })".to_string()),
+                "openApi" => Ok("() => ({ status: \"healthy\" })".to_string()),
+                _ => Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    format!("unsupported compiler-visible built-in health check Health.{property}()"),
+                )
+                .with_path(path)
+                .with_span(call.span)),
+            }
+        }
+        _ => Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+            "health check must be an inline function or supported Health.*() built-in",
+        )
+        .with_path(path)
+        .with_span(argument_span(argument).unwrap_or_default())),
+    }
+}
+
+fn management_options_from_call(
+    path: &Path,
+    call: &CallExpression<'_>,
+) -> Result<ManagementOptions, Diagnostic> {
+    let mut options = ManagementOptions {
+        path: DEFAULT_MANAGEMENT_PATH.to_string(),
+        health: true,
+        metrics: true,
+        info: true,
+        runtime: true,
+    };
+    let Some(argument) = call.arguments.first() else {
+        return Ok(options);
+    };
+    let Some(object) = object_argument(argument) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+            "app.management options must be an object literal",
+        )
+        .with_path(path)
+        .with_span(argument_span(argument).unwrap_or(call.span)));
+    };
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+                "management options do not support spread properties",
+            )
+            .with_path(path)
+            .with_span(object.span));
+        };
+        if property.computed
+            || property.shorthand
+            || property.method
+            || property.kind != PropertyKind::Init
+        {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+                "management options must use simple literal properties",
+            )
+            .with_path(path)
+            .with_span(property.span));
+        }
+        let Some(key) = property_key_name(&property.key) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+                "management option names must be literal",
+            )
+            .with_path(path)
+            .with_span(property.span));
+        };
+        match key {
+            "path" => {
+                options.path = health_path_from_expression(
+                    path,
+                    &property.value,
+                    "management",
+                    property.span,
+                )?;
+            }
+            "health" => {
+                options.health = literal_bool_option(path, &property.value, property.span, key)?
+            }
+            "metrics" => {
+                options.metrics = literal_bool_option(path, &property.value, property.span, key)?
+            }
+            "info" => {
+                options.info = literal_bool_option(path, &property.value, property.span, key)?
+            }
+            "runtime" => {
+                options.runtime = literal_bool_option(path, &property.value, property.span, key)?
+            }
+            "protect" => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+                    "compiler-visible app.management does not support protect hooks; use the bootstrap app host for protected management endpoints",
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+            _ => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+                    format!("unsupported management option '{key}'"),
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+        }
+    }
+    Ok(options)
+}
+
+fn literal_bool_option(
+    path: &Path,
+    expression: &Expression<'_>,
+    span: Span,
+    name: &str,
+) -> Result<bool, Diagnostic> {
+    let Expression::BooleanLiteral(value) = expression else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_MANAGEMENT",
+            format!("management option '{name}' must be a boolean literal"),
+        )
+        .with_path(path)
+        .with_span(span));
+    };
+    Ok(value.value)
+}
+
 fn health_options_from_call(
     path: &Path,
     source: &str,
@@ -10450,6 +11064,7 @@ fn health_options_from_call(
         path: DEFAULT_HEALTH_PATH.to_string(),
         liveness_path: DEFAULT_LIVENESS_PATH.to_string(),
         readiness_path: DEFAULT_READINESS_PATH.to_string(),
+        startup_path: None,
         checks: Vec::new(),
     };
 
@@ -10517,6 +11132,14 @@ fn health_options_from_call(
                 options.readiness_path =
                     health_path_from_expression(path, &property.value, "readiness", property.span)?;
             }
+            "startupPath" => {
+                options.startup_path = Some(health_path_from_expression(
+                    path,
+                    &property.value,
+                    "startup",
+                    property.span,
+                )?);
+            }
             "checks" => {
                 options.checks = health_checks_from_expression(path, source, &property.value)?;
             }
@@ -10583,10 +11206,14 @@ fn health_paths_are_distinct(
     if !seen.insert(options.path.clone())
         || !seen.insert(options.liveness_path.clone())
         || !seen.insert(options.readiness_path.clone())
+        || options
+            .startup_path
+            .as_ref()
+            .is_some_and(|startup_path| !seen.insert(startup_path.clone()))
     {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
-            "health, liveness, and readiness paths must be distinct",
+            "health, liveness, readiness, and startup paths must be distinct",
         )
         .with_path(path)
         .with_span(span));
@@ -10630,6 +11257,10 @@ fn health_check_from_array_element(
             check_source: health_check_arrow_source(path, source, function)?,
             liveness: false,
             readiness: true,
+            startup: false,
+            critical: true,
+            degraded_is_unhealthy: false,
+            tags: Vec::new(),
         }),
         ArrayExpressionElement::FunctionExpression(function) => {
             let name = function
@@ -10643,6 +11274,10 @@ fn health_check_from_array_element(
                 check_source: health_check_function_source(path, source, function, false)?,
                 liveness: false,
                 readiness: true,
+                startup: false,
+                critical: true,
+                degraded_is_unhealthy: false,
+                tags: Vec::new(),
             })
         }
         ArrayExpressionElement::ObjectExpression(object) => {
@@ -10666,6 +11301,10 @@ fn health_check_from_object(
     let mut check_source = None;
     let mut liveness = false;
     let mut readiness = true;
+    let mut startup = false;
+    let mut critical = true;
+    let mut degraded_is_unhealthy = false;
+    let mut tags = Vec::new();
 
     for property in &object.properties {
         let ObjectPropertyKind::ObjectProperty(property) = property else {
@@ -10751,6 +11390,56 @@ fn health_check_from_object(
                 };
                 readiness = value.value;
             }
+            "startup" => {
+                let Expression::BooleanLiteral(value) = &property.value else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        "health check startup flag must be a boolean literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                startup = value.value;
+            }
+            "critical" => {
+                let Expression::BooleanLiteral(value) = &property.value else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        "health check critical flag must be a boolean literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                critical = value.value;
+            }
+            "degradedIsUnhealthy" => {
+                let Expression::BooleanLiteral(value) = &property.value else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                        "health check degradedIsUnhealthy flag must be a boolean literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                degraded_is_unhealthy = value.value;
+            }
+            "timeoutMs" | "cacheMs" => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
+                    format!(
+                        "compiler-generated health does not support health check option '{key}'"
+                    ),
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+            "tags" => {
+                tags = route_tags_from_expression(&property.value)
+                    .map_err(|diagnostic| diagnostic.with_path(path))?;
+                liveness |= tags.iter().any(|tag| tag == "live");
+                readiness |= tags.iter().any(|tag| tag == "ready");
+                startup |= tags.iter().any(|tag| tag == "startup");
+            }
             _ => {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
@@ -10778,10 +11467,10 @@ fn health_check_from_object(
         .with_path(path)
         .with_span(object.span));
     };
-    if !liveness && !readiness {
+    if !liveness && !readiness && !startup {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS",
-            "health check must target readiness or liveness",
+            "health check must target readiness, liveness, or startup",
         )
         .with_path(path)
         .with_span(object.span));
@@ -10792,6 +11481,10 @@ fn health_check_from_object(
         check_source,
         liveness,
         readiness,
+        startup,
+        critical,
+        degraded_is_unhealthy,
+        tags,
     })
 }
 
@@ -10967,7 +11660,7 @@ fn health_routes_from_options(
     middleware: &[FrameworkMiddleware],
     cors: Option<&CorsPolicy>,
 ) -> Result<Vec<Route>, Diagnostic> {
-    Ok(vec![
+    let mut routes = vec![
         health_route(
             path,
             source,
@@ -11018,7 +11711,242 @@ fn health_routes_from_options(
             middleware,
             cors,
         )?,
-    ])
+    ];
+    if let Some(startup_path) = &options.startup_path {
+        routes.push(health_route(
+            path,
+            source,
+            source_name,
+            span,
+            HealthRouteSpec {
+                framework_path: startup_path,
+                name: "Health.Startup",
+                kind: "startup",
+                checks: options
+                    .checks
+                    .iter()
+                    .filter(|check| check.startup)
+                    .collect(),
+            },
+            middleware,
+            cors,
+        )?);
+    }
+    Ok(routes)
+}
+
+fn management_routes_from_options(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    span: Span,
+    options: &ManagementOptions,
+    middleware: &[FrameworkMiddleware],
+    cors: Option<&CorsPolicy>,
+) -> Result<Vec<Route>, Diagnostic> {
+    let mut routes = Vec::new();
+    let ops_context = OpsRouteContext {
+        path,
+        source,
+        source_name,
+        span,
+        middleware,
+        cors,
+    };
+    if options.health {
+        let health_options = HealthOptions {
+            path: join_route_patterns(&options.path, "health"),
+            liveness_path: join_route_patterns(&options.path, "live"),
+            readiness_path: join_route_patterns(&options.path, "ready"),
+            startup_path: Some(join_route_patterns(&options.path, "startup")),
+            checks: vec![
+                HealthCheck {
+                    name: "self".to_string(),
+                    check_source: "() => ({ status: \"healthy\" })".to_string(),
+                    liveness: true,
+                    readiness: true,
+                    startup: true,
+                    critical: true,
+                    degraded_is_unhealthy: false,
+                    tags: vec![
+                        "live".to_string(),
+                        "ready".to_string(),
+                        "startup".to_string(),
+                    ],
+                },
+                HealthCheck {
+                    name: "runtime".to_string(),
+                    check_source: "(ctx) => ((ctx && ctx.lifecycle && ctx.lifecycle.shuttingDown) ? { status: \"unhealthy\", errorCode: \"SLOPPY_HEALTH_SHUTTING_DOWN\" } : { status: \"healthy\" })".to_string(),
+                    liveness: false,
+                    readiness: true,
+                    startup: true,
+                    critical: true,
+                    degraded_is_unhealthy: false,
+                    tags: vec!["ready".to_string(), "startup".to_string()],
+                },
+                HealthCheck {
+                    name: "memory".to_string(),
+                    check_source: "() => ({ status: \"healthy\" })".to_string(),
+                    liveness: false,
+                    readiness: false,
+                    startup: false,
+                    critical: false,
+                    degraded_is_unhealthy: false,
+                    tags: vec!["health".to_string()],
+                },
+            ],
+        };
+        routes.extend(management_health_routes(
+            path,
+            source,
+            source_name,
+            span,
+            &health_options,
+            middleware,
+            cors,
+        )?);
+    }
+    if options.metrics {
+        routes.push(ops_route(
+            &ops_context,
+            &join_route_patterns(&options.path, "metrics"),
+            "Management.Metrics",
+            "function() { return Results.text(\"# HELP sloppy_management_info Static management endpoint metadata\\n# TYPE sloppy_management_info gauge\\nsloppy_management_info 1\\n\", { contentType: \"text/plain; version=0.0.4; charset=utf-8\" }); }",
+            "text",
+            200,
+        )?);
+        routes.push(ops_route(
+            &ops_context,
+            &join_route_patterns(&options.path, "metrics.json"),
+            "Management.MetricsJson",
+            "function() { return Results.json({ counters: {}, gauges: { sloppy_management_info: { value: 1, labels: {} } }, histograms: {} }); }",
+            "json",
+            200,
+        )?);
+    }
+    if options.info {
+        routes.push(ops_route(
+            &ops_context,
+            &join_route_patterns(&options.path, "info"),
+            "Management.Info",
+            "function() { return Results.json({ app: { name: \"sloppy-app\" }, runtime: { name: \"sloppy\" }, management: { safe: true } }); }",
+            "json",
+            200,
+        )?);
+    }
+    if options.runtime {
+        routes.push(ops_route(
+            &ops_context,
+            &join_route_patterns(&options.path, "runtime"),
+            "Management.Runtime",
+            "function() { return Results.json({ lifecycle: { startupComplete: true, shuttingDown: false }, diagnostics: { count: 0 }, management: { safe: true } }); }",
+            "json",
+            200,
+        )?);
+    }
+    Ok(routes)
+}
+
+fn management_health_routes(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    span: Span,
+    options: &HealthOptions,
+    middleware: &[FrameworkMiddleware],
+    cors: Option<&CorsPolicy>,
+) -> Result<Vec<Route>, Diagnostic> {
+    let mut routes =
+        health_routes_from_options(path, source, source_name, span, options, middleware, cors)?;
+    for route in &mut routes {
+        route.name = match route.health.as_ref().map(|health| health.kind) {
+            Some("aggregate") => Some("Management.Health".to_string()),
+            Some("liveness") => Some("Management.Live".to_string()),
+            Some("readiness") => Some("Management.Ready".to_string()),
+            Some("startup") => Some("Management.Startup".to_string()),
+            _ => route.name.clone(),
+        };
+    }
+    Ok(routes)
+}
+
+struct OpsRouteContext<'a> {
+    path: &'a Path,
+    source: &'a str,
+    source_name: &'a str,
+    span: Span,
+    middleware: &'a [FrameworkMiddleware],
+    cors: Option<&'a CorsPolicy>,
+}
+
+fn ops_route(
+    context: &OpsRouteContext<'_>,
+    framework_path: &str,
+    name: &str,
+    handler_source: &str,
+    response_kind: &str,
+    status: u16,
+) -> Result<Route, Diagnostic> {
+    let normalized_pattern = normalize_framework_route_pattern(framework_path);
+    let response = ResponseMetadata {
+        helper: response_kind.to_string(),
+        status,
+        kind: response_kind.to_string(),
+        body_schema: None,
+        native_body: None,
+        source_name: Some(context.source_name.to_string()),
+        source_text: Some(context.source.to_string()),
+        span: Some(context.span),
+        partial: false,
+    };
+    let emitted_source =
+        wrap_handler_with_framework_pipeline(handler_source, context.middleware, context.cors);
+    Ok(Route {
+        method: "GET",
+        kind: "http",
+        framework_path: (normalized_pattern != framework_path).then(|| framework_path.to_string()),
+        pattern: normalized_pattern,
+        name: Some(name.to_string()),
+        tags: Vec::new(),
+        summary: None,
+        description: None,
+        deprecated: None,
+        consumes: Vec::new(),
+        produces: Vec::new(),
+        headers: Vec::new(),
+        query_schema: None,
+        params_schema: None,
+        openapi_override: None,
+        docs: None,
+        health: None,
+        middleware: route_middleware_metadata(context.middleware),
+        auth: None,
+        cors: context.cors.map(cors_policy_metadata),
+        cors_preflight: false,
+        span: context.span,
+        source_path: context.path.to_path_buf(),
+        source_name: context.source_name.to_string(),
+        source: context.source.to_string(),
+        module: None,
+        handler: Handler {
+            source: source_slice(context.source, context.span)
+                .unwrap_or_else(|| "app.management()".to_string()),
+            emitted_source,
+            span: context.span,
+            requires_results_import: false,
+            is_async: false,
+            runtime_deferred: false,
+            source_name: context.source_name.to_string(),
+            source_text: context.source.to_string(),
+            source_map_line_offset: 0,
+            source_map_column_offset: 0,
+            bindings: Vec::new(),
+            response: Some(response.clone()),
+            responses: vec![response],
+            effects: Vec::new(),
+            schema_metadata_conflict: false,
+        },
+    })
 }
 
 fn health_route(
@@ -11051,6 +11979,16 @@ fn health_route(
         pattern: normalized_pattern,
         name: Some(spec.name.to_string()),
         tags: Vec::new(),
+        summary: None,
+        description: None,
+        deprecated: None,
+        consumes: Vec::new(),
+        produces: Vec::new(),
+        headers: Vec::new(),
+        query_schema: None,
+        params_schema: None,
+        openapi_override: None,
+        docs: None,
         health: Some(HealthRouteMetadata {
             kind: spec.kind,
             checks: check_names,
@@ -11105,17 +12043,360 @@ fn health_response_metadata(
     }
 }
 
+fn app_docs_call(
+    path: &Path,
+    source: &str,
+    source_name: &str,
+    expression: &Expression<'_>,
+    state: &AppState,
+) -> Result<Option<Vec<Route>>, Diagnostic> {
+    let Expression::CallExpression(call) = expression else {
+        return Ok(None);
+    };
+    let Some((receiver, property)) = static_member_name(&call.callee) else {
+        return Ok(None);
+    };
+    if property != "docs" || !state.app_vars.contains(receiver) {
+        return Ok(None);
+    }
+    if call.arguments.len() > 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_DOCS",
+            "app.docs accepts at most one literal options argument",
+        )
+        .with_path(path)
+        .with_span(call.span));
+    }
+
+    let options = docs_options_from_call(path, call)?;
+    if !options.enabled {
+        return Ok(Some(Vec::new()));
+    }
+    docs_paths_are_distinct(path, call.span, &options)?;
+    Ok(Some(vec![
+        docs_route(DocsRouteInput {
+            path,
+            source,
+            source_name,
+            span: call.span,
+            framework_path: &options.openapi_path,
+            name: "Docs.OpenApi",
+            kind: "json",
+            helper: "openapi",
+            handler_source: docs_openapi_handler_source(),
+            docs: Some(DocsRouteMetadata {
+                kind: "openapi",
+                strict: options.strict,
+            }),
+            auth: options.require_auth.clone(),
+            middleware: &state.middleware,
+            cors: state.cors_policy.as_ref(),
+        })?,
+        docs_route(DocsRouteInput {
+            path,
+            source,
+            source_name,
+            span: call.span,
+            framework_path: &options.path,
+            name: "Docs.Ui",
+            kind: "html",
+            helper: "html",
+            handler_source: docs_html_handler_source(&options.title, &options.openapi_path),
+            docs: Some(DocsRouteMetadata {
+                kind: "ui",
+                strict: options.strict,
+            }),
+            auth: options.require_auth,
+            middleware: &state.middleware,
+            cors: state.cors_policy.as_ref(),
+        })?,
+    ]))
+}
+
+fn docs_options_from_call(
+    path: &Path,
+    call: &CallExpression<'_>,
+) -> Result<DocsOptions, Diagnostic> {
+    let mut options = DocsOptions {
+        enabled: true,
+        strict: false,
+        path: "/docs".to_string(),
+        openapi_path: "/openapi.json".to_string(),
+        title: "Sloppy API".to_string(),
+        require_auth: None,
+    };
+    let Some(argument) = call.arguments.first() else {
+        return Ok(options);
+    };
+    let Some(object) = object_argument(argument) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_DOCS",
+            "app.docs options must be an object literal",
+        )
+        .with_path(path)
+        .with_span(argument_span(argument).unwrap_or(call.span)));
+    };
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_DOCS",
+                "app.docs options do not support spread properties",
+            )
+            .with_path(path)
+            .with_span(object.span));
+        };
+        let Some(key) = property_key_name(&property.key) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_DOCS",
+                "app.docs option names must be literal",
+            )
+            .with_path(path)
+            .with_span(property.span));
+        };
+        match key {
+            "enabled" => {
+                let Expression::BooleanLiteral(enabled) = &property.value else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_DOCS",
+                        "app.docs enabled must be a boolean literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                options.enabled = enabled.value;
+            }
+            "strict" => {
+                let Expression::BooleanLiteral(strict) = &property.value else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_DOCS",
+                        "app.docs strict must be a boolean literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                options.strict = strict.value;
+            }
+            "path" => {
+                let Some(value) = expression_string_literal(&property.value) else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_DOCS",
+                        "app.docs path must be a string literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                options.path = docs_path(path, value, property.span)?;
+            }
+            "openapiPath" => {
+                let Some(value) = expression_string_literal(&property.value) else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_DOCS",
+                        "app.docs openapiPath must be a string literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                options.openapi_path = docs_path(path, value, property.span)?;
+            }
+            "title" => {
+                let Some(value) = expression_string_literal(&property.value) else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_DOCS",
+                        "app.docs title must be a string literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                };
+                options.title = value.to_string();
+            }
+            "requireAuth" => match &property.value {
+                Expression::BooleanLiteral(required) => {
+                    if required.value {
+                        options.require_auth = Some(AuthRequirementMetadata {
+                            required: true,
+                            ..AuthRequirementMetadata::default()
+                        });
+                    }
+                }
+                Expression::ObjectExpression(auth_object) => {
+                    options.require_auth = Some(auth_requirement_from_object(auth_object)?);
+                }
+                _ => {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_DOCS",
+                        "app.docs requireAuth must be a boolean literal or object literal",
+                    )
+                    .with_path(path)
+                    .with_span(property.value.span()));
+                }
+            },
+            _ => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_DOCS",
+                    format!("unsupported app.docs option '{key}'"),
+                )
+                .with_path(path)
+                .with_span(property.span));
+            }
+        }
+    }
+    Ok(options)
+}
+
+fn docs_path(path: &Path, value: &str, span: Span) -> Result<String, Diagnostic> {
+    if value.is_empty() || !value.starts_with('/') || (value.len() > 1 && value.ends_with('/')) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_DOCS",
+            "app.docs paths must be absolute string literals without trailing slash",
+        )
+        .with_path(path)
+        .with_span(span));
+    }
+    let normalized = normalize_framework_route_pattern(value);
+    if !route_pattern_supported(&normalized) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_DOCS",
+            "app.docs path is outside the Plan v1 alpha route syntax",
+        )
+        .with_path(path)
+        .with_span(span));
+    }
+    Ok(normalized)
+}
+
+fn docs_paths_are_distinct(
+    path: &Path,
+    span: Span,
+    options: &DocsOptions,
+) -> Result<(), Diagnostic> {
+    if options.path == options.openapi_path {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_DOCS",
+            "app.docs path and openapiPath must be distinct",
+        )
+        .with_path(path)
+        .with_span(span));
+    }
+    Ok(())
+}
+
+struct DocsRouteInput<'a> {
+    path: &'a Path,
+    source: &'a str,
+    source_name: &'a str,
+    span: Span,
+    framework_path: &'a str,
+    name: &'a str,
+    kind: &'a str,
+    helper: &'a str,
+    handler_source: String,
+    docs: Option<DocsRouteMetadata>,
+    auth: Option<AuthRequirementMetadata>,
+    middleware: &'a [FrameworkMiddleware],
+    cors: Option<&'a CorsPolicy>,
+}
+
+fn docs_route(input: DocsRouteInput<'_>) -> Result<Route, Diagnostic> {
+    let response = ResponseMetadata {
+        helper: input.helper.to_string(),
+        status: 200,
+        kind: input.kind.to_string(),
+        body_schema: None,
+        native_body: None,
+        source_name: Some(input.source_name.to_string()),
+        source_text: Some(input.source.to_string()),
+        span: Some(input.span),
+        partial: false,
+    };
+    let handler_source =
+        wrap_handler_with_framework_pipeline(&input.handler_source, input.middleware, input.cors);
+    Ok(Route {
+        method: "GET",
+        kind: "http",
+        framework_path: None,
+        pattern: input.framework_path.to_string(),
+        name: Some(input.name.to_string()),
+        tags: vec!["Documentation".to_string()],
+        summary: None,
+        description: None,
+        deprecated: None,
+        consumes: Vec::new(),
+        produces: vec![if input.kind == "html" {
+            "text/html".to_string()
+        } else {
+            "application/json".to_string()
+        }],
+        headers: Vec::new(),
+        query_schema: None,
+        params_schema: None,
+        openapi_override: None,
+        docs: input.docs,
+        health: None,
+        middleware: route_middleware_metadata(input.middleware),
+        auth: input.auth,
+        cors: input.cors.map(cors_policy_metadata),
+        cors_preflight: false,
+        span: input.span,
+        source_path: input.path.to_path_buf(),
+        source_name: input.source_name.to_string(),
+        source: input.source.to_string(),
+        module: None,
+        handler: Handler {
+            source: source_slice(input.source, input.span)
+                .unwrap_or_else(|| "app.docs()".to_string()),
+            emitted_source: handler_source,
+            span: input.span,
+            requires_results_import: false,
+            is_async: !input.middleware.is_empty() || input.cors.is_some(),
+            runtime_deferred: false,
+            source_name: input.source_name.to_string(),
+            source_text: input.source.to_string(),
+            source_map_line_offset: 0,
+            source_map_column_offset: 0,
+            bindings: Vec::new(),
+            response: Some(response.clone()),
+            responses: vec![response],
+            effects: Vec::new(),
+            schema_metadata_conflict: false,
+        },
+    })
+}
+
+fn docs_openapi_handler_source() -> String {
+    "function() { return Results.json({ ok: false, code: \"SLOPPY_E_OPENAPI_ARTIFACT_REQUIRED\" }, { status: 500 }); }".to_string()
+}
+
+fn docs_html_handler_source(title: &str, openapi_path: &str) -> String {
+    let html = format!(
+        "<!doctype html><html><head><meta charset=\"utf-8\"><title>{}</title></head><body><pre id=\"spec\">Loading...</pre><script>fetch({}).then(r=>r.json()).then(j=>document.getElementById(\"spec\").textContent=JSON.stringify(j,null,2));</script></body></html>",
+        title,
+        serde_json::to_string(openapi_path).unwrap_or_else(|_| "\"/openapi.json\"".to_string())
+    );
+    let html = serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".to_string());
+    format!("function() {{ return Results.html({html}); }}")
+}
+
 fn health_handler_source(checks: Vec<&HealthCheck>) -> String {
     let entries = checks
         .iter()
         .map(|check| {
             let name = serde_json::to_string(&check.name).unwrap_or_else(|_| "\"\"".to_string());
-            format!("{{ name: {name}, check: {} }}", check.check_source)
+            let critical = if check.critical { "true" } else { "false" };
+            let degraded_is_unhealthy = if check.degraded_is_unhealthy {
+                "true"
+            } else {
+                "false"
+            };
+            let tags = serde_json::to_string(&check.tags).unwrap_or_else(|_| "[]".to_string());
+            format!(
+                "{{ name: {name}, check: {}, critical: {critical}, degradedIsUnhealthy: {degraded_is_unhealthy}, tags: {tags} }}",
+                check.check_source
+            )
         })
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "async function(ctx) {{ const __sloppy_health_checks = [{entries}]; const __sloppy_health_results = []; let __sloppy_health_ok = true; for (const __sloppy_health_check of __sloppy_health_checks) {{ try {{ const __sloppy_health_value = await __sloppy_health_check.check(ctx); const __sloppy_check_ok = __sloppy_health_value === undefined ? true : (typeof __sloppy_health_value === \"boolean\" ? __sloppy_health_value : (__sloppy_health_value && typeof __sloppy_health_value === \"object\" && typeof __sloppy_health_value.ok === \"boolean\" ? __sloppy_health_value.ok : true)); __sloppy_health_ok = __sloppy_health_ok && __sloppy_check_ok; __sloppy_health_results.push({{ name: __sloppy_health_check.name, status: __sloppy_check_ok ? \"healthy\" : \"unhealthy\" }}); }} catch {{ __sloppy_health_ok = false; __sloppy_health_results.push({{ name: __sloppy_health_check.name, status: \"unhealthy\" }}); }} }} const __sloppy_health_body = {{ status: __sloppy_health_ok ? \"healthy\" : \"unhealthy\", checks: __sloppy_health_results }}; return __sloppy_health_ok ? Results.ok(__sloppy_health_body) : Results.status(503, __sloppy_health_body); }}"
+        "async function(ctx) {{ const __sloppy_health_started = Date.now(); const __sloppy_health_checks = [{entries}]; const __sloppy_health_results = []; let __sloppy_health_rank = 0; for (const __sloppy_health_check of __sloppy_health_checks) {{ const __sloppy_check_started = Date.now(); let __sloppy_check_status = \"healthy\"; try {{ const __sloppy_health_value = await __sloppy_health_check.check(ctx); if (__sloppy_health_value === false) __sloppy_check_status = \"unhealthy\"; else if (__sloppy_health_value && typeof __sloppy_health_value === \"object\") {{ if (__sloppy_health_value.status === \"degraded\" || __sloppy_health_value.status === \"unhealthy\") __sloppy_check_status = __sloppy_health_value.status; else if (__sloppy_health_value.ok === false) __sloppy_check_status = \"unhealthy\"; }} }} catch {{ __sloppy_check_status = \"unhealthy\"; }} let __sloppy_aggregate_status = __sloppy_check_status; if (!__sloppy_health_check.critical && __sloppy_aggregate_status === \"unhealthy\") __sloppy_aggregate_status = \"degraded\"; if (__sloppy_health_check.critical && __sloppy_check_status === \"degraded\" && __sloppy_health_check.degradedIsUnhealthy === true) __sloppy_aggregate_status = \"unhealthy\"; const __sloppy_aggregate_rank = __sloppy_aggregate_status === \"unhealthy\" ? 2 : (__sloppy_aggregate_status === \"degraded\" ? 1 : 0); if (__sloppy_aggregate_rank > __sloppy_health_rank) __sloppy_health_rank = __sloppy_aggregate_rank; __sloppy_health_results.push({{ name: __sloppy_health_check.name, status: __sloppy_check_status, critical: __sloppy_health_check.critical, tags: __sloppy_health_check.tags, durationMs: Date.now() - __sloppy_check_started, checkedAtUtc: new Date().toISOString() }}); }} const __sloppy_health_status = __sloppy_health_rank === 2 ? \"unhealthy\" : (__sloppy_health_rank === 1 ? \"degraded\" : \"healthy\"); const __sloppy_health_body = {{ status: __sloppy_health_status, durationMs: Date.now() - __sloppy_health_started, checkedAtUtc: new Date().toISOString(), checks: __sloppy_health_results }}; return __sloppy_health_status === \"unhealthy\" ? Results.status(503, __sloppy_health_body) : Results.ok(__sloppy_health_body); }}"
     )
 }
 
@@ -12671,6 +13952,32 @@ fn extract_module_function_routes(
                     routes.extend(health_routes);
                     continue;
                 }
+                if let Some(mut health_routes) = app_health_expose_call(
+                    path,
+                    source,
+                    source_name,
+                    &statement.expression,
+                    &module_app_state,
+                )? {
+                    for route in &mut health_routes {
+                        route.module = Some(module_name.to_string());
+                    }
+                    routes.extend(health_routes);
+                    continue;
+                }
+                if let Some(mut management_routes) = app_management_call(
+                    path,
+                    source,
+                    source_name,
+                    &statement.expression,
+                    &module_app_state,
+                )? {
+                    for route in &mut management_routes {
+                        route.module = Some(module_name.to_string());
+                    }
+                    routes.extend(management_routes);
+                    continue;
+                }
                 let (route_expr, fluent_metadata) = route_metadata_chain(&statement.expression)
                     .map_err(|diagnostic| diagnostic.with_path(path))?;
                 let static_strings = StaticStringEnv::default();
@@ -12772,12 +14079,9 @@ fn extract_module_function_routes(
                     &fluent_metadata,
                     &mut handler,
                 )?;
-                tags.extend(route_metadata.tags);
-                tags.extend(fluent_metadata.tags);
-                let auth = fluent_metadata
-                    .auth
-                    .or(route_metadata.auth)
-                    .or(inherited_auth);
+                let contract_metadata = merged_route_metadata(&route_metadata, &fluent_metadata);
+                tags.extend(contract_metadata.tags.clone());
+                let auth = contract_metadata.auth.clone().or(inherited_auth);
                 if let Some(requirement) = &auth {
                     handler.emitted_source =
                         wrap_handler_with_auth(&handler.emitted_source, requirement);
@@ -12788,8 +14092,18 @@ fn extract_module_function_routes(
                     kind,
                     framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
                     pattern: normalized_pattern,
-                    name: fluent_metadata.name.or(route_metadata.name),
+                    name: contract_metadata.name.clone(),
                     tags,
+                    summary: contract_metadata.summary.clone(),
+                    description: contract_metadata.description.clone(),
+                    deprecated: contract_metadata.deprecated.clone(),
+                    consumes: contract_metadata.consumes.clone(),
+                    produces: contract_metadata.produces.clone(),
+                    headers: contract_metadata.headers.clone(),
+                    query_schema: contract_metadata.query_schema.clone(),
+                    params_schema: contract_metadata.params_schema.clone(),
+                    openapi_override: contract_metadata.openapi_override.clone(),
+                    docs: None,
                     health: None,
                     middleware: Vec::new(),
                     auth,
@@ -13145,13 +14459,32 @@ fn route_metadata_chain<'a>(
             break;
         };
         match member.property.name.as_str() {
-            "withName" => {
+            "withName" | "name" => {
                 if metadata.name.is_none() {
                     metadata.name = Some(route_name_from_argument(call)?);
                 }
                 current = &member.object;
             }
-            "requireAuth" | "requiresAuth" => {
+            "summary" => {
+                if metadata.summary.is_none() {
+                    metadata.summary = Some(route_string_metadata_from_call(call, "summary")?);
+                }
+                current = &member.object;
+            }
+            "description" => {
+                if metadata.description.is_none() {
+                    metadata.description =
+                        Some(route_string_metadata_from_call(call, "description")?);
+                }
+                current = &member.object;
+            }
+            "deprecated" => {
+                if metadata.deprecated.is_none() {
+                    metadata.deprecated = Some(route_deprecated_from_call(call)?);
+                }
+                current = &member.object;
+            }
+            "requireAuth" | "requiresAuth" | "security" => {
                 let requirement = auth_requirement_from_call(call)?;
                 if metadata.auth.is_none() {
                     metadata.auth = Some(requirement);
@@ -13215,22 +14548,59 @@ fn route_metadata_chain<'a>(
             }
             "accepts" => {
                 if metadata.accepts_schema.is_none() {
-                    metadata.accepts_schema = Some(route_schema_from_argument(call, "accepts", 1)?);
+                    metadata.accepts_schema = Some(route_schema_from_argument(call, "accepts", 2)?);
                 }
                 current = &member.object;
             }
             "returns" => {
+                let (status, schema) = route_returns_from_call(call)?;
+                if metadata.returns_status.is_none() {
+                    metadata.returns_status = status;
+                }
                 if metadata.returns_schema.is_none() {
-                    metadata.returns_schema = Some(route_schema_from_argument(call, "returns", 2)?);
+                    metadata.returns_schema = schema;
                 }
                 current = &member.object;
             }
-            "withTags" => {
-                return Err(Diagnostic::new(
-                    "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
-                    "route tags must be declared with route metadata options or group.withTags(...)",
-                )
-                .with_span(call.span));
+            "tags" | "withTags" => {
+                metadata.tags.extend(route_tags_from_arguments(call)?);
+                current = &member.object;
+            }
+            "consumes" => {
+                metadata
+                    .consumes
+                    .push(route_string_metadata_from_call(call, "consumes")?);
+                current = &member.object;
+            }
+            "produces" => {
+                metadata
+                    .produces
+                    .push(route_string_metadata_from_call(call, "produces")?);
+                current = &member.object;
+            }
+            "header" => {
+                metadata
+                    .headers
+                    .push(route_contract_parameter_from_call(call, "header")?);
+                current = &member.object;
+            }
+            "query" => {
+                if metadata.query_schema.is_none() {
+                    metadata.query_schema = Some(route_schema_from_argument(call, "query", 2)?);
+                }
+                current = &member.object;
+            }
+            "params" => {
+                if metadata.params_schema.is_none() {
+                    metadata.params_schema = Some(route_schema_from_argument(call, "params", 2)?);
+                }
+                current = &member.object;
+            }
+            "openapi" => {
+                if metadata.openapi_override.is_none() {
+                    metadata.openapi_override = Some(route_openapi_override_from_call(call)?);
+                }
+                current = &member.object;
             }
             _ => break,
         }
@@ -13273,6 +14643,56 @@ fn extend_unique(values: &mut Vec<String>, incoming: Vec<String>) {
     }
 }
 
+fn merged_route_metadata(options: &RouteMetadata, fluent: &RouteMetadata) -> RouteMetadata {
+    let mut merged = options.clone();
+    if fluent.name.is_some() {
+        merged.name = fluent.name.clone();
+    }
+    if !fluent.tags.is_empty() {
+        merged.tags.extend(fluent.tags.clone());
+    }
+    if fluent.auth.is_some() {
+        merged.auth = fluent.auth.clone();
+    }
+    if fluent.accepts_schema.is_some() {
+        merged.accepts_schema = fluent.accepts_schema.clone();
+    }
+    if fluent.returns_schema.is_some() {
+        merged.returns_schema = fluent.returns_schema.clone();
+    }
+    if fluent.returns_status.is_some() {
+        merged.returns_status = fluent.returns_status;
+    }
+    if fluent.summary.is_some() {
+        merged.summary = fluent.summary.clone();
+    }
+    if fluent.description.is_some() {
+        merged.description = fluent.description.clone();
+    }
+    if fluent.deprecated.is_some() {
+        merged.deprecated = fluent.deprecated.clone();
+    }
+    if !fluent.consumes.is_empty() {
+        merged.consumes.extend(fluent.consumes.clone());
+    }
+    if !fluent.produces.is_empty() {
+        merged.produces.extend(fluent.produces.clone());
+    }
+    if !fluent.headers.is_empty() {
+        merged.headers.extend(fluent.headers.clone());
+    }
+    if fluent.query_schema.is_some() {
+        merged.query_schema = fluent.query_schema.clone();
+    }
+    if fluent.params_schema.is_some() {
+        merged.params_schema = fluent.params_schema.clone();
+    }
+    if fluent.openapi_override.is_some() {
+        merged.openapi_override = fluent.openapi_override.clone();
+    }
+    merged
+}
+
 fn auth_requirement_from_call(
     call: &CallExpression<'_>,
 ) -> Result<AuthRequirementMetadata, Diagnostic> {
@@ -13306,6 +14726,16 @@ fn auth_requirement_from_call(
             "requireAuth options must be an object literal",
         )
         .with_span(argument_span(argument).unwrap_or(call.span)));
+    };
+    auth_requirement_from_object(object)
+}
+
+fn auth_requirement_from_object(
+    object: &ObjectExpression<'_>,
+) -> Result<AuthRequirementMetadata, Diagnostic> {
+    let mut requirement = AuthRequirementMetadata {
+        required: true,
+        ..AuthRequirementMetadata::default()
     };
     for property in &object.properties {
         let ObjectPropertyKind::ObjectProperty(property) = property else {
@@ -13455,6 +14885,63 @@ fn auth_string_list_from_array(
     Ok(values)
 }
 
+fn route_string_metadata_from_call(
+    call: &CallExpression<'_>,
+    method: &str,
+) -> Result<String, Diagnostic> {
+    if call.arguments.len() != 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            format!("{method} requires exactly one string literal"),
+        )
+        .with_span(call.span));
+    }
+    let Some(value) = call.arguments.first().and_then(string_argument) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            format!("{method} requires a string literal"),
+        )
+        .with_span(call.span));
+    };
+    if value.is_empty() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            format!("{method} requires a non-empty string literal"),
+        )
+        .with_span(call.span));
+    }
+    Ok(value.to_string())
+}
+
+fn route_deprecated_from_call(call: &CallExpression<'_>) -> Result<String, Diagnostic> {
+    if call.arguments.is_empty() {
+        return Ok("true".to_string());
+    }
+    if call.arguments.len() != 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            "deprecated accepts at most one boolean or reason string",
+        )
+        .with_span(call.span));
+    }
+    match call.arguments.first() {
+        Some(Argument::BooleanLiteral(value)) => {
+            Ok(if value.value { "true" } else { "false" }.to_string())
+        }
+        Some(argument) => {
+            let Some(reason) = string_argument(argument) else {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                    "deprecated metadata must be a boolean literal or reason string",
+                )
+                .with_span(argument_span(argument).unwrap_or(call.span)));
+            };
+            Ok(reason.to_string())
+        }
+        None => Ok("true".to_string()),
+    }
+}
+
 fn route_schema_from_argument(
     call: &CallExpression<'_>,
     method: &str,
@@ -13476,6 +14963,110 @@ fn route_schema_from_argument(
         .with_span(call.span));
     };
     Ok(schema.to_string())
+}
+
+fn argument_status(argument: &Argument<'_>) -> Option<u16> {
+    let Argument::NumericLiteral(literal) = argument else {
+        return None;
+    };
+    let value = literal.value;
+    if value.fract() == 0.0 && (100.0..=599.0).contains(&value) {
+        Some(value as u16)
+    } else {
+        None
+    }
+}
+
+fn route_returns_from_call(
+    call: &CallExpression<'_>,
+) -> Result<(Option<u16>, Option<String>), Diagnostic> {
+    if call.arguments.is_empty() || call.arguments.len() > 3 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_SCHEMA",
+            "returns requires a schema identifier or status plus schema identifier",
+        )
+        .with_span(call.span));
+    }
+    if let Some(status) = call.arguments.first().and_then(argument_status) {
+        let schema = match call.arguments.get(1) {
+            Some(argument) => {
+                let Some(schema) = argument_identifier(argument) else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_ROUTE_SCHEMA",
+                        "returns status overload requires a static schema identifier when a schema is provided",
+                    )
+                    .with_span(argument_span(argument).unwrap_or(call.span)));
+                };
+                Some(schema.to_string())
+            }
+            None => None,
+        };
+        return Ok((Some(status), schema));
+    }
+    Ok((None, Some(route_schema_from_argument(call, "returns", 2)?)))
+}
+
+fn route_contract_parameter_from_call(
+    call: &CallExpression<'_>,
+    method: &str,
+) -> Result<RouteContractParameter, Diagnostic> {
+    if call.arguments.len() < 2 || call.arguments.len() > 3 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            format!("{method} requires a name and schema identifier"),
+        )
+        .with_span(call.span));
+    }
+    let Some(name) = call.arguments.first().and_then(string_argument) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            format!("{method} name must be a string literal"),
+        )
+        .with_span(call.span));
+    };
+    let Some(schema) = call.arguments.get(1).and_then(argument_identifier) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_SCHEMA",
+            format!("{method} schema must be a static identifier"),
+        )
+        .with_span(call.span));
+    };
+    let options = call.arguments.get(2).and_then(object_argument);
+    Ok(RouteContractParameter {
+        name: name.to_string(),
+        schema: schema.to_string(),
+        required: options
+            .and_then(|object| object_bool_property_value(object, "required"))
+            .unwrap_or(false),
+        description: options
+            .and_then(|object| object_string_property_value(object, "description"))
+            .map(ToString::to_string),
+    })
+}
+
+fn route_openapi_override_from_call(call: &CallExpression<'_>) -> Result<Value, Diagnostic> {
+    if call.arguments.len() != 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            "openapi requires exactly one object literal",
+        )
+        .with_span(call.span));
+    }
+    let Some(value) = call.arguments.first().and_then(argument_json_value) else {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            "openapi override must be a static JSON-compatible object literal",
+        )
+        .with_span(call.span));
+    };
+    if !value.is_object() {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            "openapi override must be an object literal",
+        )
+        .with_span(call.span));
+    }
+    Ok(value)
 }
 
 fn validate_route_schema_reference(
@@ -13545,7 +15136,7 @@ fn apply_route_schema_metadata(
         if !applied {
             let response = ResponseMetadata {
                 helper: "returns".to_string(),
-                status: 200,
+                status: metadata.returns_status.unwrap_or(200),
                 kind: "json".to_string(),
                 body_schema: Some(schema.clone()),
                 native_body: None,
@@ -13559,6 +15150,15 @@ fn apply_route_schema_metadata(
             }
             handler.responses.push(response);
         }
+    }
+    for header in &metadata.headers {
+        validate_route_schema_reference(path, span, &header.schema, schema_names)?;
+    }
+    if let Some(schema) = &metadata.query_schema {
+        validate_route_schema_reference(path, span, schema, schema_names)?;
+    }
+    if let Some(schema) = &metadata.params_schema {
+        validate_route_schema_reference(path, span, schema, schema_names)?;
     }
     handler.schema_metadata_conflict |= schema_metadata_conflict;
     Ok(())
@@ -13682,6 +15282,42 @@ fn route_metadata_from_options_argument(
             "tags" => {
                 metadata.tags = route_tags_from_expression(&property.value)?;
             }
+            "summary" => {
+                let Some(value) = expression_string_literal(&property.value) else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                        "route option summary must be a string literal",
+                    )
+                    .with_span(property.value.span()));
+                };
+                metadata.summary = Some(value.to_string());
+            }
+            "description" => {
+                let Some(value) = expression_string_literal(&property.value) else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                        "route option description must be a string literal",
+                    )
+                    .with_span(property.value.span()));
+                };
+                metadata.description = Some(value.to_string());
+            }
+            "deprecated" => match &property.value {
+                Expression::BooleanLiteral(value) => {
+                    metadata.deprecated =
+                        Some(if value.value { "true" } else { "false" }.to_string());
+                }
+                _ => {
+                    let Some(value) = expression_string_literal(&property.value) else {
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+                            "route option deprecated must be a boolean or reason string",
+                        )
+                        .with_span(property.value.span()));
+                    };
+                    metadata.deprecated = Some(value.to_string());
+                }
+            },
             _ => {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
@@ -13766,6 +15402,15 @@ fn with_argument_span(diagnostic: Diagnostic, argument: &Argument<'_>) -> Diagno
 
 fn static_member_name<'a>(expression: &'a Expression<'a>) -> Option<(&'a str, &'a str)> {
     crate::slop_dsl::static_member_name(expression)
+}
+
+fn static_member_expression<'a>(
+    expression: &'a Expression<'a>,
+) -> Option<(&'a Expression<'a>, &'a str)> {
+    let Expression::StaticMemberExpression(member) = expression else {
+        return None;
+    };
+    Some((&member.object, member.property.name.as_str()))
 }
 
 fn static_member_chain<'a>(expression: &'a Expression<'a>) -> Option<Vec<&'a str>> {

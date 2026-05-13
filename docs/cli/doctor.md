@@ -16,6 +16,7 @@ sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--forma
 - route, provider, and capability metadata, including Program Plans with no
   route metadata by design and web Plans with partial/dynamic route metadata;
 - route dispatch metadata when `--dispatch` is passed;
+- Plan-visible legacy health route metadata;
 - dependency graph metadata and compatibility findings;
 - native FFI metadata, dynamic library load checks, and symbol resolution;
 - SQLite metadata and the fact that SQLite needs no external DB driver;
@@ -66,6 +67,10 @@ Doctor also reports route JSON readiness when dispatch metadata is available:
 - per-route request and response fallback reasons, including route identity
 
 These warnings keep generic paths visible instead of silent.
+
+The richer `app.health()` and `app.management()` bootstrap app-host APIs expose
+their live state through the endpoints they register. App-host tests can inspect
+the same state through `app.__getPlanContributions().ops`.
 
 With `--report`, doctor writes `.sloppy/reports/doctor-report.json` and
 breadcrumb JSONL. The report is local evidence for the command invocation and

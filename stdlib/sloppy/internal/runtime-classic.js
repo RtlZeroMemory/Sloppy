@@ -922,17 +922,276 @@ Operation:
         return value;
     }
 
-    function validateProviderOperationOptions(options, operation, allowResultMode = false) {
+    function validateProviderOperationOptions(
+        options,
+        operation,
+        allowResultMode = false,
+        allowMaxRows = false,
+        allowCursorOptions = false,
+    ) {
+        const defaults = Object.freeze({
+            mode: allowResultMode ? "object" : undefined,
+            batchSize: undefined,
+            maxRows: undefined,
+            timeoutMs: undefined,
+        });
         if (options === undefined) {
-            return allowResultMode ? "object" : undefined;
+            return defaults;
         }
         if (!isPlainObject(options)) {
             throw new TypeError(`Sloppy ${operation} options must be a plain object.`);
         }
-        if (!allowResultMode && Object.prototype.hasOwnProperty.call(options, "mode")) {
-            throw new TypeError(`Sloppy ${operation} option 'mode' is not supported by the current runtime bridge.`);
+        const allowedKeys = new Set(["timeoutMs", "deadline", "signal"]);
+        if (allowResultMode) {
+            allowedKeys.add("mode");
         }
-        return allowResultMode ? normalizeResultMode(options.mode, operation) : undefined;
+        if (allowMaxRows) {
+            allowedKeys.add("maxRows");
+        }
+        if (allowCursorOptions) {
+            allowedKeys.add("batchSize");
+        }
+        for (const key of Object.keys(options)) {
+            if (!allowedKeys.has(key)) {
+                throw new TypeError(`Sloppy ${operation} option '${key}' is not supported by the current runtime bridge.`);
+            }
+        }
+        const maxRows = options.maxRows;
+        if (maxRows !== undefined) {
+            if (!allowMaxRows || !Number.isInteger(maxRows) || maxRows < 1 || maxRows > 0xffffffff) {
+                throw new TypeError(`Sloppy ${operation} maxRows option must be an integer from 1 to 4294967295.`);
+            }
+        }
+        const timeoutMs = options.timeoutMs;
+        if (timeoutMs !== undefined) {
+            if (!Number.isInteger(timeoutMs) || timeoutMs < 0 || timeoutMs > 0xffffffff) {
+                throw new TypeError(`Sloppy ${operation} timeoutMs option must be an integer from 0 to 4294967295.`);
+            }
+            if (timeoutMs === 0) {
+                throw new Error(`SLOPPY_E_DEADLINE_EXCEEDED: Sloppy ${operation} deadline was exceeded`);
+            }
+        }
+        const batchSize = options.batchSize;
+        if (batchSize !== undefined) {
+            if (!allowCursorOptions || !Number.isInteger(batchSize) || batchSize < 1 || batchSize > 4096) {
+                throw new TypeError(`Sloppy ${operation} batchSize option must be an integer from 1 to 4096.`);
+            }
+        }
+        const signal = options.signal;
+        if (
+            signal !== undefined &&
+            signal !== null &&
+            (typeof signal !== "object" || Array.isArray(signal))
+        ) {
+            throw new TypeError(`Sloppy ${operation} signal option must be an object.`);
+        }
+        if (signal?.aborted === true) {
+            throw cancelledError(signal.reason);
+        }
+        if (typeof signal?.throwIfAborted === "function") {
+            try {
+                signal.throwIfAborted();
+            }
+            catch {
+                throw cancelledError(signal.reason);
+            }
+        }
+        const deadline = options.deadline;
+        if (
+            deadline !== undefined &&
+            deadline !== null &&
+            (typeof deadline !== "object" || Array.isArray(deadline))
+        ) {
+            throw new TypeError(`Sloppy ${operation} deadline option must be an object or null.`);
+        }
+        if (deadline?.expired === true) {
+            throw new Error(`SLOPPY_E_DEADLINE_EXCEEDED: Sloppy ${operation} deadline was exceeded`);
+        }
+        let deadlineMs = Infinity;
+        if (deadline?.remainingMs !== undefined) {
+            if (typeof deadline.remainingMs !== "function") {
+                throw new TypeError(`Sloppy ${operation} deadline.remainingMs must be a function when supplied.`);
+            }
+            deadlineMs = deadline.remainingMs();
+            if (typeof deadlineMs !== "number" || Number.isNaN(deadlineMs)) {
+                throw new TypeError(`Sloppy ${operation} deadline.remainingMs must return a number.`);
+            }
+        }
+        let effectiveTimeoutMs = timeoutMs;
+        if (deadlineMs <= 0) {
+            throw new Error(`SLOPPY_E_DEADLINE_EXCEEDED: Sloppy ${operation} deadline was exceeded`);
+        }
+        if (deadlineMs !== Infinity) {
+            if (!Number.isFinite(deadlineMs)) {
+                throw new TypeError(`Sloppy ${operation} deadline remainingMs() must return a finite number or Infinity.`);
+            }
+            const roundedDeadlineMs = Math.min(Math.ceil(deadlineMs), 0xffffffff);
+            effectiveTimeoutMs = effectiveTimeoutMs === undefined
+                ? roundedDeadlineMs
+                : Math.min(effectiveTimeoutMs, roundedDeadlineMs);
+        }
+        return Object.freeze({
+            mode: allowResultMode ? normalizeResultMode(options.mode, operation) : undefined,
+            batchSize,
+            maxRows,
+            timeoutMs: effectiveTimeoutMs,
+        });
+    }
+
+    function providerQueryBridgeOptions(
+        validatedOptions,
+        includeTimeout = false,
+        includeCursorOptions = false,
+    ) {
+        if (
+            validatedOptions.maxRows === undefined &&
+            (!includeTimeout || validatedOptions.timeoutMs === undefined) &&
+            (!includeCursorOptions || validatedOptions.batchSize === undefined)
+        ) {
+            return undefined;
+        }
+        const bridgeOptions = {};
+        if (includeCursorOptions && validatedOptions.batchSize !== undefined) {
+            bridgeOptions.batchSize = validatedOptions.batchSize;
+        }
+        if (validatedOptions.maxRows !== undefined) {
+            bridgeOptions.maxRows = validatedOptions.maxRows;
+        }
+        if (includeTimeout && validatedOptions.timeoutMs !== undefined) {
+            bridgeOptions.timeoutMs = validatedOptions.timeoutMs;
+        }
+        return Object.freeze(bridgeOptions);
+    }
+
+    function invokeProviderQuery(method, handle, query, validatedOptions, includeTimeout = false) {
+        const bridgeOptions = providerQueryBridgeOptions(validatedOptions, includeTimeout);
+        if (bridgeOptions === undefined) {
+            return method(handle, query.text, query.parameters);
+        }
+        return method(handle, query.text, query.parameters, bridgeOptions);
+    }
+
+    function requireCursorBridgeMethod(bridge, method, provider) {
+        if (typeof bridge?.[method] !== "function") {
+            throw new Error(`sloppy: ${provider} cursor bridge is unavailable`);
+        }
+        return bridge[method];
+    }
+
+    function invokeProviderCursorOpen(method, handle, query, validatedOptions, includeTimeout = false) {
+        const bridgeOptions = providerQueryBridgeOptions(validatedOptions, includeTimeout, true);
+        if (bridgeOptions === undefined) {
+            return method(handle, query.text, query.parameters);
+        }
+        return method(handle, query.text, query.parameters, bridgeOptions);
+    }
+
+    function createDataCursor(provider, bridge, nativeCursor, mode, validatedOptions, registry) {
+        if (!isPlainObject(nativeCursor)) {
+            throw new TypeError(`Sloppy ${provider} cursor bridge returned an invalid cursor handle.`);
+        }
+
+        let closed = nativeCursor.closed === true;
+        let started = false;
+        let rowsSeen = 0;
+        let cursor = null;
+        const columns = Object.freeze(Array.isArray(nativeCursor.columns) ? [...nativeCursor.columns] : []);
+
+        async function close() {
+            if (closed) {
+                registry?.delete(cursor);
+                return;
+            }
+            closed = true;
+            registry?.delete(cursor);
+            await requireCursorBridgeMethod(bridge, "cursorClose", provider)(nativeCursor);
+        }
+
+        async function next() {
+            if (closed) {
+                throw new Error(`sloppy: ${provider} cursor is closed`);
+            }
+            started = true;
+            let result;
+            try {
+                result = await requireCursorBridgeMethod(bridge, "cursorNext", provider)(nativeCursor);
+            } catch (error) {
+                try {
+                    await close();
+                } catch {
+                    // Preserve the provider error.
+                }
+                throw error;
+            }
+            if (!isPlainObject(result) || typeof result.done !== "boolean") {
+                await close();
+                throw new TypeError(`Sloppy ${provider} cursor bridge returned an invalid iterator result.`);
+            }
+            if (result.done) {
+                await close();
+                return Object.freeze({ done: true, value: undefined });
+            }
+            rowsSeen += 1;
+            return Object.freeze({ done: false, value: result.value });
+        }
+
+        cursor = {
+            get closed() {
+                return closed;
+            },
+            get columns() {
+                return columns;
+            },
+            get mode() {
+                return mode;
+            },
+            get provider() {
+                return provider;
+            },
+            close,
+            next,
+            async return() {
+                await close();
+                return Object.freeze({ done: true, value: undefined });
+            },
+            async throw(error) {
+                await close();
+                throw error;
+            },
+            [Symbol.asyncIterator]() {
+                if (started) {
+                    throw new Error(`sloppy: ${provider} cursor is single-use`);
+                }
+                return this;
+            },
+            __debug() {
+                return Object.freeze({ kind: "data-cursor", closed, mode, provider, rowsSeen });
+            },
+        };
+        registry?.add(cursor);
+        return Object.freeze(cursor);
+    }
+
+    function closeActiveCursors(cursors) {
+        if (!(cursors instanceof Set) || cursors.size === 0) {
+            return;
+        }
+        for (const cursor of Array.from(cursors)) {
+            try {
+                const result = cursor.close();
+                if (result !== undefined && typeof result.catch === "function") {
+                    result.catch(() => {});
+                }
+            } catch {
+            }
+        }
+        cursors.clear();
+    }
+
+    async function openProviderCursor(provider, bridge, handle, query, validated, mode, methodName, registry) {
+        const method = requireCursorBridgeMethod(bridge, methodName, provider);
+        const nativeCursor = await invokeProviderCursorOpen(method, handle, query, validated, true);
+        return createDataCursor(provider, bridge, nativeCursor, mode, validated, registry);
     }
 
     function createSqliteConnection(bridge, handle) {
@@ -940,6 +1199,7 @@ Operation:
             closed: false,
             handle,
             transactionActive: false,
+            activeCursors: new Set(),
         };
 
         function assertOpen(operation) {
@@ -951,6 +1211,7 @@ Operation:
         function createTransaction() {
             const txState = {
                 closed: false,
+                activeCursors: new Set(),
             };
 
             function assertTransactionOpen(operation) {
@@ -969,16 +1230,31 @@ Operation:
                 },
                 query(sql, params, options) {
                     assertTransactionOpen("transaction.query");
-                    const mode = validateProviderOperationOptions(options, "sqlite.transaction.query", true);
+                    const validated = validateProviderOperationOptions(options, "sqlite.transaction.query", true, true);
                     const query = normalizeSqliteQuery("query", sql, params);
-                    const method = mode === "raw" ? bridge.transactionQueryRaw : bridge.transactionQuery;
-                    return method(state.handle, query.text, query.parameters);
+                    const method = validated.mode === "raw" ? bridge.transactionQueryRaw : bridge.transactionQuery;
+                    return invokeProviderQuery(method, state.handle, query, validated, true);
                 },
                 queryRaw(sql, params, options) {
                     assertTransactionOpen("transaction.queryRaw");
-                    validateProviderOperationOptions(options, "sqlite.transaction.queryRaw");
+                    const validated = validateProviderOperationOptions(options, "sqlite.transaction.queryRaw", false, true);
                     const query = normalizeSqliteQuery("queryRaw", sql, params);
-                    return bridge.transactionQueryRaw(state.handle, query.text, query.parameters);
+                    return invokeProviderQuery(bridge.transactionQueryRaw, state.handle, query, validated, true);
+                },
+                async queryCursor(sql, params, options) {
+                    assertTransactionOpen("transaction.queryCursor");
+                    const validated = validateProviderOperationOptions(options, "sqlite.transaction.queryCursor", true, true, true);
+                    const query = normalizeSqliteQuery("queryCursor", sql, params);
+                    const methodName = validated.mode === "raw"
+                        ? "transactionQueryRawCursor"
+                        : "transactionQueryCursor";
+                    return openProviderCursor("sqlite", bridge, state.handle, query, validated, validated.mode, methodName, txState.activeCursors);
+                },
+                async queryRawCursor(sql, params, options) {
+                    assertTransactionOpen("transaction.queryRawCursor");
+                    const validated = validateProviderOperationOptions(options, "sqlite.transaction.queryRawCursor", false, true, true);
+                    const query = normalizeSqliteQuery("queryRawCursor", sql, params);
+                    return openProviderCursor("sqlite", bridge, state.handle, query, validated, "raw", "transactionQueryRawCursor", txState.activeCursors);
                 },
                 queryOne(sql, params, options) {
                     assertTransactionOpen("transaction.queryOne");
@@ -994,6 +1270,7 @@ Operation:
             return {
                 tx,
                 close() {
+                    closeActiveCursors(txState.activeCursors);
                     txState.closed = true;
                 },
             };
@@ -1001,6 +1278,7 @@ Operation:
 
         async function rollbackAfterCallbackError(error, transaction) {
             try {
+                transaction.close();
                 await bridge.transactionRollback(state.handle);
             } catch {
                 transaction.close();
@@ -1013,13 +1291,13 @@ Operation:
                 }
                 throw error;
             }
-            transaction.close();
             state.transactionActive = false;
             throw error;
         }
 
         async function commitTransaction(transaction) {
             try {
+                transaction.close();
                 await bridge.transactionCommit(state.handle);
             } catch (error) {
                 transaction.close();
@@ -1032,7 +1310,6 @@ Operation:
                 }
                 throw error;
             }
-            transaction.close();
             state.transactionActive = false;
         }
 
@@ -1051,16 +1328,32 @@ Operation:
             },
             query(sql, params, options) {
                 assertOpen("query");
-                const mode = validateProviderOperationOptions(options, "sqlite.query", true);
+                const validated = validateProviderOperationOptions(options, "sqlite.query", true, true);
                 const query = normalizeSqliteQuery("query", sql, params);
-                const method = mode === "raw" ? bridge.queryRaw : bridge.query;
-                return method(state.handle, query.text, query.parameters);
+                const method = validated.mode === "raw" ? bridge.queryRaw : bridge.query;
+                return invokeProviderQuery(method, state.handle, query, validated, true);
             },
             queryRaw(sql, params, options) {
                 assertOpen("queryRaw");
-                validateProviderOperationOptions(options, "sqlite.queryRaw");
+                const validated = validateProviderOperationOptions(options, "sqlite.queryRaw", false, true);
                 const query = normalizeSqliteQuery("queryRaw", sql, params);
-                return bridge.queryRaw(state.handle, query.text, query.parameters);
+                return invokeProviderQuery(bridge.queryRaw, state.handle, query, validated, true);
+            },
+            async queryCursor(sql, params, options) {
+                assertOpen("queryCursor");
+                const validated = validateProviderOperationOptions(options, "sqlite.queryCursor", true, true, true);
+                const query = normalizeSqliteQuery("queryCursor", sql, params);
+                const methodName = validated.mode === "raw" ? "queryRawCursor" : "queryCursor";
+                return openProviderCursor("sqlite", bridge, state.handle, query, validated, validated.mode, methodName, state.activeCursors);
+            },
+            async queryRawCursor(sql, params, options) {
+                assertOpen("queryRawCursor");
+                const validated = validateProviderOperationOptions(options, "sqlite.queryRawCursor", false, true, true);
+                const query = normalizeSqliteQuery("queryRawCursor", sql, params);
+                return openProviderCursor("sqlite", bridge, state.handle, query, validated, "raw", "queryRawCursor", state.activeCursors);
+            },
+            stream(sql, params, options) {
+                return this.queryCursor(sql, params, options);
             },
             queryOne(sql, params, options) {
                 assertOpen("queryOne");
@@ -1103,6 +1396,7 @@ Operation:
                     throw sqliteTransactionActiveError("close");
                 }
 
+                closeActiveCursors(state.activeCursors);
                 bridge.close(state.handle);
                 state.closed = true;
             },
@@ -1434,6 +1728,7 @@ Reason:
             closed: false,
             handle,
             transactionActive: false,
+            activeCursors: new Set(),
         };
 
         function assertOpen(operation) {
@@ -1451,6 +1746,7 @@ Operation:
         function createTransaction() {
             const txState = {
                 closed: false,
+                activeCursors: new Set(),
             };
             function assertTransactionOpen(operation) {
                 assertOpen(operation);
@@ -1473,16 +1769,31 @@ Operation:
                 },
                 query(sql, params, options) {
                     assertTransactionOpen("transaction.query");
-                    const mode = validateProviderOperationOptions(options, "postgres.transaction.query", true);
+                    const validated = validateProviderOperationOptions(options, "postgres.transaction.query", true, true);
                     const query = normalizePostgresQuery("query", sql, params);
-                    const method = mode === "raw" ? bridge.transactionQueryRaw : bridge.transactionQuery;
-                    return method(state.handle, query.text, query.parameters);
+                    const method = validated.mode === "raw" ? bridge.transactionQueryRaw : bridge.transactionQuery;
+                    return invokeProviderQuery(method, state.handle, query, validated, true);
                 },
                 queryRaw(sql, params, options) {
                     assertTransactionOpen("transaction.queryRaw");
-                    validateProviderOperationOptions(options, "postgres.transaction.queryRaw");
+                    const validated = validateProviderOperationOptions(options, "postgres.transaction.queryRaw", false, true);
                     const query = normalizePostgresQuery("queryRaw", sql, params);
-                    return bridge.transactionQueryRaw(state.handle, query.text, query.parameters);
+                    return invokeProviderQuery(bridge.transactionQueryRaw, state.handle, query, validated, true);
+                },
+                async queryCursor(sql, params, options) {
+                    assertTransactionOpen("transaction.queryCursor");
+                    const validated = validateProviderOperationOptions(options, "postgres.transaction.queryCursor", true, true, true);
+                    const query = normalizePostgresQuery("queryCursor", sql, params);
+                    const methodName = validated.mode === "raw"
+                        ? "transactionQueryRawCursor"
+                        : "transactionQueryCursor";
+                    return openProviderCursor("postgres", bridge, state.handle, query, validated, validated.mode, methodName, txState.activeCursors);
+                },
+                async queryRawCursor(sql, params, options) {
+                    assertTransactionOpen("transaction.queryRawCursor");
+                    const validated = validateProviderOperationOptions(options, "postgres.transaction.queryRawCursor", false, true, true);
+                    const query = normalizePostgresQuery("queryRawCursor", sql, params);
+                    return openProviderCursor("postgres", bridge, state.handle, query, validated, "raw", "transactionQueryRawCursor", txState.activeCursors);
                 },
                 queryOne(sql, params, options) {
                     assertTransactionOpen("transaction.queryOne");
@@ -1497,6 +1808,7 @@ Operation:
             return {
                 tx,
                 close() {
+                    closeActiveCursors(txState.activeCursors);
                     txState.closed = true;
                 },
             };
@@ -1504,6 +1816,7 @@ Operation:
 
         async function rollbackAfterCallbackError(error, transaction) {
             try {
+                transaction.close();
                 await bridge.transactionRollback(state.handle);
             } catch {
                 transaction.close();
@@ -1516,13 +1829,13 @@ Operation:
                 }
                 throw error;
             }
-            transaction.close();
             state.transactionActive = false;
             throw error;
         }
 
         async function commitTransaction(transaction) {
             try {
+                transaction.close();
                 await bridge.transactionCommit(state.handle);
             } catch (error) {
                 transaction.close();
@@ -1535,7 +1848,6 @@ Operation:
                 }
                 throw error;
             }
-            transaction.close();
             state.transactionActive = false;
         }
 
@@ -1548,16 +1860,32 @@ Operation:
             },
             query(sql, params, options) {
                 assertOpen("query");
-                const mode = validateProviderOperationOptions(options, "postgres.query", true);
+                const validated = validateProviderOperationOptions(options, "postgres.query", true, true);
                 const query = normalizePostgresQuery("query", sql, params);
-                const method = mode === "raw" ? bridge.queryRaw : bridge.query;
-                return method(state.handle, query.text, query.parameters);
+                const method = validated.mode === "raw" ? bridge.queryRaw : bridge.query;
+                return invokeProviderQuery(method, state.handle, query, validated, true);
             },
             queryRaw(sql, params, options) {
                 assertOpen("queryRaw");
-                validateProviderOperationOptions(options, "postgres.queryRaw");
+                const validated = validateProviderOperationOptions(options, "postgres.queryRaw", false, true);
                 const query = normalizePostgresQuery("queryRaw", sql, params);
-                return bridge.queryRaw(state.handle, query.text, query.parameters);
+                return invokeProviderQuery(bridge.queryRaw, state.handle, query, validated, true);
+            },
+            async queryCursor(sql, params, options) {
+                assertOpen("queryCursor");
+                const validated = validateProviderOperationOptions(options, "postgres.queryCursor", true, true, true);
+                const query = normalizePostgresQuery("queryCursor", sql, params);
+                const methodName = validated.mode === "raw" ? "queryRawCursor" : "queryCursor";
+                return openProviderCursor("postgres", bridge, state.handle, query, validated, validated.mode, methodName, state.activeCursors);
+            },
+            async queryRawCursor(sql, params, options) {
+                assertOpen("queryRawCursor");
+                const validated = validateProviderOperationOptions(options, "postgres.queryRawCursor", false, true, true);
+                const query = normalizePostgresQuery("queryRawCursor", sql, params);
+                return openProviderCursor("postgres", bridge, state.handle, query, validated, "raw", "queryRawCursor", state.activeCursors);
+            },
+            stream(sql, params, options) {
+                return this.queryCursor(sql, params, options);
             },
             queryOne(sql, params, options) {
                 assertOpen("queryOne");
@@ -1597,6 +1925,7 @@ Operation:
                 if (state.transactionActive) {
                     throw new Error("sloppy: postgres transaction is active");
                 }
+                closeActiveCursors(state.activeCursors);
                 bridge.close(state.handle);
                 state.closed = true;
             },
@@ -1704,6 +2033,7 @@ Reason:
             closed: false,
             handle,
             transactionActive: false,
+            activeCursors: new Set(),
         };
 
         function assertOpen(operation) {
@@ -1721,6 +2051,7 @@ Operation:
         function createTransaction() {
             const txState = {
                 closed: false,
+                activeCursors: new Set(),
             };
             function assertTransactionOpen(operation) {
                 assertOpen(operation);
@@ -1743,16 +2074,31 @@ Operation:
                 },
                 query(sql, params, options) {
                     assertTransactionOpen("transaction.query");
-                    const mode = validateProviderOperationOptions(options, "sqlserver.transaction.query", true);
+                    const validated = validateProviderOperationOptions(options, "sqlserver.transaction.query", true, true);
                     const query = normalizeSqlServerQuery("query", sql, params);
-                    const method = mode === "raw" ? bridge.transactionQueryRaw : bridge.transactionQuery;
-                    return method(state.handle, query.text, query.parameters);
+                    const method = validated.mode === "raw" ? bridge.transactionQueryRaw : bridge.transactionQuery;
+                    return invokeProviderQuery(method, state.handle, query, validated, true);
                 },
                 queryRaw(sql, params, options) {
                     assertTransactionOpen("transaction.queryRaw");
-                    validateProviderOperationOptions(options, "sqlserver.transaction.queryRaw");
+                    const validated = validateProviderOperationOptions(options, "sqlserver.transaction.queryRaw", false, true);
                     const query = normalizeSqlServerQuery("queryRaw", sql, params);
-                    return bridge.transactionQueryRaw(state.handle, query.text, query.parameters);
+                    return invokeProviderQuery(bridge.transactionQueryRaw, state.handle, query, validated, true);
+                },
+                async queryCursor(sql, params, options) {
+                    assertTransactionOpen("transaction.queryCursor");
+                    const validated = validateProviderOperationOptions(options, "sqlserver.transaction.queryCursor", true, true, true);
+                    const query = normalizeSqlServerQuery("queryCursor", sql, params);
+                    const methodName = validated.mode === "raw"
+                        ? "transactionQueryRawCursor"
+                        : "transactionQueryCursor";
+                    return openProviderCursor("sqlserver", bridge, state.handle, query, validated, validated.mode, methodName, txState.activeCursors);
+                },
+                async queryRawCursor(sql, params, options) {
+                    assertTransactionOpen("transaction.queryRawCursor");
+                    const validated = validateProviderOperationOptions(options, "sqlserver.transaction.queryRawCursor", false, true, true);
+                    const query = normalizeSqlServerQuery("queryRawCursor", sql, params);
+                    return openProviderCursor("sqlserver", bridge, state.handle, query, validated, "raw", "transactionQueryRawCursor", txState.activeCursors);
                 },
                 queryOne(sql, params, options) {
                     assertTransactionOpen("transaction.queryOne");
@@ -1767,6 +2113,7 @@ Operation:
             return {
                 tx,
                 close() {
+                    closeActiveCursors(txState.activeCursors);
                     txState.closed = true;
                 },
             };
@@ -1774,6 +2121,7 @@ Operation:
 
         async function rollbackAfterCallbackError(error, transaction) {
             try {
+                transaction.close();
                 await bridge.transactionRollback(state.handle);
             } catch {
                 transaction.close();
@@ -1786,13 +2134,13 @@ Operation:
                 }
                 throw error;
             }
-            transaction.close();
             state.transactionActive = false;
             throw error;
         }
 
         async function commitTransaction(transaction) {
             try {
+                transaction.close();
                 await bridge.transactionCommit(state.handle);
             } catch (error) {
                 transaction.close();
@@ -1805,7 +2153,6 @@ Operation:
                 }
                 throw error;
             }
-            transaction.close();
             state.transactionActive = false;
         }
 
@@ -1818,16 +2165,32 @@ Operation:
             },
             query(sql, params, options) {
                 assertOpen("query");
-                const mode = validateProviderOperationOptions(options, "sqlserver.query", true);
+                const validated = validateProviderOperationOptions(options, "sqlserver.query", true, true);
                 const query = normalizeSqlServerQuery("query", sql, params);
-                const method = mode === "raw" ? bridge.queryRaw : bridge.query;
-                return method(state.handle, query.text, query.parameters);
+                const method = validated.mode === "raw" ? bridge.queryRaw : bridge.query;
+                return invokeProviderQuery(method, state.handle, query, validated, true);
             },
             queryRaw(sql, params, options) {
                 assertOpen("queryRaw");
-                validateProviderOperationOptions(options, "sqlserver.queryRaw");
+                const validated = validateProviderOperationOptions(options, "sqlserver.queryRaw", false, true);
                 const query = normalizeSqlServerQuery("queryRaw", sql, params);
-                return bridge.queryRaw(state.handle, query.text, query.parameters);
+                return invokeProviderQuery(bridge.queryRaw, state.handle, query, validated, true);
+            },
+            async queryCursor(sql, params, options) {
+                assertOpen("queryCursor");
+                const validated = validateProviderOperationOptions(options, "sqlserver.queryCursor", true, true, true);
+                const query = normalizeSqlServerQuery("queryCursor", sql, params);
+                const methodName = validated.mode === "raw" ? "queryRawCursor" : "queryCursor";
+                return openProviderCursor("sqlserver", bridge, state.handle, query, validated, validated.mode, methodName, state.activeCursors);
+            },
+            async queryRawCursor(sql, params, options) {
+                assertOpen("queryRawCursor");
+                const validated = validateProviderOperationOptions(options, "sqlserver.queryRawCursor", false, true, true);
+                const query = normalizeSqlServerQuery("queryRawCursor", sql, params);
+                return openProviderCursor("sqlserver", bridge, state.handle, query, validated, "raw", "queryRawCursor", state.activeCursors);
+            },
+            stream(sql, params, options) {
+                return this.queryCursor(sql, params, options);
             },
             queryOne(sql, params, options) {
                 assertOpen("queryOne");
@@ -1867,6 +2230,7 @@ Operation:
                 if (state.transactionActive) {
                     throw new Error("sloppy: sqlserver transaction is active");
                 }
+                closeActiveCursors(state.activeCursors);
                 bridge.close(state.handle);
                 state.closed = true;
             },

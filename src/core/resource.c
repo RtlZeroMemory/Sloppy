@@ -166,6 +166,10 @@ SlStr sl_resource_kind_name(SlResourceKind kind)
         return sl_resource_literal("postgres.connection", sizeof("postgres.connection") - 1U);
     case SL_RESOURCE_KIND_SQLSERVER_CONNECTION:
         return sl_resource_literal("sqlserver.connection", sizeof("sqlserver.connection") - 1U);
+    case SL_RESOURCE_KIND_POSTGRES_CURSOR:
+        return sl_resource_literal("postgres.cursor", sizeof("postgres.cursor") - 1U);
+    case SL_RESOURCE_KIND_SQLSERVER_CURSOR:
+        return sl_resource_literal("sqlserver.cursor", sizeof("sqlserver.cursor") - 1U);
     case SL_RESOURCE_KIND_TEST_RESOURCE:
         return sl_resource_literal("test.resource", sizeof("test.resource") - 1U);
     case SL_RESOURCE_KIND_FS_FILE_HANDLE:

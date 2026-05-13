@@ -547,6 +547,7 @@ static int sl_db_load_applied(SlArena* arena, SlSqliteConnection* connection,
                               SlCliDbMigrationFile* files, size_t file_count)
 {
     SlSqliteResult result = {0};
+    SlSqliteQueryOptions query_options = {.max_rows = file_count + 1U};
     SlStatus status;
 
     status = sl_db_sqlite_exec_text(
@@ -561,7 +562,7 @@ static int sl_db_load_applied(SlArena* arena, SlSqliteConnection* connection,
     status =
         sl_sqlite_query(arena, connection,
                         sl_str_from_cstr("select name, hash from _sloppy_migrations order by id"),
-                        NULL, 0U, NULL, &result, NULL);
+                        NULL, 0U, &query_options, &result, NULL);
     if (!sl_status_is_ok(status)) {
         sl_cli_write_cstr(stderr, "sloppy db: failed to read migration metadata\n");
         return 1;
@@ -950,7 +951,7 @@ static int sl_cli_command_db(const SlCliOptions* options)
     SlSqliteConnection sqlite_connection = {0};
     SlPostgresConnection postgres_connection = {0};
     SlSqlServerConnection sqlserver_connection = {0};
-    unsigned char arena_storage[SL_CLI_ARENA_BYTES];
+    static unsigned char arena_storage[SL_CLI_ARENA_BYTES * 4U];
     SlArena arena = {0};
     bool changed = false;
     int result = 0;

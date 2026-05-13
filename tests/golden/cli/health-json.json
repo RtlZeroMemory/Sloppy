@@ -1,0 +1,8 @@
+{
+  "health": { "endpoints": [
+    { "method": "GET", "path": "/_sloppy/health", "kind": "aggregate", "name": "Management.Health", "checks": ["self", "runtime", "memory"] },
+    { "method": "GET", "path": "/_sloppy/live", "kind": "liveness", "name": "Management.Live", "checks": ["self"] },
+    { "method": "GET", "path": "/_sloppy/ready", "kind": "readiness", "name": "Management.Ready", "checks": ["self", "runtime"] },
+    { "method": "GET", "path": "/_sloppy/startup", "kind": "startup", "name": "Management.Startup", "checks": ["self", "runtime"] }
+  ], "count": 4 }
+}

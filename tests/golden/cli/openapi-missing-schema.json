@@ -5,8 +5,15 @@
     "version": "0.0.0"
   },
   "x-slop-openapi-policy": {
-    "status": "plan-supported-subset",
-    "unknownMetadata": "explicit-partial-markers",
+    "mode": "partial",
+    "routesTotal": 1,
+    "routesIncluded": 1,
+    "routesOmitted": 0,
+    "operationsComplete": 0,
+    "operationsPartial": 1,
+    "missing": [
+      { "method": "POST", "path": "/search", "reason": "request body schema is missing" }
+    ],
     "optimizations": "reported-only"
   },
   "paths": {
@@ -14,6 +21,11 @@
       "post": {
         "operationId": "Search.Create",
         "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "route Plan completeness is not complete",
+        "request body schema is missing",
+        "response schema is missing"
+        ],
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": ["native-json-serialization"],
         "parameters": [],

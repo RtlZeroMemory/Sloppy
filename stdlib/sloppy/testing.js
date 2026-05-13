@@ -24,6 +24,13 @@ const DEFAULT_SERIALIZATION_OPTIONS = Object.freeze({
 });
 const ROUTE_PARAM_PATTERN = /^\{([A-Za-z_][0-9A-Za-z_]*)(?::(str|int|uuid|alpha|float))?\}$/u;
 
+function nowMs() {
+    if (globalThis.performance !== undefined && typeof globalThis.performance.now === "function") {
+        return globalThis.performance.now();
+    }
+    return Date.now();
+}
+
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
         return false;
@@ -1003,16 +1010,18 @@ function signalObject() {
     });
 }
 
-function createContext(app, hostState, method, targetParts, headers, route, bodyKind, bodyBytes, options = undefined) {
+function createContext(app, hostState, method, targetParts, headers, route, matchedRoute, bodyKind, bodyBytes, options = undefined) {
     const request = createRequestObject(method, targetParts, headers, bodyKind, bodyBytes);
     const context = {
         services: hostState.services.createScope(),
         capabilities: app.capabilities,
         config: hostState.config,
         log: app.log,
+        metrics: typeof app.__getMetricsRegistry === "function" ? app.__getMetricsRegistry() : undefined,
         user: options?.user,
         clock: hostState.clock,
         route,
+        routePattern: matchedRoute?.pattern ?? null,
         query: parseQuery(targetParts.queryString),
         request,
         body: request.body,
@@ -1025,6 +1034,12 @@ function createContext(app, hostState, method, targetParts, headers, route, body
         }),
         signal: signalObject(),
         deadline: null,
+        lifecycle: typeof app.__getLifecycle === "function"
+            ? app.__getLifecycle()
+            : Object.freeze({
+                startupComplete: true,
+                shuttingDown: false,
+            }),
     };
     return Object.freeze(context);
 }
@@ -1864,6 +1879,37 @@ function createTestHost(app, options = {}) {
         clock: options.clock,
     });
 
+    function appMetricsRegistry() {
+        return typeof app.__getMetricsRegistry === "function" ? app.__getMetricsRegistry() : undefined;
+    }
+
+    function recordHttpMetric(metricRegistry, labels, response, durationMs, requestBytes) {
+        if (metricRegistry === undefined) {
+            return;
+        }
+        const responseBytes = response.bytes().byteLength;
+        metricRegistry.counter("http.requests.total", { description: "HTTP requests processed by the app host." }).inc(labels);
+        metricRegistry.counter("http.route.hits", { description: "HTTP route hits by route pattern." }).inc(labels);
+        metricRegistry.counter("http.request.bytes", { description: "HTTP request body bytes processed by the app host." }).inc(labels, requestBytes);
+        metricRegistry.counter("http.response.bytes", { description: "HTTP response body bytes written by the app host." }).inc(labels, responseBytes);
+        metricRegistry.histogram("http.request.duration.ms", { description: "HTTP request duration in milliseconds." }).observe(labels, durationMs);
+        metricRegistry.counter("http.status.total", { description: "HTTP responses by status code and class." }).inc({
+            ...labels,
+            status: String(response.status),
+            statusClass: `${Math.trunc(response.status / 100)}xx`,
+        });
+        if (response.status >= 500) {
+            metricRegistry.counter("http.errors.total", { description: "HTTP responses with 5xx status." }).inc(labels);
+        }
+    }
+
+    function ignoreMetricError(callback) {
+        try {
+            callback();
+        } catch {
+        }
+    }
+
     function finishRequest() {
         activeRequests -= 1;
         if (closed && activeRequests === 0) {
@@ -1953,7 +1999,16 @@ function createTestHost(app, options = {}) {
                 return response;
             }
 
-            const context = createContext(app, hostState, normalizedMethod, targetParts, headers, match.params, bodyKind, bodyBytes, normalizedOptions);
+            const context = createContext(app, hostState, normalizedMethod, targetParts, headers, match.params, match.route, bodyKind, bodyBytes, normalizedOptions);
+            const metricRegistry = appMetricsRegistry();
+            const metricLabels = Object.freeze({
+                method: normalizedMethod,
+                route: match.route.pattern,
+            });
+            ignoreMetricError(() => {
+                metricRegistry?.gauge("http.requests.active", { description: "HTTP requests currently active in the app host." }).inc(metricLabels);
+            });
+            const started = nowMs();
             try {
                 try {
                     const response = finalizeResponse(negotiatedResponse(
@@ -1966,12 +2021,18 @@ function createTestHost(app, options = {}) {
                         diagnostics.record({ code: problemCode, subsystem: "http", severity: response.status >= 500 ? "error" : "warn" });
                     }
                     metrics.increment("http.requests.total", { method: normalizedMethod, status: String(response.status) });
+                    ignoreMetricError(() => {
+                        recordHttpMetric(metricRegistry, metricLabels, response, Math.max(0, nowMs() - started), bodyBytes.byteLength);
+                    });
                     return response;
                 } catch (error) {
                     if (isUnsupportedMediaHelperError(error)) {
                         diagnostics.record({ code: "SLOPPY_E_UNSUPPORTED_MEDIA_TYPE", subsystem: "http", severity: "warn" });
                         const response = finalizeResponse(responseFromText(415, "Unsupported Media Type\n"), normalizedMethod);
                         metrics.increment("http.requests.total", { method: normalizedMethod, status: String(response.status) });
+                        ignoreMetricError(() => {
+                            recordHttpMetric(metricRegistry, metricLabels, response, Math.max(0, nowMs() - started), bodyBytes.byteLength);
+                        });
                         return response;
                     }
                     diagnostics.record({
@@ -1983,7 +2044,13 @@ function createTestHost(app, options = {}) {
                     throw error;
                 }
             } finally {
-                await context.services.dispose();
+                try {
+                    ignoreMetricError(() => {
+                        metricRegistry?.gauge("http.requests.active").dec(metricLabels);
+                    });
+                } finally {
+                    await context.services.dispose();
+                }
             }
         } finally {
             finishRequest();
@@ -2013,6 +2080,9 @@ function createTestHost(app, options = {}) {
         async close() {
             if (closePromise !== undefined) {
                 return closePromise;
+            }
+            if (typeof app.__beginShutdown === "function") {
+                app.__beginShutdown();
             }
             closed = true;
             closePromise = (async () => {

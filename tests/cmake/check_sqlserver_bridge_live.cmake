@@ -20,6 +20,6 @@ if(output MATCHES "driver async support is unavailable")
     return()
 endif()
 
-if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace")
-    message(FATAL_ERROR "SQL Server bridge live output did not include expected rows.\n${output}")
+if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace" OR NOT output MATCHES "sqlserverTimedOut.*true" OR NOT output MATCHES "materializedRejected.*true" OR NOT output MATCHES "cursorCount.*152" OR NOT output MATCHES "cursorMaxRowsRejected.*true" OR NOT output MATCHES "poolPinned.*true" OR NOT output MATCHES "cursorTimedOut.*true")
+    message(FATAL_ERROR "SQL Server bridge live output did not include expected cursor, bounded materialization, pool pinning, and timeout evidence.\n${output}")
 endif()

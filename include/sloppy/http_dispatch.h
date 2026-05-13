@@ -6,6 +6,7 @@
 #include "sloppy/engine.h"
 #include "sloppy/http.h"
 #include "sloppy/http_backend.h"
+#include "sloppy/ops_metrics.h"
 #include "sloppy/plan.h"
 #include "sloppy/route.h"
 #include "sloppy/status.h"
@@ -83,6 +84,11 @@ typedef struct SlHttpDispatchTable
     size_t param_route_trie_edge_count;
     const SlPlan* plan;
     SlHttpRouteDispatchMode dispatch_mode;
+    /*
+     * Optional borrowed native metrics registry. When present, dispatch records low-cardinality
+     * route-pattern metrics without exposing raw request paths as labels.
+     */
+    SlOpsMetricsRegistry* metrics;
     /*
      * Runtime-owned dispatch metadata. Callers that manually create this struct must
      * zero-initialize it and leave this field untouched.

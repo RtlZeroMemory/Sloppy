@@ -3992,6 +3992,109 @@ export default app;
 }
 
 #[test]
+fn app_health_and_management_extract_routes_and_ops_metadata() {
+    let source = r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.health()
+  .check("self", Health.self(), { tags: ["live", "ready", "startup"], critical: true })
+  .check("runtime", Health.runtime(), { tags: ["ready", "startup"] })
+  .check("custom", () => ({ status: "degraded" }), { tags: ["ready"], critical: true, degradedIsUnhealthy: true })
+  .expose({ health: "/health", live: "/live", ready: "/ready", startup: "/startup" });
+app.management({ path: "/_sloppy", health: true, metrics: true, info: true, runtime: true });
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("ops APIs should extract");
+    assert!(app.uses_health);
+    assert_eq!(
+        app.routes
+            .iter()
+            .map(|route| route.pattern.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "/health",
+            "/live",
+            "/ready",
+            "/startup",
+            "/_sloppy/health",
+            "/_sloppy/live",
+            "/_sloppy/ready",
+            "/_sloppy/startup",
+            "/_sloppy/metrics",
+            "/_sloppy/metrics.json",
+            "/_sloppy/info",
+            "/_sloppy/runtime",
+        ]
+    );
+    assert_eq!(app.routes[3].health.as_ref().unwrap().kind, "startup");
+    assert_eq!(app.routes[8].name.as_deref(), Some("Management.Metrics"));
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("sloppy_management_info"));
+    assert!(emitted_js.source.contains("degradedIsUnhealthy: true"));
+    assert!(emitted_js
+        .source
+        .contains("__sloppy_health_check.critical && __sloppy_check_status === \"degraded\""));
+    assert!(emitted_js.source.contains(
+        "!__sloppy_health_check.critical && __sloppy_aggregate_status === \"unhealthy\""
+    ));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["features"]["ops"], true);
+    assert_eq!(plan["features"]["management"], true);
+    assert_eq!(plan["features"]["metrics"], true);
+    assert_eq!(plan["strongPlan"]["evidence"]["ops"], true);
+    assert_eq!(
+        plan["ops"]["health"]["endpoints"].as_array().unwrap().len(),
+        8
+    );
+    assert_eq!(
+        plan["ops"]["metrics"],
+        serde_json::json!({ "prometheus": true, "json": true })
+    );
+    assert!(plan["doctorChecks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|check| check["id"] == "ops.management.protection"));
+}
+
+#[test]
+fn app_health_rejects_silently_ignored_options_and_unsupported_builtins() {
+    for source in [
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.health().check("slow", Health.self(), { tags: ["ready"], timeoutMs: 1000 }).expose();
+export default app;
+"#,
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.health().check("cached", Health.self(), { tags: ["ready"], cacheMs: 1000 }).expose();
+export default app;
+"#,
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.health().check("config", Health.config(["Required"]), { tags: ["ready"] }).expose();
+export default app;
+"#,
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.mapHealthChecks({ checks: [{ name: "cached", check: () => true, cacheMs: 1000 }] });
+export default app;
+"#,
+    ] {
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("unsupported compiler-visible health feature should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS");
+    }
+}
+
+#[test]
 fn map_health_checks_rejects_unsupported_static_shapes() {
     for source in [
         r#"import { Sloppy, Results } from "sloppy";
@@ -4158,6 +4261,177 @@ export default app;
         user_schema["definition"]["properties"]["status"]["value"],
         "active"
     );
+}
+
+#[test]
+fn extracts_openapi_route_contract_metadata() {
+    let source = r#"import { Sloppy, Results, Schema } from "sloppy";
+const CreateUser = Schema.object({ name: Schema.string().min(1) });
+const User = Schema.object({ id: Schema.integer(), name: Schema.string() });
+const Query = Schema.object({ expand: Schema.string().optional() });
+const Params = Schema.object({ id: Schema.integer() });
+const Header = Schema.string();
+const app = Sloppy.create();
+app.post("/users/{id:int}", () => Results.created("/users/1", { id: 1, name: "Ada" }))
+  .name("Users.Create")
+  .summary("Create user")
+  .description("Creates a user account.")
+  .tags("Users", "Admin")
+  .accepts(CreateUser)
+  .returns(201, User, { description: "User created" })
+  .produces("application/json")
+  .consumes("application/json")
+  .header("x-request-id", Header, { required: true, description: "Request id" })
+  .query(Query)
+  .params(Params)
+  .authorize("Users.Write")
+  .openapi({ "x-audit": "enabled" });
+app.docs({ title: "Users API", requireAuth: { policy: "Docs.Read" } });
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("OpenAPI route metadata should extract");
+    let route = &app.routes[0];
+    assert_eq!(route.name.as_deref(), Some("Users.Create"));
+    assert_eq!(route.summary.as_deref(), Some("Create user"));
+    assert_eq!(
+        route.description.as_deref(),
+        Some("Creates a user account.")
+    );
+    assert_eq!(route.tags, vec!["Users".to_string(), "Admin".to_string()]);
+    assert_eq!(route.consumes, vec!["application/json".to_string()]);
+    assert_eq!(route.produces, vec!["application/json".to_string()]);
+    assert_eq!(route.headers[0].name, "x-request-id");
+    assert_eq!(route.headers[0].schema, "Header");
+    assert_eq!(route.query_schema.as_deref(), Some("Query"));
+    assert_eq!(route.params_schema.as_deref(), Some("Params"));
+    assert_eq!(
+        route.auth.as_ref().and_then(|auth| auth.policy.as_deref()),
+        Some("Users.Write")
+    );
+    assert_eq!(
+        route
+            .openapi_override
+            .as_ref()
+            .and_then(|value| value.get("x-audit"))
+            .and_then(|value| value.as_str()),
+        Some("enabled")
+    );
+    assert!(app
+        .routes
+        .iter()
+        .any(|route| route.name.as_deref() == Some("Docs.Ui")));
+    assert!(app
+        .routes
+        .iter()
+        .any(|route| route.name.as_deref() == Some("Docs.OpenApi")));
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    let route = &plan["routes"][0];
+    assert_eq!(route["summary"], "Create user");
+    assert_eq!(route["querySchema"], "Query");
+    assert_eq!(route["paramsSchema"], "Params");
+    assert_eq!(route["headers"][0]["name"], "x-request-id");
+    assert_eq!(route["openapi"]["x-audit"], "enabled");
+}
+
+#[test]
+fn app_docs_preserves_full_require_auth_metadata() {
+    for (label, require_auth, roles, claims, policy) in [
+        ("required", "true", vec![], vec![], None),
+        ("role", r#"{ role: "admin" }"#, vec!["admin"], vec![], None),
+        (
+            "roles",
+            r#"{ roles: ["admin", "ops"] }"#,
+            vec!["admin", "ops"],
+            vec![],
+            None,
+        ),
+        (
+            "claim",
+            r#"{ claim: "tenant.write" }"#,
+            vec![],
+            vec!["tenant.write"],
+            None,
+        ),
+        (
+            "policy",
+            r#"{ policy: "Docs.Admin" }"#,
+            vec![],
+            vec![],
+            Some("Docs.Admin"),
+        ),
+    ] {
+        let source = format!(
+            r#"import {{ Sloppy, Results }} from "sloppy";
+const app = Sloppy.create();
+app.get("/users", () => Results.ok([])).name("Users.List");
+app.docs({{ requireAuth: {require_auth} }});
+export default app;
+"#
+        );
+        let app = extract(std::path::Path::new("app.ts"), &source)
+            .unwrap_or_else(|error| panic!("{label}: {error:?}"));
+        let docs_routes = app
+            .routes
+            .iter()
+            .filter(|route| {
+                route
+                    .name
+                    .as_deref()
+                    .is_some_and(|name| name.starts_with("Docs."))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(docs_routes.len(), 2, "{label}: docs routes");
+        for route in docs_routes {
+            let auth = route
+                .auth
+                .as_ref()
+                .unwrap_or_else(|| panic!("{label}: auth should exist"));
+            assert!(auth.required, "{label}: required");
+            assert_eq!(auth.roles, roles, "{label}: roles");
+            assert_eq!(auth.claims, claims, "{label}: claims");
+            assert_eq!(auth.policy.as_deref(), policy, "{label}: policy");
+        }
+    }
+}
+
+#[test]
+fn app_docs_enabled_false_is_noop_and_strict_is_plan_visible() {
+    let disabled = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", () => Results.ok([]));
+app.docs({ enabled: false });
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), disabled).expect("disabled docs extracts");
+    assert!(!app.routes.iter().any(|route| route
+        .name
+        .as_deref()
+        .is_some_and(|name| name.starts_with("Docs."))));
+
+    let strict = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users", () => Results.ok([]));
+app.docs({ strict: true });
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), strict).expect("strict docs extracts");
+    let openapi = app
+        .routes
+        .iter()
+        .find(|route| route.name.as_deref() == Some("Docs.OpenApi"))
+        .expect("OpenAPI docs route");
+    let docs = openapi.docs.as_ref().expect("docs metadata");
+    assert_eq!(docs.kind, "openapi");
+    assert!(docs.strict);
 }
 
 #[test]

@@ -170,6 +170,7 @@ add_executable(
     benchmarks/bench_handler_dispatch.c
     benchmarks/bench_json_dispatch.c
     benchmarks/bench_logging.c
+    benchmarks/bench_ops.c
     benchmarks/bench_diagnostics.c
     benchmarks/bench_memory.c
     benchmarks/bench_stream.c)

@@ -161,6 +161,20 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
                 "SLOPPY_AUDIT_ROUTE_COMPLETENESS", "route Plan completeness is not complete",
                 "routes", findings, errors);
         }
+        if (metadata->routes[outer].auth_required && metadata->auth_scheme_count == 0U) {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_AUTH_SCHEME_MISSING",
+                              "protected route has no auth scheme metadata", "auth", findings,
+                              errors);
+        }
+        if (!metadata->routes[outer].auth_required &&
+            metadata->routes[outer].docs_internal &&
+            sl_cli_span_equal_cstr(metadata->routes[outer].docs_kind, "ui"))
+        {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_DOCS_ROUTE_PUBLIC",
+                              "OpenAPI docs route is public; protect it with app.docs requireAuth "
+                              "when exposing non-public APIs",
+                              "openapi", findings, errors);
+        }
         if (metadata->routes[outer].binding_count > 0U) {
             size_t binding = 0U;
             for (binding = 0U; binding < metadata->routes[outer].binding_count; binding += 1U) {
@@ -179,6 +193,20 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
         {
             sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_RESPONSE_UNKNOWN",
                               "route response metadata is unknown", "response", findings, errors);
+        }
+        if (!sl_cli_span_empty(metadata->routes[outer].query_schema) &&
+            sl_cli_find_schema(metadata, metadata->routes[outer].query_schema) == NULL)
+        {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_QUERY_SCHEMA_MISSING",
+                              "route query contract references a missing schema", "openapi",
+                              findings, errors);
+        }
+        if (!sl_cli_span_empty(metadata->routes[outer].params_schema) &&
+            sl_cli_find_schema(metadata, metadata->routes[outer].params_schema) == NULL)
+        {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_PARAMS_SCHEMA_MISSING",
+                              "route parameter contract references a missing schema", "openapi",
+                              findings, errors);
         }
         if (sl_cli_span_equal_cstr(metadata->routes[outer].response_kind, "json")) {
             sl_cli_audit_emit(
@@ -640,6 +668,47 @@ static void sl_cli_audit_ffi(const SlCliOptions* options, const SlCliMetadata* m
     }
 }
 
+static void sl_cli_audit_ops(const SlCliOptions* options, const SlCliMetadata* metadata,
+                             size_t* findings, size_t* errors)
+{
+    size_t health_routes = 0U;
+    size_t management_routes = 0U;
+    bool prometheus_metrics = false;
+    bool json_metrics = false;
+
+    for (size_t index = 0U; index < metadata->route_count; index += 1U) {
+        const SlCliRoute* route = &metadata->routes[index];
+
+        if (!sl_cli_span_empty(route->health_kind)) {
+            health_routes += 1U;
+        }
+        if (sl_cli_audit_span_starts_with(route->name, "Management.")) {
+            management_routes += 1U;
+        }
+        prometheus_metrics =
+            prometheus_metrics || sl_cli_span_equal_cstr(route->name, "Management.Metrics");
+        json_metrics =
+            json_metrics || sl_cli_span_equal_cstr(route->name, "Management.MetricsJson");
+    }
+
+    if (health_routes == 0U && (management_routes > 0U || prometheus_metrics || json_metrics)) {
+        sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OPS_HEALTH_MISSING",
+                          "Plan does not expose health endpoint metadata", "ops.health",
+                          findings, errors);
+    }
+    if (management_routes > 0U) {
+        sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OPS_MANAGEMENT_EXPOSED",
+                          "management endpoints expose detailed operational data and require a "
+                          "trusted network or protection hook",
+                          "ops.management", findings, errors);
+    }
+    if (prometheus_metrics != json_metrics) {
+        sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OPS_METRICS_JSON_MISSING",
+                          "Prometheus and JSON metrics metadata exposure is inconsistent",
+                          "ops.metrics", findings, errors);
+    }
+}
+
 static int sl_cli_command_audit(const SlCliOptions* options)
 {
     unsigned char* json_storage = sl_cli_scratch_json_storage();
@@ -684,6 +753,7 @@ static int sl_cli_command_audit(const SlCliOptions* options)
     sl_cli_audit_http_clients(options, metadata, &findings, &errors);
     sl_cli_audit_workers(options, metadata, &findings, &errors);
     sl_cli_audit_ffi(options, metadata, &findings, &errors);
+    sl_cli_audit_ops(options, metadata, &findings, &errors);
 
     if (findings == 0U && options->format == SL_CLI_FORMAT_TEXT) {
         printf("No findings.\n");

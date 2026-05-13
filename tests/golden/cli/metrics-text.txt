@@ -1,0 +1,4 @@
+Sloppy Metrics
+
+GET     /_sloppy/metrics          prometheus  Management.Metrics
+GET     /_sloppy/metrics.json     json        Management.MetricsJson

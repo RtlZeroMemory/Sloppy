@@ -25,6 +25,9 @@ remain explicit forms for scripts.
   FFI function IDs.
 - partial/dynamic route metadata findings emitted by the compiler.
 - dependency graph presence and dependency compatibility findings.
+- Plan-visible legacy health route metadata. Detailed `app.management()`
+  exposure is a runtime app-host setting; protect those endpoints in app code
+  or ingress policy.
 
 ## Text output
 

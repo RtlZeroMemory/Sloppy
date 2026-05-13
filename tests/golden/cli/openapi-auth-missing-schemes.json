@@ -5,8 +5,15 @@
     "version": "0.0.0"
   },
   "x-slop-openapi-policy": {
-    "status": "plan-supported-subset",
-    "unknownMetadata": "explicit-partial-markers",
+    "mode": "partial",
+    "routesTotal": 1,
+    "routesIncluded": 1,
+    "routesOmitted": 0,
+    "operationsComplete": 0,
+    "operationsPartial": 1,
+    "missing": [
+      { "method": "GET", "path": "/protected", "reason": "response metadata is unknown" }
+    ],
     "optimizations": "reported-only"
   },
   "paths": {
@@ -17,7 +24,12 @@
         "x-slop-auth": {
           "required": true
         },
-        "x-slop-completeness": "",
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "route Plan completeness is not complete",
+        "response metadata is unknown",
+        "auth scheme metadata is missing"
+        ],
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
         "parameters": [],

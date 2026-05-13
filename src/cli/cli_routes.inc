@@ -151,6 +151,30 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
            (unsigned long long)route->source_column);
     printf(", \"completeness\": ");
     sl_cli_json_escape(stdout, route->completeness);
+    if (!sl_cli_span_empty(route->summary)) {
+        printf(", \"summary\": ");
+        sl_cli_json_escape(stdout, route->summary);
+    }
+    if (!sl_cli_span_empty(route->description)) {
+        printf(", \"description\": ");
+        sl_cli_json_escape(stdout, route->description);
+    }
+    if (route->tag_count > 0U) {
+        size_t tag = 0U;
+        printf(", \"tags\": [");
+        for (tag = 0U; tag < route->tag_count; tag += 1U) {
+            printf("%s", tag == 0U ? "" : ", ");
+            sl_cli_json_escape(stdout, route->tags[tag]);
+        }
+        printf("]");
+    }
+    if (route->deprecated) {
+        printf(", \"deprecated\": true");
+        if (!sl_cli_span_empty(route->deprecated_reason)) {
+            printf(", \"deprecatedReason\": ");
+            sl_cli_json_escape(stdout, route->deprecated_reason);
+        }
+    }
     if (route->auth_required || route->auth_allow_anonymous) {
         size_t item = 0U;
         printf(", \"auth\": { \"required\": %s", route->auth_required ? "true" : "false");
@@ -200,8 +224,27 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
         sl_cli_json_escape(stdout, route->dynamic_reason);
         printf(" }");
     }
+    if (!sl_cli_span_empty(route->health_kind)) {
+        size_t check = 0U;
+        printf(", \"health\": { \"kind\": ");
+        sl_cli_json_escape(stdout, route->health_kind);
+        printf(", \"checks\": [");
+        for (check = 0U; check < route->health_check_count; check += 1U) {
+            printf("%s", check == 0U ? "" : ", ");
+            sl_cli_json_escape(stdout, route->health_checks[check]);
+        }
+        printf("] }");
+    }
     sl_cli_routes_emit_json_constraints(route->pattern);
     sl_cli_routes_emit_json_bindings(route);
+    if (!sl_cli_span_empty(route->query_schema)) {
+        printf(", \"querySchema\": ");
+        sl_cli_json_escape(stdout, route->query_schema);
+    }
+    if (!sl_cli_span_empty(route->params_schema)) {
+        printf(", \"paramsSchema\": ");
+        sl_cli_json_escape(stdout, route->params_schema);
+    }
     printf(", \"jsonRequest\": { \"mode\": ");
     sl_cli_json_escape(stdout, route->json_request_mode);
     printf(", \"materialization\": ");
@@ -415,7 +458,11 @@ static void sl_cli_routes_emit_text_route(const SlCliRoute* route, bool include_
         printf("  ");
         sl_cli_routes_emit_text_auth(route);
     }
-    printf("  %.*s\n", (int)route->name.length, route->name.ptr);
+    printf("  %.*s", (int)route->name.length, route->name.ptr);
+    if (!sl_cli_span_empty(route->summary)) {
+        printf("  %.*s", (int)route->summary.length, route->summary.ptr);
+    }
+    printf("\n");
 }
 
 static int sl_cli_command_routes(const SlCliOptions* options)
@@ -466,12 +513,12 @@ static int sl_cli_command_routes(const SlCliOptions* options)
         if (include_auth) {
             printf("ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  "
                    "SOURCE  "
-                   "BINDINGS  RESPONSE  JSON  AUTH  NAME\n");
+                   "BINDINGS  RESPONSE  JSON  AUTH  NAME  SUMMARY\n");
         }
         else {
             printf("ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  "
                    "SOURCE  "
-                   "BINDINGS  RESPONSE  JSON  NAME\n");
+                   "BINDINGS  RESPONSE  JSON  NAME  SUMMARY\n");
         }
         if (metadata->route_count == 0U) {
             printf(sl_cli_span_equal_cstr(metadata->kind, "program")

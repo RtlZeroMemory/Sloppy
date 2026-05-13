@@ -694,7 +694,13 @@ Reason:
   The operation deadline was already expired before provider dispatch.`);
 }
 
-function normalizeOperationOptions(options, operation, allowResultMode = false) {
+function normalizeOperationOptions(
+    options,
+    operation,
+    allowResultMode = false,
+    allowMaxRows = false,
+    allowCursorOptions = false,
+) {
     if (options === undefined) {
         return undefined;
     }
@@ -704,6 +710,12 @@ function normalizeOperationOptions(options, operation, allowResultMode = false) 
     const allowedKeys = new Set(["deadline", "signal", "timeoutMs"]);
     if (allowResultMode) {
         allowedKeys.add("mode");
+    }
+    if (allowMaxRows) {
+        allowedKeys.add("maxRows");
+    }
+    if (allowCursorOptions) {
+        allowedKeys.add("batchSize");
     }
     const keys = Object.keys(options);
     for (const key of keys) {
@@ -741,6 +753,24 @@ function normalizeOperationOptions(options, operation, allowResultMode = false) 
         }
     }
 
+    const maxRows = options.maxRows;
+    if (maxRows !== undefined) {
+        if (!Number.isInteger(maxRows) || maxRows < 1 || maxRows > 0xffffffff) {
+            throw new TypeError(
+                `Sloppy data ${operation} maxRows option must be an integer from 1 to 4294967295.`,
+            );
+        }
+    }
+
+    const batchSize = options.batchSize;
+    if (batchSize !== undefined) {
+        if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 4096) {
+            throw new TypeError(
+                `Sloppy data ${operation} batchSize option must be an integer from 1 to 4096.`,
+            );
+        }
+    }
+
     if (deadline !== undefined && deadline !== null) {
         if (deadline.expired === true) {
             throw createOperationDeadlineError(operation);
@@ -770,11 +800,15 @@ function normalizeOperationOptions(options, operation, allowResultMode = false) 
     const mode = allowResultMode ? normalizeResultMode(options.mode, operation) : undefined;
     const normalized = Object.freeze({
         deadline: deadline ?? undefined,
+        batchSize,
+        maxRows,
         mode: mode === "raw" ? mode : undefined,
         signal: signal ?? undefined,
         timeoutMs,
     });
     return normalized.deadline === undefined
+        && normalized.batchSize === undefined
+        && normalized.maxRows === undefined
         && normalized.mode === undefined
         && normalized.signal === undefined
         && normalized.timeoutMs === undefined
@@ -826,8 +860,194 @@ function invokeProviderOperation(operation, options, callback) {
 
 function operationAllowsResultMode(operation) {
     return operation === "query"
+        || operation === "queryCursor"
+        || operation === "stream"
         || operation.endsWith(".query")
+        || operation.endsWith(".queryCursor")
         || operation.endsWith(".transaction.query");
+}
+
+function operationAllowsMaxRows(operation) {
+    return operation === "query"
+        || operation === "queryRaw"
+        || operation === "queryCursor"
+        || operation === "queryRawCursor"
+        || operation === "stream"
+        || operation.endsWith(".query")
+        || operation.endsWith(".queryRaw")
+        || operation.endsWith(".queryCursor")
+        || operation.endsWith(".queryRawCursor");
+}
+
+function operationAllowsCursorOptions(operation) {
+    return operation === "queryCursor"
+        || operation === "queryRawCursor"
+        || operation === "stream"
+        || operation.endsWith(".queryCursor")
+        || operation.endsWith(".queryRawCursor");
+}
+
+function nativeQueryOptions(options, includeTimeout = false, includeCursorOptions = false) {
+    if (
+        options?.maxRows === undefined
+        && (!includeTimeout || options?.timeoutMs === undefined)
+        && (!includeCursorOptions || options?.batchSize === undefined)
+    ) {
+        return undefined;
+    }
+    const native = {};
+    if (includeCursorOptions && options.batchSize !== undefined) {
+        native.batchSize = options.batchSize;
+    }
+    if (options.maxRows !== undefined) {
+        native.maxRows = options.maxRows;
+    }
+    if (includeTimeout && options.timeoutMs !== undefined) {
+        native.timeoutMs = options.timeoutMs;
+    }
+    return Object.freeze(native);
+}
+
+function invokeNativeQuery(method, handle, query, includeTimeout = false) {
+    const nativeOptions = nativeQueryOptions(query.options, includeTimeout);
+    return nativeOptions === undefined
+        ? method(handle, query.text, query.parameters)
+        : method(handle, query.text, query.parameters, nativeOptions);
+}
+
+function invokeNativeCursorOpen(method, handle, query, includeTimeout = false) {
+    if (typeof method !== "function") {
+        throw new Error("sloppy: provider cursor bridge is unavailable");
+    }
+    const nativeOptions = nativeQueryOptions(query.options, includeTimeout, true);
+    return nativeOptions === undefined
+        ? method(handle, query.text, query.parameters)
+        : method(handle, query.text, query.parameters, nativeOptions);
+}
+
+function requireCursorBridgeMethod(nativeBridge, method, provider) {
+    if (typeof nativeBridge?.[method] !== "function") {
+        throw new Error(`sloppy: ${provider} cursor bridge is unavailable`);
+    }
+    return nativeBridge[method];
+}
+
+function createDataCursor(provider, nativeBridge, nativeCursor, mode, operationOptions, registry) {
+    if (!isPlainObject(nativeCursor)) {
+        throw new TypeError(`Sloppy ${provider} cursor bridge returned an invalid cursor handle.`);
+    }
+
+    let closed = nativeCursor.closed === true;
+    let started = false;
+    let rowsSeen = 0;
+    let cursor = null;
+    const metadata = Object.freeze({
+        columns: Array.isArray(nativeCursor.columns) ? Object.freeze([...nativeCursor.columns]) : Object.freeze([]),
+        mode,
+        provider,
+    });
+
+    async function close() {
+        if (closed) {
+            registry?.delete(cursor);
+            return;
+        }
+        closed = true;
+        registry?.delete(cursor);
+        await requireCursorBridgeMethod(nativeBridge, "cursorClose", provider)(nativeCursor);
+    }
+
+    async function next() {
+        if (closed) {
+            throw new Error(`sloppy: ${provider} cursor is closed`);
+        }
+        throwIfOperationCancelled(operationOptions, `${provider}.cursor.next`);
+        started = true;
+        let result;
+        try {
+            result = await requireCursorBridgeMethod(nativeBridge, "cursorNext", provider)(nativeCursor);
+        } catch (error) {
+            try {
+                await close();
+            } catch {
+                // Preserve the provider error while still making a best-effort cleanup attempt.
+            }
+            throw error;
+        }
+        if (!isPlainObject(result) || typeof result.done !== "boolean") {
+            await close();
+            throw new TypeError(`Sloppy ${provider} cursor bridge returned an invalid iterator result.`);
+        }
+        if (result.done) {
+            await close();
+            return Object.freeze({ done: true, value: undefined });
+        }
+        rowsSeen += 1;
+        return Object.freeze({ done: false, value: result.value });
+    }
+
+    cursor = {
+        get closed() {
+            return closed;
+        },
+        get columns() {
+            return metadata.columns;
+        },
+        get mode() {
+            return metadata.mode;
+        },
+        get provider() {
+            return metadata.provider;
+        },
+        async close() {
+            await close();
+        },
+        async next() {
+            return next();
+        },
+        async return() {
+            await close();
+            return Object.freeze({ done: true, value: undefined });
+        },
+        async throw(error) {
+            await close();
+            throw error;
+        },
+        [Symbol.asyncIterator]() {
+            if (started) {
+                throw new Error(`sloppy: ${provider} cursor is single-use`);
+            }
+            return this;
+        },
+        __debug() {
+            return Object.freeze({
+                kind: "data-cursor",
+                closed,
+                mode,
+                provider,
+                rowsSeen,
+            });
+        },
+    };
+
+    registry?.add(cursor);
+    return Object.freeze(cursor);
+}
+
+function closeActiveCursors(cursors) {
+    if (!(cursors instanceof Set) || cursors.size === 0) {
+        return;
+    }
+    for (const cursor of Array.from(cursors)) {
+        try {
+            const result = cursor.close();
+            if (result !== undefined && typeof result.catch === "function") {
+                result.catch(() => {});
+            }
+        } catch {
+        }
+    }
+    cursors.clear();
 }
 
 function normalizeResultMode(value, operation) {
@@ -846,8 +1066,16 @@ function hasInlineOperationOptions(args) {
 
 function normalizeProviderCallArguments(operation, placeholderStyle, args) {
     const allowResultMode = operationAllowsResultMode(operation);
+    const allowMaxRows = operationAllowsMaxRows(operation);
+    const allowCursorOptions = operationAllowsCursorOptions(operation);
     if (args.length === 2 && isLoweredQuery(args[0])) {
-        const options = normalizeOperationOptions(args[1], operation, allowResultMode);
+        const options = normalizeOperationOptions(
+            args[1],
+            operation,
+            allowResultMode,
+            allowMaxRows,
+            allowCursorOptions,
+        );
         return {
             query: args[0],
             options,
@@ -868,8 +1096,18 @@ function normalizeProviderCallArguments(operation, placeholderStyle, args) {
     };
 }
 
-function validateOperationOptions(options, operation, allowResultMode = false) {
-    const normalized = normalizeOperationOptions(options, operation, allowResultMode);
+function validateOperationOptions(
+    options,
+    operation,
+    allowResultMode = false,
+    allowMaxRows = false,
+) {
+    const normalized = normalizeOperationOptions(
+        options,
+        operation,
+        allowResultMode,
+        allowMaxRows,
+    );
     if (normalized !== undefined) {
         throwIfOperationCancelled(normalized, operation);
     }
@@ -1075,7 +1313,10 @@ function validateSqliteParams(params, operation) {
 }
 
 function normalizeSqliteOperation(operation, args) {
-    const allowResultMode = operation === "query";
+    const allowResultMode = operation === "query" || operation === "queryCursor";
+    const allowMaxRows = operation === "query" || operation === "queryRaw"
+        || operation === "queryCursor" || operation === "queryRawCursor";
+    const allowCursorOptions = operation === "queryCursor" || operation === "queryRawCursor";
     if (args.length === 1 && isLoweredQuery(args[0])) {
         return {
             text: args[0].text,
@@ -1085,7 +1326,13 @@ function normalizeSqliteOperation(operation, args) {
         };
     }
     if (args.length === 2 && isLoweredQuery(args[0])) {
-        const options = normalizeOperationOptions(args[1], `sqlite.${operation}`, allowResultMode);
+        const options = normalizeOperationOptions(
+            args[1],
+            `sqlite.${operation}`,
+            allowResultMode,
+            allowMaxRows,
+            allowCursorOptions,
+        );
         return {
             text: args[0].text,
             parameters: validateSqliteParams(args[0].parameters, operation),
@@ -1104,6 +1351,8 @@ function normalizeSqliteOperation(operation, args) {
             inlineOptions ? args[1] : args[2],
             `sqlite.${operation}`,
             allowResultMode,
+            allowMaxRows,
+            allowCursorOptions,
         );
 
         if (args[0].length === 0) {
@@ -1127,11 +1376,18 @@ function normalizeSqliteOperation(operation, args) {
     };
 }
 
+async function openProviderCursor(provider, nativeBridge, handle, query, mode, methodName, registry) {
+    const method = requireCursorBridgeMethod(nativeBridge, methodName, provider);
+    const nativeCursor = await invokeNativeCursorOpen(method, handle, query, true);
+    return createDataCursor(provider, nativeBridge, nativeCursor, mode, query.options, registry);
+}
+
 function createSqliteConnection(nativeBridge, handle) {
     const state = {
         closed: false,
         handle,
         transactionActive: false,
+        activeCursors: new Set(),
     };
 
     function assertOpen(operation) {
@@ -1143,6 +1399,7 @@ function createSqliteConnection(nativeBridge, handle) {
     function createSqliteTransaction() {
         const txState = {
             closed: false,
+            activeCursors: new Set(),
         };
 
         function assertTransactionOpen(operation) {
@@ -1160,14 +1417,31 @@ function createSqliteConnection(nativeBridge, handle) {
                     ? nativeBridge.transactionQueryRaw
                     : nativeBridge.transactionQuery;
                 return invokeProviderOperation("sqlite.transaction.query", query.options, () =>
-                    method(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(method, state.handle, query, true));
             },
 
             queryRaw(...args) {
                 assertTransactionOpen("transaction.queryRaw");
                 const query = normalizeSqliteOperation("queryRaw", args);
                 return invokeProviderOperation("sqlite.transaction.queryRaw", query.options, () =>
-                    nativeBridge.transactionQueryRaw(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query, true));
+            },
+
+            async queryCursor(...args) {
+                assertTransactionOpen("transaction.queryCursor");
+                const query = normalizeSqliteOperation("queryCursor", args);
+                const methodName = query.mode === "raw"
+                    ? "transactionQueryRawCursor"
+                    : "transactionQueryCursor";
+                return invokeProviderOperation("sqlite.transaction.queryCursor", query.options, () =>
+                    openProviderCursor("sqlite", nativeBridge, state.handle, query, query.mode, methodName, txState.activeCursors));
+            },
+
+            async queryRawCursor(...args) {
+                assertTransactionOpen("transaction.queryRawCursor");
+                const query = normalizeSqliteOperation("queryRawCursor", args);
+                return invokeProviderOperation("sqlite.transaction.queryRawCursor", query.options, () =>
+                    openProviderCursor("sqlite", nativeBridge, state.handle, query, "raw", "transactionQueryRawCursor", txState.activeCursors));
             },
 
             queryOne(...args) {
@@ -1192,6 +1466,7 @@ function createSqliteConnection(nativeBridge, handle) {
         return {
             tx,
             close() {
+                closeActiveCursors(txState.activeCursors);
                 txState.closed = true;
             },
         };
@@ -1199,6 +1474,9 @@ function createSqliteConnection(nativeBridge, handle) {
 
     async function rollbackAfterCallbackError(error, transaction) {
         try {
+            if (transaction !== undefined) {
+                transaction.close();
+            }
             await nativeBridge.transactionRollback(state.handle);
         } catch {
             if (transaction !== undefined) {
@@ -1212,15 +1490,13 @@ function createSqliteConnection(nativeBridge, handle) {
             }
             throw error;
         }
-        if (transaction !== undefined) {
-            transaction.close();
-        }
         state.transactionActive = false;
         throw error;
     }
 
     async function commitTransaction(transaction) {
         try {
+            transaction.close();
             await nativeBridge.transactionCommit(state.handle);
         } catch (error) {
             transaction.close();
@@ -1233,7 +1509,6 @@ function createSqliteConnection(nativeBridge, handle) {
             }
             throw error;
         }
-        transaction.close();
         state.transactionActive = false;
     }
 
@@ -1243,14 +1518,33 @@ function createSqliteConnection(nativeBridge, handle) {
             const query = normalizeSqliteOperation("query", args);
             const method = query.mode === "raw" ? nativeBridge.queryRaw : nativeBridge.query;
             return invokeProviderOperation("sqlite.query", query.options, () =>
-                method(state.handle, query.text, query.parameters));
+                invokeNativeQuery(method, state.handle, query, true));
         },
 
         queryRaw(...args) {
             assertOpen("queryRaw");
             const query = normalizeSqliteOperation("queryRaw", args);
             return invokeProviderOperation("sqlite.queryRaw", query.options, () =>
-                nativeBridge.queryRaw(state.handle, query.text, query.parameters));
+                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query, true));
+        },
+
+        async queryCursor(...args) {
+            assertOpen("queryCursor");
+            const query = normalizeSqliteOperation("queryCursor", args);
+            const methodName = query.mode === "raw" ? "queryRawCursor" : "queryCursor";
+            return invokeProviderOperation("sqlite.queryCursor", query.options, () =>
+                openProviderCursor("sqlite", nativeBridge, state.handle, query, query.mode, methodName, state.activeCursors));
+        },
+
+        async queryRawCursor(...args) {
+            assertOpen("queryRawCursor");
+            const query = normalizeSqliteOperation("queryRawCursor", args);
+            return invokeProviderOperation("sqlite.queryRawCursor", query.options, () =>
+                openProviderCursor("sqlite", nativeBridge, state.handle, query, "raw", "queryRawCursor", state.activeCursors));
+        },
+
+        stream(...args) {
+            return this.queryCursor(...args);
         },
 
         queryOne(...args) {
@@ -1303,6 +1597,7 @@ function createSqliteConnection(nativeBridge, handle) {
                 throw createSqliteTransactionActiveError("close");
             }
 
+            closeActiveCursors(state.activeCursors);
             nativeBridge.close(state.handle);
             state.closed = true;
         },
@@ -1572,7 +1867,10 @@ Fix:
 }
 
 function normalizePostgresOperation(operation, args) {
-    const allowResultMode = operation === "query";
+    const allowResultMode = operation === "query" || operation === "queryCursor";
+    const allowMaxRows = operation === "query" || operation === "queryRaw"
+        || operation === "queryCursor" || operation === "queryRawCursor";
+    const allowCursorOptions = operation === "queryCursor" || operation === "queryRawCursor";
     if (args.length === 1 && isLoweredQuery(args[0])) {
         return {
             text: args[0].text,
@@ -1582,7 +1880,13 @@ function normalizePostgresOperation(operation, args) {
         };
     }
     if (args.length === 2 && isLoweredQuery(args[0])) {
-        const options = normalizeOperationOptions(args[1], `postgres.${operation}`, allowResultMode);
+        const options = normalizeOperationOptions(
+            args[1],
+            `postgres.${operation}`,
+            allowResultMode,
+            allowMaxRows,
+            allowCursorOptions,
+        );
         return {
             text: args[0].text,
             parameters: args[0].parameters,
@@ -1601,6 +1905,8 @@ function normalizePostgresOperation(operation, args) {
             inlineOptions ? args[1] : args[2],
             `postgres.${operation}`,
             allowResultMode,
+            allowMaxRows,
+            allowCursorOptions,
         );
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy postgres.${operation} SQL must be a non-empty string.`);
@@ -1630,6 +1936,7 @@ function createPostgresConnection(nativeBridge, handle) {
         closed: false,
         handle,
         transactionActive: false,
+        activeCursors: new Set(),
     };
 
     function assertOpen(operation) {
@@ -1639,7 +1946,7 @@ function createPostgresConnection(nativeBridge, handle) {
     }
 
     function createTransaction() {
-        const txState = { closed: false };
+        const txState = { closed: false, activeCursors: new Set() };
         function assertTransactionOpen(operation) {
             assertOpen(operation);
             if (txState.closed) {
@@ -1655,13 +1962,28 @@ function createPostgresConnection(nativeBridge, handle) {
                     ? nativeBridge.transactionQueryRaw
                     : nativeBridge.transactionQuery;
                 return invokeProviderOperation("postgres.transaction.query", query.options, () =>
-                    method(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(method, state.handle, query, true));
             },
             queryRaw(...args) {
                 assertTransactionOpen("transaction.queryRaw");
                 const query = normalizePostgresOperation("queryRaw", args);
                 return invokeProviderOperation("postgres.transaction.queryRaw", query.options, () =>
-                    nativeBridge.transactionQueryRaw(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query, true));
+            },
+            async queryCursor(...args) {
+                assertTransactionOpen("transaction.queryCursor");
+                const query = normalizePostgresOperation("queryCursor", args);
+                const methodName = query.mode === "raw"
+                    ? "transactionQueryRawCursor"
+                    : "transactionQueryCursor";
+                return invokeProviderOperation("postgres.transaction.queryCursor", query.options, () =>
+                    openProviderCursor("postgres", nativeBridge, state.handle, query, query.mode, methodName, txState.activeCursors));
+            },
+            async queryRawCursor(...args) {
+                assertTransactionOpen("transaction.queryRawCursor");
+                const query = normalizePostgresOperation("queryRawCursor", args);
+                return invokeProviderOperation("postgres.transaction.queryRawCursor", query.options, () =>
+                    openProviderCursor("postgres", nativeBridge, state.handle, query, "raw", "transactionQueryRawCursor", txState.activeCursors));
             },
             queryOne(...args) {
                 assertTransactionOpen("transaction.queryOne");
@@ -1683,6 +2005,7 @@ function createPostgresConnection(nativeBridge, handle) {
         return {
             tx,
             close() {
+                closeActiveCursors(txState.activeCursors);
                 txState.closed = true;
             },
         };
@@ -1690,6 +2013,7 @@ function createPostgresConnection(nativeBridge, handle) {
 
     async function rollbackAfterCallbackError(error, transaction) {
         try {
+            transaction.close();
             await nativeBridge.transactionRollback(state.handle);
         } catch {
             transaction.close();
@@ -1701,13 +2025,13 @@ function createPostgresConnection(nativeBridge, handle) {
             }
             throw error;
         }
-        transaction.close();
         state.transactionActive = false;
         throw error;
     }
 
     async function commitTransaction(transaction) {
         try {
+            transaction.close();
             await nativeBridge.transactionCommit(state.handle);
         } catch (error) {
             transaction.close();
@@ -1720,7 +2044,6 @@ function createPostgresConnection(nativeBridge, handle) {
             }
             throw error;
         }
-        transaction.close();
         state.transactionActive = false;
     }
 
@@ -1730,13 +2053,29 @@ function createPostgresConnection(nativeBridge, handle) {
             const query = normalizePostgresOperation("query", args);
             const method = query.mode === "raw" ? nativeBridge.queryRaw : nativeBridge.query;
             return invokeProviderOperation("postgres.query", query.options, () =>
-                method(state.handle, query.text, query.parameters));
+                invokeNativeQuery(method, state.handle, query, true));
         },
         queryRaw(...args) {
             assertOpen("queryRaw");
             const query = normalizePostgresOperation("queryRaw", args);
             return invokeProviderOperation("postgres.queryRaw", query.options, () =>
-                nativeBridge.queryRaw(state.handle, query.text, query.parameters));
+                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query, true));
+        },
+        async queryCursor(...args) {
+            assertOpen("queryCursor");
+            const query = normalizePostgresOperation("queryCursor", args);
+            const methodName = query.mode === "raw" ? "queryRawCursor" : "queryCursor";
+            return invokeProviderOperation("postgres.queryCursor", query.options, () =>
+                openProviderCursor("postgres", nativeBridge, state.handle, query, query.mode, methodName, state.activeCursors));
+        },
+        async queryRawCursor(...args) {
+            assertOpen("queryRawCursor");
+            const query = normalizePostgresOperation("queryRawCursor", args);
+            return invokeProviderOperation("postgres.queryRawCursor", query.options, () =>
+                openProviderCursor("postgres", nativeBridge, state.handle, query, "raw", "queryRawCursor", state.activeCursors));
+        },
+        stream(...args) {
+            return this.queryCursor(...args);
         },
         queryOne(...args) {
             assertOpen("queryOne");
@@ -1783,6 +2122,7 @@ function createPostgresConnection(nativeBridge, handle) {
             if (state.transactionActive) {
                 throw new Error("sloppy: postgres transaction is active");
             }
+            closeActiveCursors(state.activeCursors);
             nativeBridge.close(state.handle);
             state.closed = true;
         },
@@ -1837,7 +2177,10 @@ Fix:
 }
 
 function normalizeSqlServerOperation(operation, args) {
-    const allowResultMode = operation === "query";
+    const allowResultMode = operation === "query" || operation === "queryCursor";
+    const allowMaxRows = operation === "query" || operation === "queryRaw"
+        || operation === "queryCursor" || operation === "queryRawCursor";
+    const allowCursorOptions = operation === "queryCursor" || operation === "queryRawCursor";
     if (args.length === 1 && isLoweredQuery(args[0])) {
         return {
             text: args[0].text,
@@ -1847,7 +2190,13 @@ function normalizeSqlServerOperation(operation, args) {
         };
     }
     if (args.length === 2 && isLoweredQuery(args[0])) {
-        const options = normalizeOperationOptions(args[1], `sqlserver.${operation}`, allowResultMode);
+        const options = normalizeOperationOptions(
+            args[1],
+            `sqlserver.${operation}`,
+            allowResultMode,
+            allowMaxRows,
+            allowCursorOptions,
+        );
         return {
             text: args[0].text,
             parameters: args[0].parameters,
@@ -1866,6 +2215,8 @@ function normalizeSqlServerOperation(operation, args) {
             inlineOptions ? args[1] : args[2],
             `sqlserver.${operation}`,
             allowResultMode,
+            allowMaxRows,
+            allowCursorOptions,
         );
         if (args[0].length === 0) {
             throw new TypeError(`Sloppy sqlserver.${operation} SQL must be a non-empty string.`);
@@ -1895,6 +2246,7 @@ function createSqlServerConnection(nativeBridge, handle) {
         closed: false,
         handle,
         transactionActive: false,
+        activeCursors: new Set(),
     };
 
     function assertOpen(operation) {
@@ -1904,7 +2256,7 @@ function createSqlServerConnection(nativeBridge, handle) {
     }
 
     function createTransaction() {
-        const txState = { closed: false };
+        const txState = { closed: false, activeCursors: new Set() };
         function assertTransactionOpen(operation) {
             assertOpen(operation);
             if (txState.closed) {
@@ -1920,13 +2272,28 @@ function createSqlServerConnection(nativeBridge, handle) {
                     ? nativeBridge.transactionQueryRaw
                     : nativeBridge.transactionQuery;
                 return invokeProviderOperation("sqlserver.transaction.query", query.options, () =>
-                    method(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(method, state.handle, query, true));
             },
             queryRaw(...args) {
                 assertTransactionOpen("transaction.queryRaw");
                 const query = normalizeSqlServerOperation("queryRaw", args);
                 return invokeProviderOperation("sqlserver.transaction.queryRaw", query.options, () =>
-                    nativeBridge.transactionQueryRaw(state.handle, query.text, query.parameters));
+                    invokeNativeQuery(nativeBridge.transactionQueryRaw, state.handle, query, true));
+            },
+            async queryCursor(...args) {
+                assertTransactionOpen("transaction.queryCursor");
+                const query = normalizeSqlServerOperation("queryCursor", args);
+                const methodName = query.mode === "raw"
+                    ? "transactionQueryRawCursor"
+                    : "transactionQueryCursor";
+                return invokeProviderOperation("sqlserver.transaction.queryCursor", query.options, () =>
+                    openProviderCursor("sqlserver", nativeBridge, state.handle, query, query.mode, methodName, txState.activeCursors));
+            },
+            async queryRawCursor(...args) {
+                assertTransactionOpen("transaction.queryRawCursor");
+                const query = normalizeSqlServerOperation("queryRawCursor", args);
+                return invokeProviderOperation("sqlserver.transaction.queryRawCursor", query.options, () =>
+                    openProviderCursor("sqlserver", nativeBridge, state.handle, query, "raw", "transactionQueryRawCursor", txState.activeCursors));
             },
             queryOne(...args) {
                 assertTransactionOpen("transaction.queryOne");
@@ -1948,6 +2315,7 @@ function createSqlServerConnection(nativeBridge, handle) {
         return {
             tx,
             close() {
+                closeActiveCursors(txState.activeCursors);
                 txState.closed = true;
             },
         };
@@ -1955,6 +2323,7 @@ function createSqlServerConnection(nativeBridge, handle) {
 
     async function rollbackAfterCallbackError(error, transaction) {
         try {
+            transaction.close();
             await nativeBridge.transactionRollback(state.handle);
         } catch {
             transaction.close();
@@ -1966,13 +2335,13 @@ function createSqlServerConnection(nativeBridge, handle) {
             }
             throw error;
         }
-        transaction.close();
         state.transactionActive = false;
         throw error;
     }
 
     async function commitTransaction(transaction) {
         try {
+            transaction.close();
             await nativeBridge.transactionCommit(state.handle);
         } catch (error) {
             transaction.close();
@@ -1985,7 +2354,6 @@ function createSqlServerConnection(nativeBridge, handle) {
             }
             throw error;
         }
-        transaction.close();
         state.transactionActive = false;
     }
 
@@ -1995,13 +2363,29 @@ function createSqlServerConnection(nativeBridge, handle) {
             const query = normalizeSqlServerOperation("query", args);
             const method = query.mode === "raw" ? nativeBridge.queryRaw : nativeBridge.query;
             return invokeProviderOperation("sqlserver.query", query.options, () =>
-                method(state.handle, query.text, query.parameters));
+                invokeNativeQuery(method, state.handle, query, true));
         },
         queryRaw(...args) {
             assertOpen("queryRaw");
             const query = normalizeSqlServerOperation("queryRaw", args);
             return invokeProviderOperation("sqlserver.queryRaw", query.options, () =>
-                nativeBridge.queryRaw(state.handle, query.text, query.parameters));
+                invokeNativeQuery(nativeBridge.queryRaw, state.handle, query, true));
+        },
+        async queryCursor(...args) {
+            assertOpen("queryCursor");
+            const query = normalizeSqlServerOperation("queryCursor", args);
+            const methodName = query.mode === "raw" ? "queryRawCursor" : "queryCursor";
+            return invokeProviderOperation("sqlserver.queryCursor", query.options, () =>
+                openProviderCursor("sqlserver", nativeBridge, state.handle, query, query.mode, methodName, state.activeCursors));
+        },
+        async queryRawCursor(...args) {
+            assertOpen("queryRawCursor");
+            const query = normalizeSqlServerOperation("queryRawCursor", args);
+            return invokeProviderOperation("sqlserver.queryRawCursor", query.options, () =>
+                openProviderCursor("sqlserver", nativeBridge, state.handle, query, "raw", "queryRawCursor", state.activeCursors));
+        },
+        stream(...args) {
+            return this.queryCursor(...args);
         },
         queryOne(...args) {
             assertOpen("queryOne");
@@ -2047,6 +2431,7 @@ function createSqlServerConnection(nativeBridge, handle) {
             if (state.transactionActive) {
                 throw new Error("sloppy: sqlserver transaction is active");
             }
+            closeActiveCursors(state.activeCursors);
             nativeBridge.close(state.handle);
             state.closed = true;
         },
@@ -2124,6 +2509,9 @@ const sqliteSupports = {
     ]),
     transactions: true,
     transactionsMode: "callback",
+    cursors: true,
+    cursorModes: Object.freeze(["object", "raw"]),
+    responseStreamingAdapter: false,
     preparedStatements: false,
     pooling: false,
     migrations: true,
@@ -2159,6 +2547,9 @@ const postgresSupports = {
         "array",
     ]),
     transactions: true,
+    cursors: true,
+    cursorModes: Object.freeze(["object", "raw"]),
+    responseStreamingAdapter: false,
     pooling: true,
     maxPoolConnections: POSTGRES_MAX_POOL_CONNECTIONS,
     executionMode: "TRUE_ASYNC",
@@ -2194,6 +2585,9 @@ const sqlserverSupports = {
         "explicit-json-text",
     ]),
     transactions: true,
+    cursors: true,
+    cursorModes: Object.freeze(["object", "raw"]),
+    responseStreamingAdapter: false,
     pooling: true,
     maxPoolConnections: SQLSERVER_MAX_POOL_CONNECTIONS,
     executionMode: "TRUE_ASYNC",

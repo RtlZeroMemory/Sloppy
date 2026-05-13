@@ -5,15 +5,28 @@
     "version": "0.0.0"
   },
   "x-slop-openapi-policy": {
-    "status": "plan-supported-subset",
-    "unknownMetadata": "explicit-partial-markers",
+    "mode": "partial",
+    "routesTotal": 3,
+    "routesIncluded": 3,
+    "routesOmitted": 0,
+    "operationsComplete": 0,
+    "operationsPartial": 3,
+    "missing": [
+      { "method": "GET", "path": "/users/create", "reason": "response metadata is unknown" },
+      { "method": "GET", "path": "/users/{id:int}", "reason": "response metadata is unknown" },
+      { "method": "GET", "path": "/", "reason": "response metadata is unknown" }
+    ],
     "optimizations": "reported-only"
   },
   "paths": {
     "/users/create": {
       "get": {
         "operationId": "Users.Create",
-        "x-slop-completeness": "",
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "route Plan completeness is not complete",
+        "response metadata is unknown"
+        ],
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
         "parameters": [],
@@ -25,7 +38,11 @@
     "/users/{id}": {
       "get": {
         "operationId": "Users.Get",
-        "x-slop-completeness": "",
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "route Plan completeness is not complete",
+        "response metadata is unknown"
+        ],
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
         "parameters": [
@@ -40,7 +57,11 @@
     "/": {
       "get": {
         "operationId": "Hello.Index",
-        "x-slop-completeness": "",
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "route Plan completeness is not complete",
+        "response metadata is unknown"
+        ],
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
         "parameters": [],

@@ -42,6 +42,9 @@ The compiler can emit route metadata for the supported source subset:
 - supported HTTP methods;
 - optional route names;
 - optional route tags from route metadata and group tags;
+- optional API contract metadata: `summary`, `description`, `deprecated`,
+  `deprecatedReason`, `consumes`, `produces`, `headers`, `querySchema`,
+  `paramsSchema`, and static `openapi` overrides;
 - optional health metadata for compiler-extracted health endpoints;
 - source metadata;
 - direct handler IDs;
@@ -72,8 +75,9 @@ Dynamic route metadata is intentionally not complete OpenAPI metadata. Known
 static routes stay in `routes[]` with `completeness.status: "complete"` when
 all route metadata is inferred. Unknown dynamic registrations appear in
 `dynamicRoutes[]`, and app-level metadata records route completeness counts.
-OpenAPI emitters include representable known routes and mark the document as a
-partial Plan-supported subset.
+OpenAPI emitters include representable known routes and mark the document with
+`x-slop-openapi-policy.mode: "partial"` when route, schema, response, or auth
+metadata is incomplete. Strict OpenAPI generation fails instead of guessing.
 
 ## Route Dispatch
 

@@ -7,7 +7,9 @@
  * binds lowered `$1` parameters with PQexecParams, materializes small results into
  * caller-provided arenas, exposes explicit transactions, and provides a tiny bounded pool.
  * It does not add async socket integration, worker-pool offload, migrations, ORM behavior,
- * cancellation/deadlines, or a JavaScript native bridge.
+ * or JavaScript handles. JavaScript V8 provider work uses
+ * src/engine/v8/intrinsics_postgres.cc, which owns libpq async polling and timeout
+ * cancellation.
  *
  * Safety invariants:
  * - libpq headers and native handle casts stay in this provider-specific file;

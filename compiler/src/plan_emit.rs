@@ -733,6 +733,54 @@ pub(crate) fn emit_plan_with_route_artifact(
             if !route.tags.is_empty() {
                 route_json["tags"] = json!(route.tags);
             }
+            if let Some(summary) = &route.summary {
+                route_json["summary"] = json!(summary);
+            }
+            if let Some(description) = &route.description {
+                route_json["description"] = json!(description);
+            }
+            if let Some(deprecated) = &route.deprecated {
+                route_json["deprecated"] = json!(deprecated != "false");
+                if deprecated != "true" && deprecated != "false" {
+                    route_json["deprecatedReason"] = json!(deprecated);
+                }
+            }
+            if !route.consumes.is_empty() {
+                route_json["consumes"] = json!(route.consumes);
+            }
+            if !route.produces.is_empty() {
+                route_json["produces"] = json!(route.produces);
+            }
+            if !route.headers.is_empty() {
+                route_json["headers"] = json!(route
+                    .headers
+                    .iter()
+                    .map(|header| {
+                        json!({
+                            "name": header.name,
+                            "schema": header.schema,
+                            "required": header.required,
+                            "description": header.description
+                        })
+                    })
+                    .collect::<Vec<_>>());
+            }
+            if let Some(schema) = &route.query_schema {
+                route_json["querySchema"] = json!(schema);
+            }
+            if let Some(schema) = &route.params_schema {
+                route_json["paramsSchema"] = json!(schema);
+            }
+            if let Some(override_value) = &route.openapi_override {
+                route_json["openapi"] = override_value.clone();
+            }
+            if let Some(docs) = &route.docs {
+                route_json["docsInternal"] = json!(true);
+                route_json["docs"] = json!({
+                    "kind": docs.kind,
+                    "strict": docs.strict
+                });
+            }
             if let Some(health) = &route.health {
                 route_json["health"] = json!({
                     "kind": health.kind,
@@ -800,7 +848,17 @@ pub(crate) fn emit_plan_with_route_artifact(
                 || route.health.is_some()
                 || !route.middleware.is_empty()
                 || route.auth.is_some()
-                || route.cors.is_some();
+                || route.cors.is_some()
+                || route.summary.is_some()
+                || route.description.is_some()
+                || route.deprecated.is_some()
+                || !route.consumes.is_empty()
+                || !route.produces.is_empty()
+                || !route.headers.is_empty()
+                || route.query_schema.is_some()
+                || route.params_schema.is_some()
+                || route.openapi_override.is_some()
+                || route.docs.is_some();
             if emits_binding_metadata(index, route) {
                 route_json["bindings"] = json!(route
                     .handler
@@ -1490,6 +1548,82 @@ pub(crate) fn emit_plan_with_route_artifact(
     let mut required_features = Vec::new();
     let mut doctor_checks = Vec::new();
     doctor_checks.extend(schema_reference_resolution.doctor_checks());
+    let health_endpoints = app
+        .routes
+        .iter()
+        .filter_map(|route| {
+            route.health.as_ref().map(|health| {
+                json!({
+                    "method": route.method,
+                    "path": route.pattern,
+                    "name": route.name,
+                    "kind": health.kind,
+                    "checks": health.checks
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    let management_endpoints = app
+        .routes
+        .iter()
+        .filter(|route| {
+            route
+                .name
+                .as_deref()
+                .is_some_and(|name| name.starts_with("Management."))
+        })
+        .map(|route| {
+            json!({
+                "method": route.method,
+                "path": route.pattern,
+                "name": route.name
+            })
+        })
+        .collect::<Vec<_>>();
+    if !health_endpoints.is_empty() || !management_endpoints.is_empty() {
+        value["ops"] = json!({
+            "health": {
+                "enabled": !health_endpoints.is_empty(),
+                "endpoints": health_endpoints
+            },
+            "management": {
+                "enabled": !management_endpoints.is_empty(),
+                "endpoints": management_endpoints,
+                "requiresProtection": !management_endpoints.is_empty()
+            },
+            "metrics": {
+                "prometheus": app.routes.iter().any(|route| route.name.as_deref() == Some("Management.Metrics")),
+                "json": app.routes.iter().any(|route| route.name.as_deref() == Some("Management.MetricsJson"))
+            }
+        });
+        value["strongPlan"]["evidence"]["ops"] = json!(true);
+        value["features"]["ops"] = json!(true);
+    }
+    if app.routes.iter().any(|route| {
+        route
+            .name
+            .as_deref()
+            .is_some_and(|name| name.starts_with("Management."))
+    }) {
+        value["features"]["management"] = json!(true);
+        doctor_checks.push(json!({
+            "id": "ops.management.protection",
+            "status": "warn",
+            "message": "management endpoints are exposed; protect detailed health, metrics, info, and runtime routes before exposing them outside a trusted network"
+        }));
+    }
+    if app
+        .routes
+        .iter()
+        .any(|route| route.name.as_deref() == Some("Management.Metrics"))
+    {
+        value["features"]["metrics"] = json!(true);
+        doctor_checks.push(json!({
+            "id": "ops.metrics.prometheus",
+            "status": "info",
+            "message": "Prometheus metrics endpoint is Plan-visible and package-safe"
+        }));
+    }
     if app.kind == ProjectKind::Program {
         doctor_checks.push(json!({
             "id": "program.metadata",

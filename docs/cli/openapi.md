@@ -3,9 +3,9 @@
 Generate an OpenAPI document from a Plan.
 
 ```
-sloppy openapi <artifacts-dir|plan.json> [--output <path>]
-sloppy openapi --plan <path> [--output <path>]
-sloppy openapi --artifacts <dir> [--output <path>]
+sloppy openapi <artifacts-dir|plan.json> [--output <path>] [--strict|--fail-on-partial] [--summary] [--pretty]
+sloppy openapi --plan <path> [--output <path>] [--strict|--fail-on-partial] [--summary] [--pretty]
+sloppy openapi --artifacts <dir> [--output <path>] [--strict|--fail-on-partial] [--summary] [--pretty]
 ```
 
 Without `--output`, the document prints to stdout. With `--output <file>`,
@@ -14,6 +14,14 @@ the CLI does not create it.
 
 The output is **JSON**, not YAML. The filename is up to you, but the
 content is always JSON.
+
+`--strict` turns partial contract metadata into a command failure. It is meant
+for CI gates that require every operation to have statically known route,
+request, response, auth, and schema metadata. `--fail-on-partial` is the same
+failure gate without changing the emitted contract model. `--summary` prints a
+text count of included, omitted, complete, and partial operations instead of
+the JSON document. `--pretty` is accepted for explicitness; OpenAPI JSON is
+already emitted in deterministic pretty form.
 
 `<path>` is an `app.plan.json` file or a directory containing one.
 `--artifacts <dir>` is the explicit artifact-directory form.
@@ -36,6 +44,12 @@ A minimal OpenAPI 3 document in JSON form:
   `{ name: "Users.List" }` become operation IDs.
 - Tags from `app.group(...).withTags(...)`, route metadata options, and
   route-level tags propagate.
+- Route summaries, descriptions, deprecation markers, request/response media
+  types, header/query/parameter contracts, auth requirements, and response
+  status metadata from the route builder.
+- Static `.openapi(object)` route overrides replace the generated operation
+  for that route. Use them only when you want to own the complete operation
+  object, including `responses`, `parameters`, `security`, and `tags`.
 
 ```json
 {
@@ -98,6 +112,8 @@ directly model:
 
 - `x-slop-completeness` — per-path/operation indicators of how
   completely the Plan describes the operation.
+- `x-slop-missing` — operation-level reasons that explain why the operation is
+  partial.
 - `x-slop-capabilities` — capability tokens the operation reads or
   writes.
 - `x-slop-source` — `{ path, line, column }` pointing at the route
@@ -110,8 +126,9 @@ directly model:
 - `x-slop-partial` — a marker noting the field/section was emitted with
   partial information (e.g. body schema unknown, response shape not
   declared).
-- `x-slop-openapi-policy` — top-level metadata about how the document
-  was produced, including whether dynamic route metadata was omitted.
+- `x-slop-openapi-policy` — top-level metadata about how the document was
+  produced: `mode`, `routesTotal`, `routesIncluded`, `routesOmitted`,
+  `operationsComplete`, `operationsPartial`, and `missing`.
 - `x-slop-realtime` / `x-slop-transport` (experimental) — realtime route
   metadata for SSE and WebSocket-intent routes. WebSocket operations still
   represent the current unavailable runtime path unless native upgrade
@@ -124,20 +141,37 @@ Path parameters with Sloppy constraints carry `x-slop-constraint`. Integer
 constraints emit OpenAPI integer schemas, UUID constraints emit string schemas
 with `format: "uuid"`, alpha constraints emit string schemas with an ASCII
 letter pattern, and float constraints emit number schemas.
+When both the route pattern and `params(...)` describe the same path
+parameter, Sloppy emits one `(name, in)` parameter and lets the schema metadata
+enrich the pattern-derived parameter instead of duplicating it.
+
+## Partial and strict behavior
+
+Sloppy does not invent contract details. A document is partial when a route has
+dynamic metadata, a missing request or response schema, missing auth scheme
+metadata, unknown response metadata, or incomplete Plan route metadata. Partial
+operations remain in the document when they have a representable path, and
+omitted dynamic routes are counted in `x-slop-openapi-policy`.
+
+Use `--strict` in CI when partial output should fail:
+
+```sh
+sloppy openapi .sloppy --strict --output openapi.json
+```
+
+The command prints the missing contract reasons and returns non-zero instead of
+writing a document that could be mistaken for complete.
+
+`app.docs({ strict: true })` uses the same strict gate when build or package
+needs to refresh the docs `openapi.json` artifact.
 
 ## Current limits
 
-- Full request body schemas beyond what the Plan emitted from
-  `schema.object(...)` (partials get `x-slop-partial`).
-- Full response body schemas for responses not declared in Plan metadata
-  (those responses emit `x-slop-partial`).
-- Security schemes beyond Plan-visible Sloppy auth providers.
-- Servers or external-docs metadata.
+- Schema mapping is limited to Plan-visible Sloppy schema metadata.
+- Servers or external-docs metadata are not inferred.
 - Middleware, CORS, RequestId, RequestLogging, and controller behavior are
-  reflected only to the extent they are visible in current Plan route metadata;
-  OpenAPI does not model the full runtime pipeline semantics.
-- Dynamic routes with unknown paths are omitted rather than invented. Static
-  routes in the same Plan still appear.
+  reflected only to the extent they are visible in current Plan route metadata.
+- Dynamic routes with unknown paths are omitted rather than invented.
 
 This is enough for documentation and for sanity-checking that an API
 change matches the public contract. Pipe it into a fuller OpenAPI tool
@@ -149,6 +183,8 @@ if you need richer output.
 sloppy openapi .sloppy
 sloppy openapi .sloppy --output openapi.json
 sloppy openapi --artifacts .sloppy --output openapi.json
+sloppy openapi .sloppy --summary
+sloppy openapi .sloppy --strict
 ```
 
 ## Tips

@@ -1,0 +1,6 @@
+{
+  "metrics": { "endpoints": [
+    { "method": "GET", "path": "/_sloppy/metrics", "name": "Management.Metrics", "format": "prometheus" },
+    { "method": "GET", "path": "/_sloppy/metrics.json", "name": "Management.MetricsJson", "format": "json" }
+  ], "count": 2 }
+}

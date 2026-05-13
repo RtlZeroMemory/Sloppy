@@ -62,6 +62,7 @@ const SlBenchDefinition* sl_bench_route_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_handler_dispatch_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_json_dispatch_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_logging_definitions(size_t* out_count);
+const SlBenchDefinition* sl_bench_ops_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_diagnostics_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_memory_definitions(size_t* out_count);
 const SlBenchDefinition* sl_bench_stream_definitions(size_t* out_count);

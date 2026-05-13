@@ -1610,6 +1610,60 @@ static int test_provider_executor_admission_diagnostics_and_counters(void)
     return 0;
 }
 
+static int test_provider_executor_records_db_metrics_snapshot(void)
+{
+    unsigned char arena_storage[65536];
+    SlArena arena;
+    SlAsyncCompletion completions[16];
+    SlAsyncLoop* loop = NULL;
+    SlProviderInstanceExecutor executor = {0};
+    SlProviderExecutorSlot slots[4];
+    SlOpsMetricsRegistry* metrics = NULL;
+    SlStringBuilder prom = {0};
+    int result = 0;
+
+    if (expect_status(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)), SL_STATUS_OK) !=
+            0 ||
+        init_executor(&arena, &loop, &executor, slots, completions, 4U) != 0 ||
+        expect_status(sl_ops_metrics_registry_init(&arena, NULL, &metrics), SL_STATUS_OK) != 0)
+    {
+        result = 306;
+        goto cleanup;
+    }
+    executor.submitted_count = 3U;
+    executor.operation_failure_count = 1U;
+    executor.timed_out_count = 2U;
+    executor.overflow_count = 4U;
+    executor.in_flight = 1U;
+    executor.count = 3U;
+    if (expect_status(sl_provider_executor_record_metrics(&executor, metrics), SL_STATUS_OK) != 0 ||
+        expect_status(sl_string_builder_init_arena(&prom, &arena, 2048U, 32768U), SL_STATUS_OK) !=
+            0 ||
+        expect_status(sl_ops_metrics_render_prometheus(metrics, &prom), SL_STATUS_OK) != 0)
+    {
+        result = 307;
+        goto cleanup;
+    }
+    if (!provider_str_contains_cstr_ignore_case(sl_string_builder_view(&prom), "db_query_total") ||
+        !provider_str_contains_cstr_ignore_case(sl_string_builder_view(&prom),
+                                                "provider=\"sqlite\"") ||
+        !provider_str_contains_cstr_ignore_case(sl_string_builder_view(&prom),
+                                                "instance=\"sqlite:main\"") ||
+        !provider_str_contains_cstr_ignore_case(sl_string_builder_view(&prom), "db_pool_active") ||
+        !provider_str_contains_cstr_ignore_case(sl_string_builder_view(&prom), "db_timeouts"))
+    {
+        result = 308;
+        goto cleanup;
+    }
+
+cleanup:
+    sl_provider_executor_dispose(&executor);
+    if (loop != NULL) {
+        sl_async_loop_dispose(loop);
+    }
+    return result;
+}
+
 static int test_cancel_timeout_and_late_completion_cleanup_once(void)
 {
     unsigned char arena_storage[8192];
@@ -3484,6 +3538,7 @@ int main(void)
         test_execution_mode_offload_policy,
         test_serialized_admission_overflow_and_recovery,
         test_provider_executor_admission_diagnostics_and_counters,
+        test_provider_executor_records_db_metrics_snapshot,
         test_descriptor_helpers_preserve_outputs_on_failure,
         test_invalid_descriptor_fields_fail_without_cleanup,
         test_unavailable_executor_rejects_after_capability_before_enqueue,

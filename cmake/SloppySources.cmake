@@ -21,6 +21,7 @@ set(
     src/core/fs.c
     src/core/os.c
     src/core/logging.c
+    src/core/ops_metrics.c
     src/core/app_host.c
     src/core/loop.c
     src/core/async.c
@@ -161,6 +162,7 @@ set(
     tests/unit/core/test_os.c
     tests/unit/core/test_layout.c
     tests/unit/core/test_logging.c
+    tests/unit/core/test_ops_metrics.c
     tests/unit/core/test_platform_thread.c
     tests/unit/core/test_app_host.c
     tests/unit/core/test_request_validation.c
@@ -217,6 +219,7 @@ set(
     benchmarks/bench_handler_dispatch.c
     benchmarks/bench_json_dispatch.c
     benchmarks/bench_logging.c
+    benchmarks/bench_ops.c
     benchmarks/bench_memory.c
     benchmarks/bench_stream.c
     benchmarks/bench_diagnostics.c)

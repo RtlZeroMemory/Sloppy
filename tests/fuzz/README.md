@@ -26,7 +26,7 @@ Current targets:
 | `fuzz_diagnostics_render` | Diagnostic renderers handle arbitrary text/path/source inputs and redaction never emits secret-marked values. |
 | `fuzz_memory_primitives` | Arena, checked-size, string/byte scan, and builder helpers preserve invariants for deterministic memory seeds. |
 | `fuzz_stream` | Core stream adapters, pump state, bounded chunk lists, partial writes, invalid/empty stream chunks, response serialization, and backpressure retry paths preserve invariants for arbitrary chunk bytes. |
-| `js_fuzz_targets.mjs` | JavaScript randomized/property coverage for config, route plans, headers, query strings, percent decoding, logging redaction, package manifests, route tables, gated features, HTTP/1 and HTTP/2 client options, result descriptors, schema validation, JSON serialization, request media/body parsing, realtime metadata, worker queues, and stdlib import shapes. |
+| `js_fuzz_targets.mjs` | JavaScript randomized/property coverage for config, route plans, headers, query strings, percent decoding, logging redaction, package manifests, route tables, gated features, HTTP/1 and HTTP/2 client options, result descriptors, schema validation, JSON serialization, request media/body parsing, realtime metadata, worker queues, stdlib import shapes, and ops health/metrics redaction/rendering. |
 | `run_property_tests.mjs` | Bootstrap stdlib properties for codec, Results/ProblemDetails, time, HttpClient option validation, workers, logging, and config. |
 
 `fuzz_http_route_dispatch` seeds use a method byte followed by the request path.

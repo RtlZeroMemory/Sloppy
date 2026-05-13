@@ -146,6 +146,61 @@ static int sl_cli_parse_route_tags(yyjson_val* value, SlCliRoute* route)
     return 0;
 }
 
+static int sl_cli_parse_route_span_array(yyjson_val* value, const char* field, SlCliSpan* values,
+                                         size_t* count, size_t capacity)
+{
+    yyjson_val* array = yyjson_obj_get(value, field);
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+
+    if (array == NULL || !yyjson_is_arr(array)) {
+        return 0;
+    }
+    yyjson_arr_iter_init(array, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (!yyjson_is_str(entry)) {
+            continue;
+        }
+        if (*count >= capacity) {
+            sl_cli_write_cstr(stderr, "sloppy: too many route metadata entries\n");
+            return 1;
+        }
+        values[*count] = (SlCliSpan){yyjson_get_str(entry), yyjson_get_len(entry)};
+        *count += 1U;
+    }
+    return 0;
+}
+
+static int sl_cli_parse_route_contract_headers(yyjson_val* value, SlCliRoute* route)
+{
+    yyjson_val* headers = yyjson_obj_get(value, "headers");
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+
+    if (headers == NULL || !yyjson_is_arr(headers)) {
+        return 0;
+    }
+    yyjson_arr_iter_init(headers, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        yyjson_val* required = NULL;
+        if (!yyjson_is_obj(entry)) {
+            continue;
+        }
+        if (route->header_count >= SL_CLI_MAX_ROUTE_BINDINGS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many route header metadata entries\n");
+            return 1;
+        }
+        route->header_names[route->header_count] = sl_cli_json_span(entry, "name");
+        route->header_schemas[route->header_count] = sl_cli_json_span(entry, "schema");
+        route->header_descriptions[route->header_count] = sl_cli_json_span(entry, "description");
+        required = yyjson_obj_get(entry, "required");
+        route->header_required[route->header_count] =
+            required != NULL && yyjson_is_bool(required) && yyjson_get_bool(required);
+        route->header_count += 1U;
+    }
+    return 0;
+}
+
 static int sl_cli_parse_route_auth_array(yyjson_val* array, SlCliSpan* values, size_t* count,
                                          size_t capacity)
 {
@@ -260,6 +315,61 @@ static int sl_cli_parse_route_responses(yyjson_val* value, SlCliRoute* route)
     return 0;
 }
 
+static int sl_cli_parse_route_health(yyjson_val* value, SlCliRoute* route)
+{
+    yyjson_val* health = yyjson_obj_get(value, "health");
+    yyjson_val* kind = NULL;
+    yyjson_val* checks = NULL;
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+
+    if (health == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_obj(health)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: route health must be an object\n");
+        return 1;
+    }
+    kind = yyjson_obj_get(health, "kind");
+    if (kind != NULL && !yyjson_is_str(kind)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: route health kind must be a string\n");
+        return 1;
+    }
+    route->health_kind = sl_cli_json_span(health, "kind");
+    checks = yyjson_obj_get(health, "checks");
+    if (checks == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(checks)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: route health checks must be an array\n");
+        return 1;
+    }
+    if (yyjson_arr_size(checks) == 0U) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: route health checks must not be empty\n");
+        return 1;
+    }
+    yyjson_arr_iter_init(checks, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (!yyjson_is_str(entry)) {
+            sl_cli_write_cstr(
+                stderr,
+                "sloppy: malformed metadata: route health check entries must be strings\n");
+            return 1;
+        }
+        if (route->health_check_count >= SL_CLI_MAX_ROUTE_HEALTH_CHECKS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many route health checks in metadata\n");
+            return 1;
+        }
+        route->health_checks[route->health_check_count] =
+            (SlCliSpan){yyjson_get_str(entry), yyjson_get_len(entry)};
+        route->health_check_count += 1U;
+    }
+    return 0;
+}
+
 static int sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* completeness = yyjson_obj_get(value, "completeness");
@@ -274,6 +384,9 @@ static int sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* rou
         route->response_status = sl_cli_json_uint_or_zero(response, "status");
     }
     if (sl_cli_parse_route_responses(value, route) != 0) {
+        return 1;
+    }
+    if (sl_cli_parse_route_health(value, route) != 0) {
         return 1;
     }
     if (route->response_count == 0U && !sl_cli_span_empty(route->response_kind)) {
@@ -337,6 +450,39 @@ static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
         route.name = sl_cli_json_span(value, "name");
         route.module = sl_cli_json_span(value, "module");
         route.capability = sl_cli_json_span(value, "capability");
+        route.summary = sl_cli_json_span(value, "summary");
+        route.description = sl_cli_json_span(value, "description");
+        route.deprecated_reason = sl_cli_json_span(value, "deprecatedReason");
+        route.query_schema = sl_cli_json_span(value, "querySchema");
+        route.params_schema = sl_cli_json_span(value, "paramsSchema");
+        route.openapi_override = sl_cli_json_span(value, "openapi");
+        route.openapi_override_value = yyjson_obj_get(value, "openapi");
+        {
+            yyjson_val* docs_internal = yyjson_obj_get(value, "docsInternal");
+            yyjson_val* docs = yyjson_obj_get(value, "docs");
+            route.docs_internal =
+                docs_internal != NULL && yyjson_is_bool(docs_internal) &&
+                yyjson_get_bool(docs_internal);
+            if (docs != NULL && yyjson_is_obj(docs)) {
+                yyjson_val* strict = yyjson_obj_get(docs, "strict");
+                route.docs_kind = sl_cli_json_span(docs, "kind");
+                route.docs_strict =
+                    strict != NULL && yyjson_is_bool(strict) && yyjson_get_bool(strict);
+            }
+        }
+        {
+            yyjson_val* deprecated = yyjson_obj_get(value, "deprecated");
+            route.deprecated =
+                deprecated != NULL && yyjson_is_bool(deprecated) && yyjson_get_bool(deprecated);
+        }
+        if (sl_cli_parse_route_span_array(value, "consumes", route.consumes,
+                                          &route.consume_count, SL_CLI_MAX_ROUTE_TAGS) != 0 ||
+            sl_cli_parse_route_span_array(value, "produces", route.produces,
+                                          &route.produce_count, SL_CLI_MAX_ROUTE_TAGS) != 0 ||
+            sl_cli_parse_route_contract_headers(value, &route) != 0)
+        {
+            return 1;
+        }
         if (sl_cli_parse_route_strong_metadata(value, &route) != 0) {
             return 1;
         }
@@ -561,6 +707,18 @@ static void sl_cli_parse_schema_property(yyjson_val* property_value, SlCliSpan n
     property.format = sl_cli_json_span(property_value, "format");
     optional = yyjson_obj_get(property_value, "optional");
     property.optional = optional != NULL && yyjson_is_bool(optional) && yyjson_get_bool(optional);
+    {
+        yyjson_val* nullable = yyjson_obj_get(property_value, "nullable");
+        yyjson_val* min = yyjson_obj_get(property_value, "min");
+        yyjson_val* max = yyjson_obj_get(property_value, "max");
+        property.literal_value = yyjson_obj_get(property_value, "value");
+        property.nullable =
+            nullable != NULL && yyjson_is_bool(nullable) && yyjson_get_bool(nullable);
+        property.has_min = min != NULL && yyjson_is_num(min);
+        property.has_max = max != NULL && yyjson_is_num(max);
+        property.min_value = property.has_min ? yyjson_get_num(min) : 0.0;
+        property.max_value = property.has_max ? yyjson_get_num(max) : 0.0;
+    }
     items = yyjson_obj_get(property_value, "items");
     if (items != NULL && yyjson_is_obj(items)) {
         property.item_kind = sl_cli_json_span(items, "kind");
@@ -581,6 +739,18 @@ static void sl_cli_parse_schema_properties(yyjson_val* schema_value, SlCliSchema
         return;
     }
     schema->kind = sl_cli_json_span(definition, "kind");
+    {
+        yyjson_val* nullable = yyjson_obj_get(definition, "nullable");
+        yyjson_val* min = yyjson_obj_get(definition, "min");
+        yyjson_val* max = yyjson_obj_get(definition, "max");
+        schema->literal_value = yyjson_obj_get(definition, "value");
+        schema->nullable =
+            nullable != NULL && yyjson_is_bool(nullable) && yyjson_get_bool(nullable);
+        schema->has_min = min != NULL && yyjson_is_num(min);
+        schema->has_max = max != NULL && yyjson_is_num(max);
+        schema->min_value = schema->has_min ? yyjson_get_num(min) : 0.0;
+        schema->max_value = schema->has_max ? yyjson_get_num(max) : 0.0;
+    }
     items = yyjson_obj_get(definition, "items");
     if (items != NULL && yyjson_is_obj(items)) {
         schema->item_kind = sl_cli_json_span(items, "kind");

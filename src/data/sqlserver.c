@@ -8,8 +8,8 @@
  * explicit transactions, provides a tiny bounded pool, and formats missing-driver
  * diagnostics. It remains the native C synchronous boundary. JavaScript provider work uses
  * src/engine/v8/intrinsics_sqlserver.cc, which enables ODBC asynchronous connection and
- * statement mode. This module does not add worker-pool offload, migrations, ORM behavior,
- * cancellation/deadlines, installer behavior, or JavaScript handles.
+ * statement mode plus timeout cancellation. This module does not add worker-pool offload,
+ * migrations, ORM behavior, installer behavior, or JavaScript handles.
  *
  * Safety invariants:
  * - ODBC headers and native handle casts stay in this provider-specific file;

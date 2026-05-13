@@ -54,6 +54,32 @@
         sloppy.cli.routes_dispatch_json tests/golden/cli/routes-dispatch-json.json routes --plan
         compiler/tests/fixtures/grouped-route/expected/app.plan.json --format json --dispatch)
     sloppy_add_cli_golden_test(
+        sloppy.cli.health_text tests/golden/cli/health-text.txt health --plan
+        tests/fixtures/cli/ops.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.health_json tests/golden/cli/health-json.json health --plan
+        tests/fixtures/cli/ops.plan.json --format json)
+    sloppy_add_cli_nonzero_stderr_test(
+        sloppy.cli.health_malformed_kind
+        "route health kind must be a string" "SECRET_SHOULD_NOT_APPEAR" "SLOPPY_TEST_NOOP" "1"
+        health --plan tests/fixtures/cli/malformed-health-kind.plan.json --format text)
+    sloppy_add_cli_nonzero_stderr_test(
+        sloppy.cli.health_malformed_check_entry
+        "route health check entries must be strings" "SECRET_SHOULD_NOT_APPEAR"
+        "SLOPPY_TEST_NOOP" "1" health --plan
+        tests/fixtures/cli/malformed-health-check-entry.plan.json --format text)
+    sloppy_add_cli_nonzero_stderr_test(
+        sloppy.cli.health_empty_checks
+        "route health checks must not be empty" "SECRET_SHOULD_NOT_APPEAR" "SLOPPY_TEST_NOOP"
+        "1" health --plan tests/fixtures/cli/malformed-health-empty-checks.plan.json
+        --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.metrics_text tests/golden/cli/metrics-text.txt metrics --plan
+        tests/fixtures/cli/ops.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.metrics_json tests/golden/cli/metrics-json.json metrics --plan
+        tests/fixtures/cli/ops.plan.json --format json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.capabilities_users_text tests/golden/cli/capabilities-users-text.txt
         capabilities --plan compiler/tests/fixtures/realistic-users-api/expected/app.plan.json
         --format text)
@@ -249,6 +275,14 @@
         sloppy.cli.audit_clean_json tests/golden/cli/audit-clean-json.json audit --plan
         tests/fixtures/cli/route-metadata.plan.json --format json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.audit_metrics_json_only_text
+        tests/golden/cli/audit-metrics-json-only-text.txt audit --plan
+        tests/fixtures/cli/audit-metrics-json-only.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_metrics_json_only_json
+        tests/golden/cli/audit-metrics-json-only-json.json audit --plan
+        tests/fixtures/cli/audit-metrics-json-only.plan.json --format json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.audit_filesystem_text tests/golden/cli/audit-filesystem-text.txt audit --plan
         tests/fixtures/cli/filesystem-policy.plan.json --format text)
     sloppy_add_cli_golden_test(
@@ -313,8 +347,23 @@
         sloppy.cli.openapi_missing_schema_json tests/golden/cli/openapi-missing-schema.json openapi
         --plan tests/fixtures/cli/openapi-missing-schema.plan.json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_summary tests/golden/cli/openapi-summary.txt openapi --plan
+        tests/fixtures/cli/openapi-missing-schema.plan.json --summary)
+    sloppy_add_cli_golden_test(
         sloppy.cli.openapi_response_content_json tests/golden/cli/openapi-response-content.json
         openapi --plan tests/fixtures/cli/openapi-response-content.plan.json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_strict_complete_json tests/golden/cli/openapi-response-content.json
+        openapi --plan tests/fixtures/cli/openapi-response-content.plan.json --strict)
+    add_test(
+        NAME sloppy.cli.openapi_strict_missing_schema
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=openapi;--plan;tests/fixtures/cli/openapi-missing-schema.plan.json;--strict"
+            "-DSLOPPY_EXPECTED_ERROR=--strict requires complete route contracts" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.cli.openapi_strict_missing_schema
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
         NAME sloppy.cli.openapi_too_many_route_tags

@@ -5,8 +5,17 @@
     "version": "0.0.0"
   },
   "x-slop-openapi-policy": {
-    "status": "plan-supported-subset",
-    "unknownMetadata": "explicit-partial-markers",
+    "mode": "partial",
+    "routesTotal": 3,
+    "routesIncluded": 3,
+    "routesOmitted": 0,
+    "operationsComplete": 0,
+    "operationsPartial": 3,
+    "missing": [
+      { "method": "GET", "path": "/me", "reason": "response metadata is unknown" },
+      { "method": "GET", "path": "/public", "reason": "response metadata is unknown" },
+      { "method": "POST", "path": "/internal/jobs", "reason": "response metadata is unknown" }
+    ],
     "optimizations": "reported-only"
   },
   "paths": {
@@ -21,7 +30,11 @@
           "roles": ["admin"],
           "policy": "Users.Read"
         },
-        "x-slop-completeness": "",
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "route Plan completeness is not complete",
+        "response metadata is unknown"
+        ],
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
         "parameters": [],
@@ -39,7 +52,11 @@
           "required": false,
           "allowAnonymous": true
         },
-        "x-slop-completeness": "",
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "route Plan completeness is not complete",
+        "response metadata is unknown"
+        ],
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
         "parameters": [],
@@ -57,7 +74,11 @@
           "schemes": ["apiKey"],
           "scopes": ["jobs:write"]
         },
-        "x-slop-completeness": "",
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "route Plan completeness is not complete",
+        "response metadata is unknown"
+        ],
         "x-slop-capabilities": [],
         "x-slop-optimization-candidates": [],
         "parameters": [],
