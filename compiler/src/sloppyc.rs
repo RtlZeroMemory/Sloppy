@@ -392,10 +392,6 @@ type RouteCallParts<'a> = (
 
 type ExtractedRouteCall<'a> = (&'a str, &'static str, &'static str, String, Handler);
 
-fn schema_names(state: &AppState) -> BTreeSet<String> {
-    state.schema_names.clone()
-}
-
 #[derive(Debug)]
 struct AppState {
     sloppy_imported: bool,
@@ -1492,9 +1488,8 @@ fn extract_for_options_with_metrics(
             ) {
                 Ok(app) => Ok(app),
                 Err(web_error) => {
-                    if source_has_sloppy_web_import(path, source)?
-                        && web_error_indicates_missing_web_shape(&web_error)
-                    {
+                    let has_sloppy_web_import = source_has_sloppy_web_import(path, source)?;
+                    if has_sloppy_web_import && web_error_indicates_missing_web_shape(&web_error) {
                         return Err(Diagnostic::new(
                         "SLOPPYC_E_AMBIGUOUS_SOURCE_KIND",
                         "This source imports Sloppy but does not export a supported web app shape.",
@@ -1502,7 +1497,7 @@ fn extract_for_options_with_metrics(
                     .with_path(path)
                     .with_hint("Use --kind program to run it as a program, or export a Sloppy app."));
                     }
-                    if source_has_sloppy_web_import(path, source)? {
+                    if has_sloppy_web_import {
                         return Err(web_error);
                     }
                     extract_program_with_metrics(path, source, options, metrics)
@@ -2581,24 +2576,23 @@ fn extract_expression_statement(
         .with_hint("Use '/', static segments, {name}, {name:str}, {name:int}, {name:uuid}, {name:alpha}, or {name:float}."));
     }
 
-    let schema_names = schema_names(state);
     let handler_context = HandlerExtractionContext {
         route_pattern: &full_pattern,
         route_kind: kind,
         source,
         source_name,
         allow_data_handler_body: state.data_imported,
-        schema_names: &schema_names,
+        schema_names: &state.schema_names,
         provider_bindings: &state.provider_bindings,
         helper_effects: &state.helper_effects,
     };
-    validate_handler_body_validate_schema_references(path, handler_arg, &schema_names)?;
+    validate_handler_body_validate_schema_references(path, handler_arg, &state.schema_names)?;
     let Some(handler) = handler_from_argument(handler_arg, &handler_context) else {
         let diagnostic = handler_diagnostic(
             path,
             handler_arg,
             &full_pattern,
-            &schema_names,
+            &state.schema_names,
             statement.span,
         );
         if !handler_metadata_failure_can_fallback_to_dynamic(
@@ -2627,7 +2621,7 @@ fn extract_expression_statement(
     apply_route_schema_metadata(
         path,
         statement.span,
-        &schema_names,
+        &state.schema_names,
         &fluent_metadata,
         &mut handler,
     )?;
@@ -2800,7 +2794,7 @@ fn unsupported_route_call_diagnostic(
                 source,
                 source_name: "",
                 allow_data_handler_body: state.data_imported,
-                schema_names: &schema_names(state),
+                schema_names: &state.schema_names,
                 provider_bindings: &state.provider_bindings,
                 helper_effects: &state.helper_effects,
             };
@@ -2816,7 +2810,7 @@ fn unsupported_route_call_diagnostic(
                 .first()
                 .and_then(string_argument)
                 .unwrap_or_default(),
-            &schema_names(state),
+            &state.schema_names,
             call.span,
         ));
     }
@@ -2866,14 +2860,13 @@ fn record_dynamic_route_if_supported(
         .arguments
         .get(handler_index)
         .and_then(|argument| {
-            let schema_names = schema_names(state);
             let context = HandlerExtractionContext {
                 route_pattern: "",
                 route_kind: "http",
                 source,
                 source_name,
                 allow_data_handler_body: state.data_imported,
-                schema_names: &schema_names,
+                schema_names: &state.schema_names,
                 provider_bindings: &state.provider_bindings,
                 helper_effects: &state.helper_effects,
             };
@@ -2910,7 +2903,7 @@ fn validate_supported_initializer(
         source,
         source_name,
         state.data_imported,
-        &schema_names(state),
+        &state.schema_names,
         &state.provider_bindings,
         &state.helper_effects,
         &state.static_strings,

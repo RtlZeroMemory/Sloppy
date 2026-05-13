@@ -64,6 +64,17 @@ pub(crate) fn emit_plan_with_route_artifact(
     }
 
     let has_async_handlers = app.routes.iter().any(|route| route.handler.is_async);
+    let provider_capabilities = app
+        .capabilities
+        .iter()
+        .map(|capability| {
+            (
+                capability.token.as_str(),
+                capability.capability_kind.as_str(),
+                capability.provider.as_str(),
+            )
+        })
+        .collect::<BTreeSet<_>>();
     let emits_app_metadata = !app.schemas.is_empty()
         || !app.config_reads.is_empty()
         || app.uses_health
@@ -86,11 +97,11 @@ pub(crate) fn emit_plan_with_route_artifact(
                     .iter()
                     .any(|binding| binding.kind == "body.json" && binding.schema.is_none()),
                 missing_provider_registration: route.handler.effects.iter().any(|effect| {
-                    !app.capabilities.iter().any(|capability| {
-                        capability.token == effect.provider
-                            && capability.capability_kind == effect.capability_kind
-                            && capability.provider == effect.provider_kind
-                    })
+                    !provider_capabilities.contains(&(
+                        effect.provider.as_str(),
+                        effect.capability_kind.as_str(),
+                        effect.provider_kind.as_str(),
+                    ))
                 }),
                 runtime_only: route.handler.runtime_deferred,
                 schema_metadata_conflict: route.handler.schema_metadata_conflict,

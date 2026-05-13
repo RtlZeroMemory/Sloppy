@@ -1252,20 +1252,21 @@ pub(super) fn helper_sources_referenced_by_handler(
     handler_source: &str,
     helper_sources: &BTreeMap<String, String>,
 ) -> Vec<String> {
-    let mut selected = BTreeSet::<String>::new();
-    let mut pending_sources = vec![handler_source.to_string()];
+    let mut selected = BTreeSet::<&str>::new();
+    let mut pending_sources = vec![handler_source];
     while let Some(source) = pending_sources.pop() {
         for (name, helper_source) in helper_sources {
-            if selected.contains(name) || !source_contains_identifier(&source, name) {
+            let name = name.as_str();
+            if selected.contains(name) || !source_contains_identifier(source, name) {
                 continue;
             }
-            selected.insert(name.clone());
-            pending_sources.push(helper_source.clone());
+            selected.insert(name);
+            pending_sources.push(helper_source.as_str());
         }
     }
     selected
         .into_iter()
-        .filter_map(|name| helper_sources.get(&name).cloned())
+        .filter_map(|name| helper_sources.get(name).cloned())
         .collect()
 }
 
