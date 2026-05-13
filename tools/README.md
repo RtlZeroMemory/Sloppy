@@ -29,7 +29,8 @@ Packaging scripts create experimental local artifacts under ignored `artifacts/p
 - `tools/windows/bench-json-dispatch.ps1` runs local native-vs-generic Sloppy JSON
   dispatch benchmark rows and writes JSON output.
 - `tools/windows/bench-json-competitors.ps1` runs the opt-in local JSON competitor
-  harness and reports unavailable runtimes as `SKIPPED`.
+  harness and reports unavailable runtimes as `SKIPPED`; `-HttpProfile` also
+  writes Sloppy HTTP phase profile JSON under `artifacts/bench/`.
 - `tools/unix/bench.sh` runs the native Unix benchmark wrapper and reports the local
   runtime comparison lane as unavailable until that runner is ported.
 

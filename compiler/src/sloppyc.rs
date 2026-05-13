@@ -18243,7 +18243,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         return emit_program_app_js(app);
     }
     if let Some(source) = &app.dynamic_entry_source {
-        return emit_dynamic_web_app_js(source);
+        return emit_dynamic_web_app_js(source, app);
     }
     let mut output = String::with_capacity(estimate_app_js_capacity(app));
     let mut mappings = Vec::with_capacity(app.routes.len());
@@ -18997,11 +18997,55 @@ fn estimate_app_js_capacity(app: &ExtractedApp) -> usize {
     handler_bytes + helper_bytes + 8192
 }
 
-fn emit_dynamic_web_app_js(source: &str) -> EmittedAppJs {
+fn emit_dynamic_web_app_js(source: &str, app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, Jobs, SloppyJobsError, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError } = __sloppyRuntime;\n");
+    output.push_str("const { Results, Jobs, SloppyJobsError, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
+    output.push_str(
+        r#"const __sloppy_framework_services = __createFrameworkServiceProvider();
+const __sloppy_framework_provider_configs = new Map([]);
+function __sloppy_framework_arg(ctx, scope, binding) {
+  if (binding.kind === "body.json") { return ctx.request.json(); }
+  if (binding.kind === "body.form") { return ctx.request.form(); }
+  if (binding.kind === "body.multipart") { return ctx.request.multipart(); }
+  if (binding.kind === "context") { return ctx; }
+  if (binding.kind === "injection") { return __sloppy_framework_injection(scope, binding); }
+  if (binding.kind === "config") { const value = Environment.get(binding.name); if (value === undefined) { throw new Error(`sloppy: Config injection for '${binding.name}' requires an environment value.`); } return value; }
+  let value;
+  if (binding.kind === "route") { value = ctx.route[binding.name]; }
+  else if (binding.kind === "query") { value = ctx.query[binding.name]; }
+  else if (binding.kind === "header") { value = ctx.request.headers.get(binding.name); }
+  else { throw new TypeError(`Sloppy Framework binding kind '${binding.kind}' is not supported.`); }
+  return __sloppy_framework_coerce(value, binding);
+}
+function __sloppy_framework_coerce(value, binding) {
+  if (value === null || value === undefined) { return value; }
+  const type = String(binding.type || binding.schema || "");
+  if (type.includes("boolean")) {
+    const normalized = String(value).toLowerCase();
+    if (normalized === "true") { return true; }
+    if (normalized === "false") { return false; }
+    throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected a boolean value.`);
+  }
+  if (type.includes("number") || type.includes("PositiveInt") || type === "int") {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) { throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected a numeric value.`); }
+    if ((type.includes("PositiveInt") || type === "int") && !Number.isInteger(parsed)) { throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected an integer value.`); }
+    if (type.includes("PositiveInt") && parsed <= 0) { throw new TypeError(`Sloppy Framework binding '${binding.parameter || binding.name}' expected a positive integer value.`); }
+    return parsed;
+  }
+  return value;
+}
+function __sloppy_framework_injection(scope, binding) {
+  const dependencyName = binding.capability || (binding.name && binding.name.includes(".") ? binding.name : `data.${binding.name}`);
+  if (binding.injectionKind === "service") { return scope.get(binding.name); }
+  if (binding.injectionKind === "queue") { return scope.get(dependencyName); }
+  if (binding.injectionKind === "provider" && binding.providerKind === "sqlite" && typeof data.sqlite === "function") { return scope.track(data.sqlite(dependencyName)); }
+  throw new Error(`sloppy: ${binding.injectionKind} injection for '${binding.name}' is unavailable in this runtime lane.`);
+}
+"#,
+    );
     output.push_str(
         r#"function __sloppy_create_dynamic_app() {
   const routes = [];
@@ -19082,20 +19126,25 @@ function __sloppy_dynamic_match(pattern, path) {
   return route;
 }
 function __sloppy_dynamic_response(result) {
-  if (typeof result === "string") { return { status: 200, contentType: "text/plain; charset=utf-8", body: result }; }
+  if (typeof result === "string") { return { __sloppyResult: true, kind: "text", status: 200, contentType: "text/plain; charset=utf-8", body: result }; }
+  if (result !== null && typeof result === "object" && result.__sloppyResult === true) { return result; }
   const status = Number.isInteger(result?.status) ? result.status : 200;
   const kind = result?.kind ?? "text";
-  if (kind === "empty") { return { status, contentType: "text/plain; charset=utf-8", body: "" }; }
-  if (kind === "json" || kind === "problem") { return { status, contentType: result.contentType ?? "application/json; charset=utf-8", body: result.__sloppyJsonText ?? JSON.stringify(result.body ?? null) }; }
-  return { status, contentType: result?.contentType ?? "text/plain; charset=utf-8", body: String(result?.body ?? "") };
+  if (kind === "empty") { return { __sloppyResult: true, kind: "empty", status, contentType: "text/plain; charset=utf-8", body: "" }; }
+  if (kind === "json" || kind === "problem") { return { __sloppyResult: true, kind, status, contentType: result.contentType ?? "application/json; charset=utf-8", body: result.body ?? null }; }
+  return { __sloppyResult: true, kind: "text", status, contentType: result?.contentType ?? "text/plain; charset=utf-8", body: String(result?.body ?? "") };
+}
+function __sloppy_dynamic_body_text(response) {
+  if (response.kind === "json" || response.kind === "problem") { return response.__sloppyJsonText ?? JSON.stringify(response.body ?? null); }
+  return String(response.body ?? "");
 }
 function __sloppy_dynamic_http_text(response) {
-  const body = response.body ?? "";
+  const body = __sloppy_dynamic_body_text(response);
   return `HTTP/1.1 ${response.status} OK\r\ncontent-type: ${response.contentType}\r\ncontent-length: ${body.length}\r\n\r\n${body}`;
 }
-globalThis.__sloppy_dispatch_dynamic = async function(method, target) {
+globalThis.__sloppy_dispatch_dynamic_result = async function(method, target) {
   const app = globalThis.__sloppy_dynamic_default_app;
-  if (app === undefined || typeof app.__getRoutes !== "function") { return __sloppy_dynamic_http_text({ status: 500, contentType: "text/plain; charset=utf-8", body: "Dynamic Sloppy app was not initialized\n" }); }
+  if (app === undefined || typeof app.__getRoutes !== "function") { return { __sloppyResult: true, kind: "text", status: 500, contentType: "text/plain; charset=utf-8", body: "Dynamic Sloppy app was not initialized\n" }; }
   app.freeze();
   const path = String(target).split("?")[0];
   for (const route of app.__getRoutes()) {
@@ -19103,16 +19152,59 @@ globalThis.__sloppy_dispatch_dynamic = async function(method, target) {
     const routeValues = __sloppy_dynamic_match(route.pattern, path);
     if (routeValues === null) { continue; }
     const result = await route.handler({ route: routeValues, query: Object.freeze({}), request: Object.freeze({ method, path }) });
-    return __sloppy_dynamic_http_text(__sloppy_dynamic_response(result));
+    return __sloppy_dynamic_response(result);
   }
-  return __sloppy_dynamic_http_text({ status: 404, contentType: "text/plain; charset=utf-8", body: "Not Found\n" });
+  return { __sloppyResult: true, kind: "text", status: 404, contentType: "text/plain; charset=utf-8", body: "Not Found\n" };
+};
+globalThis.__sloppy_dispatch_dynamic = async function(method, target) {
+  return __sloppy_dynamic_http_text(await globalThis.__sloppy_dispatch_dynamic_result(method, target));
 };
 "#,
     );
+    let mut mappings = Vec::with_capacity(app.routes.len());
+    let mut handler_generated_starts = Vec::with_capacity(app.routes.len());
+    let mut generated_line = output.matches('\n').count();
+    let source_indices = source_indices_by_name(app);
+    for (index, route) in app.routes.iter().enumerate() {
+        let id = index + 1;
+        let prefix = format!("globalThis.__sloppy_handler_{id} = ");
+        let handler_start_line = generated_line;
+        let handler_start_column = prefix.len();
+        let source_map_start_line = handler_start_line + route.handler.source_map_line_offset;
+        let source_map_start_column = if route.handler.source_map_line_offset == 0 {
+            handler_start_column + route.handler.source_map_column_offset
+        } else {
+            route.handler.source_map_column_offset
+        };
+        handler_generated_starts.push(HandlerGeneratedStart {
+            generated_line: handler_start_line,
+            generated_column: handler_start_column,
+        });
+        mappings.extend(handler_source_mappings(
+            &route.handler.source_text,
+            route.handler.span,
+            &route.handler.source,
+            source_map_start_line,
+            source_map_start_column,
+            source_index_for(&source_indices, &route.handler.source_name),
+        ));
+
+        output.push_str(&prefix);
+        output.push_str(&route.handler.emitted_source);
+        output.push_str(";\n");
+        generated_line += route.handler.emitted_source.matches('\n').count() + 1;
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            &format!(
+                "globalThis.__sloppy_register_handler({id}, globalThis.__sloppy_handler_{id});"
+            ),
+        );
+    }
     EmittedAppJs {
         source: output,
-        mappings: Vec::new(),
-        handler_generated_starts: Vec::new(),
+        mappings,
+        handler_generated_starts,
     }
 }
 

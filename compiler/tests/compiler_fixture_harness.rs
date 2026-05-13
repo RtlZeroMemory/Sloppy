@@ -124,6 +124,61 @@ fn library_api_emits_dynamic_route_findings_for_unresolved_route_metadata() {
 }
 
 #[test]
+fn library_api_registers_plan_handlers_when_dynamic_fallback_exists() {
+    let input_dir = temp_output("dynamic-handler-registration-input");
+    let out_dir = temp_output("dynamic-handler-registration");
+    remove_dir_if_present(&input_dir);
+    remove_dir_if_present(&out_dir);
+    fs::create_dir_all(&input_dir).expect("temporary input directory should be creatable");
+    let input = input_dir.join("app.js");
+    fs::write(
+        &input,
+        r#"import { Sloppy, Results } from "sloppy";
+
+const app = Sloppy.create();
+
+app.get("/static-json", () => Results.json({ ok: true, mode: "static" }));
+app.get("/static-text", () => Results.text("ok\n"));
+app.get("/dynamic-json", () => {
+  return Results.json({ ok: true, mode: `dynamic-${Math.trunc(Math.random() * 0)}` });
+});
+
+export default app;
+"#,
+    )
+    .expect("temporary input should be writable");
+
+    let output =
+        compile_file(&input, &out_dir, &CompileOptions::default()).expect("fixture should compile");
+    let plan: serde_json::Value =
+        serde_json::from_str(&output.plan.contents).expect("plan should parse");
+    let handlers = plan["handlers"]
+        .as_array()
+        .expect("plan handlers should be an array");
+
+    assert_eq!(handlers.len(), 2);
+    assert_eq!(handlers[0]["id"], 1);
+    assert_eq!(handlers[0]["exportName"], "__sloppy_handler_1");
+    assert_eq!(handlers[1]["id"], 2);
+    assert_eq!(handlers[1]["exportName"], "__sloppy_handler_2");
+    assert_eq!(
+        plan["dynamicRoutes"][0]["metadata"]["reason"],
+        "route handler response metadata is computed at runtime"
+    );
+    assert!(output
+        .bundle
+        .contents
+        .contains("globalThis.__sloppy_register_handler(1, globalThis.__sloppy_handler_1);"));
+    assert!(output
+        .bundle
+        .contents
+        .contains("globalThis.__sloppy_register_handler(2, globalThis.__sloppy_handler_2);"));
+
+    remove_dir_if_present(&out_dir);
+    remove_dir_if_present(&input_dir);
+}
+
+#[test]
 fn cli_builds_current_supported_fixture() {
     let root = manifest_dir();
     let input = root.join("../examples/compiler-hello/app.js");

@@ -31,6 +31,7 @@
 #include "sloppy/http_backend.h"
 #include "sloppy/http_context.h"
 #include "sloppy/http_dispatch.h"
+#include "sloppy/http_profile.h"
 #include "sloppy/http_response.h"
 #include "sloppy/http_transport.h"
 #include "sloppy/intern.h"

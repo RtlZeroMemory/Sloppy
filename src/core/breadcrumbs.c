@@ -4,8 +4,13 @@
 #include "sloppy/platform_thread.h"
 
 #include <stdbool.h>
+#include <stdatomic.h>
+#include <stdlib.h>
+#include <string.h>
 
 static SlBreadcrumbRing sl_global_breadcrumb_ring;
+static atomic_bool sl_success_breadcrumbs_cached;
+static atomic_bool sl_success_breadcrumbs_initialized;
 
 static bool sl_breadcrumb_is_global_ring(const SlBreadcrumbRing* ring)
 {
@@ -15,6 +20,66 @@ static bool sl_breadcrumb_is_global_ring(const SlBreadcrumbRing* ring)
 static SlStr sl_breadcrumb_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
+}
+
+static bool sl_breadcrumb_env_truthy(const char* value)
+{
+    if (value == NULL || value[0] == '\0') {
+        return false;
+    }
+    return strcmp(value, "1") == 0 || strcmp(value, "true") == 0 || strcmp(value, "TRUE") == 0 ||
+           strcmp(value, "on") == 0 || strcmp(value, "ON") == 0;
+}
+
+static bool sl_breadcrumb_success_events_enabled(void)
+{
+    char value[16];
+
+    if (!atomic_load_explicit(&sl_success_breadcrumbs_initialized, memory_order_acquire)) {
+#if defined(_WIN32)
+        size_t required = 0U;
+        value[0] = '\0';
+        if (getenv_s(&required, value, sizeof(value), "SLOPPY_SUCCESS_BREADCRUMBS") != 0 ||
+            required == 0U || required > sizeof(value))
+        {
+            value[0] = '\0';
+        }
+#else
+        const char* env_value = getenv("SLOPPY_SUCCESS_BREADCRUMBS");
+        size_t index = 0U;
+        value[0] = '\0';
+        if (env_value != NULL) {
+            while (index + 1U < sizeof(value) && env_value[index] != '\0') {
+                value[index] = env_value[index];
+                index += 1U;
+            }
+            value[index] = '\0';
+        }
+#endif
+        atomic_store_explicit(&sl_success_breadcrumbs_cached, sl_breadcrumb_env_truthy(value),
+                              memory_order_release);
+        atomic_store_explicit(&sl_success_breadcrumbs_initialized, true, memory_order_release);
+    }
+    return atomic_load_explicit(&sl_success_breadcrumbs_cached, memory_order_acquire);
+}
+
+static bool sl_breadcrumb_is_routine_success_event(SlBreadcrumbEvent event, SlStatusCode status)
+{
+    if (status != SL_STATUS_OK) {
+        return false;
+    }
+    return event == SL_BREADCRUMB_EVENT_HTTP_REQUEST_START ||
+           event == SL_BREADCRUMB_EVENT_HTTP_REQUEST_END ||
+           event == SL_BREADCRUMB_EVENT_ROUTE_MATCHED ||
+           event == SL_BREADCRUMB_EVENT_NATIVE_RESPONSE_HIT ||
+           event == SL_BREADCRUMB_EVENT_V8_HANDLER_ENTER ||
+           event == SL_BREADCRUMB_EVENT_V8_HANDLER_EXIT;
+}
+
+bool sl_breadcrumb_global_should_record(SlBreadcrumbEvent event, SlStatusCode status)
+{
+    return !sl_breadcrumb_is_routine_success_event(event, status) ||
+           sl_breadcrumb_success_events_enabled();
 }
 
 SlStr sl_breadcrumb_event_name(SlBreadcrumbEvent event)
@@ -367,6 +432,9 @@ void sl_breadcrumb_global_record(SlDiagSubsystem subsystem, SlBreadcrumbEvent ev
                                  SlStatusCode status, uint64_t request_id, uint64_t connection_id,
                                  uint64_t route_id, uint64_t handler_id, SlStr detail)
 {
+    if (!sl_breadcrumb_global_should_record(event, status)) {
+        return;
+    }
     sl_platform_global_mutex_lock();
     sl_breadcrumb_global_init_if_needed_unlocked();
     sl_breadcrumb_ring_record_unlocked(&sl_global_breadcrumb_ring, subsystem, event, status,
