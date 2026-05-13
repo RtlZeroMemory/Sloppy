@@ -18,6 +18,7 @@ set(required_bootstrap_assets
     request-id.js
     request-logging.js
     time.js
+    webhooks.js
     workers.js
     index.js
     node/assert.js

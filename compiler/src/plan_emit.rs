@@ -2327,6 +2327,23 @@ pub(crate) fn emit_plan_with_route_artifact(
         value["strongPlan"]["evidence"]["workers"] = json!(true);
         value["features"]["workers"] = json!(true);
     }
+    if app.uses_webhooks_runtime {
+        required_features.push("stdlib.webhooks".to_string());
+        value["strongPlan"]["evidence"]["webhooks"] = json!(true);
+        value["features"]["webhooks"] = json!(true);
+        value["webhooks"] = json!({
+            "enabled": true,
+            "events": [],
+            "outbox": {
+                "provider": "dynamic"
+            }
+        });
+        doctor_checks.push(json!({
+            "id": "stdlib.webhooks.contract",
+            "status": "warn",
+            "message": "Webhook metadata is Plan-visible; verify signing secret, delivery worker, retry, dead-letter, and private-network policy in app configuration"
+        }));
+    }
     if app.uses_ffi_runtime || !ffi_libraries.is_empty() || !ffi_structs.is_empty() {
         required_features.push("stdlib.ffi".to_string());
         value["strongPlan"]["evidence"]["ffi"] = json!(true);

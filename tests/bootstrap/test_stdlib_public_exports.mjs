@@ -66,6 +66,11 @@ import {
     WorkerPool,
 } from "../../stdlib/sloppy/workers.js";
 import {
+    SloppyWebhookError,
+    TestWebhooks,
+    Webhooks,
+} from "../../stdlib/sloppy/webhooks.js";
+import {
     t,
     unsafeFfi,
 } from "../../stdlib/sloppy/ffi.js";
@@ -104,6 +109,8 @@ import {
     orm as RootOrm,
     relation as RootRelation,
     table as RootTable,
+    TestWebhooks as RootTestWebhooks,
+    Webhooks as RootWebhooks,
     unsafeFfi as RootUnsafeFfi,
     WorkQueue as RootWorkQueue,
     Worker as RootWorker,
@@ -137,6 +144,7 @@ const documentedSubpathExports = {
         WorkerCancellationSignal,
         SloppyWorkerError,
     ],
+    "sloppy/webhooks": [Webhooks, SloppyWebhookError, TestWebhooks],
     "sloppy/ffi": [t, unsafeFfi],
     "sloppy/cache": [CacheSubpath, SloppyCacheError],
     "sloppy/orm": [orm, table, column, relation],
@@ -172,6 +180,7 @@ assert.equal(Auth.constantTimeEquals("same", "same"), true);
 assert.equal(Auth.constantTimeEquals("same", "diff"), false);
 assert.equal(typeof Config.boolean, "function");
 assert.equal(typeof Config.required, "function");
+assert.equal(typeof Config.requiredSecret, "function");
 assert.equal(typeof Health.createRegistry, "function");
 assert.equal(typeof Metrics.createRegistry, "function");
 assert.equal(typeof Realtime.channel, "function");
@@ -183,6 +192,11 @@ assert.equal(typeof TestHost.fromArtifacts, "function");
 assert.equal(typeof TestHost.fromPackage, "function");
 assert.equal(typeof TestServices.postgres, "function");
 assert.equal(typeof TestServices.sqlServer, "function");
+assert.equal(RootWebhooks, Webhooks);
+assert.equal(RootTestWebhooks, TestWebhooks);
+assert.equal(typeof Webhooks.event, "function");
+assert.equal(typeof Webhooks.outbox, "function");
+assert.equal(typeof Webhooks.verify, "function");
 assert.equal(typeof TestServices.docker.available, "function");
 assert.equal(typeof FakeClock.fixed, "function");
 assert.equal(typeof TestData.sqliteMemory, "function");

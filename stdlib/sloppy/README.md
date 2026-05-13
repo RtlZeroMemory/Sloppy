@@ -30,6 +30,7 @@ stdlib/sloppy/
   workers.js
   health.js
   metrics.js
+  webhooks.js
   internal/
     capabilities.js
     config.js
@@ -96,6 +97,10 @@ lib/sloppy/bootstrap/sloppy/
   typed clients, resilience policies, service registration metadata, TestHost
   mocks, metrics, diagnostics, and health snapshots over the low-level
   `HttpClient` transport in `net.js`.
+- `webhooks.js` provides first-party webhook event descriptors, provider-backed
+  outbox SQL templates, subscription management, transactional publish, signed
+  delivery attempts, retry/dead-letter handling, inbound verification, and
+  TestHost-friendly receiver helpers.
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
   the current public API shape and feature-gated bridge calls where native bridge support
   exists.

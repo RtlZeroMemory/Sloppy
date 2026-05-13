@@ -11,6 +11,9 @@ bridge. This page documents the in-memory app-host helper that backs
 dispatches HTTP-like requests through the JavaScript app-host route table,
 middleware pipeline, result conversion, CORS handlers, health routes, and
 request service scopes without opening a socket.
+Webhook route tests can assert transactional publish through `ctx.webhooks`.
+Delivery tests can pass a `TestHttp.mock().createClient("webhooks")` client to
+`webhooks.deliverPending(...)`.
 
 ```ts
 import { Sloppy, Results, Testing } from "sloppy";

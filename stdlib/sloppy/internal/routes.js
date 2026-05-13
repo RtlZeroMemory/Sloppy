@@ -1050,6 +1050,12 @@ function createHandlerContext(host, routeInfo) {
         capabilities: host.capabilities,
         config: host.config,
         log: host.log,
+        get webhooks() {
+            const services = this.services;
+            return services !== undefined && services !== null && typeof services.tryGet === "function"
+                ? services.tryGet("webhooks")
+                : undefined;
+        },
         user: anonymousUser(),
         route: {},
         routeName: routeInfo.name ?? "",
@@ -1069,6 +1075,19 @@ function decorateProvidedContext(host, context, routeInfo) {
     nextContext.capabilities ??= host.capabilities;
     nextContext.user ??= anonymousUser();
     attachAuthHelpers(attachHostMarker(nextContext, host));
+
+    if (nextContext.webhooks === undefined) {
+        Object.defineProperty(nextContext, "webhooks", {
+            enumerable: true,
+            configurable: true,
+            get() {
+                const services = nextContext.services;
+                return services !== undefined && services !== null && typeof services.tryGet === "function"
+                    ? services.tryGet("webhooks")
+                    : undefined;
+            },
+        });
+    }
 
     if (nextContext.route === undefined || nextContext.route === null) {
         nextContext.route = {};

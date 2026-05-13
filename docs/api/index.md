@@ -36,6 +36,7 @@ configuration, services, validation, or data access.
 - [WebSockets](websockets.md) — app-host WebSocket socket API, options, TestHost helpers, and runtime limits
 - [Network](network.md) — TCP, local IPC (Unix sockets / named pipes), `NetworkAddress`
 - [HTTP Client](http-client.md) — outbound HTTP/1.1 and explicit HTTP/2 requests
+- [Webhooks](webhooks.md) — durable outbox delivery, signatures, retries, inbound verification — **Experimental**
 - [Services](services.md) — singleton/scoped/transient DI, disposal
 - [Config](config.md) — `addObject`, typed getters, secrets, binding
 - [Logging](logging.md) — levels, sinks

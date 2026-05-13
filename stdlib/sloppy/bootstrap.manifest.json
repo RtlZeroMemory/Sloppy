@@ -19,6 +19,7 @@
     "sloppy/os.js",
     "sloppy/orm.js",
     "sloppy/time.js",
+    "sloppy/webhooks.js",
     "sloppy/workers.js",
     "sloppy/node/buffer.js",
     "sloppy/node/console.js",

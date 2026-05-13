@@ -20,6 +20,7 @@ const modules = [
     "os.js",
     "orm.js",
     "time.js",
+    "webhooks.js",
     "workers.js",
     "providers/sqlite.js",
     "request-id.js",

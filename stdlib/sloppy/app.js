@@ -1910,6 +1910,7 @@ function createApp(host) {
                     precompressed: entry.precompressed,
                     range: entry.range,
                 }))),
+                webhooks: host.webhooks ?? Object.freeze([]),
                 errors: errorPolicyState.policy === null ? undefined : Object.freeze({
                     detail: errorPolicyState.policy.detail,
                     missingRoute: errorPolicyState.policy.missingRoute,
@@ -2033,6 +2034,9 @@ function createBuilder() {
                 log: createLogger(logging.__snapshot()),
                 capabilities: createCapabilityProvider(capabilitySnapshot),
                 services: createServiceProvider(serviceSnapshot, createCapabilityProvider(capabilitySnapshot), createConfigProvider(config.__snapshot())),
+                webhooks: Object.freeze(Array.from(serviceSnapshot.values())
+                    .map((registration) => registration.webhooks)
+                    .filter((entry) => entry !== undefined)),
                 moduleDebugRef,
                 options: appOptions,
             }));

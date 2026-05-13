@@ -1104,6 +1104,12 @@ function createContext(app, hostState, method, targetParts, headers, route, matc
         metrics: typeof app.__getMetricsRegistry === "function" ? app.__getMetricsRegistry() : undefined,
         diagnostics: hostState.diagnostics,
         __sloppyTestHostMetrics: hostState.metrics,
+        get webhooks() {
+            const services = this.services;
+            return services !== undefined && services !== null && typeof services.tryGet === "function"
+                ? services.tryGet("webhooks")
+                : undefined;
+        },
         user: options?.user,
         requireUser() {
             if (this.user?.authenticated !== true) {

@@ -49,4 +49,5 @@ function boolean(key, fallback = undefined) {
 export const Config = Object.freeze({
     boolean,
     required,
+    requiredSecret: required,
 });

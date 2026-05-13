@@ -2281,6 +2281,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         uses_net_runtime: false,
         uses_os_runtime: false,
         uses_http_client_runtime: false,
+        uses_webhooks_runtime: false,
         uses_realtime_runtime: false,
         uses_workers_runtime: false,
         uses_ffi_runtime: false,
@@ -6783,6 +6784,77 @@ export default app;
             .iter()
             .all(|item| item["status"] != serde_json::json!(0)
                 && item["status"] != serde_json::json!(999))));
+}
+
+#[test]
+fn combined_runtime_features_do_not_emit_webhooks_without_webhooks_import() {
+    let source = r#"import { Sloppy, Results, data } from "sloppy";
+import { Random } from "sloppy/crypto";
+import { Http } from "sloppy/http";
+import { WorkerPool } from "sloppy/workers";
+const client = Http.client("outbound", { baseUrl: "https://example.test" });
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text(`${Random.uuid()} ${client.name} ${WorkerPool} ${data}`));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("combined runtime feature imports should extract");
+    assert!(app.uses_data_runtime);
+    assert!(app.uses_crypto_runtime);
+    assert!(app.uses_http_client_runtime);
+    assert!(app.uses_workers_runtime);
+    assert!(!app.uses_webhooks_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    assert!(value["features"].get("webhooks").is_none());
+    assert!(value.get("webhooks").is_none());
+    assert!(!value["requiredFeatures"]
+        .as_array()
+        .expect("requiredFeatures should exist")
+        .iter()
+        .any(|entry| entry == "stdlib.webhooks"));
+}
+
+#[test]
+fn webhooks_import_emits_webhooks_plan_metadata() {
+    let source = r#"import { Sloppy, Results, Webhooks, schema } from "sloppy";
+const OrderSchema = schema.object({ id: schema.string() });
+const OrderCreated = Webhooks.event("order.created", {
+  version: 1,
+  schema: OrderSchema,
+});
+const app = Sloppy.create();
+app.mapGet("/", () => Results.json({ event: OrderCreated.name }));
+export default app;
+"#;
+    let app =
+        extract(std::path::Path::new("app.js"), source).expect("webhooks import should extract");
+    assert!(app.uses_webhooks_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+    assert_eq!(value["features"]["webhooks"], serde_json::json!(true));
+    assert!(value["requiredFeatures"]
+        .as_array()
+        .expect("requiredFeatures should exist")
+        .iter()
+        .any(|entry| entry == "stdlib.webhooks"));
+    assert_eq!(value["webhooks"]["enabled"], serde_json::json!(true));
 }
 
 #[test]

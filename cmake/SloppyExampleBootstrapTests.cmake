@@ -208,6 +208,12 @@
             NAME bootstrap.stdlib.http_client
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_http_client.mjs")
         add_test(
+            NAME bootstrap.stdlib.webhooks
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_webhooks.mjs")
+        add_test(
+            NAME bootstrap.stdlib.webhooks_runtime_classic
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_webhooks_runtime_classic.mjs")
+        add_test(
             NAME bootstrap.stdlib.workers
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_workers.mjs")
         add_test(
@@ -229,7 +235,8 @@
             bootstrap.stdlib.auth
             bootstrap.stdlib.ops_management bootstrap.stdlib.ops_properties bootstrap.stdlib.property
             bootstrap.stdlib.os
-            bootstrap.stdlib.http_client bootstrap.stdlib.workers bootstrap.stdlib.ffi
+            bootstrap.stdlib.http_client bootstrap.stdlib.webhooks bootstrap.stdlib.webhooks_runtime_classic
+            bootstrap.stdlib.workers bootstrap.stdlib.ffi
             bootstrap.stdlib.codec_properties
             bootstrap.stdlib.core_integration PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
