@@ -1,0 +1,50 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sloppy API",
+    "version": "0.0.0"
+  },
+  "x-slop-openapi-policy": {
+    "mode": "complete",
+    "routesTotal": 1,
+    "routesIncluded": 1,
+    "routesOmitted": 0,
+    "operationsComplete": 1,
+    "operationsPartial": 0,
+    "missing": [],
+    "optimizations": "reported-only"
+  },
+  "paths": {
+    "/already-429": {
+      "get": {
+        "operationId": "Already.RateLimited",
+        "x-slop-rate-limit": [{ "algorithm": "fixedWindow", "name": "already-429", "partition": "ip" }],
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "429": { "description": "Results.text", "content": { "text/plain": { "schema": { "type": "string" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "SlopValidationProblem": {
+        "description": "Slop validation problem response",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } }
+      }
+    },
+    "schemas": {
+      "SlopValidationProblem": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer" },
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      }
+    }
+  }
+}

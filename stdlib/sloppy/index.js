@@ -31,6 +31,7 @@ export {
 export { Environment, OsError, Process, Signals, System } from "./os.js";
 export { ProblemDetails } from "./problem-details.js";
 export { Realtime, SloppyRealtimeError } from "./realtime.js";
+export { RateLimit, SloppyRateLimitError } from "./rate-limit.js";
 export { RequestId } from "./request-id.js";
 export { RequestLogging } from "./request-logging.js";
 export { Results } from "./results.js";

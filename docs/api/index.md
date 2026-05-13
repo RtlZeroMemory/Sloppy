@@ -19,6 +19,7 @@ configuration, services, validation, or data access.
 - [Auth](auth.md) — experimental JWT bearer, API keys, route authorization, scopes, policies, `ctx.user`
 - [Sessions](sessions.md) — signed cookie sessions and CSRF
 - [Security headers](security.md) — first-party response security headers
+- [RateLimit](rate-limit.md) — first-party route and WebSocket abuse protection
 - [Health checks](health.md) — `Health`, `app.health()`, liveness/readiness/startup
 - [Metrics](metrics.md) — counters, gauges, histograms, JSON snapshots, Prometheus output
 - [Cache](cache.md) — memory, distributed, hybrid, cache-aside, output cache, cache headers

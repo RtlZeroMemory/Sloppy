@@ -417,12 +417,19 @@ async function occupyPort() {
 
 async function writeFixture(root) {
     const source = path.join(root, "app.js");
-    await fs.writeFile(source, `import { Config, Http, Results, Sloppy } from "sloppy";
+    await fs.writeFile(source, `import { Config, Http, RateLimit, Results, Sloppy } from "sloppy";
 const Billing = Http.client("billing", {
   baseUrl: Config.required("Billing:BaseUrl"),
 });
 const app = Sloppy.create();
 app.get("/hello", () => Results.text("hello"));
+app.get("/limited", () => Results.text("limited"))
+  .rateLimit(RateLimit.fixedWindow({
+    name: "package-loopback",
+    limit: 1,
+    windowMs: 60000,
+    partitionBy: RateLimit.partition.ip()
+  }));
 app.post("/echo", (ctx) => Results.ok(ctx.request.json()));
 app.get("/billing/{id}", async (ctx) => Results.json(await (await Billing.get("/invoices/{id}", {
   params: { id: ctx.route.id },
@@ -470,6 +477,28 @@ async function assertBillingMock(host, mock, id = "inv_1") {
         const response = await host.get(`/billing/${id}`).expectStatus(200);
         assert.deepEqual(await response.json(), { id, status: "paid", amount: 42 });
         mock.expectCalled("GET", `/invoices/${id}`).expectNoUnexpectedCalls();
+    } finally {
+        await host.close();
+    }
+}
+
+async function assertRateLimitLoopback(host) {
+    try {
+        const first = await host.get("/limited").expectStatus(200);
+        assert.equal(await first.text(), "limited");
+        const second = await host.get("/limited").expectStatus(429);
+        const retryAfter = Number(second.headers.get("retry-after"));
+        assert.equal(Number.isInteger(retryAfter), true);
+        assert.equal(retryAfter > 0 && retryAfter <= 60, true);
+        assert.equal(second.headers.get("ratelimit-limit"), "1");
+        assert.equal(second.headers.get("ratelimit-remaining"), "0");
+        const reset = Number(second.headers.get("ratelimit-reset"));
+        assert.equal(Number.isInteger(reset), true);
+        assert.equal(reset >= 0 && reset <= 60, true);
+        assert.match(second.headers.get("content-type") ?? "", /^application\/problem\+json\b/i);
+        const problem = await second.json();
+        assert.equal(problem.status, 429);
+        assert.equal(problem.code, "SLOPPY_E_RATE_LIMIT_EXCEEDED");
     } finally {
         await host.close();
     }
@@ -524,6 +553,8 @@ try {
         await assertHello(await TestHost.fromPackage(packageDir, { cliPath }));
         await assertHello(await TestHost.fromArtifacts(artifacts, { mode: "loopback", cliPath }));
         await assertHello(await TestHost.fromPackage(packageDir, { mode: "loopback", cliPath }));
+        await assertRateLimitLoopback(await TestHost.fromArtifacts(artifacts, { mode: "loopback", cliPath }));
+        await assertRateLimitLoopback(await TestHost.fromPackage(packageDir, { mode: "loopback", cliPath }));
 
         const artifactMock = TestHttp.mock()
             .get("/invoices/inv_1")

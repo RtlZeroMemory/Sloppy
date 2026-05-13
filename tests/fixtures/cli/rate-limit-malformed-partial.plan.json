@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-rate-limit-malformed-partial-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-rate-limit-malformed-partial-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Broken.RateLimit"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/broken",
+      "handlerId": 1,
+      "name": "Broken.RateLimit",
+      "response": {
+        "kind": "text",
+        "helper": "Results.text",
+        "status": 200
+      },
+      "rateLimit": [
+        {
+          "name": "broken",
+          "algorithm": "fixedWindow",
+          "partition": "ip",
+          "partial": "false"
+        }
+      ]
+    }
+  ]
+}

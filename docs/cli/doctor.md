@@ -15,6 +15,8 @@ sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--forma
 - native Plan parsing;
 - route, provider, and capability metadata, including Program Plans with no
   route metadata by design and web Plans with partial/dynamic route metadata;
+- route rate-limit metadata, partial rate-limit extraction, and public login
+  routes with no rate-limit metadata;
 - route dispatch metadata when `--dispatch` is passed;
 - Plan-visible legacy health route metadata;
 - dependency graph metadata and compatibility findings;

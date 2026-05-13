@@ -1,4 +1,4 @@
-ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  JSON  NAME  SUMMARY
-1      GET     http         /users/create        3                  users     -  unknown  req:none/none resp:none/none  Users.Create
-0      GET     http         /users/{id:int}      2                  users     -  unknown  req:none/none resp:none/none  Users.Get
-2      GET     http         /                    1                  hello     -  unknown  req:none/none resp:none/none  Hello.Index
+ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  JSON  RATE_LIMIT  NAME  SUMMARY
+1      GET     http         /users/create        3                  users     -  unknown  req:none/none resp:none/none  -  Users.Create
+0      GET     http         /users/{id:int}      2                  users     -  unknown  req:none/none resp:none/none  -  Users.Get
+2      GET     http         /                    1                  hello     -  unknown  req:none/none resp:none/none  -  Hello.Index

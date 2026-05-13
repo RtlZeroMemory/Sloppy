@@ -561,6 +561,18 @@ function unavailableCheck(feature) {
     });
 }
 
+function rateLimitCheck(store) {
+    if (store === undefined || store === null || store.__sloppyRateLimitStore !== true && store[Symbol.for("sloppy.rateLimit.store")] !== true) {
+        throw new TypeError("Health.rateLimit expects a RateLimit store.");
+    }
+    return async () => {
+        if (typeof store.health === "function") {
+            return store.health();
+        }
+        return { status: "healthy", data: { kind: store.kind ?? "custom" } };
+    };
+}
+
 const Health = Object.freeze({
     createRegistry: createHealthRegistry,
     handler: createHealthHandler,
@@ -588,6 +600,7 @@ const Health = Object.freeze({
     storage: (storage) => () => storage === undefined
         ? { status: "degraded", message: "storage is not configured", data: { configured: false } }
         : { status: "healthy", data: redactValue(storage.state ?? { configured: true }) },
+    rateLimit: rateLimitCheck,
     redact: redactValue,
 });
 

@@ -646,6 +646,10 @@ static bool sl_cli_openapi_response_status_seen(const SlCliRoute* route, size_t 
 
 static bool sl_cli_openapi_route_has_response_status(const SlCliRoute* route, uint64_t status)
 {
+    if (route->response_count == 0U) {
+        uint64_t existing_status = route->response_status == 0U ? 200U : route->response_status;
+        return existing_status == status;
+    }
     return sl_cli_openapi_response_status_seen(route, route->response_count, status);
 }
 
@@ -657,6 +661,22 @@ static void sl_cli_openapi_emit_problem_response(FILE* out, uint64_t status, con
     sl_cli_json_escape(out, sl_cli_span_cstr(description));
     sl_cli_write_cstr(out,
                       ", \"content\": { \"application/problem+json\": { \"schema\": { \"$ref\": "
+                      "\"#/components/schemas/SlopValidationProblem\" } } } }");
+}
+
+static void sl_cli_openapi_emit_rate_limit_response(FILE* out)
+{
+    sl_cli_write_cstr(out,
+                      "          \"429\": { \"description\": \"rate limit exceeded\", "
+                      "\"headers\": { "
+                      "\"Retry-After\": { \"schema\": { \"type\": \"integer\", \"minimum\": 0 } }, "
+                      "\"RateLimit-Limit\": { \"schema\": { \"type\": \"integer\", "
+                      "\"minimum\": 0 } }, "
+                      "\"RateLimit-Remaining\": { \"schema\": { \"type\": \"integer\", "
+                      "\"minimum\": 0 } }, "
+                      "\"RateLimit-Reset\": { \"schema\": { \"type\": \"integer\", "
+                      "\"minimum\": 0 } } }, "
+                      "\"content\": { \"application/problem+json\": { \"schema\": { \"$ref\": "
                       "\"#/components/schemas/SlopValidationProblem\" } } } }");
 }
 
@@ -725,6 +745,11 @@ static void sl_cli_openapi_emit_responses(FILE* out, const SlCliMetadata* metada
     if (route->auth_required && !sl_cli_openapi_route_has_response_status(route, 403U)) {
         sl_cli_write_cstr(out, first ? "" : ",\n");
         sl_cli_openapi_emit_problem_response(out, 403U, "authorization failed");
+        first = false;
+    }
+    if (route->rate_limit_count > 0U && !sl_cli_openapi_route_has_response_status(route, 429U)) {
+        sl_cli_write_cstr(out, first ? "" : ",\n");
+        sl_cli_openapi_emit_rate_limit_response(out);
         first = false;
     }
     sl_cli_write_cstr(out, "\n");
@@ -832,6 +857,37 @@ static void sl_cli_openapi_emit_auth_metadata(FILE* out, const SlCliRoute* route
         sl_cli_json_escape(out, route->auth_policy);
     }
     sl_cli_write_cstr(out, "\n        }");
+}
+
+static void sl_cli_openapi_emit_rate_limit_metadata(FILE* out, const SlCliRoute* route, bool* first)
+{
+    if (route->rate_limit_count == 0U) {
+        return;
+    }
+
+    sl_cli_openapi_emit_field_prefix(out, first);
+    sl_cli_write_cstr(out, "\"x-slop-rate-limit\": [");
+    for (size_t index = 0U; index < route->rate_limit_count; index += 1U) {
+        sl_cli_write_cstr(out, index == 0U ? "{ \"algorithm\": " : ", { \"algorithm\": ");
+        sl_cli_json_escape(out, route->rate_limit_algorithms[index]);
+        if (!sl_cli_span_empty(route->rate_limit_names[index])) {
+            sl_cli_write_cstr(out, ", \"name\": ");
+            sl_cli_json_escape(out, route->rate_limit_names[index]);
+        }
+        if (!sl_cli_span_empty(route->rate_limit_stores[index])) {
+            sl_cli_write_cstr(out, ", \"store\": ");
+            sl_cli_json_escape(out, route->rate_limit_stores[index]);
+        }
+        if (!sl_cli_span_empty(route->rate_limit_partitions[index])) {
+            sl_cli_write_cstr(out, ", \"partition\": ");
+            sl_cli_json_escape(out, route->rate_limit_partitions[index]);
+        }
+        if (route->rate_limit_partials[index]) {
+            sl_cli_write_cstr(out, ", \"partial\": true");
+        }
+        sl_cli_write_cstr(out, " }");
+    }
+    sl_cli_write_cstr(out, "]");
 }
 
 static void sl_cli_openapi_emit_security(FILE* out, const SlCliMetadata* metadata,
@@ -976,6 +1032,7 @@ static void sl_cli_openapi_emit_operation(FILE* out, const SlCliMetadata* metada
     }
     sl_cli_openapi_emit_security(out, metadata, route, &first);
     sl_cli_openapi_emit_auth_metadata(out, route, &first);
+    sl_cli_openapi_emit_rate_limit_metadata(out, route, &first);
     if (!sl_cli_span_empty(route->realtime_kind)) {
         sl_cli_openapi_emit_field_prefix(out, &first);
         sl_cli_write_cstr(out, "\"x-slop-realtime\": { \"kind\": ");

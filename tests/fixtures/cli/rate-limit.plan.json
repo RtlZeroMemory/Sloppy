@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "kind": "web",
+  "completeness": "complete",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-rate-limit-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-rate-limit-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Search.Index"
+    },
+    {
+      "id": 2,
+      "exportName": "__sloppy_handler_2",
+      "displayName": "Auth.Login"
+    },
+    {
+      "id": 3,
+      "exportName": "__sloppy_handler_3",
+      "displayName": "Dynamic.Check"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/search",
+      "handlerId": 1,
+      "name": "Search.Index",
+      "module": "search",
+      "completeness": {
+        "status": "complete"
+      },
+      "response": {
+        "kind": "text",
+        "helper": "Results.text",
+        "status": 200
+      },
+      "rateLimit": [
+        {
+          "name": "search-ip",
+          "algorithm": "fixedWindow",
+          "store": "default",
+          "partition": "ip",
+          "partial": false
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "pattern": "/login",
+      "handlerId": 2,
+      "name": "Auth.Login",
+      "module": "auth",
+      "completeness": {
+        "status": "complete"
+      },
+      "response": {
+        "kind": "text",
+        "helper": "Results.text",
+        "status": 200
+      },
+      "rateLimit": [
+        {
+          "name": "login-ip",
+          "algorithm": "slidingWindow",
+          "store": "redis",
+          "partition": "ip",
+          "partial": false
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "pattern": "/dynamic-limit",
+      "handlerId": 3,
+      "name": "Dynamic.Check",
+      "module": "search",
+      "completeness": {
+        "status": "complete"
+      },
+      "response": {
+        "kind": "text",
+        "helper": "Results.text",
+        "status": 200
+      },
+      "rateLimit": [
+        {
+          "name": null,
+          "algorithm": "dynamic",
+          "store": null,
+          "partition": null,
+          "partial": true
+        }
+      ]
+    }
+  ],
+  "modules": [
+    {
+      "name": "auth",
+      "dependencies": []
+    },
+    {
+      "name": "search",
+      "dependencies": []
+    }
+  ],
+  "dataProviders": [
+    {
+      "token": "data.main",
+      "provider": "sqlite",
+      "service": "data.main"
+    }
+  ]
+}

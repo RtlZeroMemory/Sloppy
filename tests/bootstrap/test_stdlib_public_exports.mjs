@@ -97,6 +97,7 @@ import {
     SloppyHttpClientError as RootSloppyHttpClientError,
     Metrics,
     SloppyCacheError as RootSloppyCacheError,
+    RateLimit,
     Realtime,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
@@ -109,6 +110,7 @@ import {
     orm as RootOrm,
     relation as RootRelation,
     table as RootTable,
+    SloppyRateLimitError,
     TestWebhooks as RootTestWebhooks,
     Webhooks as RootWebhooks,
     unsafeFfi as RootUnsafeFfi,
@@ -187,6 +189,12 @@ assert.equal(typeof Realtime.channel, "function");
 assert.equal(typeof Realtime.event, "function");
 assert.equal(typeof Realtime.backplane.memory, "function");
 assert.equal(typeof SloppyRealtimeError, "function");
+assert.equal(typeof RateLimit.fixedWindow, "function");
+assert.equal(typeof RateLimit.slidingWindow, "function");
+assert.equal(typeof RateLimit.tokenBucket, "function");
+assert.equal(typeof RateLimit.concurrency, "function");
+assert.equal(typeof RateLimit.memory, "function");
+assert.equal(typeof SloppyRateLimitError, "function");
 assert.equal(typeof TestHost.create, "function");
 assert.equal(typeof TestHost.fromArtifacts, "function");
 assert.equal(typeof TestHost.fromPackage, "function");

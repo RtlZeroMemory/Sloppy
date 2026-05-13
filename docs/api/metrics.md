@@ -80,6 +80,19 @@ The app test host records built-in HTTP metrics for matched routes:
 - `http.status.total`
 - `http.errors.total`
 
+Rate-limit enforcement emits:
+
+- `rate_limit.requests.total`
+- `rate_limit.allowed.total`
+- `rate_limit.denied.total`
+- `rate_limit.store.errors.total`
+- `rate_limit.tokens.remaining`
+- `rate_limit.concurrency.active`
+
+Labels are limited to policy name, route pattern, algorithm, store kind, and
+outcome. Partition values are hashed for diagnostics and are never metric
+labels.
+
 The native dispatch path records the same low-cardinality route-pattern
 counters through `SlOpsMetricsRegistry` when a dispatch table is configured
 with a registry. Native labels use the compiled route pattern, not the raw

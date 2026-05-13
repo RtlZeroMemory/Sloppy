@@ -24,6 +24,8 @@ remain explicit forms for scripts.
 - native FFI unsafe-boundary visibility, function metadata shape, and duplicate
   FFI function IDs.
 - partial/dynamic route metadata findings emitted by the compiler.
+- Plan-visible rate-limit metadata, partial rate-limit extraction, and public
+  login routes without rate-limit metadata.
 - dependency graph presence and dependency compatibility findings.
 - Plan-visible legacy health route metadata. Detailed `app.management()`
   exposure is a runtime app-host setting; protect those endpoints in app code

@@ -1,0 +1,79 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sloppy API",
+    "version": "0.0.0"
+  },
+  "x-slop-openapi-policy": {
+    "mode": "complete",
+    "routesTotal": 3,
+    "routesIncluded": 3,
+    "routesOmitted": 0,
+    "operationsComplete": 3,
+    "operationsPartial": 0,
+    "missing": [],
+    "optimizations": "reported-only"
+  },
+  "paths": {
+    "/dynamic-limit": {
+      "get": {
+        "operationId": "Dynamic.Check",
+        "x-slop-rate-limit": [{ "algorithm": "dynamic", "partial": true }],
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "Results.text", "content": { "text/plain": { "schema": { "type": "string" } } } },
+          "429": { "description": "rate limit exceeded", "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 0 } }, "RateLimit-Limit": { "schema": { "type": "integer", "minimum": 0 } }, "RateLimit-Remaining": { "schema": { "type": "integer", "minimum": 0 } }, "RateLimit-Reset": { "schema": { "type": "integer", "minimum": 0 } } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "operationId": "Search.Index",
+        "x-slop-rate-limit": [{ "algorithm": "fixedWindow", "name": "search-ip", "store": "default", "partition": "ip" }],
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "Results.text", "content": { "text/plain": { "schema": { "type": "string" } } } },
+          "429": { "description": "rate limit exceeded", "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 0 } }, "RateLimit-Limit": { "schema": { "type": "integer", "minimum": 0 } }, "RateLimit-Remaining": { "schema": { "type": "integer", "minimum": 0 } }, "RateLimit-Reset": { "schema": { "type": "integer", "minimum": 0 } } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } }
+        }
+      }
+    },
+    "/login": {
+      "post": {
+        "operationId": "Auth.Login",
+        "x-slop-rate-limit": [{ "algorithm": "slidingWindow", "name": "login-ip", "store": "redis", "partition": "ip" }],
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "Results.text", "content": { "text/plain": { "schema": { "type": "string" } } } },
+          "429": { "description": "rate limit exceeded", "headers": { "Retry-After": { "schema": { "type": "integer", "minimum": 0 } }, "RateLimit-Limit": { "schema": { "type": "integer", "minimum": 0 } }, "RateLimit-Remaining": { "schema": { "type": "integer", "minimum": 0 } }, "RateLimit-Reset": { "schema": { "type": "integer", "minimum": 0 } } }, "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "SlopValidationProblem": {
+        "description": "Slop validation problem response",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } }
+      }
+    },
+    "schemas": {
+      "SlopValidationProblem": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer" },
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -17,10 +17,10 @@ Use `sloppy routes .sloppy` for the common case. `--plan <path>` and
 
 ```text
 $ sloppy routes .sloppy
-ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  JSON  NAME
-0      GET     http         /health              1        complete          app.js:4:1  -  200/json/json  req:none/none resp:native-static/preencoded  Health.Get
-1      POST    http         /users               2        complete          app.js:5:1  body:body  200/json/json  req:native-schema/materialize-once resp:fallback/none resp-fallback:handler-return-shape-dynamic  Users.Create
-2      GET     sse          /events              3        complete          app.js:6:1  -  stream/text-event-stream  req:none/none resp:none/none  Events
+ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  JSON  RATE_LIMIT  NAME
+0      GET     http         /health              1        complete          app.js:4:1  -  200/json/json  req:none/none resp:native-static/preencoded  -  Health.Get
+1      POST    http         /users               2        complete          app.js:5:1  body:body  200/json/json  req:native-schema/materialize-once resp:fallback/none resp-fallback:handler-return-shape-dynamic  tokenBucket/default/user  Users.Create
+2      GET     sse          /events              3        complete          app.js:6:1  -  stream/text-event-stream  req:none/none resp:none/none  fixedWindow/default/ip  Events
 ```
 
 Routes are sorted in runtime match-precedence order: literal segments before
@@ -79,6 +79,11 @@ Each route also includes `jsonRequest` and `jsonResponse` objects. The text
 `resp:<mode>/<writer>`, followed by fallback reason codes when a route cannot
 use a native JSON path. JSON output includes the same values plus schema names
 where the Plan has them.
+
+Routes with Plan-visible rate limits include a `rateLimit` array in JSON. Text
+output prints `algorithm/store/partition`, or `/partial` when the compiler
+could not statically identify every policy detail. Raw partition values are not
+stored in the Plan.
 
 For Program Plans, JSON returns `"kind": "program"` and an empty `routes`
 array. Text output says no route metadata is expected for a program Plan.

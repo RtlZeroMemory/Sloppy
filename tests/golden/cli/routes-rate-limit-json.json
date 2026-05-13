@@ -1,0 +1,8 @@
+{
+  "kind": "web",
+  "routes": [
+    { "method": "GET", "kind": "http", "pattern": "/dynamic-limit", "handlerId": 3, "name": "Dynamic.Check", "module": "search", "sourceOrder": 2, "source": { "path": "", "line": 0, "column": 0 }, "completeness": "complete", "rateLimit": [{ "name": "", "algorithm": "dynamic", "partial": true }], "constraints": [], "bindings": [], "jsonRequest": { "mode": "none", "materialization": "none" }, "jsonResponse": { "mode": "none", "writer": "none" }, "response": { "kind": "text", "helper": "Results.text", "status": 200 } },
+    { "method": "GET", "kind": "http", "pattern": "/search", "handlerId": 1, "name": "Search.Index", "module": "search", "sourceOrder": 0, "source": { "path": "", "line": 0, "column": 0 }, "completeness": "complete", "rateLimit": [{ "name": "search-ip", "algorithm": "fixedWindow", "store": "default", "partition": "ip" }], "constraints": [], "bindings": [], "jsonRequest": { "mode": "none", "materialization": "none" }, "jsonResponse": { "mode": "none", "writer": "none" }, "response": { "kind": "text", "helper": "Results.text", "status": 200 } },
+    { "method": "POST", "kind": "http", "pattern": "/login", "handlerId": 2, "name": "Auth.Login", "module": "auth", "sourceOrder": 1, "source": { "path": "", "line": 0, "column": 0 }, "completeness": "complete", "rateLimit": [{ "name": "login-ip", "algorithm": "slidingWindow", "store": "redis", "partition": "ip" }], "constraints": [], "bindings": [], "jsonRequest": { "mode": "none", "materialization": "none" }, "jsonResponse": { "mode": "none", "writer": "none" }, "response": { "kind": "text", "helper": "Results.text", "status": 200 } }
+  ]
+}

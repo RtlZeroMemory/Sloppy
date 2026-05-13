@@ -16,6 +16,11 @@ import {
     realtimeRouteMetadata,
     webSocketRouteOptions,
 } from "../realtime.js";
+import {
+    enforceRateLimit,
+    isRateLimitPolicy,
+    snapshotRateLimitPolicy,
+} from "../rate-limit.js";
 import { Results } from "../results.js";
 import { isSchema, schema as Schema } from "../schema.js";
 import { cleanupAfterFailure, finishWithCleanup, validateServiceToken } from "./services.js";
@@ -1118,6 +1123,38 @@ function decorateProvidedContext(host, context, routeInfo) {
 }
 
 function createRouteHandler(host, handler, middleware = [], corsPolicy = null, routeInfo) {
+    async function applyRateLimitPolicies(ctx) {
+        const policies = routeInfo.rateLimits ?? Object.freeze([]);
+        const leases = [];
+        try {
+            for (const policy of policies) {
+                const result = await enforceRateLimit(ctx, policy);
+                if (result.release !== undefined) {
+                    leases.push(result.release);
+                }
+                if (result.allowed !== true) {
+                    for (const release of leases.reverse()) {
+                        release();
+                    }
+                    return result.response;
+                }
+            }
+        } catch (error) {
+            for (const release of leases.reverse()) {
+                release();
+            }
+            throw error;
+        }
+        if (leases.length === 0) {
+            return undefined;
+        }
+        return () => {
+            for (const release of leases.reverse()) {
+                release();
+            }
+        };
+    }
+
     function invokeHandler(ctx) {
         const denied = authorizeRoute(ctx, routeInfo.auth, host.auth);
         if (denied !== null && typeof denied === "object" && typeof denied.then === "function") {
@@ -1125,12 +1162,15 @@ function createRouteHandler(host, handler, middleware = [], corsPolicy = null, r
                 if (resolved !== undefined) {
                     return resolved;
                 }
-                return handler(ctx);
+                return invokeRateLimitedHandler(ctx);
             });
-        }
-        if (denied !== undefined) {
+        } else if (denied !== undefined) {
             return denied;
         }
+        return invokeRateLimitedHandler(ctx);
+    }
+
+    function invokeRouteOutput(ctx) {
         const output = routeInfo.outputCache === undefined
             ? handler(ctx)
             : invokeWithOutputCache(ctx, routeInfo, routeInfo.outputCache, () => handler(ctx));
@@ -1138,6 +1178,34 @@ function createRouteHandler(host, handler, middleware = [], corsPolicy = null, r
             return output;
         }
         return Promise.resolve(output).then((result) => applyCacheHeaders(result, routeInfo.cacheHeaders));
+    }
+
+    function invokeRateLimitedHandler(ctx) {
+        if ((routeInfo.rateLimits ?? Object.freeze([])).length === 0) {
+            return invokeRouteOutput(ctx);
+        }
+        return invokeRateLimitedHandlerAsync(ctx);
+    }
+
+    async function invokeRateLimitedHandlerAsync(ctx) {
+        const rateLimitRelease = await applyRateLimitPolicies(ctx);
+        if (typeof rateLimitRelease !== "function") {
+            if (rateLimitRelease !== undefined) {
+                return rateLimitRelease;
+            }
+            return invokeRouteOutput(ctx);
+        }
+        try {
+            const result = invokeRouteOutput(ctx);
+            if (result !== null && typeof result === "object" && typeof result.then === "function") {
+                return Promise.resolve(result).finally(rateLimitRelease);
+            }
+            rateLimitRelease();
+            return result;
+        } catch (error) {
+            rateLimitRelease();
+            throw error;
+        }
     }
 
     function routeHandler(context) {
@@ -1255,6 +1323,9 @@ function snapshotMetadata(metadata) {
     }
     if (Array.isArray(snapshot.responses)) {
         snapshot.responses = Object.freeze(snapshot.responses.map((response) => Object.freeze({ ...response })));
+    }
+    if (Array.isArray(snapshot.rateLimit)) {
+        snapshot.rateLimit = Object.freeze(snapshot.rateLimit.map(snapshotRateLimitPolicy));
     }
     if (Array.isArray(snapshot.consumes)) {
         snapshot.consumes = Object.freeze([...snapshot.consumes]);
@@ -1417,6 +1488,25 @@ function createEndpointBuilder(route, assertAppMutable) {
         allowAnonymous() {
             assertAppMutable();
             setAuthRequirement(Object.freeze({ required: false, allowAnonymous: true }));
+            return endpoint;
+        },
+        rateLimit(policy) {
+            assertAppMutable();
+            if (!isRateLimitPolicy(policy)) {
+                throw new TypeError("Sloppy endpoint rateLimit expects a RateLimit policy.");
+            }
+            route.metadata.rateLimit = Object.freeze([...(route.metadata.rateLimit ?? []), policy]);
+            route.metadata.responses = Object.freeze([
+                ...(route.metadata.responses ?? []).filter((response) => response.status !== 429),
+                Object.freeze({
+                    status: 429,
+                    description: "Too Many Requests",
+                    contentType: "application/problem+json",
+                }),
+            ].sort((left, right) => left.status - right.status));
+            if (route.routeInfo !== undefined) {
+                route.routeInfo.rateLimits = route.metadata.rateLimit;
+            }
             return endpoint;
         },
         authorize(policy) {
@@ -1643,6 +1733,10 @@ function mergeRouteMetadata(groupMetadata, routeMetadata) {
         tags,
         groupName: groupMetadata.name,
         groupPrefix: groupMetadata.prefix,
+        rateLimit: Object.freeze([
+            ...(groupMetadata.rateLimit ?? []),
+            ...(routeMetadata?.rateLimit ?? []),
+        ]),
         ...(routeMetadata?.auth !== undefined
             ? { auth: routeMetadata.auth }
             : groupMetadata.auth === undefined ? {} : { auth: groupMetadata.auth }),
@@ -1740,6 +1834,7 @@ function registerRoute(
         outputCache,
         cacheHeaders,
         kind,
+        rateLimits: metadata.rateLimit ?? Object.freeze([]),
         urlFor(name, params = {}, query = undefined) {
             return urlForRoute(routes, name, params, query);
         },
@@ -2004,6 +2099,7 @@ function createRouteGroup(
         tags: [],
         name: null,
         auth: undefined,
+        rateLimit: Object.freeze([]),
     };
     const groupMiddleware = [];
 
@@ -2036,6 +2132,7 @@ function createRouteGroup(
                     tags: groupMetadata.tags,
                     name: groupMetadata.name,
                     auth: groupMetadata.auth,
+                    rateLimit: groupMetadata.rateLimit,
                 },
                 [...getInheritedMiddleware(), ...groupMiddleware],
                 getCorsPolicy(),
@@ -2089,6 +2186,14 @@ function createRouteGroup(
             groupMetadata.auth = Object.freeze({ required: false, allowAnonymous: true });
             return group;
         },
+        rateLimit(policy) {
+            assertAppMutable();
+            if (!isRateLimitPolicy(policy)) {
+                throw new TypeError("Sloppy route group rateLimit expects a RateLimit policy.");
+            }
+            groupMetadata.rateLimit = Object.freeze([...groupMetadata.rateLimit, policy]);
+            return group;
+        },
 
         mapGet: createMapMethod("GET"),
         mapPost: createMapMethod("POST"),
@@ -2140,6 +2245,9 @@ function createRouteGroup(
             );
             if (groupMetadata.auth !== undefined) {
                 child.requireAuth(groupMetadata.auth);
+            }
+            for (const policy of groupMetadata.rateLimit) {
+                child.rateLimit(policy);
             }
             return child;
         },

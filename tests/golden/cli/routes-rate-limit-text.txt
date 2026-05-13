@@ -1,0 +1,4 @@
+ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  JSON  RATE_LIMIT  NAME  SUMMARY
+2      GET     http         /dynamic-limit       3        complete  search    -  200/text/Results.text  req:none/none resp:none/none  dynamic/default/dynamic/partial  Dynamic.Check
+0      GET     http         /search              1        complete  search    -  200/text/Results.text  req:none/none resp:none/none  fixedWindow/default/ip  Search.Index
+1      POST    http         /login               2        complete  auth      -  200/text/Results.text  req:none/none resp:none/none  slidingWindow/redis/ip  Auth.Login

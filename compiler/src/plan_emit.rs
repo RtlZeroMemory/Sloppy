@@ -1309,6 +1309,21 @@ pub(crate) fn emit_plan_with_route_artifact(
             if let Some(cache_headers) = &route.cache_headers {
                 route_json["cacheHeaders"] = cache_headers.clone();
             }
+            if !route.rate_limits.is_empty() {
+                route_json["rateLimit"] = json!(route
+                    .rate_limits
+                    .iter()
+                    .map(|policy| {
+                        json!({
+                            "name": policy.name,
+                            "algorithm": policy.algorithm,
+                            "store": policy.store,
+                            "partition": policy.partition,
+                            "partial": policy.partial
+                        })
+                    })
+                    .collect::<Vec<_>>());
+            }
             if let Some(docs) = &route.docs {
                 route_json["docsInternal"] = json!(true);
                 route_json["docs"] = json!({
@@ -1395,6 +1410,7 @@ pub(crate) fn emit_plan_with_route_artifact(
                 || route.query_schema.is_some()
                 || route.params_schema.is_some()
                 || route.openapi_override.is_some()
+                || !route.rate_limits.is_empty()
                 || route.docs.is_some();
             if emits_binding_metadata(index, route) {
                 route_json["bindings"] = json!(route

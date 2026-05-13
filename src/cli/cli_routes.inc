@@ -73,6 +73,35 @@ static void sl_cli_routes_emit_json_response_value(SlCliSpan kind, SlCliSpan hel
     printf(" }");
 }
 
+static void sl_cli_routes_emit_json_rate_limits(const SlCliRoute* route)
+{
+    size_t index = 0U;
+
+    if (route->rate_limit_count == 0U) {
+        return;
+    }
+    printf(", \"rateLimit\": [");
+    for (index = 0U; index < route->rate_limit_count; index += 1U) {
+        printf("%s{ \"name\": ", index == 0U ? "" : ", ");
+        sl_cli_json_escape(stdout, route->rate_limit_names[index]);
+        printf(", \"algorithm\": ");
+        sl_cli_json_escape(stdout, route->rate_limit_algorithms[index]);
+        if (!sl_cli_span_empty(route->rate_limit_stores[index])) {
+            printf(", \"store\": ");
+            sl_cli_json_escape(stdout, route->rate_limit_stores[index]);
+        }
+        if (!sl_cli_span_empty(route->rate_limit_partitions[index])) {
+            printf(", \"partition\": ");
+            sl_cli_json_escape(stdout, route->rate_limit_partitions[index]);
+        }
+        if (route->rate_limit_partials[index]) {
+            printf(", \"partial\": true");
+        }
+        printf(" }");
+    }
+    printf("]");
+}
+
 static void sl_cli_routes_emit_json_dispatch(const SlCliRouteDispatch* dispatch)
 {
     if (dispatch == NULL || !dispatch->present) {
@@ -240,6 +269,7 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
         sl_cli_json_escape(stdout, route->dynamic_reason);
         printf(" }");
     }
+    sl_cli_routes_emit_json_rate_limits(route);
     if (!sl_cli_span_empty(route->health_kind)) {
         size_t check = 0U;
         printf(", \"health\": { \"kind\": ");
@@ -387,6 +417,29 @@ static void sl_cli_routes_emit_text_auth(const SlCliRoute* route)
     }
 }
 
+static void sl_cli_routes_emit_text_rate_limit(const SlCliRoute* route)
+{
+    if (route->rate_limit_count == 0U) {
+        printf("-");
+        return;
+    }
+    for (size_t index = 0U; index < route->rate_limit_count; index += 1U) {
+        SlCliSpan algorithm = sl_cli_span_empty(route->rate_limit_algorithms[index])
+                                  ? sl_cli_span_cstr("unknown")
+                                  : route->rate_limit_algorithms[index];
+        SlCliSpan store = sl_cli_span_empty(route->rate_limit_stores[index])
+                              ? sl_cli_span_cstr("default")
+                              : route->rate_limit_stores[index];
+        SlCliSpan partition = sl_cli_span_empty(route->rate_limit_partitions[index])
+                                  ? sl_cli_span_cstr("dynamic")
+                                  : route->rate_limit_partitions[index];
+
+        printf("%s%.*s/%.*s/%.*s%s", index == 0U ? "" : ",", (int)algorithm.length,
+               algorithm.ptr, (int)store.length, store.ptr, (int)partition.length, partition.ptr,
+               route->rate_limit_partials[index] ? "/partial" : "");
+    }
+}
+
 static bool sl_cli_routes_have_auth(const SlCliMetadata* metadata)
 {
     size_t index = 0U;
@@ -474,6 +527,8 @@ static void sl_cli_routes_emit_text_route(const SlCliRoute* route, bool include_
         printf("  ");
         sl_cli_routes_emit_text_auth(route);
     }
+    printf("  ");
+    sl_cli_routes_emit_text_rate_limit(route);
     printf("  %.*s", (int)route->name.length, route->name.ptr);
     if (!sl_cli_span_empty(route->summary)) {
         printf("  %.*s", (int)route->summary.length, route->summary.ptr);
@@ -529,12 +584,12 @@ static int sl_cli_command_routes(const SlCliOptions* options)
         if (include_auth) {
             printf("ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  "
                    "SOURCE  "
-                   "BINDINGS  RESPONSE  JSON  AUTH  NAME  SUMMARY\n");
+                   "BINDINGS  RESPONSE  JSON  AUTH  RATE_LIMIT  NAME  SUMMARY\n");
         }
         else {
             printf("ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  "
                    "SOURCE  "
-                   "BINDINGS  RESPONSE  JSON  NAME  SUMMARY\n");
+                   "BINDINGS  RESPONSE  JSON  RATE_LIMIT  NAME  SUMMARY\n");
         }
         if (metadata->route_count == 0U) {
             printf(sl_cli_span_equal_cstr(metadata->kind, "program")

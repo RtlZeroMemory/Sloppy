@@ -764,6 +764,41 @@ static void sl_cli_doctor_emit_database_provider_dependencies(const SlCliOptions
     }
 }
 
+static bool sl_cli_doctor_span_contains_ascii_ci(SlCliSpan span, const char* needle)
+{
+    size_t needle_length = 0U;
+
+    if (span.ptr == NULL || needle == NULL) {
+        return false;
+    }
+    while (needle[needle_length] != '\0') {
+        needle_length += 1U;
+    }
+    if (needle_length == 0U || span.length < needle_length) {
+        return false;
+    }
+    for (size_t index = 0U; index + needle_length <= span.length; index += 1U) {
+        size_t offset = 0U;
+        for (offset = 0U; offset < needle_length; offset += 1U) {
+            unsigned char left = (unsigned char)span.ptr[index + offset];
+            unsigned char right = (unsigned char)needle[offset];
+            if (left >= 'A' && left <= 'Z') {
+                left = (unsigned char)(left + ('a' - 'A'));
+            }
+            if (right >= 'A' && right <= 'Z') {
+                right = (unsigned char)(right + ('a' - 'A'));
+            }
+            if (left != right) {
+                break;
+            }
+        }
+        if (offset == needle_length) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlArena* arena,
                                              const SlCliMetadata* metadata, bool* emitted)
 {
@@ -771,6 +806,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
     size_t management_routes = 0U;
     size_t realtime_routes = 0U;
     size_t static_routes = 0U;
+    size_t rate_limited_routes = 0U;
     bool prometheus_metrics = false;
     bool json_metrics = false;
 
@@ -787,6 +823,9 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
             if (sl_cli_span_equal_cstr(route->tags[tag], "static")) {
                 static_routes += 1U;
             }
+        }
+        if (route->rate_limit_count > 0U) {
+            rate_limited_routes += 1U;
         }
         if (sl_cli_doctor_span_starts_with(route->name, "Management.")) {
             management_routes += 1U;
@@ -824,6 +863,12 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
         sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.plan.static-assets"),
                            sl_cli_span_cstr("ok"),
                            sl_cli_span_cstr("static asset route metadata present"), emitted);
+    }
+    if (rate_limited_routes > 0U) {
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.rate-limit.routes"),
+                           sl_cli_span_cstr("ok"),
+                           sl_cli_span_cstr("rate-limit metadata present on Plan routes"),
+                           emitted);
     }
     if (health_routes > 0U || management_routes > 0U || prometheus_metrics || json_metrics) {
         sl_cli_doctor_emit(
@@ -908,6 +953,28 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
             sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.response"),
                                sl_cli_span_cstr("warn"),
                                sl_cli_span_cstr("route response metadata is unknown"), emitted);
+        }
+        if (!route->auth_required && route->rate_limit_count == 0U &&
+            (sl_cli_doctor_span_contains_ascii_ci(route->name, "login") ||
+             sl_cli_doctor_span_contains_ascii_ci(route->pattern, "login")))
+        {
+            sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.rate-limit.login"),
+                               sl_cli_span_cstr("warn"),
+                               sl_cli_doctor_route_message(
+                                   arena, "public login route has no rate-limit metadata",
+                                   sl_cli_doctor_route_identity(route)),
+                               emitted);
+        }
+        for (size_t rate_index = 0U; rate_index < route->rate_limit_count; rate_index += 1U) {
+            if (route->rate_limit_partials[rate_index]) {
+                sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("route.rate-limit.partial"),
+                                   sl_cli_span_cstr("warn"),
+                                   sl_cli_doctor_route_message(
+                                       arena, "route rate-limit metadata is partial",
+                                       sl_cli_doctor_route_identity(route)),
+                                   emitted);
+                break;
+            }
         }
         for (size_t binding = 0U; binding < route->binding_count; binding += 1U) {
             if (sl_cli_span_equal_cstr(route->binding_kinds[binding], "body.json") &&

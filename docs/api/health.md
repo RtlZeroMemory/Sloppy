@@ -107,6 +107,12 @@ when the platform supports `statfs`.
 `Health.memory({ degradedRssBytes, unhealthyRssBytes })` checks process memory
 when the host exposes `process.memoryUsage()`.
 
+`Health.rateLimit(store)` reports a rate-limit store as healthy, degraded, or
+unhealthy. Memory stores become unhealthy after disposal. The Redis adapter
+reports degraded in this build because no first-party Redis provider is present
+on `main`; a successful `ping()` on a supplied Redis-shaped object does not make
+rate-limit enforcement healthy while `check()` still fails closed.
+
 `Health.http(url, options)` and `Health.tcp(host, port, options)` provide
 bounded HTTP and TCP dependency probes.
 

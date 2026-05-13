@@ -274,6 +274,21 @@ billing.expectNoUnexpectedCalls();
 `FakeClock.fixed(...)` implements Sloppy's test clock shape for app-host code
 that accepts clock injection.
 
+Rate-limit tests can pass the same fake clock and isolated stores:
+
+```ts
+const clock = FakeClock.fixed("2026-01-01T00:00:00Z");
+await using host = await TestHost.create(app, {
+    clock,
+    rateLimit: {
+        stores: { default: RateLimit.memory() },
+    },
+});
+
+await host.expectRateLimited("GET", "/login");
+host.advanceClock({ seconds: 60 });
+```
+
 `TestData.sqliteMemory()` and `TestData.sqliteTempFile()` create test data
 provider descriptors with `open()` helpers. SQLite native bridge availability
 still depends on the active runtime lane.

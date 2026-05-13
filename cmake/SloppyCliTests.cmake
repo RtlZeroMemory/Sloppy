@@ -42,6 +42,12 @@
         sloppy.cli.routes_json tests/golden/cli/routes-json.json routes --plan
         tests/fixtures/cli/route-metadata.plan.json --format json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.routes_rate_limit_text tests/golden/cli/routes-rate-limit-text.txt routes
+        --plan tests/fixtures/cli/rate-limit.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.routes_rate_limit_json tests/golden/cli/routes-rate-limit-json.json routes
+        --plan tests/fixtures/cli/rate-limit.plan.json --format json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.routes_compiler_text tests/golden/cli/routes-compiler-text.txt routes --plan
         compiler/tests/fixtures/grouped-route/expected/app.plan.json --format text)
     sloppy_add_cli_golden_test(
@@ -312,6 +318,12 @@
         sloppy.cli.audit_clean_json tests/golden/cli/audit-clean-json.json audit --plan
         tests/fixtures/cli/route-metadata.plan.json --format json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.audit_rate_limit_text tests/golden/cli/audit-rate-limit-text.txt audit --plan
+        tests/fixtures/cli/rate-limit.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_rate_limit_json tests/golden/cli/audit-rate-limit-json.json audit --plan
+        tests/fixtures/cli/rate-limit.plan.json --format json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.audit_metrics_json_only_text
         tests/golden/cli/audit-metrics-json-only-text.txt audit --plan
         tests/fixtures/cli/audit-metrics-json-only.plan.json --format text)
@@ -370,6 +382,13 @@
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
         tests/fixtures/cli/route-metadata.plan.json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_rate_limit_json tests/golden/cli/openapi-rate-limit.json openapi
+        --plan tests/fixtures/cli/rate-limit.plan.json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_rate_limit_primary_429_json
+        tests/golden/cli/openapi-rate-limit-primary-429.json openapi --plan
+        tests/fixtures/cli/rate-limit-primary-429.plan.json)
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_users_json tests/golden/cli/openapi-users.json openapi --plan
         compiler/tests/fixtures/realistic-users-api/expected/app.plan.json)

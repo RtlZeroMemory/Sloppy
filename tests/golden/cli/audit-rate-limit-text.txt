@@ -1,0 +1,6 @@
+Sloppy Audit
+
+[note] SLOPPY_AUDIT_RATE_LIMIT_ROUTE route rate-limit metadata is Plan-visible (rateLimit)
+[note] SLOPPY_AUDIT_RATE_LIMIT_ROUTE route rate-limit metadata is Plan-visible (rateLimit)
+[note] SLOPPY_AUDIT_RATE_LIMIT_ROUTE route rate-limit metadata is Plan-visible (rateLimit)
+[warn] SLOPPY_AUDIT_RATE_LIMIT_PARTIAL route rate-limit metadata is partial (rateLimit)
