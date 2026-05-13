@@ -32,6 +32,20 @@ function redisBridge() {
     };
 }
 
+function failingRedisBridge() {
+    return {
+        async connect() {
+            throw new Error("redis://:secret@127.0.0.1:49199/0 failed");
+        },
+        async write() {},
+        async read() {
+            return new Uint8Array(0);
+        },
+        async close() {},
+        async abort() {},
+    };
+}
+
 function installBridge(bridge) {
     const previous = globalThis.__sloppy;
     globalThis.__sloppy = { ...(previous ?? {}), net: bridge };
@@ -91,6 +105,16 @@ class FakeDockerBackend {
     }
 }
 
+class FailingCleanupDockerBackend extends FakeDockerBackend {
+    async run(args) {
+        if (args[0] === "stop" || args[0] === "rm") {
+            this.commands.push(args);
+            return { exitCode: 1, stdout: "", stderr: "cleanup failed for secret", timedOut: false };
+        }
+        return super.run(args);
+    }
+}
+
 const dockerBackend = new FakeDockerBackend();
 const restore = installBridge(redisBridge());
 let redis;
@@ -132,4 +156,49 @@ assert(dockerBackend.commands.some((args) => args[0] === "rm"));
         await noPasswordRedis?.dispose();
         noPasswordRestore();
     }
+}
+
+{
+    const failureBackend = new FailingCleanupDockerBackend();
+    const failureRestore = installBridge(failingRedisBridge());
+    try {
+        await assert.rejects(
+            () => TestServices.redis({
+                password: "secret",
+                dockerBackend: failureBackend,
+                startupTimeoutMs: 100,
+                readinessTimeoutMs: 1,
+            }),
+            (error) => {
+                const message = String(error?.message ?? error);
+                assert.match(message, /Mapped port:\s+49199/s);
+                assert.match(message, /Cleanup failures:/);
+                assert.equal(message.includes("secret"), false);
+                return true;
+            },
+        );
+    } finally {
+        failureRestore();
+    }
+}
+
+for (const [name, start] of [
+    ["postgres", TestServices.postgres],
+    ["sqlServer", TestServices.sqlServer],
+]) {
+    const unavailableBackend = {
+        commands: [],
+        async run(args) {
+            this.commands.push(args);
+            return { exitCode: 1, stdout: "", stderr: "docker should not be touched", timedOut: false };
+        },
+    };
+    await assert.rejects(
+        () => start({ dockerBackend: unavailableBackend, startupTimeoutMs: 1, readinessTimeoutMs: 1 }),
+        (error) => {
+            assert.equal(error?.code, "SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE", `${name} should check provider before Docker`);
+            return true;
+        },
+    );
+    assert.deepEqual(unavailableBackend.commands, []);
 }

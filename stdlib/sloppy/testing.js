@@ -3,18 +3,35 @@ import { createHash } from "node:crypto";
 
 import { Base64Url, Text } from "./codec.js";
 import { Cache, isCache } from "./cache.js";
-import { Hmac, Random, Secret } from "./crypto.js";
+import { Hmac, Secret } from "./crypto.js";
 import { data, Migrations } from "./data.js";
 import { Directory, File } from "./fs.js";
 import { createTestHttpServiceOverrides, TestHttp } from "./http.js";
-import { HttpClient, TcpListener } from "./net.js";
+import { HttpClient } from "./net.js";
 import { Process as SloppyProcess, System as SloppySystem } from "./os.js";
 import { RAW_JSON_BODY, serializeJson } from "./results.js";
 import { isRealtimeChannel } from "./realtime.js";
 import { Schema, validationProblem } from "./schema.js";
 import { TestServices as ImportedTestServices } from "./testservices.js";
-import { redactObject, redactTextSecrets } from "./internal/redaction.js";
-import { isHttpToken, isPlainObject, requireHttpToken, requirePlainObject } from "./internal/validation.js";
+import { createDiagnosticsStore, normalizeOverrideMap } from "./internal/testhost-diagnostics.js";
+import { startHttpMockServer } from "./internal/testhost-http-server.js";
+import {
+    assertHeaderName,
+    assertHeaderValue,
+    copyBytes,
+    createHeadersLike,
+    headerEntriesFromObject,
+    headersToEntries,
+    responseHeaderEntries,
+    setDefaultHeader,
+} from "./internal/testhost-http.js";
+import {
+    loopbackAuthority,
+    releaseLoopbackReservation,
+    reserveLoopbackPort,
+    validateLoopbackPort,
+} from "./internal/testhost-loopback.js";
+import { isHttpToken, isPlainObject } from "./internal/validation.js";
 
 const SUPPORTED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
@@ -60,208 +77,6 @@ function nowMs() {
         return globalThis.performance.now();
     }
     return Date.now();
-}
-
-function normalizeOverrideMap(value, subject) {
-    if (value === undefined) {
-        return Object.freeze({});
-    }
-    requirePlainObject(value, `Sloppy TestHost ${subject} overrides must be a plain object.`);
-    return Object.freeze({ ...value });
-}
-
-function redactConfiguredSecrets(value, secretTexts) {
-    return redactTextSecrets(value, secretTexts);
-}
-
-function redactedValue(key, value, secretTexts = []) {
-    return redactObject({ [key]: value }, {
-        secrets: secretTexts,
-        redactText: (text) => redactConfiguredSecrets(text, secretTexts),
-        stringifyPrimitives: true,
-    })[key];
-}
-
-function createDiagnosticsStore(secrets = []) {
-    const records = [];
-    const secretTexts = secrets
-        .filter((value) => typeof value === "string" && value.length > 0)
-        .map((value) => String(value));
-
-    function sanitizeRecord(record) {
-        const fields = {};
-        for (const [key, value] of Object.entries(record.fields ?? {})) {
-            fields[key] = redactedValue(key, value, secretTexts);
-        }
-        return Object.freeze({
-            code: String(record.code),
-            subsystem: record.subsystem ?? "testhost",
-            severity: record.severity ?? "info",
-            message: redactConfiguredSecrets(record.message ?? record.code, secretTexts),
-            fields: Object.freeze(fields),
-        });
-    }
-
-    const diagnostics = {
-        record(record) {
-            records.push(sanitizeRecord(record));
-        },
-        snapshot() {
-            return Object.freeze([...records]);
-        },
-        latest() {
-            return records.at(-1);
-        },
-        filter(criteria = {}) {
-            if (!isPlainObject(criteria)) {
-                throw new TypeError("Sloppy TestHost diagnostics filter criteria must be a plain object.");
-            }
-            return Object.freeze(records.filter((record) => {
-                if (criteria.code !== undefined && record.code !== criteria.code) {
-                    return false;
-                }
-                if (criteria.subsystem !== undefined && record.subsystem !== criteria.subsystem) {
-                    return false;
-                }
-                if (criteria.severity !== undefined && record.severity !== criteria.severity) {
-                    return false;
-                }
-                return true;
-            }));
-        },
-        expectCode(code) {
-            if (!records.some((record) => record.code === code)) {
-                throw new Error(`Sloppy TestHost expected diagnostic code '${code}'.`);
-            }
-            return diagnostics;
-        },
-        expectNoSecretLeaks() {
-            const text = serializeJson(records);
-            for (const secret of secretTexts) {
-                if (text.includes(secret)) {
-                    throw new Error("Sloppy TestHost diagnostics leaked a configured secret value.");
-                }
-            }
-            return diagnostics;
-        },
-    };
-    return Object.freeze(diagnostics);
-}
-
-function assertHeaderName(name, subject) {
-    requireHttpToken(name, `Sloppy test host ${subject} header names must be safe HTTP tokens.`);
-}
-
-function assertHeaderValue(value, subject) {
-    if (typeof value !== "string" || /[\x00-\x08\x0A-\x1F\x7F]/u.test(value)) {
-        throw new TypeError(`Sloppy test host ${subject} header values must be safe strings.`);
-    }
-}
-
-function copyBytes(value, subject) {
-    if (value instanceof Uint8Array) {
-        return new Uint8Array(value);
-    }
-
-    if (value instanceof ArrayBuffer) {
-        return new Uint8Array(value.slice(0));
-    }
-
-    if (ArrayBuffer.isView(value)) {
-        const storage = value["buf" + "fer"];
-        return new Uint8Array(storage.slice(value.byteOffset, value.byteOffset + value.byteLength));
-    }
-
-    throw new TypeError(`Sloppy test host ${subject} must be a string or Uint8Array.`);
-}
-
-function headerEntriesFromObject(headers, subject) {
-    if (headers === undefined) {
-        return [];
-    }
-
-    requirePlainObject(headers, `Sloppy test host ${subject} headers must be a plain object.`);
-
-    const entries = [];
-    for (const [name, value] of Object.entries(headers)) {
-        assertHeaderName(name, subject);
-        assertHeaderValue(value, subject);
-        entries.push([name, value]);
-    }
-    return entries;
-}
-
-function normalizeHeaderEntries(entries) {
-    const normalized = [];
-    for (const [name, value] of entries) {
-        const lower = name.toLowerCase();
-        if (lower === "set-cookie") {
-            normalized.push([lower, value]);
-            continue;
-        }
-        const existing = normalized.find((entry) => entry[0] === lower);
-        if (existing === undefined) {
-            normalized.push([lower, value]);
-        } else {
-            existing[1] = `${existing[1]}, ${value}`;
-        }
-    }
-    return normalized;
-}
-
-function createHeadersLike(entries) {
-    const normalized = Object.freeze(normalizeHeaderEntries(entries).map(([name, value]) => Object.freeze([name, value])));
-    return Object.freeze({
-        get(name) {
-            if (typeof name !== "string") {
-                throw new TypeError("Sloppy test host headers.get name must be a string.");
-            }
-            const lower = name.toLowerCase();
-            return normalized.find((entry) => entry[0] === lower)?.[1];
-        },
-        entries() {
-            return normalized[Symbol.iterator]();
-        },
-        [Symbol.iterator]() {
-            return normalized[Symbol.iterator]();
-        },
-    });
-}
-
-function headersToEntries(headers) {
-    if (headers === undefined || headers === null) {
-        return [];
-    }
-    if (typeof headers.entries === "function") {
-        return Array.from(headers.entries());
-    }
-    if (isPlainObject(headers)) {
-        return Object.entries(headers);
-    }
-    throw new TypeError("Sloppy test host headers must be response headers or a plain object.");
-}
-
-function responseHeaderEntries(response, omitEntityHeaders = false) {
-    const entries = [];
-    for (const [name, value] of response.headers.entries()) {
-        const lower = name.toLowerCase();
-        if (omitEntityHeaders && (lower === "content-type" || lower === "content-length")) {
-            continue;
-        }
-        entries.push([name, value]);
-    }
-    return entries;
-}
-
-function hasHeader(entries, name) {
-    const lower = name.toLowerCase();
-    return entries.some(([current]) => current.toLowerCase() === lower);
-}
-
-function setDefaultHeader(entries, name, value) {
-    if (!hasHeader(entries, name)) {
-        entries.push([name, value]);
-    }
 }
 
 function bodySourceCount(options) {
@@ -714,10 +529,15 @@ function createConfigOverlay(baseConfig, overrides, secrets) {
 
 function disposeOverrideValues(values) {
     const pending = [];
+    const seen = new Set();
     for (const value of values) {
         if (value === null || value === undefined) {
             continue;
         }
+        if (seen.has(value)) {
+            continue;
+        }
+        seen.add(value);
         const cleanup = value[Symbol.asyncDispose] ?? value[Symbol.dispose] ?? value.dispose ?? value.close;
         if (typeof cleanup === "function") {
             pending.push(Promise.resolve(cleanup.call(value)));
@@ -3707,218 +3527,6 @@ function httpMockConfigKeys(name, plan) {
     return [...new Set(keys)];
 }
 
-function statusText(status) {
-    const titles = {
-        200: "OK",
-        201: "Created",
-        202: "Accepted",
-        204: "No Content",
-        400: "Bad Request",
-        404: "Not Found",
-        500: "Internal Server Error",
-        503: "Service Unavailable",
-    };
-    return titles[status] ?? "Mock Response";
-}
-
-function concatBytes(parts) {
-    const total = parts.reduce((sum, part) => sum + part.byteLength, 0);
-    const result = new Uint8Array(total);
-    let offset = 0;
-    for (const part of parts) {
-        result.set(part, offset);
-        offset += part.byteLength;
-    }
-    return result;
-}
-
-function indexOfBytes(buffer, needle) {
-    outer:
-    for (let index = 0; index <= buffer.byteLength - needle.byteLength; index += 1) {
-        for (let offset = 0; offset < needle.byteLength; offset += 1) {
-            if (buffer[index + offset] !== needle[offset]) {
-                continue outer;
-            }
-        }
-        return index;
-    }
-    return -1;
-}
-
-async function readMockServerRequest(connection, options = {}) {
-    const chunks = [];
-    const headerEndBytes = Text.utf8.encode("\r\n\r\n");
-    const maxHeaderBytes = options.maxHeaderBytes ?? 64 * 1024;
-    let combined = new Uint8Array(0);
-    let headerEnd = -1;
-    while (headerEnd < 0) {
-        const chunk = await connection.read(8192);
-        if (chunk.byteLength === 0) {
-            throw new Error("Mock HTTP server received a closed connection before request headers.");
-        }
-        chunks.push(chunk);
-        combined = concatBytes(chunks);
-        if (combined.byteLength > maxHeaderBytes) {
-            throw new Error("Mock HTTP server request headers exceeded the configured limit.");
-        }
-        headerEnd = indexOfBytes(combined, headerEndBytes);
-    }
-    const head = Text.utf8.decode(combined.slice(0, headerEnd));
-    const lines = head.split("\r\n");
-    const requestLine = lines.shift() ?? "";
-    const requestMatch = /^([A-Z]+)\s+(\S+)\s+HTTP\/1\.[01]$/u.exec(requestLine);
-    if (requestMatch === null) {
-        throw new Error(`Mock HTTP server received an invalid request line: ${requestLine}`);
-    }
-    const headers = {};
-    for (const line of lines) {
-        const colon = line.indexOf(":");
-        if (colon > 0) {
-            headers[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
-        }
-    }
-    const contentLength = Number.parseInt(
-        Object.entries(headers).find(([key]) => key.toLowerCase() === "content-length")?.[1] ?? "0",
-        10,
-    );
-    if (!Number.isFinite(contentLength) || contentLength < 0) {
-        throw new Error("Mock HTTP server received an invalid Content-Length header.");
-    }
-    const bodyChunks = [combined.slice(headerEnd + headerEndBytes.byteLength)];
-    let body = concatBytes(bodyChunks);
-    while (body.byteLength < contentLength) {
-        const chunk = await connection.read(Math.min(8192, contentLength - body.byteLength));
-        if (chunk.byteLength === 0) {
-            throw new Error("Mock HTTP server connection closed before the request body finished.");
-        }
-        bodyChunks.push(chunk);
-        body = concatBytes(bodyChunks);
-    }
-    body = body.slice(0, contentLength);
-    const contentType = Object.entries(headers).find(([key]) => key.toLowerCase() === "content-type")?.[1] ?? "";
-    const text = body.byteLength === 0 ? undefined : Text.utf8.decode(body);
-    let json;
-    if (/application\/json/iu.test(contentType) && text !== undefined) {
-        json = JSON.parse(text);
-    }
-    return Object.freeze({
-        method: requestMatch[1],
-        url: requestMatch[2],
-        headers,
-        json,
-        text,
-        bytes: body.byteLength === 0 ? undefined : body,
-    });
-}
-
-async function writeMockServerResponse(connection, response) {
-    const headers = { ...response.headers };
-    headers["content-length"] ??= String(response.body.byteLength);
-    headers.connection ??= "close";
-    const head = [
-        `HTTP/1.1 ${response.status} ${statusText(response.status)}`,
-        ...Object.entries(headers).map(([name, value]) => `${name}: ${value}`),
-        "",
-        "",
-    ].join("\r\n");
-    await connection.write(Text.utf8.encode(head));
-    if (response.body.byteLength !== 0) {
-        await connection.write(response.body);
-    }
-}
-
-async function startHttpMockServer(name, mock, options = {}) {
-    const host = options.httpMockHost ?? options.host ?? "127.0.0.1";
-    const reservation = await reserveLoopbackPort(host, {
-        portReservationAttempts: options.httpMockPortReservationAttempts ?? options.portReservationAttempts,
-    });
-    const listener = reservation.listener;
-    const connections = new Set();
-    const timeoutWaiters = new Set();
-    let closed = false;
-
-    function waitForMockTimeout() {
-        if (closed) {
-            return Promise.resolve();
-        }
-        return new Promise((resolve) => {
-            let wake;
-            const timer = setTimeout(() => {
-                timeoutWaiters.delete(wake);
-                resolve();
-            }, options.httpMockTimeoutHoldMs ?? 60000);
-            wake = () => {
-                clearTimeout(timer);
-                resolve();
-            };
-            timeoutWaiters.add(wake);
-        });
-    }
-
-    async function handleConnection(connection) {
-        connections.add(connection);
-        try {
-            const request = await readMockServerRequest(connection, options);
-            const response = await mock._dispatchRaw(request);
-            await writeMockServerResponse(connection, response);
-        } catch (error) {
-            if (closed || error?.code === "SLOPPY_E_HTTP_TIMEOUT") {
-                await waitForMockTimeout();
-                return;
-            }
-            const body = Text.utf8.encode(JSON.stringify({
-                code: error?.code ?? "SLOPPY_E_HTTP_MOCK_SERVER",
-                message: "Outbound HTTP mock failed.",
-            }));
-            await writeMockServerResponse(connection, Object.freeze({
-                status: 500,
-                headers: Object.freeze({ "content-type": PROBLEM_CONTENT_TYPE }),
-                body,
-            })).catch(() => {});
-        } finally {
-            await connection.close().catch(() => {});
-            connections.delete(connection);
-        }
-    }
-
-    const serving = (async () => {
-        while (!closed) {
-            try {
-                const connection = await listener.accept({ timeoutMs: 250 });
-                void handleConnection(connection);
-            } catch (error) {
-                if (closed) {
-                    break;
-                }
-                if (/timeout/iu.test(String(error?.message ?? error))) {
-                    continue;
-                }
-                break;
-            }
-        }
-    })();
-
-    return Object.freeze({
-        name,
-        baseUrl: `http://${loopbackAuthority(host, reservation.port)}`,
-        async close() {
-            if (closed) {
-                return;
-            }
-            closed = true;
-            for (const wake of [...timeoutWaiters]) {
-                timeoutWaiters.delete(wake);
-                wake();
-            }
-            await listener.abort().catch(async () => listener.close().catch(() => {}));
-            for (const connection of [...connections]) {
-                await connection.abort().catch(() => {});
-            }
-            await serving.catch(() => {});
-        },
-    });
-}
-
 async function createProcessHttpClientMocks(kind, targetPath, options = {}) {
     if (options.httpClients === undefined) {
         return Object.freeze({ env: options.env, async close() {} });
@@ -4020,8 +3628,12 @@ async function createProcessOnceHost(kind, targetPath, options = {}) {
                     code: "SLOPPY_E_TESTHOST_PROCESS_REQUEST",
                     subsystem: "process",
                     severity: "error",
-                    message: stderr.trimEnd(),
-                    fields: { exitCode: result.exitCode, stdout, stderr },
+                    message: processDiagnosticPreview(stderr),
+                    fields: {
+                        exitCode: result.exitCode,
+                        stdout: processDiagnosticPreview(stdout),
+                        stderr: processDiagnosticPreview(stderr),
+                    },
                 });
                 throw new Error(`Sloppy TestHost request failed with exit code ${result.exitCode}.${stderr.length === 0 ? "" : `\n${stderr.trimEnd()}`}`);
             }
@@ -4039,54 +3651,6 @@ async function createProcessOnceHost(kind, targetPath, options = {}) {
         },
         ...helpers,
     });
-}
-
-const LOOPBACK_PORT_MIN = 49152;
-const LOOPBACK_PORT_MAX = 65535;
-
-function validateLoopbackPort(port) {
-    if (!Number.isInteger(port) || port < 1 || port > 65535) {
-        throw new TypeError("Sloppy TestHost loopback port must be an integer from 1 to 65535.");
-    }
-    return port;
-}
-
-function randomLoopbackPort() {
-    const bytes = Random.bytes(2);
-    const value = (bytes[0] << 8) | bytes[1];
-    return LOOPBACK_PORT_MIN + (value % (LOOPBACK_PORT_MAX - LOOPBACK_PORT_MIN + 1));
-}
-
-async function reserveLoopbackPort(host, options = {}) {
-    if (options.port !== undefined) {
-        const port = validateLoopbackPort(options.port);
-        const listener = await TcpListener.listen({ host, port, backlog: 1 });
-        return { port, listener };
-    }
-    const attempts = options.portReservationAttempts ?? 64;
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-        const port = randomLoopbackPort();
-        try {
-            const listener = await TcpListener.listen({ host, port, backlog: 1 });
-            return { port, listener };
-        } catch {
-            // A different process can own the sampled port; try another reserved candidate.
-        }
-    }
-    throw new Error("Sloppy TestHost could not reserve an available loopback port.");
-}
-
-async function releaseLoopbackReservation(reservation) {
-    if (reservation?.listener === undefined) {
-        return;
-    }
-    await reservation.listener.close().catch(async () => {
-        await reservation.listener.abort().catch(() => {});
-    });
-}
-
-function loopbackAuthority(host, port) {
-    return `${String(host).includes(":") ? `[${host}]` : host}:${port}`;
 }
 
 async function readProcessPipeText(pipe, maxBytes) {
@@ -4119,18 +3683,26 @@ async function processOutputSnapshot(child, options = {}) {
     return { stdout, stderr };
 }
 
+function processDiagnosticPreview(value, maxChars = 4096) {
+    const text = String(value ?? "").trimEnd();
+    if (text.length <= maxChars) {
+        return text;
+    }
+    return `${text.slice(0, maxChars)}... [truncated ${text.length - maxChars} chars]`;
+}
+
 function recordLoopbackStartupFailure(helpers, details) {
     helpers.diagnostics.record({
         code: "SLOPPY_E_TESTHOST_LOOPBACK_STARTUP",
         subsystem: "process",
         severity: "error",
-        message: details.message,
+        message: processDiagnosticPreview(details.message),
         fields: {
             host: details.host,
             port: details.port,
             exitCode: details.exitCode,
-            stdout: details.stdout,
-            stderr: details.stderr,
+            stdout: processDiagnosticPreview(details.stdout),
+            stderr: processDiagnosticPreview(details.stderr),
         },
     });
 }
@@ -4264,7 +3836,11 @@ async function createProcessLoopbackHost(kind, targetPath, options = {}) {
                     subsystem: "process",
                     severity: "error",
                     message: `Sloppy TestHost loopback server exited with code ${exit.exitCode}.`,
-                    fields: { exitCode: exit.exitCode, stdout: output.stdout, stderr: output.stderr },
+                    fields: {
+                        exitCode: exit.exitCode,
+                        stdout: processDiagnosticPreview(output.stdout),
+                        stderr: processDiagnosticPreview(output.stderr),
+                    },
                 });
                 throw new Error(`Sloppy TestHost loopback server exited with code ${exit.exitCode}.`);
             }

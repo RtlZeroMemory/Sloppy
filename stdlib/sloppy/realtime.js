@@ -1,3 +1,5 @@
+import { isPlainObject } from "./internal/validation.js";
+import { deepFreeze, snapshotJson } from "./internal/json.js";
 import { Text } from "./codec.js";
 import { Results } from "./results.js";
 import { Schema, isSchema, isValidationError } from "./schema.js";
@@ -42,24 +44,6 @@ export class SloppyRealtimeError extends Error {
         this.closeCode = options?.closeCode;
         this.__sloppyRealtimeError = true;
     }
-}
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
-
-function deepFreeze(value) {
-    if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
-        return value;
-    }
-    for (const child of Object.values(value)) {
-        deepFreeze(child);
-    }
-    return Object.freeze(value);
 }
 
 function assertRealtimeIdentifier(value, subject) {
@@ -946,23 +930,6 @@ function createHub(name) {
     const connections = new Map();
     const groups = new Map();
     let nextConnectionId = 1;
-
-    function deepFreeze(value) {
-        if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
-            return value;
-        }
-        for (const child of Object.values(value)) {
-            deepFreeze(child);
-        }
-        return Object.freeze(value);
-    }
-
-    function snapshotJson(value) {
-        if (value === undefined) {
-            return undefined;
-        }
-        return deepFreeze(JSON.parse(JSON.stringify(value)));
-    }
 
     function snapshotMessage(message) {
         if (message.type === "json") {

@@ -337,6 +337,37 @@ async function withCacheBridge(callback) {
         current += 20;
         assert.equal(await expiringMemory.get("bounded"), undefined);
         assert.equal(await expiringHybrid.get("bounded"), undefined);
+
+        let memoryDisposed = false;
+        let distributedDisposed = false;
+        const asyncMemory = Cache.memory("async-front", { maxEntries: 10 });
+        const memoryPrototype = Object.getPrototypeOf(asyncMemory);
+        const originalMemoryDispose = memoryPrototype.dispose;
+        memoryPrototype.dispose = async function dispose() {
+            await Promise.resolve();
+            if (this === asyncMemory) {
+                memoryDisposed = true;
+            }
+            originalMemoryDispose.call(this);
+        };
+        const asyncDistributed = Cache.sqlite(sqliteDb, { name: "async-back", namespace: "async-hybrid" });
+        const distributedPrototype = Object.getPrototypeOf(asyncDistributed);
+        const originalDistributedDispose = distributedPrototype.dispose;
+        distributedPrototype.dispose = async function dispose() {
+            await Promise.resolve();
+            if (this === asyncDistributed) {
+                distributedDisposed = true;
+            }
+            return originalDistributedDispose.call(this);
+        };
+        try {
+            await Cache.hybrid("async-main", { memory: asyncMemory, distributed: asyncDistributed }).dispose();
+            assert.equal(memoryDisposed, true);
+            assert.equal(distributedDisposed, true);
+        } finally {
+            memoryPrototype.dispose = originalMemoryDispose;
+            distributedPrototype.dispose = originalDistributedDispose;
+        }
     });
 }
 

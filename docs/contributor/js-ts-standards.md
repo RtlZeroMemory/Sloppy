@@ -147,6 +147,9 @@ Rules:
 - Generated artifact golden tests must be deterministic.
 
 Static scanners are lint gates. They are not substitutes for behavior tests.
+`dev.ps1 lint` also runs `tools/windows/check-js-syntax.ps1`, which parses
+tracked and newly added `.js`, `.mjs`, and `.cjs` files under source, test,
+tool, template, package, example, and benchmark roots with `node --check`.
 
 ## Anti-Overengineering for JS/TS
 

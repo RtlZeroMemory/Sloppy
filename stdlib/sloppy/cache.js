@@ -1,3 +1,4 @@
+import { isPlainObject } from "./internal/validation.js";
 import { serializeJson } from "./results.js";
 import { isSchema } from "./schema.js";
 import { Text } from "./codec.js";
@@ -75,14 +76,6 @@ for _, tagKey in ipairs(tags) do
   redis.call("PEXPIRE", tagKey, ARGV[2])
 end
 return 1`;
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
 
 function nowMs(clock = undefined) {
     if (clock !== undefined && typeof clock.now === "function") {
@@ -1092,11 +1085,13 @@ class HybridCache extends BaseCache {
         });
     }
 
-    dispose() {
+    async dispose() {
         super.dispose();
         if (this.owned) {
-            this.memory.dispose?.();
-            this.distributed.dispose?.();
+            await Promise.all([
+                Promise.resolve(this.memory.dispose?.()),
+                Promise.resolve(this.distributed.dispose?.()),
+            ]);
         }
     }
 }

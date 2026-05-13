@@ -1,3 +1,4 @@
+import { isPlainObject } from "./internal/validation.js";
 import { Results } from "./results.js";
 
 const POLICY_MARKER = Symbol.for("sloppy.rateLimit.policy");
@@ -8,14 +9,6 @@ const DEFAULT_MAX_KEYS = 10000;
 const DEFAULT_MAX_COST = 1000000;
 const DEFAULT_PROBLEM_TYPE = "https://sloppy.dev/problems/rate-limit";
 const ERROR_CODE = "SLOPPY_E_RATE_LIMIT_EXCEEDED";
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
 
 function nowMs(clock = undefined) {
     if (clock !== undefined && typeof clock.monotonicNowMs === "function") {

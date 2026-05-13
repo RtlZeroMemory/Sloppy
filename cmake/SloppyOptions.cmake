@@ -197,16 +197,24 @@ set(
     schema.js
     testservices.js
     testing.js
+    internal/bytes.js
     internal/capabilities.js
     internal/config.js
     internal/disposable.js
+    internal/headers.js
     internal/intrinsics.js
+    internal/json.js
     internal/logging.js
     internal/modules.js
     internal/redaction.js
     internal/routes.js
     internal/services.js
     internal/shared.js
+    internal/testhost-diagnostics.js
+    internal/testhost-http.js
+    internal/testhost-http-server.js
+    internal/testhost-loopback.js
+    internal/testservices-docker.js
     internal/validation.js
     internal/runtime-classic.js)
 

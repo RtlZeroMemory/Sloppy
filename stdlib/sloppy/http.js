@@ -1,6 +1,7 @@
 import { Text } from "./codec.js";
 import { Random } from "./crypto.js";
 import { disposeAll, onceAsync } from "./internal/disposable.js";
+import { createHeaderLookup } from "./internal/headers.js";
 import { redactHeaders, redactUrlTemplate } from "./internal/redaction.js";
 import {
     isPlainObject,
@@ -1353,13 +1354,12 @@ function generateHttpClientFromOpenApi(openapi, options = {}) {
 
 function mockResponse(status, headers, body) {
     const bodyBytes = typeof body === "string" ? Text.utf8.encode(body) : body;
+    const headerLookup = createHeaderLookup(headers);
     return createResponse({
         status,
         headers: Object.freeze({
             get(name) {
-                const lower = String(name).toLowerCase();
-                const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === lower);
-                return entry?.[1] ?? null;
+                return headerLookup.get(name) ?? null;
             },
         }),
         async text() {
@@ -1385,15 +1385,25 @@ function pathPatternToRegExp(path) {
 class TestHttpMock {
     constructor() {
         this._routes = [];
+        this._routesByKey = new Map();
+        this._routesByMethod = new Map();
         this._calls = [];
         this._unexpected = [];
     }
 
     _route(method, path) {
-        let route = this._routes.find((candidate) => candidate.method === method && candidate.path === path);
+        const key = `${method} ${path}`;
+        let route = this._routesByKey.get(key);
         if (route === undefined) {
             route = { method, path, pattern: pathPatternToRegExp(path), responses: [] };
             this._routes.push(route);
+            this._routesByKey.set(key, route);
+            const methodRoutes = this._routesByMethod.get(method);
+            if (methodRoutes === undefined) {
+                this._routesByMethod.set(method, [route]);
+            } else {
+                methodRoutes.push(route);
+            }
         }
         return Object.freeze({
             replyJson: (status, value, headers = {}, options = undefined) => {
@@ -1430,7 +1440,7 @@ class TestHttpMock {
         const path = rawUrl.startsWith("http://") || rawUrl.startsWith("https://")
             ? new URL(rawUrl).pathname
             : rawUrl.split("?")[0];
-        const route = this._routes.find((candidate) => candidate.method === method && candidate.pattern.test(path));
+        const route = this._routesByMethod.get(method)?.find((candidate) => candidate.pattern.test(path));
         const call = Object.freeze({ method, path, url, json, text, bytes, headers: redactHeaders(headers) });
         this._calls.push(call);
         if (route === undefined) {

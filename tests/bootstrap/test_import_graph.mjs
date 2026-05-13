@@ -1,50 +1,24 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-const modules = [
-    "app.js",
-    "cache.js",
-    "results.js",
-    "schema.js",
-    "testservices.js",
-    "testing.js",
-    "data.js",
-    "codec.js",
-    "crypto.js",
-    "ffi.js",
-    "fs.js",
-    "health.js",
-    "http.js",
-    "metrics.js",
-    "net.js",
-    "os.js",
-    "orm.js",
-    "redis.js",
-    "time.js",
-    "webhooks.js",
-    "workers.js",
-    "providers/sqlite.js",
-    "rate-limit.js",
-    "request-id.js",
-    "request-logging.js",
-    "internal/capabilities.js",
-    "internal/config.js",
-    "internal/disposable.js",
-    "internal/logging.js",
-    "internal/modules.js",
-    "internal/redaction.js",
-    "internal/routes.js",
-    "internal/services.js",
-    "internal/shared.js",
-    "internal/validation.js",
-];
 
 const sourceBootstrapDir = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "../../stdlib/sloppy",
 );
 const bootstrapBaseDir = process.env.SLOPPY_BOOTSTRAP_BUILD_DIR ?? sourceBootstrapDir;
+const manifestPath = path.join(sourceBootstrapDir, "bootstrap.manifest.json");
+const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+const modules = manifest.modules.filter((modulePath) => {
+    // Node compatibility shims are bundled for Sloppy's bootstrap loader, but
+    // some intentionally re-export host-provided globals and are not standalone
+    // Node ESM modules.
+    return !modulePath.startsWith("sloppy/node/");
+}).map((modulePath) => {
+    assert.match(modulePath, /^sloppy\/.+\.js$/u, `${modulePath} should be a sloppy JavaScript module`);
+    return modulePath.slice("sloppy/".length);
+});
 
 for (const modulePath of modules) {
     const specifier = pathToFileURL(path.join(bootstrapBaseDir, modulePath)).href;

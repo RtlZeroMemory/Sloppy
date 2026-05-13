@@ -450,6 +450,18 @@ function Invoke-JsTsStandardsCheck {
     }
 }
 
+function Invoke-JsSyntaxCheck {
+    $script = Join-Path $PSScriptRoot "check-js-syntax.ps1"
+    & $script
+    if (-not $?) {
+        throw "JS syntax check failed"
+    }
+
+    if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+        throw "JS syntax check failed with exit code $LASTEXITCODE"
+    }
+}
+
 function Invoke-RustStandardsCheck {
     $script = Join-Path $PSScriptRoot "check-rust-standards.ps1"
     & $script
@@ -552,6 +564,7 @@ function Invoke-Lint {
     Invoke-PhysicalBoundaryCheck
     Invoke-CStandardsCheck
     Invoke-JsTsStandardsCheck
+    Invoke-JsSyntaxCheck
     Invoke-RustStandardsCheck
     Invoke-DocsFreshnessCheck
     Invoke-CoreApiIntegrationCheck

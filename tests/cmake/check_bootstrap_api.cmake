@@ -19,16 +19,24 @@ set(testservices_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/testservices.js")
 set(testing_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/testing.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
+set(bytes_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/bytes.js")
 set(capabilities_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/capabilities.js")
 set(config_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/config.js")
+set(headers_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/headers.js")
+set(json_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/json.js")
 set(logging_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/logging.js")
 set(modules_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/modules.js")
 set(routes_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/routes.js")
 set(services_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/services.js")
 set(shared_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/shared.js")
+set(testhost_diagnostics_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/testhost-diagnostics.js")
+set(testhost_http_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/testhost-http.js")
+set(testhost_http_server_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/testhost-http-server.js")
+set(testhost_loopback_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/testhost-loopback.js")
+set(testservices_docker_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/testservices-docker.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${cache_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${orm_source}" "${time_source}" "${workers_source}" "${http_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${redis_source}" "${testservices_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${cache_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${orm_source}" "${time_source}" "${workers_source}" "${http_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${redis_source}" "${testservices_source}" "${testing_source}" "${app_source}" "${index_source}" "${bytes_source}" "${capabilities_source}" "${config_source}" "${headers_source}" "${json_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${testhost_diagnostics_source}" "${testhost_http_source}" "${testhost_http_server_source}" "${testhost_loopback_source}" "${testservices_docker_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -55,13 +63,21 @@ file(READ "${testservices_source}" testservices_js)
 file(READ "${testing_source}" testing_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
+file(READ "${bytes_source}" bytes_js)
 file(READ "${capabilities_source}" capabilities_js)
 file(READ "${config_source}" config_js)
+file(READ "${headers_source}" headers_js)
+file(READ "${json_source}" json_js)
 file(READ "${logging_source}" logging_js)
 file(READ "${modules_source}" modules_js)
 file(READ "${routes_source}" routes_js)
 file(READ "${services_source}" services_js)
 file(READ "${shared_source}" shared_js)
+file(READ "${testhost_diagnostics_source}" testhost_diagnostics_js)
+file(READ "${testhost_http_source}" testhost_http_js)
+file(READ "${testhost_http_server_source}" testhost_http_server_js)
+file(READ "${testhost_loopback_source}" testhost_loopback_js)
+file(READ "${testservices_docker_source}" testservices_docker_js)
 file(READ "${runtime_classic_source}" runtime_classic_js)
 
 function(require_substring haystack needle description)
@@ -409,7 +425,8 @@ require_substring("${redis_js}" "RespParser," "redis.js is missing expected Redi
 require_substring("${redis_js}" "SloppyRedisError," "redis.js is missing expected Redis client export pattern")
 
 foreach(required_pattern IN ITEMS
-        "class DockerCliBackend"
+        "import {"
+        "DockerCliBackend,"
         "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE"
         "SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE"
         "function odbcEscapeValue(value)"
@@ -425,13 +442,23 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "export class DockerCliBackend"
+        "export async function dockerAvailable(options = {})"
+        "export async function dockerRequire(options = {})"
+        "export async function ensureImage(backend, image, options)"
+        "export function parseInspectJson(text)"
+        "export function mappedPortFromInspect(metadata, internalPort)"
+        "export async function inspectContainer(backend, containerId, internalPort, options)"
+        "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE")
+    require_substring("${testservices_docker_js}" "${required_pattern}" "testservices-docker.js is missing expected Docker TestServices pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "function createTestHost(app, options = {})"
         "function responseFromResult(result)"
         "function matchRoutePattern(pattern, path)"
-        "function createHeadersLike(entries)"
         "function normalizeRequestBody(options, headerEntries)"
         "function createContext(app, hostState, method, targetParts, headers, route, matchedRoute, bodyKind, bodyBytes"
-        "function createDiagnosticsStore(secrets = [])"
         "function createMetricsStore()"
         "function createOpenApiHelpers(loadDocument)"
         "class RequestBuilder"
@@ -453,6 +480,42 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "export function createDiagnosticsStore(secrets = [])"
+        "export function normalizeOverrideMap(value, subject)"
+        "Sloppy TestHost diagnostics filter criteria must be a plain object"
+        "Sloppy TestHost diagnostics leaked a configured secret value")
+    require_substring("${testhost_diagnostics_js}" "${required_pattern}" "testhost-diagnostics.js is missing expected TestHost diagnostics pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "export function createHeadersLike(entries)"
+        "export function normalizeHeaderEntries(entries)"
+        "const indexes = new Map()"
+        "export function copyBytes(value, subject)"
+        "export function responseHeaderEntries(response, omitEntityHeaders = false)"
+        "export function setDefaultHeader(entries, name, value)")
+    require_substring("${testhost_http_js}" "${required_pattern}" "testhost-http.js is missing expected TestHost HTTP helper pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "export async function startHttpMockServer(name, mock, options = {})"
+        "async function readMockServerRequest(connection, options = {})"
+        "async function writeMockServerResponse(connection, response)"
+        "Mock HTTP server received an invalid Content-Length header"
+        "SLOPPY_E_HTTP_MOCK_SERVER")
+    require_substring("${testhost_http_server_js}" "${required_pattern}" "testhost-http-server.js is missing expected TestHost mock server pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "export function validateLoopbackPort(port)"
+        "export async function reserveLoopbackPort(host, options = {})"
+        "export async function releaseLoopbackReservation(reservation)"
+        "export function loopbackAuthority(host, port)"
+        "Sloppy TestHost could not reserve an available loopback port")
+    require_substring("${testhost_loopback_js}" "${required_pattern}" "testhost-loopback.js is missing expected TestHost loopback helper pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "const __sloppyTestServices = (() =>"
         "class DockerCliBackend"
         "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE"
@@ -463,6 +526,40 @@ foreach(required_pattern IN ITEMS
         "DockerCliBackend,"
         "TestServices,")
     require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected TestServices runtime pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "const __sloppyRateLimitRuntime = (() =>"
+        "const RateLimit = __sloppyRateLimitRuntime.RateLimit"
+        "SloppyRateLimitError"
+        "enforceRateLimit"
+        "isRateLimitPolicy")
+    require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected RateLimit runtime pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "export function copyArrayBuffer(value)"
+        "export function copyUint8Array(value)"
+        "export function copyBinaryLike(value)")
+    require_substring("${bytes_js}" "${required_pattern}" "internal/bytes.js is missing expected binary helper pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "export function createHeaderLookup(headers = {})"
+        "export function isHeaderToken(value)"
+        "export function assertHeaderValue(value, subject)"
+        "export function appendVaryHeader(headers, value)"
+        "const values = new Map()"
+        "export function headerValue(headers, name)"
+        "Sloppy headers must be response headers or a plain object")
+    require_substring("${headers_js}" "${required_pattern}" "internal/headers.js is missing expected header helper pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "export function deepFreeze(value)"
+        "export function snapshotJson(value)"
+        "JSON.parse(JSON.stringify(value))")
+    require_substring("${json_js}" "${required_pattern}" "internal/json.js is missing expected JSON helper pattern")
 endforeach()
 
 foreach(required_pattern IN ITEMS

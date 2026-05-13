@@ -1,3 +1,4 @@
+import { isPlainObject } from "./internal/validation.js";
 function issue(path, code, message) {
     return Object.freeze({
         path: Object.freeze([...path]),
@@ -49,15 +50,6 @@ function isValidationError(error) {
 
 function throwValidationError(issues) {
     throw new SloppyValidationError(issues);
-}
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object") {
-        return false;
-    }
-
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
 }
 
 function isSchema(value) {

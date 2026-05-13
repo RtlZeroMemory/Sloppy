@@ -1,15 +1,8 @@
+import { isPlainObject } from "./internal/validation.js";
 const METRIC_NAME_PATTERN = /^[A-Za-z_:][A-Za-z0-9_:.-]*$/u;
 const LABEL_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const DEFAULT_HISTOGRAM_BUCKETS = Object.freeze([1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000]);
 const DEFAULT_MAX_LABELSETS = 128;
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
 
 function assertMetricName(name) {
     if (typeof name !== "string" || !METRIC_NAME_PATTERN.test(name)) {

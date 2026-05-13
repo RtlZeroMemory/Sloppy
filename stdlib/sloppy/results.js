@@ -1,4 +1,6 @@
+import { isPlainObject } from "./internal/validation.js";
 import { Text } from "./codec.js";
+import { copyUint8Array } from "./internal/bytes.js";
 
 const TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
@@ -32,15 +34,6 @@ function resolveStatus(options) {
     }
 
     return status;
-}
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
 }
 
 function normalizeJsonOptions(options = undefined) {
@@ -112,17 +105,7 @@ function base64Encode(bytes) {
 }
 
 function bytesView(value) {
-    if (value instanceof Uint8Array) {
-        return new Uint8Array(value);
-    }
-    if (value instanceof ArrayBuffer) {
-        return new Uint8Array(value.slice(0));
-    }
-    if (ArrayBuffer.isView(value)) {
-        const storage = value["buf" + "fer"];
-        return new Uint8Array(storage.slice(value.byteOffset, value.byteOffset + value.byteLength));
-    }
-    return undefined;
+    return copyUint8Array(value);
 }
 
 function defineJsonProperty(output, key, value) {
@@ -402,16 +385,11 @@ function copySetCookies(options) {
 }
 
 function copyBytes(value) {
-    if (value instanceof ArrayBuffer) {
-        return new Uint8Array(value.slice(0));
+    const bytes = copyUint8Array(value);
+    if (bytes === undefined) {
+        throw new TypeError("Sloppy Results.bytes body must be binary data or a typed array view.");
     }
-
-    if (ArrayBuffer.isView(value)) {
-        const storage = value["buf" + "fer"];
-        return new Uint8Array(storage.slice(value.byteOffset, value.byteOffset + value.byteLength));
-    }
-
-    throw new TypeError("Sloppy Results.bytes body must be binary data or a typed array view.");
+    return bytes;
 }
 
 function resolveContentType(options, defaultContentType) {

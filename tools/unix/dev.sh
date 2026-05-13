@@ -194,6 +194,7 @@ lint_repo() {
   "$repo_root/tools/unix/check-platform-boundaries.sh"
   "$repo_root/tools/unix/check-c-standards.sh" --self-test
   "$repo_root/tools/unix/check-c-standards.sh"
+  "$repo_root/tools/unix/check-js-syntax.sh"
 }
 
 format_check() {

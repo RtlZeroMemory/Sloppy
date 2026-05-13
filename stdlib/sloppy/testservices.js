@@ -1,4 +1,3 @@
-import { Text } from "./codec.js";
 import { Random } from "./crypto.js";
 import { data, Migrations } from "./data.js";
 import { File } from "./fs.js";
@@ -8,8 +7,16 @@ import {
     redactObject,
     redactTextSecrets,
 } from "./internal/redaction.js";
+import {
+    DockerCliBackend,
+    dockerAvailable,
+    dockerBackend,
+    dockerRequire,
+    dockerRunOk,
+    ensureImage,
+    inspectContainer,
+} from "./internal/testservices-docker.js";
 import { isPlainObject, requirePositiveFiniteNumber } from "./internal/validation.js";
-import { Process as SloppyProcess } from "./os.js";
 import { Redis } from "./redis.js";
 
 const DEFAULT_POSTGRES_IMAGE = "postgres:17";
@@ -29,19 +36,6 @@ let nonSecurityNameCounter = 0;
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function processOutputText(value) {
-    if (value === undefined || value === null) {
-        return "";
-    }
-    if (typeof value === "string") {
-        return value;
-    }
-    if (value instanceof Uint8Array) {
-        return Text.utf8.decode(value);
-    }
-    return String(value);
 }
 
 function normalizeTimeout(value, fallback, subject) {
@@ -142,18 +136,6 @@ function createDiagnosticState(kind, image, name, secrets) {
     };
 }
 
-function dockerUnavailableError(reason) {
-    const error = new Error(`SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE: Docker is unavailable for Sloppy TestServices.
-
-Reason:
-  ${reason}
-
-Fix:
-  Start Docker Desktop or a compatible Docker daemon, ensure the docker CLI is on PATH, then rerun the opt-in TestServices lane.`);
-    error.code = "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE";
-    return error;
-}
-
 function providerUnavailableError(kind) {
     const provider = kind === "postgres" ? "PostgreSQL" : "SQL Server";
     const error = new Error(`SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE: ${provider} TestServices require the matching Sloppy data provider bridge.
@@ -168,132 +150,6 @@ Fix:
   Run this lane under a V8/native-provider build, or skip the TestServices container lane with this reason.`);
     error.code = "SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE";
     return error;
-}
-
-class DockerCliBackend {
-    constructor(options = {}) {
-        this.command = options.command ?? "docker";
-        this.cwd = options.cwd;
-        this.env = options.env;
-    }
-
-    async run(args, options = {}) {
-        const result = await SloppyProcess.run(this.command, args, {
-            cwd: options.cwd ?? this.cwd,
-            env: options.env ?? this.env,
-            capture: "bytes",
-            timeoutMs: options.timeoutMs ?? 30000,
-            maxStdoutBytes: options.maxStdoutBytes ?? 1024 * 1024,
-            maxStderrBytes: options.maxStderrBytes ?? 1024 * 1024,
-        });
-        return Object.freeze({
-            exitCode: result.exitCode,
-            stdout: processOutputText(result.stdout),
-            stderr: processOutputText(result.stderr),
-            timedOut: result.timedOut === true,
-        });
-    }
-}
-
-function dockerBackend(options = undefined) {
-    if (options?.dockerBackend !== undefined) {
-        return options.dockerBackend;
-    }
-    return new DockerCliBackend(options?.docker);
-}
-
-async function dockerRunOk(backend, args, options = {}) {
-    const result = await backend.run(args, options);
-    if (result.exitCode !== 0 || result.timedOut === true) {
-        const stderr = boundedText(result.stderr || result.stdout);
-        throw new Error(`docker ${args[0]} failed with exit code ${result.exitCode}.${stderr.length === 0 ? "" : `\n${stderr}`}`);
-    }
-    return result;
-}
-
-async function dockerAvailable(options = {}) {
-    const backend = dockerBackend(options);
-    try {
-        const result = await backend.run(["version", "--format", "{{json .}}"], {
-            timeoutMs: options.timeoutMs ?? 5000,
-            maxStdoutBytes: 64 * 1024,
-            maxStderrBytes: 64 * 1024,
-        });
-        if (result.exitCode !== 0 || result.timedOut === true) {
-            const reason = result.timedOut === true
-                ? "docker version timed out"
-                : boundedText(result.stderr || result.stdout || "docker version failed", 1000);
-            return Object.freeze({ ok: false, available: false, reason });
-        }
-        let version = undefined;
-        try {
-            version = JSON.parse(result.stdout);
-        } catch {
-            version = result.stdout.trim();
-        }
-        return Object.freeze({ ok: true, available: true, reason: undefined, version });
-    } catch (error) {
-        return Object.freeze({
-            ok: false,
-            available: false,
-            reason: String(error?.message ?? error),
-        });
-    }
-}
-
-async function dockerRequire(options = {}) {
-    const available = await dockerAvailable(options);
-    if (available.ok) {
-        return available;
-    }
-    throw dockerUnavailableError(available.reason);
-}
-
-async function ensureImage(backend, image, options) {
-    const inspect = await backend.run(["image", "inspect", image], {
-        timeoutMs: options.dockerTimeoutMs ?? 15000,
-        maxStdoutBytes: 64 * 1024,
-        maxStderrBytes: 64 * 1024,
-    });
-    if (inspect.exitCode === 0) {
-        return;
-    }
-    await dockerRunOk(backend, ["pull", image], {
-        timeoutMs: options.pullTimeoutMs ?? 120000,
-        maxStdoutBytes: 256 * 1024,
-        maxStderrBytes: 256 * 1024,
-    });
-}
-
-function parseInspectJson(text) {
-    const parsed = JSON.parse(text);
-    if (!Array.isArray(parsed) || parsed.length === 0 || parsed[0] === null) {
-        throw new Error("docker inspect returned no container metadata.");
-    }
-    return parsed[0];
-}
-
-function mappedPortFromInspect(metadata, internalPort) {
-    const ports = metadata?.NetworkSettings?.Ports;
-    const entries = ports?.[`${internalPort}/tcp`];
-    if (!Array.isArray(entries) || entries.length === 0) {
-        throw new Error(`docker inspect did not report a mapped host port for ${internalPort}/tcp.`);
-    }
-    const hostPort = Number(entries[0].HostPort);
-    if (!Number.isInteger(hostPort) || hostPort < 1 || hostPort > 65535) {
-        throw new Error(`docker inspect returned an invalid host port for ${internalPort}/tcp.`);
-    }
-    return hostPort;
-}
-
-async function inspectContainer(backend, containerId, internalPort, options) {
-    const result = await dockerRunOk(backend, ["inspect", containerId], {
-        timeoutMs: options.dockerTimeoutMs ?? 15000,
-        maxStdoutBytes: 256 * 1024,
-        maxStderrBytes: 64 * 1024,
-    });
-    const metadata = parseInspectJson(result.stdout);
-    return { metadata, port: mappedPortFromInspect(metadata, internalPort) };
 }
 
 async function dockerLogs(backend, containerId, tail, options) {
@@ -904,10 +760,10 @@ async function startService(kind, rawOptions) {
     const state = createDiagnosticState(kind, options.image, options.containerName, [options.password]);
     let connectionString = undefined;
     try {
-        await dockerRequire({ dockerBackend: backend });
         if (!providerBridgeAvailable(kind)) {
             throw providerUnavailableError(kind);
         }
+        await dockerRequire({ dockerBackend: backend });
         await ensureImage(backend, options.image, options);
         const create = await dockerRunOk(backend, containerCreateArgs(kind, options), {
             timeoutMs: options.dockerTimeoutMs ?? 30000,
@@ -1130,6 +986,7 @@ async function startRedisService(rawOptions) {
             maxStderrBytes: 64 * 1024,
         });
         const inspected = await inspectContainer(backend, state.containerId, REDIS_PORT, options);
+        state.port = inspected.port;
         const url = redisUrl(options, LOCALHOST, inspected.port);
         await waitForRedisReady(state, url, options);
         return createRedisService(options, backend, state, url, inspected.port);
@@ -1156,6 +1013,9 @@ Mapped port:
 
 Reason:
   ${redactWithSecrets(state.lastReadinessError, state.secrets)}
+
+Cleanup failures:
+${state.cleanupErrors.length === 0 ? "  <none>" : state.cleanupErrors.map((entry) => `  - ${entry.operation}: ${redactWithSecrets(entry.message, state.secrets)}`).join("\n")}
 
 Docker logs tail:
 ${state.logTail.length === 0 ? "  <empty>" : redactWithSecrets(state.logTail, state.secrets)}`, { cause: error });

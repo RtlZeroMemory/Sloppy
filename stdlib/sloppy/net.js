@@ -1,3 +1,4 @@
+import { isPlainObject } from "./internal/validation.js";
 import { Text } from "./codec.js";
 
 class SloppyNetError extends Error {
@@ -77,14 +78,6 @@ Reason:
     }
 
     return bridge;
-}
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
 }
 
 function normalizePort(port, allowZero) {
@@ -1707,14 +1700,22 @@ class HttpConnectionPool {
     _http2Entry(originKey) {
         let entry = this._http2Entries.get(originKey);
         if (entry === undefined) {
-            entry = { sessions: [], total: 0, pending: undefined };
+            entry = { sessions: [], records: new Map(), total: 0, pending: undefined };
             this._http2Entries.set(originKey, entry);
         }
         return entry;
     }
 
     _pruneHttp2(originKey, entry) {
-        entry.sessions = entry.sessions.filter((record) => !record.session.closed);
+        entry.sessions = entry.sessions.filter((record) => {
+            if (!record.session.closed) {
+                return true;
+            }
+            if (entry.records.delete(record.session)) {
+                entry.total = Math.max(0, entry.total - 1);
+            }
+            return false;
+        });
         if (entry.total === 0 && entry.sessions.length === 0 && entry.pending === undefined) {
             this._http2Entries.delete(originKey);
         }
@@ -1725,6 +1726,7 @@ class HttpConnectionPool {
             clearTimeout(record.timer);
             record.timer = undefined;
         }
+        entry.records.delete(record.session);
         const index = entry.sessions.indexOf(record);
         if (index >= 0) {
             entry.sessions.splice(index, 1);
@@ -1776,6 +1778,7 @@ class HttpConnectionPool {
         entry.pending = connect().then((session) => {
             const record = { session, timer: undefined };
             entry.sessions.push(record);
+            entry.records.set(session, record);
             session.onClose(() => this._dropHttp2Record(originKey, entry, record));
             this._stats.connectionsCreated += 1;
             return session;
@@ -1818,6 +1821,7 @@ class HttpConnectionPool {
         const record = { session, timer: undefined };
         entry.total += 1;
         entry.sessions.push(record);
+        entry.records.set(session, record);
         session.onClose(() => this._dropHttp2Record(originKey, entry, record));
         return session;
     }
@@ -1832,7 +1836,7 @@ class HttpConnectionPool {
             session.close().catch(() => {});
             return;
         }
-        const record = entry.sessions.find((candidate) => candidate.session === session);
+        const record = entry.records.get(session);
         if (record === undefined) {
             session.close().catch(() => {});
             return;

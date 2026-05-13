@@ -1,3 +1,4 @@
+import { isPlainObject } from "./internal/validation.js";
 import * as fs from "node:fs/promises";
 import * as net from "node:net";
 
@@ -15,14 +16,6 @@ const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_DATA_DEPTH = 4;
 const DEFAULT_MAX_DATA_KEYS = 32;
 const DEFAULT_MAX_STRING = 256;
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
 
 function assertName(name, subject) {
     if (typeof name !== "string" || name.length === 0 || name.includes("\0")) {

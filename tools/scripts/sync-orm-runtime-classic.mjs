@@ -27,8 +27,15 @@ function replaceRequired(source, pattern, replacement, label) {
 }
 
 function transformSchema(source) {
+    let normalized = normalizeNewlines(source);
+    normalized = replaceRequired(
+        normalized,
+        /^import \{ isPlainObject \} from "\.\/internal\/validation\.js";\n/u,
+        "",
+        "schema validation import",
+    );
     const body = replaceRequired(
-            normalizeNewlines(source),
+            normalized,
             /\nexport const schema = schemaApi;\nexport const Schema = schemaApi;\nexport \{ SloppyValidationError, isSchema, isValidationError, validationProblem \};\s*$/u,
             "\nreturn Object.freeze({ schema: schemaApi, Schema: schemaApi, SloppyValidationError, isSchema, isValidationError, validationProblem });\n",
             "schema exports",
@@ -39,6 +46,12 @@ function transformSchema(source) {
 
 function transformOrm(source) {
     let normalized = normalizeNewlines(source);
+    normalized = replaceRequired(
+        normalized,
+        /^import \{ isPlainObject \} from "\.\/internal\/validation\.js";\n/u,
+        "",
+        "orm validation import",
+    );
     normalized = replaceRequired(
         normalized,
         /^import \{ Migrations, sql as dataSql \} from "\.\/data\.js";\n/u,

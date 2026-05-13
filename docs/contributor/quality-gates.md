@@ -19,7 +19,7 @@ git diff --check
 
 `lint` runs platform/boundary scans, language standards
 (`check-c-standards.ps1`, `check-rust-standards.ps1`,
-`check-js-ts-standards.ps1`), docs hygiene checks, release-policy
+`check-js-ts-standards.ps1`, `check-js-syntax.ps1`), docs hygiene checks, release-policy
 checks, and complexity warnings.
 
 For runtime/compiler/V8-adjacent work, also run the V8 lane:

@@ -642,6 +642,12 @@ app.auth.addPolicy("ops", (user) => user.claims.department === requiredDepartmen
 app.get("/", () => Results.ok({ ok: true })).requireAuth({ policy: "ops" });
 export default app;
 "#,
+        r#"import { Sloppy, Results, Auth } from "sloppy";
+const app = Sloppy.create();
+app.auth.addPolicy("ops", Auth.policyExtra((user) => user.claims.department === "ops"));
+app.get("/", () => Results.ok({ ok: true })).requireAuth({ policy: "ops" });
+export default app;
+"#,
         r#"import { Sloppy, Results, Auth, Config } from "sloppy";
 const app = Sloppy.create();
 const store = Math.random() > 0 ? Auth.sessionStore.memory() : undefined;
