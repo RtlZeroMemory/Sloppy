@@ -132,6 +132,9 @@ jobs:
             (cd "$temp_root/work" && node "$launcher" create "$app" --template "$template")
             test -f "$temp_root/work/$app/.gitignore"
             test ! -e "$temp_root/work/$app/gitignore"
+            if [[ "$template" == "package-api" ]]; then
+              (cd "$temp_root/work/$app" && npm install --ignore-scripts --no-audit)
+            fi
             (cd "$temp_root/work/$app" && node "$launcher" build)
             (cd "$temp_root/work/$app" && node "$launcher" routes --artifacts .sloppy --format json >/tmp/${template}-routes.json)
             (cd "$temp_root/work/$app" && node "$launcher" doctor --artifacts .sloppy)
