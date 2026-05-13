@@ -1,0 +1,7 @@
+{
+  "findings": [
+    { "severity": "warn", "code": "SLOPPY_AUDIT_OPS_HEALTH_MISSING", "message": "Plan does not expose health endpoint metadata", "path": "ops.health" },
+    { "severity": "warn", "code": "SLOPPY_AUDIT_OPS_MANAGEMENT_EXPOSED", "message": "management endpoints expose detailed operational data and require a trusted network or protection hook", "path": "ops.management" },
+    { "severity": "warn", "code": "SLOPPY_AUDIT_OPS_METRICS_JSON_MISSING", "message": "Prometheus and JSON metrics metadata exposure is inconsistent", "path": "ops.metrics" }
+  ]
+}

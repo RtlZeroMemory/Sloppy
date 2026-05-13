@@ -6,6 +6,7 @@
 #include "sloppy/capability.h"
 #include "sloppy/cancellation.h"
 #include "sloppy/diagnostics.h"
+#include "sloppy/ops_metrics.h"
 #include "sloppy/platform_thread.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
@@ -296,6 +297,8 @@ SlBytes sl_provider_operation_input(const SlProviderOperation* operation);
 size_t sl_provider_executor_pending_count(const SlProviderInstanceExecutor* executor);
 size_t sl_provider_executor_in_flight_count(const SlProviderInstanceExecutor* executor);
 bool sl_provider_executor_is_shutting_down(const SlProviderInstanceExecutor* executor);
+SlStatus sl_provider_executor_record_metrics(const SlProviderInstanceExecutor* executor,
+                                             SlOpsMetricsRegistry* metrics);
 
 #ifdef __cplusplus
 }

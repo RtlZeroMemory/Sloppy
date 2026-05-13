@@ -1,0 +1,6 @@
+Sloppy Health
+
+GET     /_sloppy/health           aggregate   Management.Health
+GET     /_sloppy/live             liveness    Management.Live
+GET     /_sloppy/ready            readiness   Management.Ready
+GET     /_sloppy/startup          startup     Management.Startup

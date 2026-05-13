@@ -1881,6 +1881,111 @@ static SlStatus sl_plan_parse_route_middleware(SlPlanParseContext* ctx, yyjson_v
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_parse_route_health(SlPlanParseContext* ctx, yyjson_val* route,
+                                           SlPlanRoute* out)
+{
+    yyjson_val* health = yyjson_obj_get(route, "health");
+    yyjson_val* checks = NULL;
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+    SlStr* parsed_checks = NULL;
+    size_t check_count = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (health == NULL || yyjson_is_null(health)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_obj(health)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("route health metadata must be a JSON object",
+                                  sizeof("route health metadata must be a JSON object") - 1U));
+    }
+
+    status = sl_plan_parse_require_string(ctx, health, "kind", true, &out->health_kind);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_str_equal(out->health_kind, sl_str_from_cstr("aggregate")) &&
+        !sl_str_equal(out->health_kind, sl_str_from_cstr("liveness")) &&
+        !sl_str_equal(out->health_kind, sl_str_from_cstr("readiness")) &&
+        !sl_str_equal(out->health_kind, sl_str_from_cstr("startup")))
+    {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid route health kind",
+                                  sizeof("invalid route health kind") - 1U),
+            sl_plan_parse_literal(
+                "route health kind must be aggregate, liveness, readiness, or startup",
+                sizeof("route health kind must be aggregate, liveness, readiness, or startup") -
+                    1U));
+    }
+
+    checks = yyjson_obj_get(health, "checks");
+    if (checks == NULL || yyjson_is_null(checks)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_arr(checks)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("route health checks must be a JSON array",
+                                  sizeof("route health checks must be a JSON array") - 1U));
+    }
+    check_count = yyjson_arr_size(checks);
+    if (check_count == 0U) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid route health checks",
+                                  sizeof("invalid route health checks") - 1U),
+            sl_plan_parse_literal("route health checks must not be empty when present",
+                                  sizeof("route health checks must not be empty when present") -
+                                      1U));
+    }
+    status = sl_plan_parse_alloc_array(ctx, check_count, sizeof(SlStr), _Alignof(SlStr),
+                                       (void**)&parsed_checks);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (parsed_checks == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    yyjson_arr_iter_init(checks, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (!yyjson_is_str(entry)) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("invalid app plan field type",
+                                      sizeof("invalid app plan field type") - 1U),
+                sl_plan_parse_literal("route health check names must be strings",
+                                      sizeof("route health check names must be strings") - 1U));
+        }
+        status = sl_plan_parse_copy_str(
+            ctx->arena, sl_str_from_parts(yyjson_get_str(entry), yyjson_get_len(entry)),
+            &parsed_checks[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (sl_str_is_empty(parsed_checks[index])) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("invalid route health check",
+                                      sizeof("invalid route health check") - 1U),
+                sl_plan_parse_literal("route health check names must be non-empty",
+                                      sizeof("route health check names must be non-empty") - 1U));
+        }
+        index += 1U;
+    }
+    out->health_checks = parsed_checks;
+    out->health_check_count = check_count;
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_route_add_context_binding(SlPlanParseContext* ctx, SlPlanRoute* route)
 {
     SlPlanRequestBinding* parsed = NULL;
@@ -1997,6 +2102,10 @@ static SlStatus sl_plan_parse_one_route(SlPlanParseContext* ctx, const SlPlan* p
         return status;
     }
     status = sl_plan_parse_route_json_response(ctx, value, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_route_health(ctx, value, out);
     if (!sl_status_is_ok(status)) {
         return status;
     }

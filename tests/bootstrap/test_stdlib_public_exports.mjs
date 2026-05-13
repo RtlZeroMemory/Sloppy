@@ -67,6 +67,8 @@ import {
     BackgroundService as RootBackgroundService,
     Config,
     FakeClock,
+    Health,
+    Metrics,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
     TestData,
@@ -123,6 +125,8 @@ assert.equal(Auth.constantTimeEquals("same", "same"), true);
 assert.equal(Auth.constantTimeEquals("same", "diff"), false);
 assert.equal(typeof Config.boolean, "function");
 assert.equal(typeof Config.required, "function");
+assert.equal(typeof Health.createRegistry, "function");
+assert.equal(typeof Metrics.createRegistry, "function");
 assert.equal(typeof TestHost.create, "function");
 assert.equal(typeof TestHost.fromArtifacts, "function");
 assert.equal(typeof TestHost.fromPackage, "function");

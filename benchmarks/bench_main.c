@@ -161,14 +161,18 @@ static const SlBenchDefinition* sl_bench_definition_group(size_t group_index, si
     }
 
     if (group_index == 5U) {
-        return sl_bench_memory_definitions(out_count);
+        return sl_bench_ops_definitions(out_count);
     }
 
     if (group_index == 6U) {
-        return sl_bench_stream_definitions(out_count);
+        return sl_bench_memory_definitions(out_count);
     }
 
     if (group_index == 7U) {
+        return sl_bench_stream_definitions(out_count);
+    }
+
+    if (group_index == 8U) {
         return sl_bench_v8_bridge_definitions(out_count);
     }
 
@@ -193,7 +197,7 @@ static void sl_bench_list(const SlBenchOptions* options)
 {
     size_t group;
 
-    for (group = 0U; group < 8U; group += 1U) {
+    for (group = 0U; group < 9U; group += 1U) {
         size_t count = 0U;
         size_t index;
         const SlBenchDefinition* definitions = sl_bench_definition_group(group, &count);
@@ -467,7 +471,7 @@ static int sl_bench_run(const SlBenchOptions* options)
         sl_bench_print_json_header(options);
     }
 
-    for (group = 0U; group < 8U; group += 1U) {
+    for (group = 0U; group < 9U; group += 1U) {
         size_t count = 0U;
         size_t index;
         const SlBenchDefinition* definitions = sl_bench_definition_group(group, &count);

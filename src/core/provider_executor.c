@@ -1501,3 +1501,68 @@ bool sl_provider_executor_is_shutting_down(const SlProviderInstanceExecutor* exe
     sl_provider_executor_unlock((SlProviderInstanceExecutor*)executor);
     return shutting_down;
 }
+
+SlStatus sl_provider_executor_record_metrics(const SlProviderInstanceExecutor* executor,
+                                             SlOpsMetricsRegistry* metrics)
+{
+    SlOpsMetricLabel labels[2];
+    size_t in_flight = 0U;
+    size_t pending = 0U;
+    size_t idle = 0U;
+    uint64_t submitted_count = 0U;
+    uint64_t query_error_count = 0U;
+    uint64_t timed_out_count = 0U;
+    uint64_t overflow_count = 0U;
+    SlStatus status = sl_status_ok();
+
+    if (executor == NULL || metrics == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    labels[0] = (SlOpsMetricLabel){sl_str_from_cstr("provider"),
+                                   sl_owned_str_as_view(executor->provider_kind)};
+    labels[1] = (SlOpsMetricLabel){sl_str_from_cstr("instance"),
+                                   sl_owned_str_as_view(executor->instance_id)};
+    if (executor->mutex != NULL) {
+        sl_platform_mutex_lock(executor->mutex);
+    }
+    in_flight = executor->in_flight;
+    pending = executor->count > executor->in_flight ? executor->count - executor->in_flight : 0U;
+    idle = executor->max_in_flight > executor->in_flight
+               ? executor->max_in_flight - executor->in_flight
+               : 0U;
+    submitted_count = executor->submitted_count;
+    query_error_count = executor->operation_failure_count + executor->invalid_operation_count;
+    timed_out_count = executor->timed_out_count;
+    overflow_count = executor->overflow_count;
+    if (executor->mutex != NULL) {
+        sl_platform_mutex_unlock(executor->mutex);
+    }
+
+    status = sl_ops_metrics_gauge_set(metrics, sl_str_from_cstr("db.pool.active"), labels, 2U,
+                                      (double)in_flight);
+    if (sl_status_is_ok(status)) {
+        status = sl_ops_metrics_gauge_set(metrics, sl_str_from_cstr("db.pool.idle"), labels, 2U,
+                                          (double)idle);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_ops_metrics_gauge_set(metrics, sl_str_from_cstr("db.queue.depth"), labels, 2U,
+                                          (double)pending);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_ops_metrics_counter_set(metrics, sl_str_from_cstr("db.query.total"), labels, 2U,
+                                            (double)submitted_count);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_ops_metrics_counter_set(metrics, sl_str_from_cstr("db.query.errors"), labels,
+                                            2U, (double)query_error_count);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_ops_metrics_counter_set(metrics, sl_str_from_cstr("db.timeouts"), labels, 2U,
+                                            (double)timed_out_count);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_ops_metrics_counter_set(metrics, sl_str_from_cstr("db.pool.exhausted"), labels,
+                                            2U, (double)overflow_count);
+    }
+    return status;
+}

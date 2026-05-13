@@ -31,6 +31,8 @@ import {
 } from "./internal/routes.js";
 import { createServiceProvider, createServicesBuilder } from "./internal/services.js";
 import { createMutationGuard, isPlainObject } from "./internal/shared.js";
+import { Health, createHealthHandler as createOpsHealthHandler } from "./health.js";
+import { Metrics } from "./metrics.js";
 import { normalizeJsonOptions, Results } from "./results.js";
 import { createSseRouteHandler, createWebSocketRouteHandler } from "./realtime.js";
 import { isValidationError, validationProblem } from "./schema.js";
@@ -38,6 +40,9 @@ import { isValidationError, validationProblem } from "./schema.js";
 const DEFAULT_HEALTH_PATH = "/health";
 const DEFAULT_LIVENESS_PATH = "/health/live";
 const DEFAULT_READINESS_PATH = "/health/ready";
+const DEFAULT_STARTUP_PATH = "/startup";
+const DEFAULT_MANAGEMENT_PATH = "/_sloppy";
+const PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8";
 const DEFAULT_MAX_ERROR_BODY_BYTES = 1024 * 1024;
 const DEFAULT_CONTENT_NEGOTIATION = Object.freeze({
     strictAccept: false,
@@ -544,6 +549,88 @@ function createHealthHandler(checks, mode) {
     };
 }
 
+function normalizeOpsPath(path, subject) {
+    validateHealthPath(path, subject);
+    if (path.length > 1 && path.endsWith("/")) {
+        throw new TypeError(`Sloppy ${subject} path must not end with '/'.`);
+    }
+    return path;
+}
+
+function joinOpsPath(root, child) {
+    if (root === "/") {
+        return child.startsWith("/") ? child : `/${child}`;
+    }
+    return child === "/" ? root : `${root}${child}`;
+}
+
+function normalizeHealthExposeOptions(options = undefined) {
+    if (options === undefined) {
+        return Object.freeze({
+            health: DEFAULT_HEALTH_PATH,
+            live: "/live",
+            ready: "/ready",
+            startup: DEFAULT_STARTUP_PATH,
+        });
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy health expose options must be a plain object.");
+    }
+    return Object.freeze({
+        health: normalizeOpsPath(options.health ?? DEFAULT_HEALTH_PATH, "health"),
+        live: normalizeOpsPath(options.live ?? "/live", "liveness"),
+        ready: normalizeOpsPath(options.ready ?? "/ready", "readiness"),
+        startup: normalizeOpsPath(options.startup ?? DEFAULT_STARTUP_PATH, "startup"),
+    });
+}
+
+function normalizeManagementOptions(options = undefined) {
+    if (options === undefined) {
+        return Object.freeze({
+            path: DEFAULT_MANAGEMENT_PATH,
+            health: true,
+            metrics: true,
+            info: true,
+            runtime: true,
+            protect: undefined,
+        });
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy app.management options must be a plain object.");
+    }
+    return Object.freeze({
+        path: normalizeOpsPath(options.path ?? DEFAULT_MANAGEMENT_PATH, "management"),
+        health: options.health !== false,
+        metrics: options.metrics !== false,
+        info: options.info !== false,
+        runtime: options.runtime !== false,
+        protect: options.protect,
+    });
+}
+
+function routeCountByKind(routes) {
+    const counts = { total: routes.length, health: 0, management: 0 };
+    for (const route of routes) {
+        if (route.metadata?.health !== undefined) {
+            counts.health += 1;
+        }
+        if (route.metadata?.management !== undefined) {
+            counts.management += 1;
+        }
+    }
+    return Object.freeze(counts);
+}
+
+function snapshotLifecycle(state) {
+    const now = Date.now();
+    return Object.freeze({
+        startupComplete: state.startupComplete,
+        shuttingDown: state.shuttingDown,
+        startedAtUtc: state.startedAtUtc,
+        uptimeSeconds: Math.max(0, (now - state.startedAtMs) / 1000),
+    });
+}
+
 function createApp(host) {
     const routes = [];
     const workerResources = [];
@@ -566,6 +653,16 @@ function createApp(host) {
     let jsonOptions = host.options.json;
     let contentNegotiation = host.options.contentNegotiation;
     const authState = createAuthState();
+    const metricsRegistry = Metrics.createRegistry();
+    const opsHealthRegistry = Health.createRegistry();
+    const lifecycleState = {
+        startupComplete: false,
+        shuttingDown: false,
+        startedAtUtc: new Date().toISOString(),
+        startedAtMs: Date.now(),
+    };
+    let opsHealthExposed = false;
+    let managementExposed = false;
     const routeHost = {
         ...host,
         auth: authState,
@@ -592,11 +689,90 @@ function createApp(host) {
         return corsPolicy;
     }
 
+    function ensureOpsRouteFree(pattern) {
+        const conflict = routes.find((route) => route.method === "GET" && route.pattern === pattern);
+        if (conflict !== undefined) {
+            throw new Error(`Sloppy route 'GET ${pattern}' is already registered.`);
+        }
+    }
+
+    function registerOpsGet(pattern, metadata, handler, name) {
+        ensureOpsRouteFree(pattern);
+        const endpoint = registerRoute(
+            routes,
+            routeHost,
+            assertAppMutable,
+            currentModule,
+            "GET",
+            pattern,
+            metadata,
+            handler,
+            undefined,
+            middleware,
+            corsPolicy,
+        );
+        if (name !== undefined) {
+            endpoint.withName(name);
+        }
+        return endpoint;
+    }
+
+    function exposeOpsHealth(options = undefined, metadataBase = undefined, pathPrefix = undefined, wrapHandler = (handler) => handler) {
+        const health = normalizeHealthExposeOptions(options);
+        const paths = {
+            health: pathPrefix === undefined ? health.health : joinOpsPath(pathPrefix, "/health"),
+            live: pathPrefix === undefined ? health.live : joinOpsPath(pathPrefix, "/live"),
+            ready: pathPrefix === undefined ? health.ready : joinOpsPath(pathPrefix, "/ready"),
+            startup: pathPrefix === undefined ? health.startup : joinOpsPath(pathPrefix, "/startup"),
+        };
+        for (const path of Object.values(paths)) {
+            ensureOpsRouteFree(path);
+        }
+        registerOpsGet(paths.health, {
+            ...metadataBase,
+            health: "aggregate",
+            checks: opsHealthRegistry.checks().map((check) => check.name),
+        }, wrapHandler(createOpsHealthHandler(opsHealthRegistry, "health")), metadataBase?.management ? "Management.Health" : "Health");
+        registerOpsGet(paths.live, {
+            ...metadataBase,
+            health: "liveness",
+            checks: opsHealthRegistry.checks().filter((check) => check.tags.includes("live")).map((check) => check.name),
+        }, wrapHandler(createOpsHealthHandler(opsHealthRegistry, "live")), metadataBase?.management ? "Management.Live" : "Health.Live");
+        registerOpsGet(paths.ready, {
+            ...metadataBase,
+            health: "readiness",
+            checks: opsHealthRegistry.checks().filter((check) => check.tags.includes("ready")).map((check) => check.name),
+        }, wrapHandler(createOpsHealthHandler(opsHealthRegistry, "ready")), metadataBase?.management ? "Management.Ready" : "Health.Ready");
+        registerOpsGet(paths.startup, {
+            ...metadataBase,
+            health: "startup",
+            checks: opsHealthRegistry.checks().filter((check) => check.tags.includes("startup")).map((check) => check.name),
+        }, wrapHandler(createOpsHealthHandler(opsHealthRegistry, "startup")), metadataBase?.management ? "Management.Startup" : "Health.Startup");
+        opsHealthExposed = true;
+    }
+
+    const healthBuilder = Object.freeze({
+        check(name, check, options = undefined) {
+            assertAppMutable();
+            opsHealthRegistry.check(name, check, options);
+            return healthBuilder;
+        },
+        expose(options = undefined) {
+            assertAppMutable();
+            exposeOpsHealth(options);
+            return app;
+        },
+        registry() {
+            return opsHealthRegistry;
+        },
+    });
+
     const app = {
         config: host.config,
         log: host.log,
         services: host.services,
         capabilities: host.capabilities,
+        metrics: metricsRegistry,
         auth: Object.freeze({
             addPolicy(name, policy) {
                 assertAppMutable();
@@ -613,6 +789,120 @@ function createApp(host) {
                 return app.auth;
             },
         }),
+
+        health() {
+            return healthBuilder;
+        },
+
+        management(options = undefined) {
+            assertAppMutable();
+            if (managementExposed) {
+                throw new Error("Sloppy management endpoints are already registered.");
+            }
+            const management = normalizeManagementOptions(options);
+            const protect = management.protect;
+            if (protect !== undefined && typeof protect !== "function") {
+                throw new TypeError("Sloppy management protect hook must be a function.");
+            }
+            function protectedHandler(handler) {
+                return async (context) => {
+                    if (protect !== undefined && await protect(context) !== true) {
+                        return Results.status(403, {
+                            status: 403,
+                            title: "Forbidden",
+                            code: "SLOPPY_E_MANAGEMENT_FORBIDDEN",
+                        });
+                    }
+                    return handler(context);
+                };
+            }
+            function refreshRuntimeMetrics() {
+                const lifecycle = snapshotLifecycle(lifecycleState);
+                metricsRegistry.gauge("runtime.uptime.seconds", { description: "Runtime uptime in seconds." }).set(lifecycle.uptimeSeconds);
+                metricsRegistry.gauge("runtime.shutdown.state", { description: "Runtime shutdown state as 0 or 1." }).set(lifecycle.shuttingDown ? 1 : 0);
+                metricsRegistry.gauge("routing.route_table.size", { description: "Registered app-host route count." }).set(routes.length);
+                const memory = globalThis.process?.memoryUsage?.();
+                if (memory !== undefined) {
+                    metricsRegistry.gauge("runtime.memory.rss.bytes", { description: "Resident set size in bytes." }).set(memory.rss);
+                    metricsRegistry.gauge("runtime.memory.heap.bytes", { description: "Heap bytes in use." }).set(memory.heapUsed);
+                }
+            }
+            if (opsHealthRegistry.checks().length === 0) {
+                opsHealthRegistry
+                    .check("self", Health.self(), { tags: ["live", "ready", "startup"], critical: true, cacheMs: 250 })
+                    .check("runtime", Health.runtime(), { tags: ["ready", "startup"], critical: true, cacheMs: 250 })
+                    .check("memory", Health.memory(), { tags: ["health"], critical: false, cacheMs: 1000 });
+            }
+            if (management.health) {
+                exposeOpsHealth(undefined, { management: "health" }, management.path, protectedHandler);
+            }
+            if (management.metrics) {
+                registerOpsGet(
+                    joinOpsPath(management.path, "/metrics"),
+                    { management: "metrics", format: "prometheus" },
+                    protectedHandler(() => {
+                        refreshRuntimeMetrics();
+                        return Results.text(metricsRegistry.renderPrometheus(), { contentType: PROMETHEUS_CONTENT_TYPE });
+                    }),
+                    "Management.Metrics",
+                );
+                registerOpsGet(
+                    joinOpsPath(management.path, "/metrics.json"),
+                    { management: "metrics", format: "json" },
+                    protectedHandler(() => {
+                        refreshRuntimeMetrics();
+                        return Results.json(metricsRegistry.snapshot());
+                    }),
+                    "Management.MetricsJson",
+                );
+            }
+            if (management.info) {
+                registerOpsGet(
+                    joinOpsPath(management.path, "/info"),
+                    { management: "info" },
+                    protectedHandler(() => Results.ok({
+                        app: {
+                            name: host.config.get("Sloppy:AppName", host.config.get("App:Name", "sloppy-app")),
+                            version: host.config.get("Sloppy:AppVersion", host.config.get("App:Version", "0.0.0")),
+                        },
+                        sloppy: {
+                            runtime: "bootstrap",
+                            operations: "health-metrics-management",
+                        },
+                        security: {
+                            protected: protect !== undefined,
+                            detailedEndpoints: true,
+                        },
+                    })),
+                    "Management.Info",
+                );
+            }
+            if (management.runtime) {
+                registerOpsGet(
+                    joinOpsPath(management.path, "/runtime"),
+                    { management: "runtime" },
+                    protectedHandler(() => Results.ok({
+                        routes: routeCountByKind(routes),
+                        lifecycle: snapshotLifecycle(lifecycleState),
+                        providers: routes.filter((route) => route.metadata?.provider !== undefined).length,
+                        jobs: {
+                            resources: workerResources.length,
+                        },
+                        health: {
+                            checks: opsHealthRegistry.checks(),
+                            exposed: opsHealthExposed,
+                        },
+                        metrics: metricsRegistry.snapshot(),
+                        security: {
+                            protected: protect !== undefined,
+                        },
+                    })),
+                    "Management.Runtime",
+                );
+            }
+            managementExposed = true;
+            return app;
+        },
 
         use(provider) {
             assertAppMutable();
@@ -1009,6 +1299,7 @@ function createApp(host) {
         },
 
         freeze() {
+            lifecycleState.startupComplete = true;
             guard.freeze();
             return app;
         },
@@ -1021,10 +1312,29 @@ function createApp(host) {
             return Object.freeze(routes.map(snapshotRoute));
         },
 
+        __getMetricsRegistry() {
+            return metricsRegistry;
+        },
+
+        __getHealthRegistry() {
+            return opsHealthRegistry;
+        },
+
+        __getLifecycle() {
+            return snapshotLifecycle(lifecycleState);
+        },
+
+        __beginShutdown() {
+            lifecycleState.shuttingDown = true;
+        },
+
         __debug() {
             return Object.freeze({
                 modules: moduleDebugRef.modules,
                 workers: Object.freeze(workerResources.map(snapshotWorkerResource)),
+                health: opsHealthRegistry.checks(),
+                metrics: metricsRegistry.snapshot(),
+                lifecycle: snapshotLifecycle(lifecycleState),
             });
         },
 
@@ -1042,6 +1352,12 @@ function createApp(host) {
                     detail: errorPolicyState.policy.detail,
                     missingRoute: errorPolicyState.policy.missingRoute,
                     mappings: errorPolicyState.mappings.length,
+                }),
+                ops: Object.freeze({
+                    healthChecks: opsHealthRegistry.checks(),
+                    healthExposed: opsHealthExposed,
+                    managementExposed,
+                    metrics: metricsRegistry.snapshot(),
                 }),
             });
         },

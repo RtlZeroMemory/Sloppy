@@ -549,6 +549,22 @@ static bool sl_cli_provider_is_kind(const SlCliProvider* provider, const char* k
            sl_cli_span_equal_cstr(provider->provider, kind);
 }
 
+static bool sl_cli_doctor_span_starts_with(SlCliSpan span, const char* prefix)
+{
+    size_t index = 0U;
+
+    if (prefix == NULL) {
+        return false;
+    }
+    while (prefix[index] != '\0') {
+        if (index >= span.length || span.ptr[index] != prefix[index]) {
+            return false;
+        }
+        index += 1U;
+    }
+    return true;
+}
+
 static void sl_cli_doctor_emit_database_provider_dependencies(const SlCliOptions* options,
                                                               SlArena* arena,
                                                               const SlCliMetadata* metadata,
@@ -593,6 +609,26 @@ static void sl_cli_doctor_emit_database_provider_dependencies(const SlCliOptions
 static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlArena* arena,
                                              const SlCliMetadata* metadata, bool* emitted)
 {
+    size_t health_routes = 0U;
+    size_t management_routes = 0U;
+    bool prometheus_metrics = false;
+    bool json_metrics = false;
+
+    for (size_t index = 0U; index < metadata->route_count; index += 1U) {
+        const SlCliRoute* route = &metadata->routes[index];
+
+        if (!sl_cli_span_empty(route->health_kind)) {
+            health_routes += 1U;
+        }
+        if (sl_cli_doctor_span_starts_with(route->name, "Management.")) {
+            management_routes += 1U;
+        }
+        prometheus_metrics =
+            prometheus_metrics || sl_cli_span_equal_cstr(route->name, "Management.Metrics");
+        json_metrics =
+            json_metrics || sl_cli_span_equal_cstr(route->name, "Management.MetricsJson");
+    }
+
     sl_cli_doctor_emit(
         options, arena, sl_cli_span_cstr("app.plan.routes"),
         (metadata->route_count > 0U || sl_cli_span_equal_cstr(metadata->kind, "program"))
@@ -616,6 +652,30 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
         metadata->capability_count > 0U ? sl_cli_span_cstr("capability metadata present")
                                         : sl_cli_span_cstr("capability metadata not present"),
         emitted);
+    if (health_routes > 0U || management_routes > 0U || prometheus_metrics || json_metrics) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("ops.health"),
+            health_routes > 0U ? sl_cli_span_cstr("ok") : sl_cli_span_cstr("warn"),
+            health_routes > 0U ? sl_cli_span_cstr("health endpoint metadata present")
+                               : sl_cli_span_cstr("health endpoint metadata not present"),
+            emitted);
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("ops.management"),
+            management_routes > 0U ? sl_cli_span_cstr("warn") : sl_cli_span_cstr("info"),
+            management_routes > 0U
+                ? sl_cli_span_cstr(
+                      "management endpoints are exposed; protect detailed endpoints in production")
+                : sl_cli_span_cstr("management endpoints are not exposed"),
+            emitted);
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("ops.metrics"),
+            (prometheus_metrics && json_metrics) ? sl_cli_span_cstr("ok")
+                                                 : sl_cli_span_cstr("warn"),
+            (prometheus_metrics && json_metrics)
+                ? sl_cli_span_cstr("Prometheus and JSON metrics endpoint metadata present")
+                : sl_cli_span_cstr("Prometheus or JSON metrics endpoint metadata missing"),
+            emitted);
+    }
     sl_cli_doctor_emit_fs_capabilities(options, arena, metadata, emitted);
     sl_cli_doctor_emit_network_capabilities(options, arena, metadata, emitted);
     sl_cli_doctor_emit_os_capabilities(options, arena, metadata, emitted);

@@ -3992,6 +3992,109 @@ export default app;
 }
 
 #[test]
+fn app_health_and_management_extract_routes_and_ops_metadata() {
+    let source = r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.health()
+  .check("self", Health.self(), { tags: ["live", "ready", "startup"], critical: true })
+  .check("runtime", Health.runtime(), { tags: ["ready", "startup"] })
+  .check("custom", () => ({ status: "degraded" }), { tags: ["ready"], critical: true, degradedIsUnhealthy: true })
+  .expose({ health: "/health", live: "/live", ready: "/ready", startup: "/startup" });
+app.management({ path: "/_sloppy", health: true, metrics: true, info: true, runtime: true });
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("ops APIs should extract");
+    assert!(app.uses_health);
+    assert_eq!(
+        app.routes
+            .iter()
+            .map(|route| route.pattern.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "/health",
+            "/live",
+            "/ready",
+            "/startup",
+            "/_sloppy/health",
+            "/_sloppy/live",
+            "/_sloppy/ready",
+            "/_sloppy/startup",
+            "/_sloppy/metrics",
+            "/_sloppy/metrics.json",
+            "/_sloppy/info",
+            "/_sloppy/runtime",
+        ]
+    );
+    assert_eq!(app.routes[3].health.as_ref().unwrap().kind, "startup");
+    assert_eq!(app.routes[8].name.as_deref(), Some("Management.Metrics"));
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("sloppy_management_info"));
+    assert!(emitted_js.source.contains("degradedIsUnhealthy: true"));
+    assert!(emitted_js
+        .source
+        .contains("__sloppy_health_check.critical && __sloppy_check_status === \"degraded\""));
+    assert!(emitted_js.source.contains(
+        "!__sloppy_health_check.critical && __sloppy_aggregate_status === \"unhealthy\""
+    ));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["features"]["ops"], true);
+    assert_eq!(plan["features"]["management"], true);
+    assert_eq!(plan["features"]["metrics"], true);
+    assert_eq!(plan["strongPlan"]["evidence"]["ops"], true);
+    assert_eq!(
+        plan["ops"]["health"]["endpoints"].as_array().unwrap().len(),
+        8
+    );
+    assert_eq!(
+        plan["ops"]["metrics"],
+        serde_json::json!({ "prometheus": true, "json": true })
+    );
+    assert!(plan["doctorChecks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|check| check["id"] == "ops.management.protection"));
+}
+
+#[test]
+fn app_health_rejects_silently_ignored_options_and_unsupported_builtins() {
+    for source in [
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.health().check("slow", Health.self(), { tags: ["ready"], timeoutMs: 1000 }).expose();
+export default app;
+"#,
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.health().check("cached", Health.self(), { tags: ["ready"], cacheMs: 1000 }).expose();
+export default app;
+"#,
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.health().check("config", Health.config(["Required"]), { tags: ["ready"] }).expose();
+export default app;
+"#,
+        r#"import { Sloppy, Health } from "sloppy";
+const app = Sloppy.create();
+app.mapHealthChecks({ checks: [{ name: "cached", check: () => true, cacheMs: 1000 }] });
+export default app;
+"#,
+    ] {
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("unsupported compiler-visible health feature should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_HEALTH_CHECKS");
+    }
+}
+
+#[test]
 fn map_health_checks_rejects_unsupported_static_shapes() {
     for source in [
         r#"import { Sloppy, Results } from "sloppy";

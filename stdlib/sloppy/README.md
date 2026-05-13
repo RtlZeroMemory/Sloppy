@@ -25,6 +25,8 @@ stdlib/sloppy/
   crypto.js
   os.js
   workers.js
+  health.js
+  metrics.js
   internal/
     capabilities.js
     config.js
@@ -52,7 +54,7 @@ lib/sloppy/bootstrap/sloppy/
 - `app.js` provides the bootstrap builder/app/module surface used by examples and tests:
   `Sloppy.create()`, `Sloppy.createBuilder()`, `Sloppy.module(...)`, `Router.group(...)`,
   route registration, middleware/filter registration, app-host CORS policy/preflight
-  handling, health/readiness/liveness routes, route-only `app.useModule(...)`,
+  handling, health/readiness/liveness/startup routes, management endpoints, route-only `app.useModule(...)`,
   explicit controller mapping, group metadata, config/log/services/capabilities facades,
   structural freeze behavior, and debug snapshots.
 - `internal/capabilities.js`, `internal/config.js`, `internal/logging.js`,
@@ -68,6 +70,8 @@ lib/sloppy/bootstrap/sloppy/
   IDs, trusted incoming ID admission, and optional response headers.
 - `request-logging.js` provides `RequestLogging.defaults(...)` middleware that writes
   one structured entry per completed app-host request through the configured logger.
+- `health.js` and `metrics.js` provide the first-party operations backend used by
+  `app.health()` and `app.management(...)`.
 - `schema.js` provides the current `Schema` validation metadata surface for
   strings, numbers, integers, booleans, arrays, enums, literals, optional,
   nullable, defaulted fields, object shapes, and request body validation
@@ -103,7 +107,7 @@ lib/sloppy/bootstrap/sloppy/
 - Node compatibility is limited to explicit `sloppy/node/*` shim modules staged by
   the dependency-loader path. Bun, Deno, browser Web API compatibility, full npm
   ecosystem parity, and runtime package-manager behavior remain separate work.
-- Benchmark, operations, and release readiness are covered by dedicated docs and gates.
+- Benchmark and release readiness are covered by dedicated docs and gates.
 
 ## Future Work
 
@@ -116,7 +120,7 @@ lib/sloppy/bootstrap/sloppy/
   PostgreSQL, and SQL Server.
 - Native plugins and full app lifecycle integration are planned separately.
 - Config file/environment/CLI loading inside the JS stdlib itself, secret managers,
-  tracing, metrics, async service factories, typed DI tokens, and native service graph
+  tracing exporters, async service factories, typed DI tokens, and native service graph
   validation belong to later framework/runtime slices. Native console and JSONL file
   logging sinks are owned by the C runtime and configured through Plan/config metadata.
 

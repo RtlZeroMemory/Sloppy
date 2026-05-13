@@ -20,8 +20,8 @@ Current Sloppy includes:
   request-body readable adapters, benchmarks, and fuzzing;
 - experimental build-time static file routes for supported project assets;
 - first-party APIs for routing, results, services, config, logging,
-  capabilities, data, filesystem, network, OS, time, crypto, codec, workers,
-  schema, and testing;
+  capabilities, health, metrics, management, data, filesystem, network, OS,
+  time, crypto, codec, workers, schema, and testing;
 - experimental typed, Plan-visible FFI for deliberate C ABI interop;
 - Windows x64, Linux x64 glibc, and macOS npm platform packages;
 - source/archive build paths for Linux arm64, Windows arm64, and other
@@ -98,7 +98,7 @@ production-ready:
 
 - graceful shutdown and connection drain;
 - broader TLS policy;
-- observability surface;
+- deeper native transport observability and production-grade operations evidence;
 - platform coverage;
 - conformance suites;
 - reproducible performance reports.

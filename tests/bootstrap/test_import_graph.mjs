@@ -12,6 +12,8 @@ const modules = [
     "crypto.js",
     "ffi.js",
     "fs.js",
+    "health.js",
+    "metrics.js",
     "net.js",
     "os.js",
     "time.js",

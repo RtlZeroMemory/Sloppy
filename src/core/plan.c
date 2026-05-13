@@ -600,6 +600,45 @@ static SlStatus sl_plan_intern_bindings(SlArena* arena, SlInternTable* table, Sl
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_intern_route_health(SlArena* arena, SlInternTable* table,
+                                            SlPlanRoute* route)
+{
+    SlStr* checks = NULL;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (route == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_plan_intern_required(table, route->health_kind, &route->health_kind);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (route->health_check_count == 0U) {
+        route->health_checks = NULL;
+        return sl_status_ok();
+    }
+    if (route->health_checks == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_plan_alloc_copy(arena, route->health_checks, route->health_check_count,
+                                sizeof(SlStr), _Alignof(SlStr), (void**)&checks);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (checks == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    for (index = 0U; index < route->health_check_count; index += 1U) {
+        status = sl_plan_intern_required(table, checks[index], &checks[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+    route->health_checks = checks;
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_intern_routes(SlArena* arena, SlInternTable* table, SlPlan* staged)
 {
     SlPlanRoute* routes = NULL;
@@ -672,6 +711,10 @@ static SlStatus sl_plan_intern_routes(SlArena* arena, SlInternTable* table, SlPl
         }
         status = sl_plan_intern_required(table, routes[index].json_response.content_type,
                                          &routes[index].json_response.content_type);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        status = sl_plan_intern_route_health(arena, table, &routes[index]);
         if (!sl_status_is_ok(status)) {
             return status;
         }
