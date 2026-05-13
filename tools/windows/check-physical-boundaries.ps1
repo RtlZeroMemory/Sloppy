@@ -169,6 +169,7 @@ function Invoke-TextBoundaryScan {
             }
 
             if ($normalizedPath.StartsWith("examples/", [System.StringComparison]::OrdinalIgnoreCase) -and
+                -not $normalizedPath.EndsWith("/test.mjs", [System.StringComparison]::OrdinalIgnoreCase) -and
                 $line -match '\.\./\.\./stdlib/sloppy')
             {
                 Add-Finding $findings $normalizedPath $lineNumber "PB007" `

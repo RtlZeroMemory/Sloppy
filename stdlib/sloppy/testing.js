@@ -1,3 +1,6 @@
+import * as nodeFs from "node:fs/promises";
+import { createHash } from "node:crypto";
+
 import { Base64Url, Text } from "./codec.js";
 import { Cache, isCache } from "./cache.js";
 import { Hmac, Random, Secret } from "./crypto.js";
@@ -9,12 +12,13 @@ import { Process as SloppyProcess, System as SloppySystem } from "./os.js";
 import { RAW_JSON_BODY, serializeJson } from "./results.js";
 import { isRealtimeChannel } from "./realtime.js";
 import { Schema, validationProblem } from "./schema.js";
-import { TestServices } from "./testservices.js";
+import { TestServices as ImportedTestServices } from "./testservices.js";
 
 const SUPPORTED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
 const TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
+const TestServices = Object.freeze(ImportedTestServices);
 const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
 const WEBSOCKET_PROTOCOL_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
 const TESTHOST_BINARY_BODY = Symbol("sloppyTestHostBinaryBody");
@@ -29,6 +33,29 @@ const DEFAULT_SERIALIZATION_OPTIONS = Object.freeze({
 });
 const ROUTE_PARAM_PATTERN = /^\{([A-Za-z_][0-9A-Za-z_]*)(?::(str|int|uuid|alpha|float))?\}$/u;
 const WEBSOCKET_ROUTE_OPTIONS = Symbol.for("sloppy.websocket.routeOptions");
+const STATIC_MIME_TYPES = Object.freeze({
+    ".css": "text/css; charset=utf-8",
+    ".gif": "image/gif",
+    ".html": "text/html; charset=utf-8",
+    ".ico": "image/x-icon",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".js": "application/javascript; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".map": "application/json; charset=utf-8",
+    ".mjs": "application/javascript; charset=utf-8",
+    ".otf": "font/otf",
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".svg": "image/svg+xml; charset=utf-8",
+    ".ttf": "font/ttf",
+    ".txt": "text/plain; charset=utf-8",
+    ".wasm": "application/wasm",
+    ".webp": "image/webp",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".xml": "application/xml; charset=utf-8",
+});
 
 function nowMs() {
     if (globalThis.performance !== undefined && typeof globalThis.performance.now === "function") {
@@ -1171,9 +1198,11 @@ function assertJsonIncludes(actual, expected, subject) {
 
 function responseFromParts(status, headers, bodyBytes) {
     const body = new Uint8Array(bodyBytes);
+    const headerEntries = [...headers];
+    setDefaultHeader(headerEntries, "Content-Length", String(body.byteLength));
     const response = {
         status,
-        headers: createHeadersLike(headers),
+        headers: createHeadersLike(headerEntries),
         bytes() {
             return new Uint8Array(body);
         },
@@ -1256,6 +1285,336 @@ function responseFromErrorStatus(app, status, context = undefined, fallbackText 
         }
     }
     return responseFromText(status, fallbackText);
+}
+
+async function nodePathModules() {
+    return { fs: nodeFs, path: STATIC_PATH_MODULE };
+}
+
+function staticNormalizeFsPath(value) {
+    return String(value).replace(/\\/gu, "/").replace(/\/+/gu, "/").replace(/\/$/u, "");
+}
+
+function staticPathIsAbsolute(value) {
+    return /^\/|^[A-Za-z]:[\\/]/u.test(String(value)) || String(value).startsWith("\\\\");
+}
+
+function staticPathResolve(base, ...parts) {
+    let output = String(base);
+    for (const part of parts) {
+        const value = String(part);
+        if (value.length === 0) {
+            continue;
+        }
+        output = staticPathIsAbsolute(value) ? value : `${output.replace(/[\\/]$/u, "")}/${value}`;
+    }
+    return staticNormalizeFsPath(output);
+}
+
+function staticPathRelative(root, file) {
+    const normalizedRoot = staticNormalizeFsPath(root);
+    const normalizedFile = staticNormalizeFsPath(file);
+    const foldCase = globalThis.process?.platform === "win32";
+    const rootKey = foldCase ? normalizedRoot.toLowerCase() : normalizedRoot;
+    const fileKey = foldCase ? normalizedFile.toLowerCase() : normalizedFile;
+    if (fileKey === rootKey) {
+        return "";
+    }
+    const prefix = `${rootKey}/`;
+    if (fileKey.startsWith(prefix)) {
+        return normalizedFile.slice(prefix.length);
+    }
+    return "../outside";
+}
+
+function staticPathExtname(value) {
+    const leaf = String(value).split(/[\\/]/u).pop() ?? "";
+    const dot = leaf.lastIndexOf(".");
+    return dot <= 0 ? "" : leaf.slice(dot);
+}
+
+const STATIC_PATH_MODULE = Object.freeze({
+    extname: staticPathExtname,
+    isAbsolute: staticPathIsAbsolute,
+    join: staticPathResolve,
+    relative: staticPathRelative,
+    resolve: staticPathResolve,
+});
+
+function staticMountMatches(mount, path) {
+    return path === mount || (mount === "/" ? path.startsWith("/") : path.startsWith(`${mount}/`));
+}
+
+function staticRequestRelativePath(mount, path) {
+    const value = mount === "/" ? path.slice(1) : path.slice(mount.length).replace(/^\/+/u, "");
+    return value.length === 0 ? "" : value;
+}
+
+function staticPathSegments(relative) {
+    if (/[\x00-\x1F\x7F\\]/u.test(relative)) {
+        return undefined;
+    }
+    if (relative.startsWith("/") || /^[A-Za-z]:/u.test(relative) || relative.startsWith("//")) {
+        return undefined;
+    }
+    if (relative.length === 0) {
+        return [];
+    }
+    const segments = relative.split("/");
+    if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")) {
+        return undefined;
+    }
+    return segments;
+}
+
+function staticExtension(pathModule, relative) {
+    return pathModule.extname(relative).toLowerCase();
+}
+
+function staticContentType(pathModule, relative, overrides = undefined) {
+    const ext = staticExtension(pathModule, relative);
+    return overrides?.[ext.replace(/^\./u, "")] ?? overrides?.[ext] ??
+        STATIC_MIME_TYPES[ext] ?? "application/octet-stream";
+}
+
+function staticCacheControl(entry, relative, pathModule, isFallback) {
+    if (entry.kind === "spa") {
+        if (isFallback) {
+            return entry.cacheControl?.html;
+        }
+        return entry.cacheControl?.assets;
+    }
+    return entry.cacheControl;
+}
+
+function normalizeStaticEncodings(value) {
+    if (value === true) {
+        return ["br", "gzip"];
+    }
+    if (Array.isArray(value)) {
+        return value;
+    }
+    return [];
+}
+
+function requestEncodingQuality(headers, encoding) {
+    const value = headers.get("accept-encoding") ?? "";
+    let best = 0;
+    for (const part of value.split(",")) {
+        const [name, ...params] = part.trim().toLowerCase().split(";").map((entry) => entry.trim()).filter(Boolean);
+        if (name !== encoding && name !== "*") {
+            continue;
+        }
+        let quality = 1;
+        for (const param of params) {
+            const match = /^q=([0-9.]+)$/u.exec(param);
+            if (match !== null) {
+                quality = Number(match[1]);
+            }
+        }
+        if (Number.isFinite(quality) && quality >= 0 && quality <= 1) {
+            best = Math.max(best, quality);
+        }
+    }
+    return best;
+}
+
+async function staticExistingVariant(fs, basePath, headers, encodings) {
+    let selected;
+    let selectedQuality = 0;
+    for (const encoding of encodings) {
+        const extension = encoding === "br" ? ".br" : ".gz";
+        const contentEncoding = encoding === "gzip" ? "gzip" : "br";
+        const quality = requestEncodingQuality(headers, contentEncoding);
+        if (quality <= 0) {
+            continue;
+        }
+        const candidate = `${basePath}${extension}`;
+        try {
+            const stat = await fs.stat(candidate);
+            if (stat.isFile()) {
+                if (selected === undefined || quality > selectedQuality) {
+                    selected = { path: candidate, stat, contentEncoding };
+                    selectedQuality = quality;
+                }
+            }
+        } catch {
+            // Missing precompressed variants are optional.
+        }
+    }
+    return selected;
+}
+
+function staticEtag(bytes, variant) {
+    const hash = createHash("sha256").update(bytes).digest("hex");
+    return `W/"sha256:${hash}-${variant ?? "identity"}"`;
+}
+
+function staticValidatorsMatch(headers, etag, mtime) {
+    const ifNoneMatch = headers.get("if-none-match");
+    if (ifNoneMatch !== undefined) {
+        return ifNoneMatch.split(",").map((entry) => entry.trim()).some((entry) => entry === "*" || entry === etag);
+    }
+    const ifModifiedSince = headers.get("if-modified-since");
+    if (ifModifiedSince !== undefined) {
+        const parsed = Date.parse(ifModifiedSince);
+        if (Number.isFinite(parsed)) {
+            return Math.floor(mtime.getTime() / 1000) <= Math.floor(parsed / 1000);
+        }
+    }
+    return false;
+}
+
+function staticParseRange(value, size) {
+    if (value === undefined) {
+        return undefined;
+    }
+    const match = /^bytes=(\d*)-(\d*)$/u.exec(value.trim());
+    if (match === null || (match[1].length === 0 && match[2].length === 0)) {
+        return null;
+    }
+    let start;
+    let end;
+    if (match[1].length === 0) {
+        const suffix = Number(match[2]);
+        if (!Number.isSafeInteger(suffix) || suffix <= 0) {
+            return null;
+        }
+        start = Math.max(0, size - suffix);
+        end = size - 1;
+    } else {
+        start = Number(match[1]);
+        end = match[2].length === 0 ? size - 1 : Number(match[2]);
+    }
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= size) {
+        return null;
+    }
+    return { start, end: Math.min(end, size - 1) };
+}
+
+function staticResponseFromFile(bytes, metadata, requestHeaders) {
+    const headers = {
+        ETag: metadata.etag,
+        "Last-Modified": metadata.lastModified,
+        "Accept-Ranges": metadata.range ? "bytes" : "none",
+        "X-Content-Type-Options": "nosniff",
+    };
+    if (metadata.cacheControl !== undefined) {
+        headers["Cache-Control"] = metadata.cacheControl;
+    }
+    if (metadata.contentEncoding !== undefined) {
+        headers["Content-Encoding"] = metadata.contentEncoding;
+        headers.Vary = "Accept-Encoding";
+        headers["Accept-Ranges"] = "none";
+    }
+    if (staticValidatorsMatch(requestHeaders, metadata.etag, metadata.mtime)) {
+        return responseFromParts(304, Object.entries(headers), new Uint8Array(0));
+    }
+    if (metadata.range && metadata.contentEncoding === undefined) {
+        const range = staticParseRange(requestHeaders.get("range"), bytes.byteLength);
+        if (range === null) {
+            return responseFromParts(416, [["Content-Range", `bytes */${bytes.byteLength}`], ...Object.entries(headers)], new Uint8Array(0));
+        }
+        if (range !== undefined) {
+            headers["Content-Range"] = `bytes ${range.start}-${range.end}/${bytes.byteLength}`;
+            return responseFromParts(206, [["Content-Type", metadata.contentType], ...Object.entries(headers)], bytes.slice(range.start, range.end + 1));
+        }
+    }
+    return responseFromParts(200, [["Content-Type", metadata.contentType], ...Object.entries(headers)], bytes);
+}
+
+async function tryStaticFileResponse(entry, relative, headers, isFallback) {
+    const modules = await nodePathModules();
+    const { fs, path } = modules;
+    const segments = staticPathSegments(relative);
+    if (segments === undefined) {
+        return responseFromText(403, "Forbidden\n");
+    }
+    if (segments.some((segment) => segment.startsWith("."))) {
+        if (entry.dotfiles !== "allow") {
+            return entry.dotfiles === "ignore"
+                ? responseFromText(404, "Not Found\n")
+                : responseFromText(403, "Forbidden\n");
+        }
+    }
+    const cwd = globalThis.process?.cwd?.() ?? ".";
+    const root = path.resolve(cwd, entry.root);
+    const rootReal = await fs.realpath(root);
+    let filePath = path.resolve(rootReal, ...segments);
+    let stat;
+    try {
+        stat = await fs.stat(filePath);
+        if (stat.isDirectory()) {
+            if (entry.index === false) {
+                return responseFromText(404, "Not Found\n");
+            }
+            filePath = path.join(filePath, entry.index ?? "index.html");
+            stat = await fs.stat(filePath);
+        }
+    } catch {
+        return undefined;
+    }
+    if (!stat.isFile()) {
+        return responseFromText(404, "Not Found\n");
+    }
+    const real = await fs.realpath(filePath);
+    const relativeReal = path.relative(rootReal, real);
+    if (relativeReal.startsWith("..") || path.isAbsolute(relativeReal)) {
+        return responseFromText(403, "Forbidden\n");
+    }
+    if (stat.size > (entry.maxFileBytes ?? 1024 * 1024)) {
+        return responseFromText(413, "Payload Too Large\n");
+    }
+    const variants = normalizeStaticEncodings(entry.precompressed);
+    const variant = await staticExistingVariant(fs, real, headers, variants);
+    const selectedPath = variant?.path ?? real;
+    const selectedStat = variant?.stat ?? stat;
+    if (selectedStat.size > (entry.maxFileBytes ?? 1024 * 1024)) {
+        return responseFromText(413, "Payload Too Large\n");
+    }
+    const bytes = new Uint8Array(await fs.readFile(selectedPath));
+    const cacheControl = staticCacheControl(entry, relative, path, isFallback);
+    return staticResponseFromFile(bytes, {
+        contentType: staticContentType(path, relative, entry.contentType),
+        contentEncoding: variant?.contentEncoding,
+        cacheControl,
+        etag: staticEtag(bytes, variant?.contentEncoding),
+        lastModified: selectedStat.mtime.toUTCString(),
+        mtime: selectedStat.mtime,
+        range: entry.range !== false,
+    }, headers);
+}
+
+async function responseFromStaticAssets(app, method, path, headers) {
+    if (method !== "GET" && method !== "HEAD") {
+        return undefined;
+    }
+    const entries = typeof app.__getStaticAssets === "function" ? app.__getStaticAssets() : [];
+    for (const entry of entries) {
+        if (entry.kind === "static" && staticMountMatches(entry.mount, path)) {
+            const relative = staticRequestRelativePath(entry.mount, path);
+            const response = await tryStaticFileResponse(entry, relative, headers, false);
+            if (response !== undefined) {
+                return response;
+            }
+        }
+    }
+    for (const entry of entries) {
+        if (entry.kind !== "spa" || !staticMountMatches(entry.mount, path)) {
+            continue;
+        }
+        const relative = staticRequestRelativePath(entry.mount, path);
+        const asset = await tryStaticFileResponse(entry, relative, headers, false);
+        if (asset !== undefined) {
+            return asset;
+        }
+        const lastSegment = relative.split("/").pop() ?? "";
+        if (lastSegment.includes(".")) {
+            return responseFromText(404, "Not Found\n");
+        }
+        return tryStaticFileResponse(entry, entry.fallback, headers, true);
+    }
+    return undefined;
 }
 
 function problemCodeFromResponse(response) {
@@ -2692,6 +3051,12 @@ function createTestHost(app, options = {}) {
             }
 
             if (match.route === undefined) {
+                const staticResponse = await responseFromStaticAssets(app, normalizedMethod, targetParts.path, headers);
+                if (staticResponse !== undefined) {
+                    const response = finalizeResponse(staticResponse, normalizedMethod);
+                    metrics.increment("http.requests.total", { method: normalizedMethod, status: String(response.status) });
+                    return response;
+                }
                 diagnostics.record({
                     code: match.methodMismatch ? "SLOPPY_E_METHOD_NOT_ALLOWED" : "SLOPPY_E_ROUTE_NOT_FOUND",
                     subsystem: "routing",

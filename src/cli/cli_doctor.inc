@@ -770,6 +770,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
     size_t health_routes = 0U;
     size_t management_routes = 0U;
     size_t realtime_routes = 0U;
+    size_t static_routes = 0U;
     bool prometheus_metrics = false;
     bool json_metrics = false;
 
@@ -781,6 +782,11 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
         }
         if (!sl_cli_span_empty(route->realtime_kind)) {
             realtime_routes += 1U;
+        }
+        for (size_t tag = 0U; tag < route->tag_count; tag += 1U) {
+            if (sl_cli_span_equal_cstr(route->tags[tag], "static")) {
+                static_routes += 1U;
+            }
         }
         if (sl_cli_doctor_span_starts_with(route->name, "Management.")) {
             management_routes += 1U;
@@ -814,6 +820,11 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
         metadata->capability_count > 0U ? sl_cli_span_cstr("capability metadata present")
                                         : sl_cli_span_cstr("capability metadata not present"),
         emitted);
+    if (static_routes > 0U) {
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("app.plan.static-assets"),
+                           sl_cli_span_cstr("ok"),
+                           sl_cli_span_cstr("static asset route metadata present"), emitted);
+    }
     if (health_routes > 0U || management_routes > 0U || prometheus_metrics || json_metrics) {
         sl_cli_doctor_emit(
             options, arena, sl_cli_span_cstr("ops.health"),

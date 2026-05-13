@@ -31,7 +31,9 @@ set(project_dir "${TEST_WORK_DIR}/static-app")
 file(MAKE_DIRECTORY
   "${project_dir}/public/css"
   "${project_dir}/public/img"
-  "${project_dir}/public/wasm")
+  "${project_dir}/public/js"
+  "${project_dir}/public/wasm"
+  "${project_dir}/spa/assets")
 
 file(WRITE "${project_dir}/sloppy.json" [=[
 {
@@ -53,10 +55,19 @@ import { Results, Sloppy } from "sloppy";
 
 const app = Sloppy.create();
 app.get("/health", () => Results.text("ok"));
-app.useStaticFiles({
-  requestPath: "/public",
+app.staticFiles("/public", {
   root: "public",
-  cache: { maxAgeSeconds: 3600 }
+  cache: { maxAgeSeconds: 3600 },
+  precompressed: true
+});
+app.spa("/app", {
+  root: "spa",
+  fallback: "index.html",
+  cacheControl: {
+    html: "no-cache",
+    assets: "public, max-age=31536000, immutable"
+  },
+  precompressed: ["br", "gzip"]
 });
 export default app;
 ]=])
@@ -64,8 +75,14 @@ export default app;
 file(WRITE "${project_dir}/public/index.html" "<!doctype html><title>static</title>")
 file(WRITE "${project_dir}/public/css/site.css" "body { color: #123456; }\n")
 file(WRITE "${project_dir}/public/data.json" "{\"ok\":true}\n")
+file(WRITE "${project_dir}/public/js/app.js" "globalThis.staticAsset = true;\n")
+file(WRITE "${project_dir}/public/js/app.js.gz" "gzip-js-bytes")
+file(WRITE "${project_dir}/public/js/app.js.br" "brotli-js-bytes")
 file(WRITE "${project_dir}/public/img/pixel.png" "png-bytes")
 file(WRITE "${project_dir}/public/wasm/module.wasm" "wasm-bytes")
+file(WRITE "${project_dir}/spa/index.html" "<!doctype html><title>spa</title>")
+file(WRITE "${project_dir}/spa/assets/app.js" "globalThis.spa = true;\n")
+file(WRITE "${project_dir}/spa/assets/app.js.br" "brotli-spa-js-bytes")
 set(outside_secret_marker "__outside-static-root-secret__")
 file(WRITE "${project_dir}/secret.txt" "${outside_secret_marker}\n")
 
@@ -103,10 +120,16 @@ endif()
 file(READ "${plan_path}" plan_json)
 foreach(expected
     "/public/index.html"
+    "\"pattern\": \"/public\""
     "/public/css/site.css"
     "/public/data.json"
+    "/public/js/app.js"
+    "\"pattern\": \"/app\""
+    "\"pattern\": \"/app/{sloppySpa0:str}\""
+    "/app/assets/app.js"
     "/public/img/pixel.png"
     "/public/wasm/module.wasm"
+    "/app/{sloppySpa0:str}/{sloppySpa1:str}/{sloppySpa2:str}/{sloppySpa3:str}/{sloppySpa4:str}/{sloppySpa5:str}/{sloppySpa6:str}/{sloppySpa7:str}/{sloppySpa8:str}/{sloppySpa9:str}"
     "public/index.html"
     "public/css/site.css"
     "public/data.json"
@@ -126,11 +149,30 @@ foreach(expected
     "contentType: \"application/json"
     "contentType: \"image/png"
     "contentType: \"application/wasm"
-    "Cache-Control\":\"public, max-age=3600")
+    "cacheControl: \"public, max-age=3600"
+    "cacheControl: \"no-cache"
+    "cacheControl: \"public, max-age=31536000, immutable"
+    "contentEncoding: \"br"
+    "contentEncoding: \"gzip"
+    "contentHash: \"sha256:"
+    "Content-Range"
+    "__sloppyStaticAssetResponse")
   if(NOT app_js MATCHES "${expected}")
     message(FATAL_ERROR "compiled app.js missing ${expected}\n${app_js}")
   endif()
 endforeach()
+
+run_static_command(
+  "doctor static metadata"
+  "${project_dir}"
+  "app.plan.static-assets"
+  "${SLOPPY_PATH}" doctor --plan "${plan_path}" --format text)
+
+run_static_command(
+  "audit static metadata"
+  "${project_dir}"
+  "SLOPPY_AUDIT_STATIC_ASSETS_VISIBLE"
+  "${SLOPPY_PATH}" audit --plan "${plan_path}" --format text)
 
 run_static_command(
   "package"
@@ -142,8 +184,14 @@ foreach(expected_asset
     "${project_dir}/dist/static-app/package/artifacts/assets/public/index.html"
     "${project_dir}/dist/static-app/package/artifacts/assets/public/css/site.css"
     "${project_dir}/dist/static-app/package/artifacts/assets/public/data.json"
+    "${project_dir}/dist/static-app/package/artifacts/assets/public/js/app.js"
+    "${project_dir}/dist/static-app/package/artifacts/assets/public/js/app.js.gz"
+    "${project_dir}/dist/static-app/package/artifacts/assets/public/js/app.js.br"
     "${project_dir}/dist/static-app/package/artifacts/assets/public/img/pixel.png"
-    "${project_dir}/dist/static-app/package/artifacts/assets/public/wasm/module.wasm")
+    "${project_dir}/dist/static-app/package/artifacts/assets/public/wasm/module.wasm"
+    "${project_dir}/dist/static-app/package/artifacts/assets/spa/index.html"
+    "${project_dir}/dist/static-app/package/artifacts/assets/spa/assets/app.js"
+    "${project_dir}/dist/static-app/package/artifacts/assets/spa/assets/app.js.br")
   if(NOT EXISTS "${expected_asset}")
     message(FATAL_ERROR "package did not copy ${expected_asset}")
   endif()
@@ -178,7 +226,7 @@ run_packaged_request(
   "/public/index.html"
   "Content-Type: text/html"
   "Cache-Control: public, max-age=3600"
-  "ETag: \\\""
+  "ETag: W/"
   "<!doctype html><title>static</title>")
 
 run_packaged_request(

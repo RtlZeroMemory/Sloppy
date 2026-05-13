@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
@@ -16,6 +17,7 @@ import {
     Results,
     Sloppy,
     table,
+    TestHost,
     Text,
     Time,
     WorkQueue,
@@ -26,6 +28,7 @@ const DEFAULT_PROPERTY_TARGETS = Object.freeze([
     "results",
     "time",
     "http-client",
+    "static-files",
     "workers",
     "logging",
     "config",
@@ -363,6 +366,57 @@ const properties = Object.freeze({
         );
         await assertRejects(() => HttpClient.request("http://example.test/", { headers: { "bad name": "x" } }), /header name/);
         await assertRejects(() => HttpClient.request("http://example.test/", { headers: { "x-test": "a\r\nb" } }), /header value/);
+    },
+
+    async "static-files"(random) {
+        const previousCwd = process.cwd();
+        const root = await mkdtemp(path.join(tmpdir(), "sloppy-static-property-"));
+        const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-_.";
+        let bytes = "";
+        for (let index = 0; index < 8 + random.int(48); index += 1) {
+            bytes += alphabet[random.int(alphabet.length)];
+        }
+        try {
+            await mkdir(path.join(root, "public"), { recursive: true });
+            await writeFile(path.join(root, "public", "asset.txt"), bytes);
+            await writeFile(path.join(root, "public", ".hidden"), "hidden");
+            process.chdir(root);
+
+            const app = Sloppy.create();
+            app.staticFiles("/assets", {
+                root: "public",
+                dotfiles: "deny",
+                range: true,
+            });
+            const host = await TestHost.create(app);
+            try {
+                const response = await host.get("/assets/asset.txt");
+                response.expectStatus(200).expectText(bytes);
+                const etag = response.headers.get("etag");
+                assert.equal(typeof etag, "string");
+
+                const conditional = await host.get("/assets/asset.txt", {
+                    headers: { "if-none-match": etag },
+                });
+                conditional.expectStatus(304).expectNoBody();
+
+                const start = random.int(Math.max(0, bytes.length - 1));
+                const ranged = await host.get("/assets/asset.txt", {
+                    headers: { range: `bytes=${start}-` },
+                });
+                ranged.expectStatus(206).expectText(bytes.slice(start));
+
+                const traversal = await host.get("/assets/%2e%2e/secret.txt");
+                traversal.expectStatus(403);
+                const hidden = await host.get("/assets/.hidden");
+                hidden.expectStatus(403);
+            } finally {
+                await host.close();
+            }
+        } finally {
+            process.chdir(previousCwd);
+            await rm(root, { recursive: true, force: true });
+        }
     },
 
     async workers(random) {
