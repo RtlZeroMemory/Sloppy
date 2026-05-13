@@ -13,6 +13,12 @@
             "-DSLOPPY_BOOTSTRAP_BUILD_DIR=${SLOPPY_BOOTSTRAP_BUILD_DIR}" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_bootstrap_api.cmake")
     add_test(
+        NAME bootstrap.stdlib.ctest_registration
+        COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_bootstrap_ctest_registration.cmake")
+    set_tests_properties(bootstrap.stdlib.ctest_registration
+                         PROPERTIES LABELS "bootstrap;ctest;conformance")
+    add_test(
         NAME examples.hello.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_hello_example.cmake")
