@@ -3409,6 +3409,7 @@ async function flushMicrotasks(count = 6) {
         value: "[redacted]",
     });
     assertThrowsMessage(() => Config.boolean("", false), /Config\.boolean key/);
+    assertThrowsMessage(() => Config.requiredSecret(""), /Config\.requiredSecret key/);
     assertThrowsMessage(() => Config.boolean("Errors:IncludeDetails", "yes"), /fallback/);
     assertThrowsMessage(
         () => Sloppy.create().useErrors({ includeDetails: Config.required("Errors:IncludeDetails") }),

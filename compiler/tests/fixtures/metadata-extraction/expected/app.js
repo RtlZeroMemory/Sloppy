@@ -2,7 +2,13 @@ const __sloppyRuntime = globalThis.__sloppy_runtime;
 if (__sloppyRuntime === undefined) {
   throw new Error("Sloppy bootstrap runtime was not loaded");
 }
-const { Results, data } = __sloppyRuntime;
+const { Results, schema, Schema, data } = __sloppyRuntime;
+
+const UserCreate = schema.object({
+  name: schema.string().min(1),
+  email: schema.string().email().optional(),
+  tags: schema.array(schema.string()).optional()
+});
 
 globalThis.__sloppy_handler_1 = (ctx) => Results.json({
   id: ctx.route.id,

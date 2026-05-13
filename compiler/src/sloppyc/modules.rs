@@ -954,6 +954,11 @@ fn extract_module_function_routes(
                             init,
                             &schema_names,
                         )? {
+                            if let Some(init_source) = source_slice(source, init.span()) {
+                                let helper_source = format!("const {name} = {init_source};");
+                                helper_sources.insert(name.to_string(), helper_source);
+                                helper_effects.entry(name.to_string()).or_default();
+                            }
                             schemas.push(schema);
                         }
                     } else if let Some((receiver, prefix, metadata)) = app_group_call(init)? {
@@ -1180,6 +1185,10 @@ fn extract_module_function_routes(
                 tags.extend(contract_metadata.tags.clone());
                 let auth = contract_metadata.auth.clone().or(inherited_auth);
                 if let Some(requirement) = &auth {
+                    if requirement.required {
+                        force_auth_required_route_v8_dispatch(&mut handler);
+                        ensure_auth_required_route_request_context(&mut handler);
+                    }
                     handler.emitted_source =
                         wrap_handler_with_auth(&handler.emitted_source, requirement);
                     handler.is_async = true;
@@ -1252,22 +1261,317 @@ pub(super) fn helper_sources_referenced_by_handler(
     handler_source: &str,
     helper_sources: &BTreeMap<String, String>,
 ) -> Vec<String> {
-    let mut selected = BTreeSet::<&str>::new();
-    let mut pending_sources = vec![handler_source];
-    while let Some(source) = pending_sources.pop() {
-        for (name, helper_source) in helper_sources {
-            let name = name.as_str();
-            if selected.contains(name) || !source_contains_identifier(source, name) {
-                continue;
-            }
-            selected.insert(name);
-            pending_sources.push(helper_source.as_str());
+    let mut selected = BTreeSet::<String>::new();
+    let mut visiting = BTreeSet::<String>::new();
+    let mut ordered = Vec::<String>::new();
+    for name in helper_sources.keys() {
+        if source_contains_identifier(handler_source, name) {
+            push_helper_source_with_dependencies(
+                name,
+                helper_sources,
+                &mut selected,
+                &mut visiting,
+                &mut ordered,
+            );
         }
     }
-    selected
-        .into_iter()
-        .filter_map(|name| helper_sources.get(name).cloned())
-        .collect()
+    ordered
+}
+
+pub(super) fn helper_sources_in_dependency_order(
+    helper_sources: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let mut selected = BTreeSet::<String>::new();
+    let mut visiting = BTreeSet::<String>::new();
+    let mut ordered = Vec::<String>::new();
+    for name in helper_sources.keys() {
+        push_helper_source_with_dependencies(
+            name,
+            helper_sources,
+            &mut selected,
+            &mut visiting,
+            &mut ordered,
+        );
+    }
+    ordered
+}
+
+fn push_helper_source_with_dependencies(
+    name: &str,
+    helper_sources: &BTreeMap<String, String>,
+    selected: &mut BTreeSet<String>,
+    visiting: &mut BTreeSet<String>,
+    ordered: &mut Vec<String>,
+) {
+    if selected.contains(name) || !visiting.insert(name.to_string()) {
+        return;
+    }
+    let Some(source) = helper_sources.get(name) else {
+        visiting.remove(name);
+        return;
+    };
+    for dependency in helper_sources.keys() {
+        if dependency == name || !helper_source_references(source, dependency) {
+            continue;
+        }
+        push_helper_source_with_dependencies(
+            dependency,
+            helper_sources,
+            selected,
+            visiting,
+            ordered,
+        );
+    }
+    visiting.remove(name);
+    selected.insert(name.to_string());
+    ordered.push(source.clone());
+}
+
+fn helper_source_references(source: &str, identifier: &str) -> bool {
+    source_contains_identifier(source, identifier)
+        && !source_declares_identifier(source.as_bytes(), identifier.as_bytes())
+}
+
+fn source_declares_identifier(source: &[u8], identifier: &[u8]) -> bool {
+    let mut index = 0usize;
+    let mut brace_depth = 0usize;
+    while index < source.len() {
+        match source[index] {
+            b'\'' | b'"' | b'`' => {
+                index = skip_js_quoted_literal(source, index);
+                continue;
+            }
+            b'/' if source.get(index + 1) == Some(&b'/') => {
+                index = skip_js_line_comment(source, index + 2);
+                continue;
+            }
+            b'/' if source.get(index + 1) == Some(&b'*') => {
+                index = skip_js_block_comment(source, index + 2);
+                continue;
+            }
+            b'{' => brace_depth += 1,
+            b'}' => brace_depth = brace_depth.saturating_sub(1),
+            b'c' if brace_depth > 0 && source_keyword_at(source, index, b"const") => {
+                if variable_declaration_declares_identifier(source, index + 5, identifier) {
+                    return true;
+                }
+                index += 5;
+                continue;
+            }
+            b'l' if brace_depth > 0 && source_keyword_at(source, index, b"let") => {
+                if variable_declaration_declares_identifier(source, index + 3, identifier) {
+                    return true;
+                }
+                index += 3;
+                continue;
+            }
+            b'v' if brace_depth > 0 && source_keyword_at(source, index, b"var") => {
+                if variable_declaration_declares_identifier(source, index + 3, identifier) {
+                    return true;
+                }
+                index += 3;
+                continue;
+            }
+            b'f' if source_keyword_at(source, index, b"function") => {
+                if function_declaration_declares_identifier(source, index + 8, identifier) {
+                    return true;
+                }
+                index += 8;
+                continue;
+            }
+            b'c' if source_keyword_at(source, index, b"class") => {
+                if named_declaration_declares_identifier(source, index + 5, identifier) {
+                    return true;
+                }
+                index += 5;
+                continue;
+            }
+            b'(' if arrow_parameters_declare_identifier(source, index, identifier) => {
+                return true;
+            }
+            _ if is_js_identifier_start(source[index])
+                && single_arrow_parameter_declares_identifier(source, index, identifier) =>
+            {
+                return true;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    false
+}
+
+fn variable_declaration_declares_identifier(
+    source: &[u8],
+    mut index: usize,
+    identifier: &[u8],
+) -> bool {
+    while index < source.len() {
+        index = skip_js_whitespace(source, index);
+        let declarator_start = index;
+        let mut depth = 0usize;
+        while index < source.len() {
+            match source[index] {
+                b'\'' | b'"' | b'`' => {
+                    index = skip_js_quoted_literal(source, index);
+                    continue;
+                }
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+                b'=' if depth == 0 => {
+                    if identifier_in_binding_segment(&source[declarator_start..index], identifier) {
+                        return true;
+                    }
+                    index = skip_initializer_to_next_declarator(source, index + 1);
+                    break;
+                }
+                b',' | b';' if depth == 0 => {
+                    if identifier_in_binding_segment(&source[declarator_start..index], identifier) {
+                        return true;
+                    }
+                    if source[index] == b';' {
+                        return false;
+                    }
+                    index += 1;
+                    break;
+                }
+                _ => {}
+            }
+            index += 1;
+        }
+        if index >= source.len() {
+            return identifier_in_binding_segment(&source[declarator_start..], identifier);
+        }
+    }
+    false
+}
+
+fn skip_initializer_to_next_declarator(source: &[u8], mut index: usize) -> usize {
+    let mut depth = 0usize;
+    while index < source.len() {
+        match source[index] {
+            b'\'' | b'"' | b'`' => {
+                index = skip_js_quoted_literal(source, index);
+                continue;
+            }
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
+            b',' if depth == 0 => return index + 1,
+            b';' if depth == 0 => return source.len(),
+            _ => {}
+        }
+        index += 1;
+    }
+    source.len()
+}
+
+fn named_declaration_declares_identifier(source: &[u8], index: usize, identifier: &[u8]) -> bool {
+    let index = skip_js_whitespace(source, index);
+    identifier_at(source, index, identifier)
+}
+
+fn function_declaration_declares_identifier(
+    source: &[u8],
+    mut index: usize,
+    identifier: &[u8],
+) -> bool {
+    index = skip_js_whitespace(source, index);
+    if identifier_at(source, index, identifier) {
+        return true;
+    }
+    while index < source.len() && source[index] != b'(' && source[index] != b'{' {
+        index += 1;
+    }
+    source.get(index) == Some(&b'(')
+        && arrow_parameters_declare_identifier(source, index, identifier)
+}
+
+fn arrow_parameters_declare_identifier(source: &[u8], start: usize, identifier: &[u8]) -> bool {
+    let Some(end) = matching_bracket(source, start, b'(', b')') else {
+        return false;
+    };
+    let after = skip_js_whitespace(source, end + 1);
+    if source.get(after..after + 2) != Some(b"=>") && !function_body_follows(source, after) {
+        return false;
+    }
+    identifier_in_binding_segment(&source[start + 1..end], identifier)
+}
+
+fn function_body_follows(source: &[u8], index: usize) -> bool {
+    source.get(index) == Some(&b'{')
+}
+
+fn single_arrow_parameter_declares_identifier(
+    source: &[u8],
+    start: usize,
+    identifier: &[u8],
+) -> bool {
+    if !identifier_at(source, start, identifier) {
+        return false;
+    }
+    let after = skip_js_whitespace(source, start + identifier.len());
+    source.get(after..after + 2) == Some(b"=>")
+}
+
+fn matching_bracket(source: &[u8], start: usize, open: u8, close: u8) -> Option<usize> {
+    if source.get(start) != Some(&open) {
+        return None;
+    }
+    let mut depth = 1usize;
+    let mut index = start + 1;
+    while index < source.len() {
+        match source[index] {
+            b'\'' | b'"' | b'`' => {
+                index = skip_js_quoted_literal(source, index);
+                continue;
+            }
+            byte if byte == open => depth += 1,
+            byte if byte == close => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    None
+}
+
+fn identifier_in_binding_segment(segment: &[u8], identifier: &[u8]) -> bool {
+    let mut index = 0usize;
+    while index + identifier.len() <= segment.len() {
+        if identifier_at(segment, index, identifier) {
+            return true;
+        }
+        index += 1;
+    }
+    false
+}
+
+fn identifier_at(source: &[u8], index: usize, identifier: &[u8]) -> bool {
+    if identifier.is_empty() || source.get(index..index + identifier.len()) != Some(identifier) {
+        return false;
+    }
+    let before = index.checked_sub(1).and_then(|before| source.get(before));
+    let after = source.get(index + identifier.len());
+    before.is_none_or(|byte| !is_js_identifier_byte(*byte))
+        && after.is_none_or(|byte| !is_js_identifier_byte(*byte))
+}
+
+fn source_keyword_at(source: &[u8], index: usize, keyword: &[u8]) -> bool {
+    identifier_at(source, index, keyword)
+}
+
+fn skip_js_whitespace(source: &[u8], mut index: usize) -> usize {
+    while source
+        .get(index)
+        .is_some_and(|byte| byte.is_ascii_whitespace())
+    {
+        index += 1;
+    }
+    index
 }
 
 pub(super) fn source_contains_identifier(source: &str, identifier: &str) -> bool {
@@ -1360,6 +1664,10 @@ fn identifier_match_is_object_key(source: &[u8], mut index: usize) -> bool {
 
 fn is_js_identifier_byte(byte: u8) -> bool {
     byte == b'$' || byte == b'_' || byte.is_ascii_alphanumeric()
+}
+
+fn is_js_identifier_start(byte: u8) -> bool {
+    byte == b'$' || byte == b'_' || byte.is_ascii_alphabetic()
 }
 
 pub(super) fn wrap_handler_with_providers_and_helpers(

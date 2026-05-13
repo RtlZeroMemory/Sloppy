@@ -167,6 +167,10 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_runtime_classic_surface.mjs")
         add_test(
+            NAME bootstrap.stdlib.secret_wrappers
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_secret_wrappers.mjs")
+        add_test(
             NAME bootstrap.stdlib.testhost_process_modes
             COMMAND
                 "${CMAKE_COMMAND}" -E env "SLOPPY_TESTHOST_CLI=$<TARGET_FILE:sloppy>"

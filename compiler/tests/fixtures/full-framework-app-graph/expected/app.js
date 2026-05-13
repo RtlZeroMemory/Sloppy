@@ -2,7 +2,7 @@ const __sloppyRuntime = globalThis.__sloppy_runtime;
 if (__sloppyRuntime === undefined) {
   throw new Error("Sloppy bootstrap runtime was not loaded");
 }
-const { Results, ProblemDetails, data, System, Environment, Process, ProcessHandle, Signals, OsError, __createFrameworkServiceProvider } = __sloppyRuntime;
+const { Results, schema, Schema, ProblemDetails, data, System, Environment, Process, ProcessHandle, Signals, OsError, __createFrameworkServiceProvider } = __sloppyRuntime;
 const __sloppy_framework_services = __createFrameworkServiceProvider();
 __sloppy_framework_services.addSingleton("ClockService", () => ({ now: "2026-01-01T00:00:00Z" }));
 const __sloppy_framework_provider_configs = new Map([["data.main", {"access":"read","connectionStringEnv":null,"connectionStringKey":null,"providerKind":"sqlite"}]]);
@@ -90,6 +90,10 @@ function __sloppy_finish_cors(result, policy, ctx) { const allowed = __sloppy_co
 function __sloppy_cors_requested_headers_allowed(policy, requestedHeaders) { if (typeof requestedHeaders !== "string" || requestedHeaders.length === 0) { return true; } const requested = requestedHeaders.split(",").map((header) => header.trim().toLowerCase()).filter((header) => header.length !== 0); return requested.every((header) => policy.headers.includes(header)); }
 function __sloppy_cors_preflight(policy, routeMethods, ctx) { const allowed = __sloppy_cors_allowed_origin(policy, __sloppy_request_header(ctx, "origin")); const requestedMethod = (__sloppy_request_header(ctx, "access-control-request-method") ?? "").toUpperCase(); const requestedHeaders = __sloppy_request_header(ctx, "access-control-request-headers"); const methods = policy.methods.length === 0 ? routeMethods : policy.methods; if (allowed === undefined || !methods.includes(requestedMethod) || !__sloppy_cors_requested_headers_allowed(policy, requestedHeaders)) { return Results.status(403); } const headers = { "Access-Control-Allow-Origin": allowed, "Access-Control-Allow-Methods": methods.join(", ") }; if (!policy.origins.includes("*")) { headers.Vary = "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"; } if (policy.credentials) { headers["Access-Control-Allow-Credentials"] = "true"; } if (policy.headers.length !== 0) { headers["Access-Control-Allow-Headers"] = policy.headers.join(", "); } if (policy.maxAgeSeconds !== null && policy.maxAgeSeconds !== undefined) { headers["Access-Control-Max-Age"] = String(policy.maxAgeSeconds); } return Results.status(204, undefined, { headers }); }
 
+const ProjectCreate = schema.object({
+  name: schema.string().min(1),
+  owner: schema.string().optional(),
+});
 class ProjectSummaryController {
   static inject = ["ClockService"];
 

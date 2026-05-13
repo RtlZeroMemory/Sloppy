@@ -1914,15 +1914,13 @@ fn extract_entry(
         .iter()
         .map(|(_, source)| source.clone())
         .collect::<Vec<_>>();
-    helper_sources.extend(
-        state
-            .helper_sources
-            .iter()
-            .filter(|(name, _)| {
-                helper_source_is_safe_for_top_level(state.helper_effects.get(*name))
-            })
-            .map(|(_, source)| source.clone()),
-    );
+    let safe_helper_sources = state
+        .helper_sources
+        .iter()
+        .filter(|(name, _)| helper_source_is_safe_for_top_level(state.helper_effects.get(*name)))
+        .map(|(name, source)| (name.clone(), source.clone()))
+        .collect::<BTreeMap<_, _>>();
+    helper_sources.extend(helper_sources_in_dependency_order(&safe_helper_sources));
     let framework_needs_os_runtime = state.routes.iter().any(|route| {
         route.handler.bindings.iter().any(|binding| {
             binding.kind == "config"
@@ -2215,7 +2213,18 @@ fn extract_variable_declaration(
             if let Some(schema) =
                 schema_declaration(path, source, source_name, name, init, &state.schema_names)?
             {
+                if let Some(init_source) = source_slice(source, init.span()) {
+                    let helper_source = format!("const {name} = {init_source};");
+                    state.helper_sources.insert(name.to_string(), helper_source);
+                    state.helper_effects.entry(name.to_string()).or_default();
+                }
                 state.schemas.push(schema);
+            } else if let Some((config_reads, helper_source)) =
+                config_bind_helper_source(name, init, source, source_name, state)
+            {
+                state.config_reads.extend(config_reads);
+                state.helper_sources.insert(name.to_string(), helper_source);
+                state.helper_effects.entry(name.to_string()).or_default();
             } else if let Some(config_reads) =
                 config_read_metadata(path, source, source_name, state, init)?
             {
@@ -2225,6 +2234,12 @@ fn extract_variable_declaration(
             } else {
                 validate_supported_initializer(path, source, source_name, state, init)?;
             }
+        } else if let Some((config_reads, helper_source)) =
+            config_bind_helper_source(name, init, source, source_name, state)
+        {
+            state.config_reads.extend(config_reads);
+            state.helper_sources.insert(name.to_string(), helper_source);
+            state.helper_effects.entry(name.to_string()).or_default();
         } else if let Some(config_reads) =
             config_read_metadata(path, source, source_name, state, init)?
         {
@@ -2377,8 +2392,19 @@ fn helper_initializer(expression: &Expression<'_>) -> Option<()> {
         | Expression::BooleanLiteral(_)
         | Expression::NullLiteral(_)
         | Expression::TemplateLiteral(_) => Some(()),
+        _ if webhooks_event_initializer(expression) => Some(()),
         _ => None,
     }
+}
+
+fn webhooks_event_initializer(expression: &Expression<'_>) -> bool {
+    let Expression::CallExpression(call) = expression else {
+        return false;
+    };
+    let Some((receiver, property)) = static_member_name(&call.callee) else {
+        return false;
+    };
+    receiver == "Webhooks" && property == "event"
 }
 
 fn extract_expression_statement(
@@ -3118,8 +3144,9 @@ use modules::source_contains_identifier;
 use modules::{
     ensure_auth_required_route_request_context, extract_relative_helper_import,
     extract_relative_module, force_auth_required_route_v8_dispatch,
-    helper_sources_referenced_by_handler, provider_has_generated_runtime_bridge,
-    providers_used_by_effects, wrap_handler_with_auth, wrap_handler_with_providers_and_helpers,
+    helper_sources_in_dependency_order, helper_sources_referenced_by_handler,
+    provider_has_generated_runtime_bridge, providers_used_by_effects, wrap_handler_with_auth,
+    wrap_handler_with_providers_and_helpers,
 };
 fn wrap_realtime_handler(handler: &mut Handler, kind: &str, metadata: &RouteMetadata) {
     match kind {
