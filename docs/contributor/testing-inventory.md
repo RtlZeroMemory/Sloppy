@@ -66,7 +66,7 @@ suite when Cargo is available. That covers:
 - JavaScript property tests for bootstrap stdlib and app-host surfaces
 - Lint and standards scanners
 
-## V8-gated lane
+## Handler Execution Lane
 
 Built and run separately:
 

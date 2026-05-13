@@ -1,8 +1,7 @@
 # Stability Reference
 
-Sloppy is public alpha, pre-production software. It is ready for experiments,
-demos, feedback, and early exploration, but not production deployments yet.
-Contracts and behavior can change between alpha revisions.
+Sloppy is public alpha software. APIs and artifact formats may change between
+alpha releases.
 
 ## Version Fields in Current Artifacts
 
@@ -45,7 +44,7 @@ Parser behavior:
 
 This matrix is the compact current-state map. `supported` means the surface is
 covered by current source and tests in that column. `experimental` means the
-surface exists in the public alpha, pre-production runtime but may change. `rejected` means the
+surface exists in the public alpha runtime but may change. `rejected` means the
 compiler refuses the input rather than emitting a partial Plan.
 
 | Feature | App-host/test-host | Compiler source input | Generated `app.js` / Plan | Native/V8 `sloppy run` | Notes |
@@ -66,7 +65,9 @@ compiler refuses the input rather than emitting a partial Plan.
 | Middleware | supported | supported static subset | supported | supported | Inline/top-level middleware is emitted into generated handlers; dynamic lookup and unsupported captures fail with `SLOPPYC_E_UNSUPPORTED_MIDDLEWARE`. |
 | CORS | supported | supported static subset | supported | supported | Literal `app.useCors({...})` policies emit response wrapping, Plan metadata, and generated `OPTIONS` preflight routes; dynamic policies fail with `SLOPPYC_E_UNSUPPORTED_CORS`. |
 | Auth | supported | supported static subset | supported | supported with V8 stdlib crypto/codec/os features | JWT bearer validates HS256 and static-key RS256 where WebCrypto is available; API keys support header validation, optional authorization-scheme keys, and static hashed keys; signed cookie sessions support sign-in/sign-out and CSRF; route/group auth supports schemes, scopes, roles, claims, policies, anonymous overrides, Plan metadata, and OpenAPI security schemes. OIDC discovery, remote JWKS fetch, OAuth flows, refresh tokens, and user management are not included. |
+| Rate limiting | supported | supported for `.rateLimit(...)` policy attachments with literal options | supported route metadata and `stdlib.rate-limit` feature marker | supported through the generated runtime wrapper over the app-host enforcer | First-party `RateLimit` covers fixed-window, sliding-window, token-bucket, and concurrency algorithms; IP/user/API-key/header/claim/route-param/custom partitions with sensitive-value hashing; bounded memory store with stats and health; `RateLimit.redis(...)` is a named adapter slot that fails closed because the first-party Redis provider is not present on `main`. WebSocket upgrades are rate-limited before the socket handler accepts. Diagnostics and metrics do not include raw partition values. |
 | Webhooks | supported | supported import metadata | Plan feature metadata | supported where data, crypto, HTTP client, and workers runtime features are active | First-party webhook API includes event descriptors, provider-backed outbox SQL templates, subscription management, transactional publish, signed delivery attempts, retry/dead-letter handling, and inbound Sloppy signature verification. Delivery is at least once, not exactly once. |
+| Jobs scheduler | supported runtime API | supported import metadata | Plan feature metadata | supported where data, time, crypto, and provider runtime features are active | `sloppy/jobs` provides provider-backed durable jobs, retries, worker leases, distributed locks, recurring five-field UTC cron schedules, redacted admin views, and SQLite scheduler CLI administration. PostgreSQL and SQL Server scheduler validation use live provider lanes. |
 | Health and management | supported | supported for legacy `app.mapHealthChecks(...)`; `app.health()` and `app.management()` are app-host APIs | legacy health metadata supported | supported for legacy health routes and app-host generated handlers | `Health`, `Metrics`, `app.health()`, and `app.management()` provide bootstrap app-host operations endpoints. Compiler extraction for the legacy health API remains separate from the richer app-host operations API. |
 | Cache | experimental | supported for `sloppy/cache` imports and static route cache metadata | supported route metadata and `stdlib.cache` feature marker | supported through app-host V8 bootstrap APIs; provider-backed caches require active data-provider bridges | `Cache.memory`, SQLite/PostgreSQL/SQL Server distributed caches, hybrid caches, cache-aside helpers, tags, TestHost overlays, metrics, health checks, response cache headers, and OutputCache are first-party app-host surfaces. Memory cache is per process. PostgreSQL and SQL Server caches require their optional live-provider setup. |
 | Services | supported | supported for literal registrations and `Service<T>` | supported | supported through generated wrappers | App-host exposes `ctx.services`; native base context does not. |
@@ -113,7 +114,7 @@ compiler refuses the input rather than emitting a partial Plan.
 | Native FFI stdlib | n/a | supported static `sloppy/ffi` declarations | `stdlib.ffi`, `native.ffi`, and `native.ffiStructs` emitted | experimental V8/libffi bridge | P/Invoke-style typed C ABI calls, refs, buffers, and pointer-based sequential structs. Unsafe boundary; wrong signatures can crash. No callbacks, variadic functions, C++ ABI, struct-by-value, async FFI, native addons, or raw pointer-call API. |
 | Examples and evidence catalog | supported categories | mixed | mixed | mixed | See `examples/README.md` for coverage classification. |
 | Package/dependency graph | n/a | experimental installed pure-JavaScript package resolver | bundled module graph, `dependencyGraph`, optional `deps.graph.json`, `sloppy deps --explain` | supported with V8 for compatible bundled modules | No registry install, semver solving, native addons, full Node HTTP/socket parity, or unrestricted runtime discovery. Resolver behavior is exercised by the committed `tests/fixtures/npm-compat/` matrix; the matrix is the regression baseline for currently tested package shapes and does not promise behavior for shapes outside it. |
-| Package/install path | n/a | n/a | package layout | experimental | Windows x64, Linux x64 glibc, and macOS npm alpha packages install the launcher, native runtime, stdlib, templates, selected docs/examples, and V8-backed handler execution. |
+| Package/install path | n/a | n/a | package layout | experimental | Windows x64, Linux x64 glibc, and macOS npm alpha packages install the launcher, native runtime, stdlib, templates, selected docs/examples, and handler execution runtime. |
 
 ## Current Limits
 

@@ -5,14 +5,14 @@ local programs. The compiler reads supported source, extracts web app or
 Program Mode metadata into a Plan, then the runtime validates and executes
 those artifacts.
 
-These docs describe current public alpha, pre-production behavior. Planned
-surfaces are marked as planned or future work.
+These docs describe current public alpha behavior. Planned surfaces are marked
+as planned or future work.
 
 ## Start Here
 
 - [Home](index.md) - docs site landing page
 - [Install](install.md) - npm, source builds, and platform notes
-- [Quickstart](quickstart.md) - create, build, experimental `sloppy dev`, and package a first API
+- [Quickstart](quickstart.md) - create, build, use `sloppy dev`, and package a first API
 - [Tutorials](tutorials/index.md) - guided paths through the app workflow
 - [Roadmap](roadmap.md) - current support and future direction
 

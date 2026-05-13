@@ -390,7 +390,8 @@ tokens, cookies, or connection strings.
   middleware path. Native request contexts also expose runtime-generated
   `ctx.requestId` for `sloppy run`.
 - Double-underscore methods are usable and tested, but remain internal-oriented surfaces.
-- Handler execution through `sloppy run` requires V8.
+- Handler execution through `sloppy run` is included in supported npm platform
+  packages. Source builds need the handler execution runtime enabled.
 - `app.useErrors(...)` is app-host behavior in this slice. Compiler/OpenAPI/audit
   support beyond the compatibility `ProblemDetails.defaults(...)` wrapper is planned
   separately.

@@ -30,18 +30,9 @@ Redis calls require:
 If the bridge is missing, client operations fail. Sloppy does not fall back to
 memory storage and does not start Redis implicitly outside `TestServices.redis`.
 Directory packages do not add a Redis bridge by themselves. Package/runtime
-Redis support is only claimed for a V8-enabled runtime lane with the outbound
-network bridge active; the default non-V8 package lane reports the existing
-V8-required runtime diagnostic instead of running Redis routes:
-
-```text
-sloppy run: runtime feature activation failed: error SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature is unavailable
-  related:
-    <unknown>: v8
-    <unknown>: target.engine
-  help:
-    requires V8-enabled build; configure the V8 runtime lane or remove the Plan feature
-```
+Redis support is only claimed for a handler-execution runtime with the outbound
+network bridge active; a source build without that runtime reports a
+required-feature diagnostic instead of running Redis routes.
 
 ## Client Options
 

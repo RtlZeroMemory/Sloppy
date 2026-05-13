@@ -91,7 +91,7 @@ request log entry.
 
 Diagnostics need negative-path tests. Good coverage includes malformed inputs, unsupported
 syntax, missing files, invalid metadata, capability denial, provider failure, cancellation,
-timeout, shutdown, and V8-gated exception cases where applicable. Goldens are semantic
+timeout, shutdown, and handler-execution exception cases where applicable. Goldens are semantic
 contracts, not output dumps.
 
 ## Deferred Work

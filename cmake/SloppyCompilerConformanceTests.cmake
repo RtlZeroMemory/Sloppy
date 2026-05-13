@@ -57,8 +57,8 @@
             conformance.users_api_sqlite.compile_artifacts users-api-sqlite
             examples/users-api-sqlite/app.js)
         sloppy_add_conformance_compile_test(
-            conformance.prealpha_control_plane.compile_artifacts prealpha-control-plane
-            examples/prealpha-control-plane/src/main.js)
+            conformance.control_plane.compile_artifacts control-plane
+            examples/control-plane/src/main.js)
         sloppy_add_conformance_compile_test(
             conformance.ops_compiler.compile_artifacts ops-compiler examples/ops-compiler/app.js)
         sloppy_add_conformance_compile_test(
@@ -134,8 +134,8 @@
             "users-api-sqlite-runtime.db" "Users.Create" "data.main" "\"findings\""
             "x-slop-capabilities")
         sloppy_add_example_tooling_test(
-            examples.prealpha_control_plane.tooling prealpha-control-plane
-            examples/prealpha-control-plane/src/main.js "prealpha-control-plane.db"
+            examples.control_plane.tooling control-plane
+            examples/control-plane/src/main.js "control-plane.db"
             "Projects.List" "data.main" "\"findings\"" "x-slop-capabilities")
         sloppy_add_example_tooling_test(
             examples.auth_api.tooling auth-api examples/auth-api/app.js "bearerAuth"

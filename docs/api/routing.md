@@ -166,7 +166,7 @@ app.get("/admin", handler)
   .requireAuth({ role: "admin" });
 ```
 
-Route auth requirements are public alpha, pre-production behavior.
+Route auth requirements are public alpha behavior.
 
 See [Auth](auth.md) for JWT bearer, API keys, roles, claims, and policies.
 
@@ -266,7 +266,7 @@ Wrap handlers with `app.use(fn)` (every later route) or `group.use(fn)`
 ## Static files
 
 `app.staticFiles(mount, options)` and `app.spa(mount, options)` are public
-alpha, pre-production build-time APIs.
+alpha build-time APIs.
 
 Use [`app.staticFiles(...)`](static-files.md) to expose a project-relative
 directory and [`app.spa(...)`](static-files.md) to host a browser app with an

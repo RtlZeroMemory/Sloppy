@@ -2,7 +2,7 @@
 
 Sloppy's JavaScript stdlib is runtime code. It is not sample glue, frontend
 code, or a place for compatibility theater. Keep it small, explicit, testable,
-and honest about pre-alpha boundaries.
+and honest about alpha boundaries.
 
 ## Module Boundaries
 

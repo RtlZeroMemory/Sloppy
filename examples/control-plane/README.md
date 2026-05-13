@@ -1,9 +1,8 @@
-# Pre-alpha control plane
+# Control plane
 
-This is a multi-file contributor/internal example for the current Sloppy
-app-host and source-input path. It models a small deployment control plane with
-projects, apps, builds, deployments, diagnostics, health routes, and a SQLite
-provider.
+This is a multi-file example for Sloppy app-host and source-input coverage. It
+models a small deployment control plane with projects, apps, builds,
+deployments, diagnostics, health routes, and a SQLite provider.
 
 The example is intentionally plain JavaScript source with no `package.json`.
 No npm package scope is required. The compiler resolves `"sloppy"` and relative
@@ -11,18 +10,18 @@ imports from the project root.
 
 ## What it covers
 
-- `sloppy build` and `sloppy run` project-mode dogfood through `sloppy.json`.
+- `sloppy build` and `sloppy run` project-mode execution through `sloppy.json`.
 - Function modules registered through `app.useModule(...)`.
 - Route groups, named routes, path params, query params, JSON request bodies,
   `Results.created`, `Results.badRequest`, and `Results.notFound`.
 - SQLite provider metadata and the `data.main` capability in emitted plans.
 - App test host dispatch against the same route modules in
-  `tests/bootstrap/test_prealpha_control_plane_dogfood.mjs`.
+  `tests/bootstrap/test_control_plane_dogfood.mjs`.
 
 ## Current coverage
 
 Default non-V8 lanes compile the project and verify that `sloppy run` emits
-artifacts before reporting the required V8 diagnostic. The V8-gated lane runs:
+artifacts before reporting the required handler-execution diagnostic. The handler-execution lane runs:
 
 ```powershell
 sloppy run --once GET /projects?owner=runtime

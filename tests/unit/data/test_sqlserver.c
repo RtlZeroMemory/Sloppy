@@ -44,6 +44,7 @@ static bool diag_has_hint_containing(const SlDiag* diag, const char* expected)
     return false;
 }
 
+#ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
 static bool diag_contains_text(const SlDiag* diag, const char* expected)
 {
     const size_t expected_length = strlen(expected);
@@ -60,6 +61,7 @@ static bool diag_contains_text(const SlDiag* diag, const char* expected)
     }
     return diag_has_hint_containing(diag, expected);
 }
+#endif
 
 static const char* classify_live_open_failure(const SlDiag* diag)
 {

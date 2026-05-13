@@ -1,7 +1,7 @@
 # SQLite Basic Example
 
 This is a SQLite provider API-shape example with native provider coverage in C tests and a
-separate V8-gated SQLite runtime fixture.
+separate SQLite runtime fixture.
 
 This example shows the intended bootstrap shape for registering SQLite as `data.main`,
 using in-memory configuration, and writing query-template-based route code.
@@ -43,10 +43,10 @@ Current product state:
   shape are planned separately.
 - The bounded `sloppy run` path currently loads generated artifacts, not this
   source-stdlib SQLite example directly.
-- Executable SQLite runtime coverage currently lives in the internal V8-gated artifact
-  fixture.
+- Executable SQLite runtime coverage currently lives in the handler-execution
+  artifact fixture.
 - PostgreSQL and SQL Server providers are covered by their own examples and tests.
-- PostgreSQL has its own V8-gated true-async bridge and live PostgreSQL checks.
+- PostgreSQL has its own true-async bridge and live PostgreSQL checks.
 - ORM, migrations, expanded pooling, public prepared statement handles, and mid-operation
   interruption are separate SQLite/provider features.
 - Bare `"sloppy"` imports are the current source shape for this example.

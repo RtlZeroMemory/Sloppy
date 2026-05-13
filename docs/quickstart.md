@@ -1,9 +1,7 @@
 # Quickstart
 
-A Sloppy API in under five minutes. Sloppy is public alpha,
-pre-production software: this flow is useful for experiments, demos, and
-feedback, but not a production deployment recipe. You'll create a project,
-build artifacts, and run a request through the runtime.
+A Sloppy API in under five minutes. You'll create a project, build artifacts,
+run a request through the runtime, and package the app.
 
 Prerequisites:
 
@@ -137,12 +135,9 @@ the artifacts:
 sloppy run src/main.ts --once GET /hello/Ada
 ```
 
-For a normal edit-refresh loop, use experimental `sloppy dev` from the project
-directory. Its behavior may change during the public alpha, pre-production
-period.
+For a normal edit-refresh loop, use `sloppy dev` from the project directory.
 
 ```sh
-# Experimental.
 sloppy dev
 ```
 

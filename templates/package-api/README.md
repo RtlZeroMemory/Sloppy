@@ -1,6 +1,6 @@
 # Package API Starter
 
-This public alpha, pre-production backend starter uses a compatible local
+This public alpha backend starter uses a compatible local
 pure-JS package through an npm `file:` dependency. It does not require internet
 access.
 

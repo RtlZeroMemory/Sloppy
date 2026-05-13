@@ -15,7 +15,7 @@ Build artifacts:
 cargo run --manifest-path compiler/Cargo.toml -- build examples/request-context/app.js --out .sloppy-test
 ```
 
-Run one deterministic request with a V8-enabled build:
+Run one deterministic request with a handler-capable build:
 
 ```powershell
 .\build\windows-relwithdebinfo\sloppy.exe run --artifacts .sloppy-test --once GET /users/123?q=abc

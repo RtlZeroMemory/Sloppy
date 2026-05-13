@@ -1,6 +1,6 @@
 # Node Compatibility Starter
 
-This public alpha, pre-production Program Mode starter demonstrates explicit
+This public alpha Program Mode starter demonstrates explicit
 supported Node compatibility shims. Sloppy is not full Node. Unsupported
 builtins fail clearly, and the shim set grows over time.
 

@@ -5,7 +5,9 @@ Create a minimal API, build artifacts, and run one request.
 ## Prerequisites
 
 - `sloppy` is installed. See [Install](../install.md).
-- Handler execution requires a V8-enabled runtime package or source build.
+- Supported npm platform packages include the runtime needed to execute
+  handlers. Source builds need the V8 SDK restored before building that
+  runtime.
 
 ## Create
 
@@ -53,9 +55,9 @@ Expected body:
 {"hello":"Ada"}
 ```
 
-If this reports `requires V8-enabled build`, the CLI is installed but handler
-execution is not available in that package/build. The build artifacts remain
-valid.
+If this reports that handler execution requires a V8-enabled build, the CLI is
+installed but that source-built runtime cannot execute handlers. The build
+artifacts remain valid.
 
 ## Inspect Routes
 

@@ -30,7 +30,7 @@ Options:
 `TypeError`.
 
 ProblemDetails integration is part of the current public alpha,
-pre-production app-host and framework surface that consumes the descriptor.
+alpha app-host and framework surface that consumes the descriptor.
 
 `ProblemDetails.defaults(...)` uses the same safe handler-error machinery as
 `app.useErrors(...)`, with missing-route handling disabled for compatibility.

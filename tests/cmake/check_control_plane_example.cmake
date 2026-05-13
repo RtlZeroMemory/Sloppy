@@ -2,7 +2,7 @@ if(NOT DEFINED PROJECT_SOURCE_DIR)
     message(FATAL_ERROR "PROJECT_SOURCE_DIR is required")
 endif()
 
-set(example_dir "${PROJECT_SOURCE_DIR}/examples/prealpha-control-plane")
+set(example_dir "${PROJECT_SOURCE_DIR}/examples/control-plane")
 set(example_main "${example_dir}/src/main.js")
 set(example_readme "${example_dir}/README.md")
 
@@ -24,12 +24,12 @@ foreach(required_file IN ITEMS
         "${example_dir}/src/validation/schemas.js"
         "${example_readme}")
     if(NOT EXISTS "${required_file}")
-        message(FATAL_ERROR "Missing prealpha-control-plane example file: ${required_file}")
+        message(FATAL_ERROR "Missing control-plane example file: ${required_file}")
     endif()
 endforeach()
 
 if(EXISTS "${example_dir}/package.json")
-    message(FATAL_ERROR "prealpha-control-plane must not introduce package-manager scope.")
+    message(FATAL_ERROR "control-plane must not introduce package-manager scope.")
 endif()
 
 function(require_token haystack token description)
@@ -53,7 +53,7 @@ foreach(required_pattern IN ITEMS
         "import { sqlite } from \"sloppy/providers/sqlite\";"
         "Sloppy.create()"
         "ProblemDetails.defaults()"
-        "sqlite(\"main\", { database: \"prealpha-control-plane.db\" })"
+        "sqlite(\"main\", { database: \"control-plane.db\" })"
         "app.useModule(healthModule)"
         "app.useModule(projectsModule)"
         "app.useModule(appsModule)"
@@ -62,7 +62,7 @@ foreach(required_pattern IN ITEMS
         "app.useModule(diagnosticsModule)"
         "export default app;")
     require_token("${main_source}" "${required_pattern}"
-                  "prealpha-control-plane main source is missing expected app-host shape")
+                  "control-plane main source is missing expected app-host shape")
 endforeach()
 
 foreach(route_source IN ITEMS
@@ -73,7 +73,7 @@ foreach(route_source IN ITEMS
         "${deployments_source}"
         "${diagnostics_source}")
     require_token("${route_source}" "import { Results } from \"sloppy\";"
-                  "prealpha-control-plane route module is missing file-local Results import")
+                  "control-plane route module is missing file-local Results import")
 endforeach()
 
 foreach(required_pattern IN ITEMS
@@ -87,7 +87,7 @@ foreach(required_pattern IN ITEMS
         ".withName(\"Projects.Create\")"
         ".withName(\"Projects.Get\")")
     require_token("${projects_source}" "${required_pattern}"
-                  "prealpha-control-plane projects route is missing expected dogfood shape")
+                  "control-plane projects route is missing expected dogfood shape")
 endforeach()
 
 foreach(required_pattern IN ITEMS
@@ -95,35 +95,35 @@ foreach(required_pattern IN ITEMS
         ".withName(\"Apps.Create\")"
         ".withName(\"Apps.Get\")")
     require_token("${apps_source}" "${required_pattern}"
-                  "prealpha-control-plane apps route is missing expected dogfood shape")
+                  "control-plane apps route is missing expected dogfood shape")
 endforeach()
 
 foreach(required_pattern IN ITEMS
         ".withName(\"Builds.Create\")"
         ".withName(\"Builds.List\")")
     require_token("${builds_source}" "${required_pattern}"
-                  "prealpha-control-plane builds route is missing expected dogfood shape")
+                  "control-plane builds route is missing expected dogfood shape")
 endforeach()
 
 foreach(required_pattern IN ITEMS
         ".withName(\"Deployments.Create\")")
     require_token("${deployments_source}" "${required_pattern}"
-                  "prealpha-control-plane deployments route is missing expected dogfood shape")
+                  "control-plane deployments route is missing expected dogfood shape")
 endforeach()
 
 foreach(required_pattern IN ITEMS
         ".withName(\"Diagnostics.Recent\")"
         "dogfood app bootstrapped")
     require_token("${diagnostics_source}" "${required_pattern}"
-                  "prealpha-control-plane diagnostics route is missing expected dogfood shape")
+                  "control-plane diagnostics route is missing expected dogfood shape")
 endforeach()
 
 foreach(required_pattern IN ITEMS
-        "# Pre-alpha control plane"
-        "`sloppy build` and `sloppy run` project-mode dogfood"
+        "# Control plane"
+        "`sloppy build` and `sloppy run` project-mode execution"
         "Current coverage"
         "Current limits"
         "No npm package scope is required")
     require_token("${readme_source}" "${required_pattern}"
-                  "prealpha-control-plane README is missing required scope text")
+                  "control-plane README is missing required scope text")
 endforeach()

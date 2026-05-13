@@ -1,6 +1,6 @@
 # CLI Starter
 
-This public alpha, pre-production CLI starter is shaped like a practical local
+This public alpha CLI starter is shaped like a practical local
 tool. It has a command dispatcher, subcommands, filesystem inspection, safe
 platform indicators, clear exit codes, and the packaged CLI flow.
 

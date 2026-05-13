@@ -7,10 +7,11 @@ Release dry-runs may build packages, verify checksums, upload workflow
 artifacts, and record validation output. Publishing, signing/notarization, and
 package-manager metadata are separate release steps.
 
-GitHub Release archives are the canonical future distribution artifacts. npm
-packages are launcher packages around tested archive contents only. They must
-not build native code, fetch or build V8 during install, use `node-gyp`, or
-imply that Sloppy apps can import arbitrary npm packages.
+The alpha packages are prepared under `@slopware`. GitHub Release archives are
+the canonical future distribution artifacts. npm packages are launcher
+packages around tested archive contents only. They must not build native code,
+fetch or build V8 during install, use `node-gyp`, or imply that Sloppy apps can
+import arbitrary npm packages.
 
 The npm publish workflow consumes tarballs produced by the release artifact
 lane. Platform packages are published before the root

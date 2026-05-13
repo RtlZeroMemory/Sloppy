@@ -1,6 +1,6 @@
 # Install
 
-The public alpha, pre-production package is `@slopware/sloppy`.
+Install the public alpha package from npm:
 
 ```sh
 npm install -g @slopware/sloppy@alpha
@@ -43,6 +43,9 @@ ok
 The root package installs a small launcher plus the matching supported
 platform package through npm optional dependencies. It does not build native
 code during install, run `node-gyp`, or download V8 in `postinstall`.
+Supported npm platform packages include the runtime needed to execute
+handlers. You do not need to build or download V8 separately when installing a
+supported package from npm.
 
 For editor IntelliSense in an app workspace, install the package locally as a
 dev dependency too:
@@ -75,13 +78,32 @@ Linux x64:
 ```sh
 ./tools/unix/bootstrap.sh
 ./tools/unix/dev.sh doctor
-./tools/unix/dev.sh build-v8
 ./tools/unix/dev.sh configure --enable-v8
 ./tools/unix/dev.sh build
 ```
 
+`./tools/unix/dev.sh doctor` first tries to resolve an existing Sloppy-owned V8
+SDK at `.sdeps/v8/linux-x64` (or wherever `SLOPPY_V8_ROOT` points). If a usable
+SDK is already in place, `configure --enable-v8` and `build` pick it up
+directly.
+
+If no SDK is found, build it once with:
+
+```sh
+./tools/unix/dev.sh build-v8
+```
+
+`build-v8` is the advanced contributor fallback that produces the pinned V8 SDK
+from source. Re-run it only when the pinned V8 revision changes. After the
+first successful run the SDK is cached under `.sdeps/v8/`, and subsequent
+contributor builds just need `configure --enable-v8` + `build`.
+
 Full toolchain notes live in
 [Building from source](contributor/building-from-source.md).
+
+Source builds restore or use the V8 SDK artifact/cache before building a
+runtime that executes handlers. npm users do not need any of this — supported
+npm platform packages already include that runtime.
 
 ## Build a local archive
 
@@ -108,17 +130,18 @@ Extracted packages include `bin/`, `stdlib/`, `templates/`, selected docs and
 examples, and `manifest.json`. SDK headers and import libraries are not part of
 the runtime package.
 
-## V8 and handler execution
+## Handler execution runtime
 
 `sloppy build`, `routes`, `capabilities`, `doctor`, `audit`, `openapi`, and
 `package` read metadata and artifacts. `sloppy run` executes handlers, so it
-needs a V8-enabled runtime package or source build.
+needs a runtime with handler execution support.
 
-If `sloppy run` reports that a V8-enabled build is required, the CLI is present
-but that runtime cannot execute handlers.
+Supported npm platform packages include that runtime. If a source-built CLI
+reports that a V8-enabled build is required, the CLI is present but that build
+cannot execute handlers.
 
 The normal Quickstart does not require extra native setup. SQLite is included
-with the runtime package. V8 is part of the V8-enabled runtime package.
+with the runtime package.
 PostgreSQL client support is only needed for apps that use the PostgreSQL
 provider or PostgreSQL migrations. Microsoft ODBC Driver 17 or 18 is only
 needed for apps that use the SQL Server provider or SQL Server migrations.

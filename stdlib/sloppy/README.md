@@ -93,8 +93,8 @@ lib/sloppy/bootstrap/sloppy/
   runtime path. `TestServices` exposes honest live PostgreSQL and SQL Server
   helpers that return `SKIPPED` service metadata when the env var or native
   bridge is unavailable. The dogfood proof in
-  `tests/bootstrap/test_prealpha_control_plane_dogfood.mjs` imports the
-  `examples/prealpha-control-plane` route modules through this host.
+  `tests/bootstrap/test_control_plane_dogfood.mjs` imports the
+  `examples/control-plane` route modules through this host.
 - `testservices.js` provides experimental `TestServices`, the opt-in Docker-backed
   PostgreSQL, SQL Server, and Redis test service layer. It uses `sloppy/os` process
   APIs for Docker CLI lifecycle, `sloppy/data` provider bridges or the Redis client

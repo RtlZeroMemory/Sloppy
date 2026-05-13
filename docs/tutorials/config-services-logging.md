@@ -5,8 +5,8 @@ literal when you want the compiler to extract metadata.
 
 ## Start From The API Template
 
-The `api` starter is a public alpha, pre-production template. It is suitable for experimenting
-with Sloppy's backend shape, but it is not a production-stability promise.
+The `api` starter is a public alpha template. It is suitable for experimenting
+with Sloppy's backend shape, but it is not a stable API contract.
 
 ```sh
 sloppy create config-api --template api
@@ -67,5 +67,5 @@ sloppy doctor .sloppy
 sloppy run .sloppy --once GET /message/Ada
 ```
 
-Expected result: `doctor` reports Plan health, and a V8-enabled runtime returns
+Expected result: `doctor` reports Plan metadata, and a handler-capable runtime returns
 a JSON response for `/message/Ada`.

@@ -15,7 +15,7 @@ design areas.
 | Platform | Archive | Package root | Current status |
 | --- | --- | --- | --- |
 | Windows x64 | `sloppy-windows-x64.zip` | `sloppy-windows-x64` | Experimental dry-run package lane. |
-| Linux x64 | `sloppy-linux-x64.tar.gz` | `sloppy-linux-x64` | Experimental dry-run package lane; V8 runtime-user evidence requires the Sloppy-owned Linux x64 SDK and `test-package --require-v8-runtime`. |
+| Linux x64 | `sloppy-linux-x64.tar.gz` | `sloppy-linux-x64` | Experimental dry-run package lane; handler execution evidence requires the Sloppy-owned Linux x64 SDK and `test-package --require-v8-runtime`. |
 | macOS arm64 | `sloppy-macos-arm64.tar.gz` | `sloppy-macos-arm64` | Supported macOS alpha package lane. |
 | macOS x64 | `sloppy-macos-x64.tar.gz` | `sloppy-macos-x64` | Supported macOS alpha package lane. |
 
@@ -67,8 +67,9 @@ selects an installed platform package:
 - `@slopware/sloppy-darwin-x64`
 
 npm package dry-runs must use `--tag alpha`, never `latest`. Platform package
-contents are generated from already-built archive contents; npm install must
-not compile native code, run `node-gyp`, build V8, or download V8 in
+contents are generated from already-built archive contents; supported npm
+platform packages include the runtime needed to execute handlers. npm install
+must not compile native code, run `node-gyp`, build V8, or download V8 in
 `postinstall`.
 
 The main package must stay lean. It must include TypeScript declarations for

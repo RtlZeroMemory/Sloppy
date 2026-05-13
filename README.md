@@ -7,21 +7,20 @@
 [![CI](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/RtlZeroMemory/Slop/actions/workflows/codeql.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/codeql.yml)
 [![npm alpha](https://img.shields.io/npm/v/@slopware/sloppy/alpha?label=npm%20alpha)](https://www.npmjs.com/package/@slopware/sloppy)
-![public alpha, pre-production](https://img.shields.io/badge/status-public%20alpha%2C%20pre--production-yellow)
+![public alpha](https://img.shields.io/badge/status-public%20alpha-yellow)
 ![license](https://img.shields.io/badge/license-see%20LICENSE-blue)
 
-> Public alpha, pre-production TypeScript runtime and application framework for backend apps, tools, and local programs.
+> Compiler-first TypeScript backend runtime and application framework for APIs, tools, and packaged app artifacts.
 
-Sloppy is a public alpha, pre-production TypeScript runtime built around a
-compiler-visible app model. You write supported TypeScript, `sloppyc` lowers
-the source into a structured Plan, and the native runtime executes that known
-shape through an isolated V8 bridge.
+Sloppy is a TypeScript runtime built around a compiler-visible app model. You
+write supported TypeScript, `sloppyc` lowers the source into a structured Plan,
+and the native runtime executes that known shape through an isolated V8 bridge.
 
 Sloppy has two current execution shapes:
 
-- **Web apps** ? routes, middleware, Results, OpenAPI, HTTP runtime, and app
+- **Web apps** - routes, middleware, Results, OpenAPI, HTTP runtime, and app
   metadata.
-- **Program Mode** ? route-free console-style tools with `main(args, ctx)`,
+- **Program Mode** - route-free console-style tools with `main(args, ctx)`,
   stdlib imports, packaging, and artifact execution.
 
 The Plan contains the parts a backend runtime usually has to discover while the
@@ -66,9 +65,9 @@ sloppy run src/main.ts -- Ada
 
 More detail: [Program Mode](docs/guide/program-mode.md).
 
-Public alpha, pre-production means Sloppy is ready for experiments, demos,
-feedback, and early exploration, but not production deployments yet. APIs and
-artifact formats may still change.
+Sloppy is public alpha software. The current package is useful for
+experiments, examples, and feedback while APIs and artifact formats continue
+to settle.
 
 ## Start here
 
@@ -86,10 +85,17 @@ available under [`docs/`](docs/README.md).
 
 ## Install
 
-The public alpha, pre-production package is:
+Install the public alpha package:
 
 ```sh
 npm install -g @slopware/sloppy@alpha
+```
+
+For editor IntelliSense in an app workspace, install the same package locally
+as a development dependency:
+
+```sh
+npm install --save-dev @slopware/sloppy@alpha
 ```
 
 Create, build, inspect, and run the recommended API starter:
@@ -109,12 +115,11 @@ sloppy run .sloppy/package --once GET /health
 For an edit-refresh loop from the same project:
 
 ```sh
-# Experimental.
 sloppy dev
 ```
 
-`sloppy dev` is experimental and may change during the public alpha,
-pre-production period.
+`sloppy dev` rebuilds watched inputs and restarts the local server after
+successful builds.
 
 Create and package a route-free Program Mode tool:
 
@@ -150,7 +155,8 @@ Sloppy explores a different shape:
   process.
 
 Current web-app features include routing, Results, middleware, CORS, health
-checks, JWT/API-key/session auth, config metadata, OpenAPI, SQLite/migrations,
+checks, JWT/API-key/session auth, config metadata, OpenAPI, data providers,
+ORM, cache, Redis, outbound HTTP clients, background jobs,
 package/dependency graph inspection, and Plan-based audit/doctor commands.
 
 The developer experience is closer to ASP.NET Core Minimal APIs than to an
@@ -167,6 +173,24 @@ For a practical comparison, see
 
 ## What works today
 
+Sloppy ships a first-party backend stack in the runtime — no separate router,
+DI container, validation library, OpenAPI plugin, request-logging middleware,
+or test harness to wire up:
+
+- routing &amp; results, middleware, CORS, security headers, sessions, auth;
+- request IDs, request logging, request context, ProblemDetails;
+- config &amp; services, structured logging, health, metrics, management;
+- data providers (SQLite, PostgreSQL, SQL Server), cursors, ORM, and `sloppy db` migrations;
+- memory/provider/Redis-backed cache, output cache, and cache headers;
+- first-party Redis client, Redis-backed cache, and Redis locks;
+- named and typed HTTP clients with TestHost mocks and resilience policy;
+- OpenAPI emission, static files, realtime &amp; WebSockets, webhooks, workers, durable jobs;
+- Program Mode for route-free tools and packaged app artifacts;
+- TestHost and TestServices for first-party integration testing.
+
+Surface-by-surface support and current alpha boundaries are tracked in
+[docs/reference/stability.md](docs/reference/stability.md).
+
 - **App and routing.** `Sloppy.create()`, route registration, route groups,
   controller-style classes, route parameters, query/header/body bindings, and
   generated route metadata.
@@ -182,23 +206,37 @@ For a practical comparison, see
 - **Data providers.** SQLite is embedded and has the strongest end-to-end path.
   PostgreSQL and SQL Server are optional provider features with metadata,
   provider-specific diagnostics, and opt-in live lanes for apps that use those
-  databases.
+  databases. Cursor APIs support incremental reads without materializing the
+  whole result set.
+- **Cache and Redis.** Sloppy includes bounded memory cache, provider-backed
+  distributed caches, Redis-backed cache, output cache metadata, a first-party
+  Redis client, and Redis single-key locks. Redis runtime use requires a Redis
+  server and the Sloppy outbound network bridge.
+- **Durable jobs.** `sloppy/jobs` provides provider-backed jobs, retries,
+  worker leases, recurring five-field UTC cron schedules, distributed locks,
+  and a SQLite admin CLI.
+- **Outbound HTTP.** `Http` provides named and typed clients, generated clients
+  from OpenAPI, retry/circuit-breaker/bulkhead policy, service registration,
+  and TestHost mocks over the lower-level `HttpClient` transport.
 - **HTTP runtime.** HTTP/1.1, bounded keep-alive, opt-in TLS, and experimental
   HTTP/2 over TLS ALPN plus h2c prior knowledge and Upgrade handling.
 - **Network client.** `HttpClient` supports HTTP/1.1, explicit h2/h2c, pooled
   h2 multiplexing, and HTTPS `auto` ALPN selection where the private outbound
   TLS bridge is available.
-- **CLI tooling.** `sloppy create`, `build`, `dev`, `run`, `routes`, `deps`,
-  `capabilities`, `doctor`, `audit`, `openapi`, and `package`.
+- **CLI tooling.** `sloppy create`, `build`, `dev`, `run`, `package`, `routes`,
+  `health`, `metrics`, `deps`, `capabilities`, `doctor`, `audit`, `openapi`,
+  `db status|migrate`, `orm migration add|script|status|apply`, and `jobs`
+  SQLite scheduler administration.
 - **Program Mode.** Route-free source files can compile to Program Plans with
   opaque metadata and a generated `main`/default/top-level entrypoint.
   `main(args, ctx)` receives arguments after `--` and a Program context.
   Console output, numeric exit codes, stdlib imports, compatible installed
   pure-JavaScript packages, and `sloppy run .sloppy/package -- ...` are
-  supported on V8-enabled builds.
+  supported on the alpha npm platform packages and source builds configured
+  with handler execution support.
 - **Stdlib.** App host, routing, results, config, services, logging,
-  capabilities, data, schema, filesystem, network, OS, process boundary, time,
-  crypto, codec, and workers.
+  capabilities, data, ORM, cache, Redis, jobs, schema, filesystem, network,
+  HTTP clients, OS, process boundary, time, crypto, codec, and workers.
 - **Templates and examples.** `api`, `minimal-api`, `program`, `cli`,
   `package-api`, and `node-compat` templates, plus source examples under
   [`examples/`](examples/README.md).
@@ -206,15 +244,15 @@ For a practical comparison, see
 Surface-by-surface status is tracked in
 [Stability Reference](docs/reference/stability.md).
 
-## What public alpha, pre-production means
+## Current limits
 
-Sloppy is usable for experiments, demos, and feedback. It is not hardened as a
-production edge runtime.
+Sloppy is public alpha software. Keep these boundaries in mind when you build
+with it:
 
 Current limits:
 
-- API and artifact formats can change between alpha revisions.
-- Package/dependency support is experimental. Sloppy consumes existing
+- API and artifact formats may change between alpha releases.
+- Package/dependency support consumes existing
   installed pure-JavaScript packages when they can be resolved, transformed,
   bundled, and executed inside Sloppy's runtime boundary. It does not install
   from a registry or solve semver ranges.
@@ -247,7 +285,7 @@ dependency story, native interop, and production-hardening direction.
 
 ## Documentation
 
-- [Quickstart](docs/quickstart.md) - create, build, run, experimental dev-watch, and package a first API
+- [Quickstart](docs/quickstart.md) - create, build, run, use the dev loop, and package a first API
 - [Install](docs/install.md) - npm, source builds, and platform notes
 - [Tutorials](docs/tutorials/index.md) - guided app-building path
 - [API](docs/api/index.md) - first-party stdlib and app APIs
@@ -260,9 +298,9 @@ dependency story, native interop, and production-hardening direction.
 
 ## Contributing and feedback
 
-Sloppy is public alpha, pre-production software. Reports from real attempts are
-useful: install problems, confusing diagnostics, examples that do not match
-behavior, missing docs, and small API paper cuts.
+Reports from real attempts are useful: install problems, confusing
+diagnostics, examples that do not match behavior, missing docs, and small API
+paper cuts.
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [Contributor docs](docs/contributor/index.md)

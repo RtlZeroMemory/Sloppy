@@ -2,7 +2,7 @@
 
 Build a web project, start the local development server, and rebuild on
 project file changes. This command is experimental; behavior and support may
-change during the public alpha, pre-production period.
+change during the public alpha period.
 
 ```text
 sloppy dev [source]

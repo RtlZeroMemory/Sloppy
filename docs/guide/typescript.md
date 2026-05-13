@@ -12,6 +12,40 @@ extraction rules lives in
 the canonical acceptance source is the fixture suite under
 `compiler/tests/fixtures/`.
 
+## Editor IntelliSense
+
+`@slopware/sloppy` ships TypeScript declaration files. The root `sloppy`
+import has types, and supported public subpath imports such as `sloppy/data`,
+`sloppy/fs`, `sloppy/os`, and `sloppy/providers/sqlite` have types.
+
+Install the package inside each app workspace when you want local editor
+IntelliSense:
+
+```sh
+npm install --save-dev @slopware/sloppy@alpha
+```
+
+Templates include editor-friendly TypeScript config where applicable. After
+the dependency is installed, IntelliSense comes from the normal TypeScript
+language service used by your editor.
+
+```ts
+import { Sloppy, Results, schema } from "sloppy";
+
+const app = Sloppy.create();
+
+app.get("/health", () => Results.text("ok"));
+```
+
+Sloppy compiler diagnostics are separate from TypeScript editor diagnostics.
+`sloppyc` extracts Sloppy app metadata and transforms supported source; it is
+not a full TypeScript type checker. A Sloppy language server is not implemented
+today.
+
+The current declarations provide the public alpha typing surface. Some APIs
+have basic declarations that will deepen over alpha releases as the public
+contracts settle.
+
 ## Inputs
 
 - File extensions: `.js`, `.mjs`, `.ts`.
@@ -107,6 +141,33 @@ functions, modules) is broader, but:
 If a syntactic feature isn't covered by a fixture, treat it as
 unverified — file an issue or check the diagnostic if the compiler
 rejects it.
+
+## Editor support and IntelliSense
+
+For editor autocomplete, hover, and go-to-definition in an app workspace,
+install `@slopware/sloppy` as a development dependency:
+
+```sh
+npm install --save-dev @slopware/sloppy@alpha
+```
+
+The package ships TypeScript declarations (`.d.ts`) for the `sloppy` entry and
+supported subpath imports (currently `sloppy/data`, `sloppy/fs`, `sloppy/os`,
+and `sloppy/providers/sqlite`). Your editor picks them up through normal
+TypeScript module resolution against your project's `tsconfig.json`.
+
+TypeScript IntelliSense in your editor and Sloppy's compiler diagnostics are
+separate signals:
+
+- Editor IntelliSense comes from `tsc` and the TypeScript Language Service
+  using your `tsconfig.json`. It tells you about TypeScript types.
+- Sloppy diagnostics (`SLOPPYC_*`) come from `sloppyc` during `sloppy build`.
+  They tell you whether the compiler can extract a complete Plan from the
+  source.
+
+A dedicated Sloppy language server is not part of the current alpha. Treat
+editor IntelliSense as an authoring aid; treat `sloppy build` diagnostics as
+the contract.
 
 ## Imports
 

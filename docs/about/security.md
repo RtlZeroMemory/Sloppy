@@ -36,7 +36,7 @@ documents what Sloppy does today and what it doesn't.
   V8 intrinsics, but once enabled they perform real OS calls. Treat
   capability checks as policy, not a sandbox; if you need process
   isolation, that's the OS's job.
-- **Replace an identity provider.** Sloppy's public alpha, pre-production auth
+- **Replace an identity provider.** Sloppy's public alpha auth
   stack covers HS256 JWT bearer tokens, API keys, route requirements, roles,
   claims, and policies.
   It does not implement OIDC discovery, JWKS, OAuth flows, refresh tokens, or

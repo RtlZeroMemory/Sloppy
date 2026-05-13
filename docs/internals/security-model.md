@@ -136,7 +136,7 @@ runtime secret/config hand-off design.
 - **OS sandboxing.** Capabilities are policy declarations; they don't
   prevent native code or kernel bugs from misbehaving. If you need
   process isolation, that's the OS's job.
-- **Identity-provider features.** Sloppy's public alpha, pre-production auth
+- **Identity-provider features.** Sloppy's public alpha auth
   stack covers JWT bearer tokens, API keys, signed cookie sessions, CSRF,
   route requirements, scopes, roles, claims, and policies. Static JWKS-shaped
   key material can be configured locally for `kid` lookup. OIDC discovery,
@@ -146,7 +146,7 @@ runtime secret/config hand-off design.
   secrets, AWS Secrets Manager, Vault) to inject values via
   environment variables.
 - **Threat modeling for production deployment.** Sloppy is public alpha,
-  pre-production software. The bridge boundaries and redaction give you a
+  alpha software. The bridge boundaries and redaction give you a
   reasonable foundation; production posture is your responsibility for now.
 
 ## Reporting issues
@@ -164,7 +164,7 @@ the repository profile). We acknowledge and coordinate disclosure.
 - **V8 bridge boundary tests** verify that native pointers don't escape
   and that resource generation checks work.
 - **TLS transport** lanes cover certificate path validation and handshake
-  behavior. V8-gated run lanes cover compiled handler execution separately.
+  behavior. Handler-execution run lanes cover compiled handler execution separately.
 
 ## See also
 

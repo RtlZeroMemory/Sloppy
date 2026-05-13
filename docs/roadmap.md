@@ -1,6 +1,6 @@
 # Roadmap
 
-Sloppy is public alpha, pre-production software. This page separates what
+Sloppy is public alpha software. This page separates what
 exists now from the directions that are still being designed.
 
 ## Current Runtime
@@ -9,7 +9,8 @@ Current Sloppy includes:
 
 - compiler source input for the supported app subset;
 - deterministic Plan-backed artifacts;
-- V8-backed handler execution on V8-enabled builds and alpha packages;
+- handler execution in supported alpha platform packages and source builds
+  configured with the runtime engine;
 - Program Mode for route-free console tools, local automation, packaged
   programs, and stdlib-backed worker entrypoints;
 - `sloppy create`, `build`, `run`, `routes`, `deps`, `capabilities`,

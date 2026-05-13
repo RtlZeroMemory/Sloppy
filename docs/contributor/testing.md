@@ -21,7 +21,7 @@ default lane plus a few mandatory ones; the rest are opt-in.
 | -------------------- | ----------------------------------------------------- |
 | Default (non-V8)     | Native runtime, parser, plan, dispatch, route, scope   |
 | Compiler / Plan      | `sloppyc` extraction, emitted Plan/bundle, diagnostics |
-| V8-gated             | JS handler execution, bridge invariants                |
+| Handler execution    | JS handler execution, bridge invariants                |
 | Source-input         | `sloppy run <source>` end-to-end                       |
 | Package outside-checkout | Built archive runs from a clean directory          |
 | Sanitizer            | Linux ASan/UBSan in native PRs; Windows sanitizer lanes on main/schedule/manual/labels |
@@ -38,7 +38,7 @@ claim.
 
 Use only `PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`, `DEFERRED`, or `NOT RUN`
 when reporting test evidence. Use these lane names in PR evidence when
-they apply: default non-V8, compiler/Plan, V8-gated, source-input,
+they apply: default non-V8, compiler/Plan, handler execution, source-input,
 package outside-checkout, platform-specific, dependency-backed,
 live-network/live-provider, advanced static analysis, fuzz/property,
 stress/torture, sanitizer/memory-safety, and benchmark.
@@ -67,12 +67,12 @@ For native endpoint dispatch metadata, pair compiler Plan assertions with
 counters such as route artifact gaps, native no-JS endpoints, and native URL
 writers accurate.
 
-The dogfood control-plane coverage deliberately uses both. The app-host test
-imports `examples/prealpha-control-plane/src/routes/*.js` and checks bodies,
+The control-plane coverage deliberately uses both. The app-host test
+imports `examples/control-plane/src/routes/*.js` and checks bodies,
 headers, query/path params, CORS, ProblemDetails, service-scope disposal, and
 negative paths. The CTest source-input lanes compile the same project, inspect
 the emitted plan/tooling outputs, assert non-V8 diagnostics, and run one
-V8-gated synthetic request when V8 is enabled.
+handler-execution synthetic request when V8 is enabled.
 
 ## Writing a good unit test
 

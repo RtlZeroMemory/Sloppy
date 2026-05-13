@@ -1,17 +1,17 @@
 # `sloppy doctor`
 
-Check the local runtime, packaged assets, optional provider dependencies, and
-optionally a compiled Plan.
+Inspect Sloppy artifacts and Plan-visible metadata.
 
 ```sh
 sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json] [--dispatch] [--report]
 ```
 
+`sloppy doctor` reports Plan-visible configuration, capabilities, auth,
+providers, routes, runtime features, dependency metadata, and related artifact
+state. It is not a full system-install diagnosis command today.
+
 ## What it checks
 
-- bootstrap runtime assets;
-- V8 bridge status for the current build/package;
-- live provider configuration;
 - native Plan parsing;
 - route, provider, and capability metadata, including Program Plans with no
   route metadata by design and web Plans with partial/dynamic route metadata;
@@ -27,9 +27,19 @@ sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--forma
 - SQL Server provider metadata with optional Microsoft ODBC Driver 17/18
   guidance when the app uses SQL Server.
 
+When invoked without an artifact path or Plan path, doctor reports the current
+CLI/package bootstrap state it can see from the installed files. That output is
+basic availability evidence, not a complete operating-system or package-manager
+health check.
+
 ## Text output
 
-Current text output uses status-prefixed lines:
+Current text output uses status-prefixed lines. The following example is from
+a **contributor source build without the V8 bridge enabled**, so it shows the
+`engine.v8` and Plan-extraction warnings you'd see during early bring-up. A
+supported npm platform package includes the runtime that executes handlers, so
+on those installs `engine.v8` is not warned about and `app.plan.*` rows reflect
+the artifact you point at:
 
 ```text
 Sloppy Doctor
@@ -77,6 +87,10 @@ the same state through `app.__getPlanContributions().ops`.
 With `--report`, doctor writes `.sloppy/reports/doctor-report.json` and
 breadcrumb JSONL. The report is local evidence for the command invocation and
 is not uploaded.
+
+Full system/package doctor checks are planned separately. Today, doctor is
+focused on Sloppy artifacts, package bootstrap files, and Plan-visible
+metadata.
 
 ## Exit codes
 

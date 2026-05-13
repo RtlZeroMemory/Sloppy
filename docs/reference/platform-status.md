@@ -1,6 +1,6 @@
 # Platform Status Reference
 
-Sloppy is designed to be cross-platform. The public alpha, pre-production
+Sloppy is designed to be cross-platform. The public alpha
 package set covers Windows x64, Linux x64 glibc, and macOS.
 
 ## npm Platform Packages
@@ -39,13 +39,18 @@ packages.
 | Windows x64 local development | Most complete local development path. | Default Windows checks and V8-enabled Windows checks. |
 | Linux local development | Supported by Unix scripts for selected build/test paths. | Unix script checks where available. |
 | macOS local development | Supported macOS alpha target. | Unix script checks where available. |
-| Runtime handler execution | Requires V8-enabled runtime artifacts. | V8-enabled test run. |
+| Runtime handler execution | Included in supported npm platform packages; source builds need the V8 SDK restored before building that runtime. | Handler execution test run. |
 | Live PostgreSQL/SQL Server providers | Opt-in because they need external services and drivers. | Integration checks with configured services. |
 
-## V8 Execution
+## Handler Execution Runtime
 
-- Handler execution requires a V8-enabled runtime build.
-- Non-V8 builds can still compile and validate artifacts, and `doctor` reports V8 as a warning state.
+- Supported npm platform packages include the runtime needed to execute
+  handlers.
+- Source builds restore or use the V8 SDK artifact/cache before building a
+  runtime that executes handlers.
+- Non-V8 builds validate compiler, Plan, CLI metadata, and native-core paths.
+  They are not the normal package users should install when they want to
+  execute handlers.
 
 ## Provider Integration Checks
 

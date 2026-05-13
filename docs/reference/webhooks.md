@@ -1,6 +1,6 @@
 # Webhooks Reference
 
-Stability: Experimental (pre-alpha).
+Stability: Experimental (alpha).
 
 `Webhooks` is available from `sloppy` and `sloppy/webhooks`.
 

@@ -1,9 +1,8 @@
 # Health
 
 `Health` provides first-party liveness, readiness, startup, and detailed health
-checks for the bootstrap app host. This operations API is alpha: endpoint
-shapes are usable for pre-alpha deployments, but they can still change before a
-stable release.
+checks for the bootstrap app host. Endpoint shapes are available in the public
+alpha and can still change before a stable release.
 
 ```ts
 import { Health, Sloppy } from "sloppy";

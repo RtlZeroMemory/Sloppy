@@ -28,7 +28,7 @@ symbols emits the `stdlib.net` runtime feature into the Plan.
 
 ## Current status
 
-This public alpha, pre-production API shape is committed for current experiments. All
+This public alpha API shape is committed for current experiments. All
 operations require the
 `__sloppy.net` runtime bridge; without it the first call rejects with
 `SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE` (or the matching feature-specific

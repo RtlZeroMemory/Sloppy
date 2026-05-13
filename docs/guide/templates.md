@@ -59,7 +59,7 @@ app.use(Auth.jwtBearer({
 }));
 ```
 
-Auth setup in templates is public alpha, pre-production behavior. There is no
+Auth setup in templates is public alpha behavior. There is no
 dedicated auth template yet. Add the auth setup to the generated app file or
 route module, then add the corresponding `Auth:*` keys to `appsettings.json` or
 your deployment configuration.

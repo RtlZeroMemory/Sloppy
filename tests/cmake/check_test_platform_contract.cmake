@@ -13,7 +13,7 @@ set(required_pairs
     ".github/PULL_REQUEST_TEMPLATE.md|Report skipped optional gates as skipped, unavailable, deferred, or not run."
     "docs/contributor/testing.md|Tests are how Sloppy verifies that a behavior change matches the docs"
     "docs/contributor/testing.md|Default (non-V8)"
-    "docs/contributor/testing.md|V8-gated"
+    "docs/contributor/testing.md|Handler execution"
     "docs/contributor/testing.md|Fuzz / property"
     "docs/contributor/quality-gates.md|Package outside-checkout"
     "docs/contributor/quality-gates.md|`UNAVAILABLE`"

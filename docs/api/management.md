@@ -1,8 +1,7 @@
 # Management
 
 `app.management()` installs an opt-in actuator-style backend endpoint group.
-This API is experimental public alpha and intended for controlled pre-alpha operations
-environments.
+This API is experimental and intended for controlled operations environments.
 
 ```ts
 import { Sloppy } from "sloppy";

@@ -1,8 +1,8 @@
 # Webhook Runtime
 
-Stability: Experimental (pre-alpha). The documented `publish(tx, event,
-payload)` and `deliverPending()` semantics are the contract for this surface,
-but the runtime remains pre-alpha.
+Stability: Experimental. The documented `publish(tx, event, payload)` and
+`deliverPending()` semantics are the contract for this surface, but the runtime
+behavior is still evolving.
 
 The webhook runtime is a JavaScript stdlib layer over Sloppy services, data
 providers, crypto, HttpClientFactory, and worker-style jobs.

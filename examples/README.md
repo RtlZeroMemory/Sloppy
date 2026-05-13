@@ -1,11 +1,10 @@
 # Sloppy Examples
 
 Examples are split by confidence level. Runnable examples are useful to try by
-hand during the public alpha, pre-production period. Fixture examples are small
-source shapes kept stable by tests.
+hand. Fixture examples are small source shapes kept stable by tests.
 
 Run commands from the repository root unless a row says otherwise. `sloppy run`
-handler execution requires a V8-enabled build.
+handler execution requires a handler-capable runtime.
 
 For a new app, use the packaged templates instead of copying an example:
 
@@ -18,16 +17,16 @@ sloppy create my-tool --template program
 
 | Example | Status | Command | What it covers | Requirements / expected result |
 | --- | --- | --- | --- | --- |
-| `compiler-hello` | runnable with `sloppy run --once` | `ctest -R conformance.hello.*run_once` | Compiler artifact execution | V8 lane returns `Hello from Sloppy`. |
-| `program-hello` | runnable Program Mode source | `sloppy run examples/program-hello/main.ts -- Ada` | Route-free program Plan, relative module import, args/context, and console stdout | V8 lane prints `hello from sloppy program mode Ada`; non-V8 builds can still compile and inspect `kind: program` artifacts. |
-| `program-fs-process` | runnable Program Mode source | `sloppy run` from `examples/program-fs-process` | Program stdlib imports for filesystem and OS/process APIs, package run shape | V8 lane writes under `./tmp`, runs `git --version`, and exits with the child exit code. |
-| `package-zod-like` | package graph fixture | `npm install && sloppy build && sloppy deps .sloppy` from the example directory | Local fixture package resolution from `node_modules`, package `exports`, Program Mode dependency graph | Uses a local `file:` dependency; no registry access required. Runtime execution requires V8. |
+| `compiler-hello` | runnable with `sloppy run --once` | `ctest -R conformance.hello.*run_once` | Compiler artifact execution | Handler-execution lane returns `Hello from Sloppy`. |
+| `program-hello` | runnable Program Mode source | `sloppy run examples/program-hello/main.ts -- Ada` | Route-free program Plan, relative module import, args/context, and console stdout | Handler-execution lane prints `hello from sloppy program mode Ada`; non-V8 builds can still compile and inspect `kind: program` artifacts. |
+| `program-fs-process` | runnable Program Mode source | `sloppy run` from `examples/program-fs-process` | Program stdlib imports for filesystem and OS/process APIs, package run shape | Handler-execution lane writes under `./tmp`, runs `git --version`, and exits with the child exit code. |
+| `package-zod-like` | package graph fixture | `npm install && sloppy build && sloppy deps .sloppy` from the example directory | Local fixture package resolution from `node_modules`, package `exports`, Program Mode dependency graph | Uses a local `file:` dependency; no registry access required. Runtime execution needs handler execution support. |
 | `dependency-graph` | package graph fixture | `npm install && sloppy build && sloppy deps .sloppy --format json` from the example directory | Installed fixture package, `node:path` compatibility shim, `assetInclude`, dependency graph inspection | Uses a local `file:` dependency; no registry access required. |
 | `node-compat-path-events` | compile-only / tooling fixture | `sloppy build && sloppy deps .sloppy` from the example directory | Supported `node:path` and `node:events` compatibility shims | Shows explicit shim imports; does not claim full Node runtime behavior. |
 | `dynamic-module-include` | compile-only / tooling fixture | `sloppy build && sloppy deps .sloppy` from the example directory | Computed dynamic imports over `moduleInclude` plus asset metadata | Runtime dynamic import succeeds only for modules sealed into the graph. |
-| `hello-minimal` | runnable with source input | `sloppy run examples/hello-minimal/src/main.ts --once GET /hello/Ada` | Smallest project/source-input app | V8 lane writes a full HTTP response with `{"hello":"Ada"}` body. |
-| `web-dynamic-routes` | runnable with source input | `sloppyc build examples/web-dynamic-routes/app.ts --out .sloppy` | Static and dynamic web route registration with partial Plan metadata | Static route metadata remains complete; dynamic routes emit findings and require V8 for handler execution. |
-| `prealpha-control-plane` | contributor/internal app-host and source-input run | `ctest -R "bootstrap.stdlib.prealpha_control_plane_dogfood\|conformance.prealpha_control_plane"` | Multi-file app, modules, CORS, request IDs/logging, ProblemDetails, SQLite-shaped provider, services, health | App-host test passes; V8 source-input lane returns `Compiler Platform`. |
+| `hello-minimal` | runnable with source input | `sloppy run examples/hello-minimal/src/main.ts --once GET /hello/Ada` | Smallest project/source-input app | Handler-execution lane writes a full HTTP response with `{"hello":"Ada"}` body. |
+| `web-dynamic-routes` | runnable with source input | `sloppyc build examples/web-dynamic-routes/app.ts --out .sloppy` | Static and dynamic web route registration with partial Plan metadata | Static route metadata remains complete; dynamic routes emit findings and need handler execution support. |
+| `control-plane` | app-style coverage and source-input run | `ctest -R "bootstrap.stdlib.control_plane_dogfood\|conformance.control_plane"` | Multi-file app, modules, CORS, request IDs/logging, ProblemDetails, SQLite-shaped provider, services, health | App-host test passes; handler-execution source-input lane returns `Compiler Platform`. |
 | `testhost-basic` | documentation example | Read `examples/testhost-basic/README.md` | `TestHost.create(app)` fluent request/response assertions | Plain JavaScript example; covered by bootstrap TestHost tests. |
 | `testhost-db` | documentation example | Read `examples/testhost-db/README.md` | Test data helper shape for SQLite-backed tests | SQLite execution depends on the active native bridge lane. |
 | `testservices-postgres` | documentation example | Read `examples/testservices-postgres/README.md` | Experimental Docker-backed PostgreSQL service with migrations, seed, reset, and TestHost | Requires Docker, the opt-in TestServices gate, and the PostgreSQL provider bridge. |
@@ -35,9 +34,9 @@ sloppy create my-tool --template program
 | `cache-basic` | API-shape fixture | Read `examples/cache-basic/README.md` | Memory cache, cache-aside, schema validation, tag invalidation | App-host shape; covered by bootstrap cache tests. |
 | `cache-output-api` | API-shape fixture | Read `examples/cache-output-api/README.md` | OutputCache and HTTP cache headers | App-host shape; covered by bootstrap cache tests. |
 | `cache-hybrid-postgres` | live-provider example | Configure PostgreSQL, then run through the app host | Hybrid cache with PostgreSQL distributed backend | Requires PostgreSQL provider support and a live service; default lanes skip external provider requirements. |
-| `request-context` | runnable with `sloppy run --once` | `ctest -R conformance.request_context.*run_once` | Route params, query, method, path, raw target | V8 lane returns JSON request context fields. |
-| `static-files-basic` | compile-only / tooling fixture | `sloppy build examples/static-files-basic/app.js --out .sloppy-static-basic` | `app.staticFiles` public directory shape | Static assets are a build-time snapshot; handler execution requires V8. |
-| `static-files-spa` | compile-only / tooling fixture | `sloppy build examples/static-files-spa/app.js --out .sloppy-static-spa` | `app.spa` fallback and asset route shape | API routes win before SPA fallback; runtime handler execution requires V8. |
+| `request-context` | runnable with `sloppy run --once` | `ctest -R conformance.request_context.*run_once` | Route params, query, method, path, raw target | Handler-execution lane returns JSON request context fields. |
+| `static-files-basic` | compile-only / tooling fixture | `sloppy build examples/static-files-basic/app.js --out .sloppy-static-basic` | `app.staticFiles` public directory shape | Static assets are a build-time snapshot; handler execution needs runtime support. |
+| `static-files-spa` | compile-only / tooling fixture | `sloppy build examples/static-files-spa/app.js --out .sloppy-static-spa` | `app.spa` fallback and asset route shape | API routes win before SPA fallback; runtime handler execution needs runtime support. |
 | `static-files-precompressed` | compile-only / tooling fixture | `sloppy build examples/static-files-precompressed/app.js --out .sloppy-static-precompressed` | Precompressed static variant metadata | Placeholder `.br` and `.gz` files demonstrate selection metadata only. |
 | `static-files-package` | package graph fixture | `sloppy package examples/static-files-package/app.js --out .sloppy-static-package` | Static assets copied into package artifacts | Package path is local alpha packaging, not a release archive. |
 | `static-files-testhost` | documentation example | `node examples/static-files-testhost/test.mjs` | In-process static file TestHost behavior | Exercises route precedence, `HEAD`, precompressed selection, and traversal rejection. |
@@ -45,16 +44,24 @@ sloppy create my-tool --template program
 | `redis-cache` | live-provider example | Read `examples/redis-cache/README.md` | Redis-backed cache provider with tags and service registration | Optional provider fixture. Requires Redis and the Sloppy network bridge. |
 | `redis-locks` | live-provider example | Read `examples/redis-locks/README.md` | Redis single-key lease shape | Optional provider fixture. Requires Redis and the Sloppy network bridge; no cluster or Redlock claim. |
 | `testservices-redis` | documentation example | Read `examples/testservices-redis/README.md` | Experimental Docker-backed Redis service with client, env, flush, reset, and TestHost | Requires Docker, the opt-in TestServices gate, and the Sloppy network bridge. |
+| `jobs-basic` | documentation example | Read `examples/jobs-basic/README.md` | SQLite durable jobs, payload validation, retries, idempotency, and worker run-once | Program Mode execution needs a handler-capable runtime and SQLite provider support. |
+| `jobs-recurring` | documentation example | Read `examples/jobs-recurring/README.md` | Provider-backed recurring jobs with five-field UTC cron schedules | Program Mode execution needs a handler-capable runtime and SQLite provider support. |
+| `jobs-postgres-worker` | live-provider example | Read `examples/jobs-postgres-worker/README.md` | PostgreSQL-backed durable job worker | Requires PostgreSQL provider support and a live PostgreSQL service. |
+| `jobs-sqlserver-worker` | live-provider example | Read `examples/jobs-sqlserver-worker/README.md` | SQL Server-backed durable job worker | Requires SQL Server provider support, Microsoft ODBC Driver 17 or 18, and a live SQL Server service. |
+| `jobs-concurrency` | live-provider example | Read `examples/jobs-concurrency/README.md` | Provider-backed idempotency, lock, claim, and lease behavior | Requires the selected live provider and matching Sloppy provider bridge. |
+| `jobs-concurrency-sqlite` | documentation example | Read `examples/jobs-concurrency-sqlite/README.md` | SQLite durable scheduler concurrency shape | Program Mode execution needs a handler-capable runtime and SQLite provider support. |
+| `jobs-concurrency-step` | live-provider example | Read `examples/jobs-concurrency-step/README.md` | Process-step scheduler race checks for live provider scripts | Used by live jobs scripts; not a tutorial entrypoint. |
+| `jobs-stress` | manual example | Read `examples/jobs-stress/README.md` | Bounded durable scheduler stress workload | Use when you want local scheduler pressure testing, not as a first tutorial. |
 | `auth-api` | compile-only / tooling fixture | `sloppy build && sloppy routes .sloppy && sloppy openapi .sloppy` from the example directory | JWT/API-key/session auth setup, route requirements, roles, policies, OpenAPI security metadata | Uses placeholder secrets; protected-route manual execution needs a request path that can supply headers or cookies. |
 | `realtime-dashboard` | compile-only / tooling fixture | `sloppy build examples/realtime-dashboard/app.js --out .sloppy && sloppy routes .sloppy && sloppy openapi .sloppy` | SSE route metadata, WebSocket route intent, and in-process hub shape | SSE uses bounded `Results.stream`; WebSocket route execution requires HTTP/1.1 Upgrade in native `sloppy run`. |
 | `websocket-echo` | documentation example | Read `examples/websocket-echo/README.md` | App-host WebSocket text/JSON echo, origin policy, subprotocols, heartbeat, idle timeout, and limits | TestHost covers the full app-host API; native `sloppy run` covers text/binary HTTP Upgrade sessions. |
 | `websocket-auth` | documentation example | Read `examples/websocket-auth/README.md` | JWT-protected WebSocket route with required scope | Use with TestHost `.withJwt(...)`; protected native WebSocket routes fail closed until auth principals are materialized on upgraded connections. |
 | `websocket-json-schema` | documentation example | Read `examples/websocket-json-schema/README.md` | Schema-validated JSON WebSocket messages | App-host TestHost behavior only. |
 | `websocket-testhost` | documentation example | `node examples/websocket-testhost/test.mjs` | First-party WebSocket TestHost client helpers | Plain JavaScript app-host test; no external WebSocket package required. |
-| `users-api-sqlite` | runnable with `sloppy run --once` | `ctest -R conformance.users_api_sqlite.*run_once` | SQLite source-input conformance app | V8/SQLite lane returns seeded users. |
-| `framework-hello` | runnable with source input | `ctest -R conformance.framework_hello` | Typed route binding and request context | V8 lane returns `{"hello":"Ada"}`. |
-| `framework-di-services` | runnable with source input | `ctest -R conformance.framework_di_services_example.run_once` | Singleton/scoped/transient service injection | V8 lane returns deterministic service values. |
-| `framework-sqlite-crud` | runnable with source input | `ctest -R conformance.framework_sqlite_crud` | Typed SQLite provider injection and CRUD shape | V8/SQLite lane returns seeded SQLite users. |
+| `users-api-sqlite` | runnable with `sloppy run --once` | `ctest -R conformance.users_api_sqlite.*run_once` | SQLite source-input conformance app | Handler-execution SQLite lane returns seeded users. |
+| `framework-hello` | runnable with source input | `ctest -R conformance.framework_hello` | Typed route binding and request context | Handler-execution lane returns `{"hello":"Ada"}`. |
+| `framework-di-services` | runnable with source input | `ctest -R conformance.framework_di_services_example.run_once` | Singleton/scoped/transient service injection | Handler-execution lane returns deterministic service values. |
+| `framework-sqlite-crud` | runnable with source input | `ctest -R conformance.framework_sqlite_crud` | Typed SQLite provider injection and CRUD shape | Handler-execution SQLite lane returns seeded SQLite users. |
 | `configured-api` | compile-only / tooling fixture | `ctest -R "conformance.configured_api\|examples.configured_api"` | Project config and Plan inspection | Emits artifacts and CLI metadata; no positive handler execution claim. |
 | `modules-api` | compile-only / tooling fixture | `ctest -R "conformance.modules_api\|examples.modules_api"` | Function module source-input workflow | Emits artifacts and CLI metadata. |
 | `validation-errors` | compile-only / tooling fixture | `ctest -R "conformance.validation_errors\|examples.validation_errors"` | Plan validation metadata and OpenAPI/doctor output | Emits artifacts and CLI metadata. |
@@ -88,7 +95,7 @@ sloppy create my-tool --template program
 | `orm-cursor-export` | documentation example | Read `examples/orm-cursor-export/README.md` | ORM cursor metadata and NDJSON adapter with the bounded `Results.stream` descriptor | Handler execution needs `ctx.db` to be supplied by an active Sloppy database provider. |
 | `orm-migrations` | compile-only / tooling fixture | `sloppy build && sloppy orm migration script .sloppy --provider main` from the example directory | Compiler-emitted ORM Plan metadata and CLI migration draft/status/apply commands | Produces reviewable SQL from static table metadata; `status` and `apply` use the configured provider database and migration history. |
 | `orm-testservices` | documentation example | Read `examples/orm-testservices/README.md` | ORM app-host test shape with `TestServices.postgres/sqlServer` skip semantics | Live execution requires environment-provided database services and native provider support; missing prerequisites report `SKIPPED`. |
-| `dogfood` | contributor/internal machine-readable catalog | `.\tools\windows\dogfood.ps1 -StatusOnly -Json` | Scenario vocabulary and lane expectations | Catalog validation; not an app by itself. |
+| `dogfood` | machine-readable evidence catalog | `.\tools\windows\dogfood.ps1 -StatusOnly -Json` | Scenario vocabulary and lane expectations | Catalog validation; not an app by itself. |
 | `ergonomics` | API-shape fixture | `ctest -R examples.ergonomics.api_shape` | Route groups, Results helpers, config/log/services shape | Static example check only. |
 | `framework-controller` | API-shape fixture | `ctest -R examples.framework.api_shape` | Controller mapper and DI shape | App-host fixture; compiler source input covers the static controller mapping subset in compiler fixtures. |
 | `fs-basic` | API-shape fixture | `ctest -R examples.fs.api_shape` | Directory/File helpers and deadline option | Static example check only. |
@@ -101,8 +108,8 @@ sloppy create my-tool --template program
 | `http-client-generated` | documentation example | Read `examples/http-client-generated/README.md` | OpenAPI-to-`Http.typedClient` generated client shape | Generator behavior is covered by `tests/bootstrap/test_http_client_factory.mjs`. |
 | `http-client-resilience` | documentation example | Read `examples/http-client-resilience/README.md` | Retry, circuit-breaker, bulkhead, and pool options | API shape is covered by `tests/bootstrap/test_http_client_factory.mjs`. |
 | `http-client-testhost` | documentation example | Read `examples/http-client-testhost/README.md` | `TestHttp.mock()` with `TestHost` outbound overrides | App-host mock path is covered by `tests/bootstrap/test_http_client_factory.mjs`. |
-| `http-client-testhost-package-mock` | documentation example | Read `examples/http-client-testhost-package-mock/README.md` | Artifact/package TestHost outbound mock injection | Process-host harness is covered by `tests/bootstrap/test_testhost_process_modes.mjs`; positive handler execution requires a V8-enabled CLI. |
-| `http-client-runtime-loopback` | documentation example | Read `examples/http-client-runtime-loopback/README.md` | Native-backed outbound loopback client path | Low-level loopback coverage is in `tests/bootstrap/test_http_client.mjs`; artifact/package runtime execution requires V8. |
+| `http-client-testhost-package-mock` | documentation example | Read `examples/http-client-testhost-package-mock/README.md` | Artifact/package TestHost outbound mock injection | Process-host harness is covered by `tests/bootstrap/test_testhost_process_modes.mjs`; positive handler execution needs a handler-capable CLI. |
+| `http-client-runtime-loopback` | documentation example | Read `examples/http-client-runtime-loopback/README.md` | Native-backed outbound loopback client path | Low-level loopback coverage is in `tests/bootstrap/test_http_client.mjs`; artifact/package runtime execution needs handler execution support. |
 | `modules-basic` | API-shape fixture | `ctest -R examples.modules_basic.api_shape` | Module phases and route contribution shape | Static example check only. |
 | `net-deadline-cancel` | API-shape fixture | `ctest -R examples.net.api_shape` | Network cancellation shape | Static example check only. |
 | `net-local-ipc` | API-shape fixture | `ctest -R examples.net.api_shape` | Local IPC shape | Static example check only. |
@@ -125,7 +132,7 @@ sloppy create my-tool --template program
 ## Status Meanings
 
 - `runnable with sloppy run --once`: the example is expected to execute through
-  generated artifacts and V8 in a configured V8 build.
+  generated artifacts in a handler-capable runtime.
 - `compile-only / tooling fixture`: the example is expected to compile and feed
   Plan-backed CLI tools, but no positive handler execution is claimed.
 - `package graph fixture`: the example demonstrates package/dependency graph

@@ -1,12 +1,11 @@
 # Examples
 
-`/examples/` in the repository has many small apps. Most are smoke fixtures
-that let the test suite exercise compiler/runtime behavior. A smaller set is
-worth running by hand to learn real Sloppy idioms.
+`/examples/` contains runnable apps, focused API examples, live-provider
+examples, and fixtures used by the test suite. Start with the curated examples
+below when you want code to learn from. Use the full inventory when you need to
+find the evidence source for a specific feature.
 
-This page starts with the curated set, then lists every example directory with
-its current role. If a row says "fixture", treat it as test evidence rather
-than a tutorial.
+If a row says "fixture", treat it as test evidence rather than a tutorial.
 
 For a complete test-oriented inventory, see `examples/README.md` in the
 repository.
@@ -17,12 +16,8 @@ repository.
 | --- | --- |
 | [`framework-hello`](#framework-hello) | `Sloppy.create()`, typed route param, JSON response |
 | [`hello-minimal`](#hello-minimal) | The smallest runnable app |
-
-## Contributor/Internal Coverage
-
-| Example | Shows |
-| --- | --- |
-| [`prealpha-control-plane`](#prealpha-control-plane) | Multi-file project-mode app host, SQLite capability, app test host coverage |
+| [`program-hello`](#program-hello) | Route-free Program Mode entrypoint |
+| [`package-zod-like`](#package-zod-like) | Installed package graph with a local file dependency |
 
 ## Routing
 
@@ -46,6 +41,43 @@ repository.
 | [`framework-sqlite-crud`](#framework-sqlite-crud) | Typed-handler SQLite CRUD with provider injection |
 | [`framework-postgres-crud`](#framework-postgres-crud) | Same shape, PostgreSQL provider (needs a live database) |
 | [`framework-sqlserver-crud`](#framework-sqlserver-crud) | Same shape, SQL Server provider (needs a live database) |
+| `orm-basic` | First-party `sloppy/orm` model, CRUD, relations, and migration script shape |
+| `orm-relations-includes` | One-join and collection split-query includes |
+| `orm-cursor-export` | ORM cursor export to NDJSON chunks without materializing all rows |
+| `orm-migrations` | Compiler-emitted ORM metadata and migration CLI output |
+
+Guide: [Data streaming](data-streaming.md). APIs: [Data](../api/data.md) and
+[ORM](../api/orm.md).
+
+## Cache, Redis, and HTTP clients
+
+| Example | Shows |
+| --- | --- |
+| `cache-basic` | Memory cache, cache-aside reads, schema validation, tag invalidation |
+| `cache-output-api` | Route output cache and HTTP cache headers |
+| `cache-hybrid-postgres` | Memory-fronted PostgreSQL distributed cache |
+| `redis-basic` | First-party Redis client, values, scripts, diagnostics, health |
+| `redis-cache` | Redis-backed cache provider with tags and service registration |
+| `redis-locks` | Redis single-key lease shape |
+| `http-client-typed` | Typed named client registered through services |
+| `http-client-generated` | OpenAPI-to-typed-client generation |
+| `http-client-resilience` | Retry, circuit-breaker, bulkhead, and pool options |
+| `http-client-testhost` | `TestHttp.mock()` with TestHost outbound overrides |
+
+APIs: [Cache](../api/cache.md), [Redis](../api/redis.md), and
+[HTTP Client](../api/http-client.md).
+
+## Durable jobs
+
+| Example | Shows |
+| --- | --- |
+| `jobs-basic` | SQLite durable queue, idempotency, redaction, worker run-once |
+| `jobs-recurring` | Five-field UTC cron schedules and manual recurring ticks |
+| `jobs-postgres-worker` | PostgreSQL-backed worker shape |
+| `jobs-sqlserver-worker` | SQL Server-backed worker shape |
+| `jobs-concurrency`, `jobs-concurrency-sqlite`, `jobs-concurrency-step` | Provider-backed claim and lease behavior |
+
+Guide: [Background tasks](background-tasks.md). API: [Jobs](../api/jobs.md).
 
 ## Validation
 
@@ -53,12 +85,49 @@ repository.
 | --- | --- |
 | [`framework-validation-errors`](#framework-validation-errors) | Schema-backed body binding, Plan-level validation diagnostics |
 
-## Workers
+## Rate limiting
+
+| Example | Shows |
+| --- | --- |
+| `rate-limit-basic` | Sliding-window IP limit on a public login route |
+| `rate-limit-auth` | User-partitioned limits on authenticated routes |
+| `rate-limit-redis` | Declares `RateLimit.redis(...)` and its fail-closed behavior on `main` |
+| `rate-limit-testhost` | Deterministic windows under `FakeClock` |
+| `rate-limit-websocket` | WebSocket upgrade rate limiting |
+
+Guide: [Rate limiting](rate-limiting.md). API: [RateLimit](../api/rate-limit.md).
+
+## Webhooks
+
+| Example | Shows |
+| --- | --- |
+| `webhooks-basic` | Event descriptor, outbox registration, transactional publish, signed delivery wiring |
+
+Guide: [Webhooks](webhooks.md). Bootstrap test coverage:
+`node tests/bootstrap/test_webhooks.mjs`.
+
+## Static files
+
+| Example | Shows |
+| --- | --- |
+| `static-files-basic` | `app.staticFiles("/assets", { root: "public", ... })` over a project-local directory |
+| `static-files-package` | Static assets carried into a packaged app artifact |
+
+Guide: [Serve Static Assets](static-assets.md). API:
+[Static Files](../api/static-files.md).
+
+## Background tasks and workers
 
 | Example | Shows |
 | --- | --- |
 | [`workers-background-service`](#workers-background-service) | Long-running service alongside the HTTP server |
+| `workers-workqueue` | Producer/consumer queue with retry |
 | [`workers-workerpool`](#workers-workerpool) | Bounded pool of worker isolates |
+| `workers-js-isolate` | Single `Worker.start` isolate from a module path |
+| `workers-shutdown` | Drain-vs-cancel `stop()` behavior |
+
+Guide: [Background tasks](background-tasks.md). API:
+[Workers](../api/workers.md).
 
 ## Stdlib (filesystem, network, OS, time, crypto, codec)
 
@@ -108,15 +177,6 @@ sloppy build examples/framework-hello/app.ts --out .sloppy-tmp
 sloppy run .sloppy-tmp --once GET /hello/Ada
 ```
 
-Project-mode examples, such as `prealpha-control-plane`, run from their own
-directory:
-
-```powershell
-cd examples/prealpha-control-plane
-sloppy build
-sloppy run .sloppy --once GET /projects?owner=runtime
-```
-
 `sloppy run` enters V8. Default non-V8 builds report the V8 requirement after
 compiling source input and writing artifacts; that diagnostic confirms the
 handoff path, but it is not positive handler execution.
@@ -133,14 +193,15 @@ Two routes, one typed parameter, deterministic JSON response. The example the
 The smallest possible app: `Sloppy.create()`, one route, one `Results.text(...)`
 response. Useful when something else stops working and you want to bisect.
 
-### prealpha-control-plane
+### program-hello
 
-A multi-file contributor/internal project with `sloppy.json`,
-`appsettings*.json`, function modules, route groups, JSON bodies, path and
-query params, SQLite provider metadata, health routes, diagnostics, and
-app-host coverage. Its app-host test imports the same route modules and covers
-CORS, ProblemDetails, request IDs, request logging redaction, service-scope
-cleanup, negative paths, and host lifecycle.
+Route-free Program Mode source with `main(args, ctx)`, relative module imports,
+arguments after `--`, and stdout.
+
+### package-zod-like
+
+Installed package graph example that uses a local `file:` dependency. It is the
+smallest example for package resolution without depending on registry access.
 
 ### framework-controller
 
@@ -221,6 +282,9 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `config-secrets-redaction` | Config redaction fixture |
 | `config-strict-mode` | Config strict-mode fixture |
 | `configured-api` | Compiler/config conformance fixture |
+| `cache-basic` | Memory cache API-shape fixture |
+| `cache-hybrid-postgres` | Hybrid cache example, live-provider gated |
+| `cache-output-api` | Output cache API-shape fixture |
 | `core-config-secrets` | Core integration fixture |
 | `core-fs-time-codec` | Core integration fixture |
 | `core-network-time-codec` | Core integration fixture |
@@ -232,7 +296,7 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `crypto-random-token` | Crypto API-shape fixture |
 | `crypto-secret-constant-time` | Crypto API-shape fixture |
 | `data-foundation` | Data/capability API-shape fixture |
-| `dogfood` | Contributor/internal machine-readable evidence catalog |
+| `dogfood` | Machine-readable evidence catalog |
 | `ergonomics` | API ergonomics fixture |
 | `framework-controller` | Curated routing/controller example |
 | `framework-di-services` | Curated services example |
@@ -249,6 +313,19 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `hello` | Smallest hello-app fixture used by app-host shape checks |
 | `hello-minimal` | Minimal runnable example |
 | `http-client-basic` | HTTP client API-shape fixture |
+| `http-client-generated` | OpenAPI-to-typed-client documentation example |
+| `http-client-resilience` | HTTP client resilience documentation example |
+| `http-client-testhost` | HTTP client TestHost mock documentation example |
+| `http-client-testhost-package-mock` | HTTP client package TestHost mock documentation example |
+| `http-client-typed` | Typed HTTP client documentation example |
+| `jobs-basic` | Durable jobs SQLite example |
+| `jobs-concurrency` | Durable jobs concurrency example, live-provider gated |
+| `jobs-concurrency-sqlite` | Durable jobs SQLite concurrency example |
+| `jobs-concurrency-step` | Durable jobs process-step concurrency example |
+| `jobs-postgres-worker` | Durable jobs PostgreSQL worker example, live-provider gated |
+| `jobs-recurring` | Durable recurring jobs example |
+| `jobs-sqlserver-worker` | Durable jobs SQL Server worker example, live-provider gated |
+| `jobs-stress` | Durable jobs stress example |
 | `modules-api` | Compiler module conformance fixture |
 | `modules-basic` | Module API-shape fixture |
 | `net-deadline-cancel` | Network cancellation fixture |
@@ -258,11 +335,27 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `net-tcp-echo` | TCP echo API-shape fixture |
 | `net-tcp-server` | TCP server API-shape fixture |
 | `os-runtime-api` | OS API-shape fixture |
+| `orm-basic` | ORM documentation example |
+| `orm-cursor-export` | ORM cursor export documentation example |
+| `orm-migrations` | ORM migration tooling fixture |
+| `orm-relations-includes` | ORM relations/include documentation example |
+| `orm-testservices` | ORM TestServices documentation example |
 | `postgres-basic` | PostgreSQL provider fixture, live-provider gated |
-| `prealpha-control-plane` | Contributor/internal control-plane coverage app |
+| `control-plane` | Larger app-style coverage example for routing, data, diagnostics, and tooling |
+| `rate-limit-auth` | Authenticated-user rate-limit example |
+| `rate-limit-basic` | Sliding-window IP rate-limit example |
+| `rate-limit-redis` | Distributed rate-limit adapter declaration (fails closed on `main`) |
+| `rate-limit-testhost` | Rate-limit windows under `FakeClock` |
+| `rate-limit-websocket` | WebSocket upgrade rate limiting |
+| `redis-basic` | Redis client example, live-provider gated |
+| `redis-cache` | Redis-backed cache example, live-provider gated |
+| `redis-locks` | Redis lock example, live-provider gated |
 | `request-context` | Curated request context example |
 | `sqlite-basic` | SQLite provider fixture |
 | `sqlserver-basic` | SQL Server provider fixture, live-provider gated |
+| `static-files-basic` | `app.staticFiles` over a project-local directory |
+| `static-files-package` | Static assets carried into a packaged app artifact |
+| `webhooks-basic` | Webhook event descriptor, outbox registration, transactional publish, signed delivery |
 | `time-basic` | Time API-shape fixture |
 | `time-deadline-cancellation` | Time cancellation fixture |
 | `time-fake-clock` | Time fake-clock fixture |

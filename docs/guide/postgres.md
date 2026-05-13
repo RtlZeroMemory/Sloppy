@@ -1,6 +1,6 @@
 # PostgreSQL Guide
 
-PostgreSQL support is public alpha, pre-production, optional, and live-service
+PostgreSQL support is public alpha, optional, and live-service
 gated.
 
 This walkthrough uses PostgreSQL, so it needs a PostgreSQL connection string

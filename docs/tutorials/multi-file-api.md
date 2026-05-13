@@ -1,9 +1,8 @@
 # Build A Multi-File API
 
 Use the `api` template when you want route modules, configuration, services,
-SQLite provider metadata, and packaging flow. It is a public alpha,
-pre-production starter:
-use it for early apps and experiments, not as a production-stability contract.
+SQLite provider metadata, and packaging flow. It is a public alpha starter:
+use it for early apps and experiments, not as a stable API contract.
 
 ## Create
 
@@ -36,8 +35,9 @@ Expected body:
 ok
 ```
 
-Handler execution requires a V8-enabled runtime. If the package is non-V8,
-the command fails before entering handlers with a V8-required diagnostic.
+Supported npm platform packages include handler execution support. If a
+source-built CLI was configured without that support, the command fails before
+entering handlers with a clear diagnostic.
 
 ## Package
 

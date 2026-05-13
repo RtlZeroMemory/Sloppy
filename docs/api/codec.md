@@ -24,7 +24,7 @@ these names emits the `stdlib.codec` runtime feature into the Plan.
 
 ## Current status
 
-This public alpha, pre-production API shape is committed for current
+This public alpha API shape is committed for current
 experiments. All exports are frozen objects.
 `Compression.gzip` / `gunzip` (and their stream variants) require the
 `__sloppy.codec` bridge; without it they reject with

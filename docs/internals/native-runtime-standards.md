@@ -1,6 +1,6 @@
 # Native Runtime Standards
 
-Sloppy's native runtime is pre-alpha, but its C and C++ code still has to be
+Sloppy's native runtime is still evolving, but its C and C++ code still has to be
 boring to review. This page defines the standards for code under
 `include/sloppy/`, `src/core/`, `src/platform/`, `src/data/`, `src/engine/`,
 `src/cli/`, native tests, fuzz targets, and benchmarks.
