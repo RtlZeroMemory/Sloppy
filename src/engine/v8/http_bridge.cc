@@ -3194,7 +3194,7 @@ bool http_v8_schema_response_supported(const SlPlanSchemaNode* schema)
 
 SlStatus http_v8_append_json_string(SlStringBuilder* builder, SlStr text)
 {
-    return sl_json_writer_append_escaped_string(builder, text);
+    return sl_json_writer_append_escaped_string_profiled(builder, text);
 }
 
 SlStatus http_v8_append_v8_json_string(v8::Isolate* isolate, SlStringBuilder* builder,

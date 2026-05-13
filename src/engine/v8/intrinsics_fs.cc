@@ -1249,9 +1249,16 @@ bool fs_v8_value_to_bytes(v8::Local<v8::Value> value, std::vector<unsigned char>
     std::shared_ptr<v8::BackingStore> backing = buffer->GetBackingStore();
     size_t offset = array->ByteOffset();
     size_t length = array->ByteLength();
-    if (backing == nullptr || backing->Data() == nullptr || offset > backing->ByteLength() ||
+    if (backing == nullptr || offset > backing->ByteLength() ||
         length > backing->ByteLength() - offset)
     {
+        return false;
+    }
+    if (length == 0U) {
+        out->clear();
+        return true;
+    }
+    if (backing->Data() == nullptr) {
         return false;
     }
     const unsigned char* start = static_cast<const unsigned char*>(backing->Data()) + offset;

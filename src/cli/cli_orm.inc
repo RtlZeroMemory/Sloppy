@@ -764,6 +764,9 @@ static int sl_cli_command_orm(const SlCliOptions* options)
         return 1;
     }
     if (sl_cli_load_metadata(plan_path, json_storage, &plan_arena, true, &doc, metadata) != 0) {
+        if (doc != NULL) {
+            yyjson_doc_free(doc);
+        }
         return 1;
     }
     provider = sl_db_find_provider(metadata, options->db_provider);

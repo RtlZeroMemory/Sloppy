@@ -337,6 +337,12 @@ SlStatus sl_json_writer_append_escaped_string(SlStringBuilder* builder, SlStr te
     return sl_json_writer_append_escaped_string_with_mode(builder, text, false, false);
 }
 
+SlStatus sl_json_writer_append_escaped_string_profiled(SlStringBuilder* builder, SlStr text)
+{
+    return sl_json_writer_append_escaped_string_with_mode(builder, text, false,
+                                                          sl_json_profile_enabled());
+}
+
 SlStatus sl_json_writer_append_escaped_string_codepoint_controls(SlStringBuilder* builder,
                                                                  SlStr text)
 {
@@ -381,8 +387,7 @@ SlStatus sl_json_writer_write_string(SlJsonWriter* writer, SlStr text)
         return status;
     }
 
-    status = sl_json_writer_append_escaped_string_with_mode(&builder, text, false,
-                                                            sl_json_profile_enabled());
+    status = sl_json_writer_append_escaped_string_profiled(&builder, text);
     if (!sl_status_is_ok(status)) {
         return status;
     }

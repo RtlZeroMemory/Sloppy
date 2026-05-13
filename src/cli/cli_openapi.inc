@@ -1573,7 +1573,7 @@ cleanup:
     if (doc != NULL) {
         yyjson_doc_free(doc);
     }
-    if (out != stdout) {
+    if (out != NULL && out != stdout) {
         if (fclose(out) != 0 && result == 0) {
             sl_cli_write_error_with_value(
                 "sloppy openapi: failed to write output path: ", options->output_path, "\n");
