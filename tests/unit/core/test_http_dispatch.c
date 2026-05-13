@@ -1,4 +1,5 @@
 #include "sloppy/http_dispatch.h"
+#include "sloppy/http_profile.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -141,6 +142,47 @@ static int expect_body_contains(SlBytes body, const char* expected)
         }
     }
     return 1;
+}
+
+static int http_profile_contains_all(const char** expected, size_t expected_count)
+{
+    unsigned char storage[65536];
+    SlByteBuilder builder = {0};
+    SlBytes bytes = {0};
+    size_t index = 0U;
+
+    if (!sl_status_is_ok(sl_byte_builder_init_fixed(&builder, storage, sizeof(storage))) ||
+        !sl_status_is_ok(sl_http_profile_write_json(&builder)))
+    {
+        return 1;
+    }
+    bytes = sl_byte_builder_view(&builder);
+    for (index = 0U; index < expected_count; index += 1U) {
+        if (expect_body_contains(bytes, expected[index]) != 0) {
+            fprintf(stderr, "missing profile fragment: %s\n%.*s\n", expected[index],
+                    (int)bytes.length, bytes.ptr == NULL ? "" : (const char*)bytes.ptr);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int enable_http_profile_for_test(char** original_value)
+{
+    if (copy_test_env_value("SLOPPY_HTTP_PROFILE", original_value) != 0 ||
+        set_test_env_value("SLOPPY_HTTP_PROFILE", "1") != 0)
+    {
+        return 1;
+    }
+    sl_http_profile_reset();
+    return 0;
+}
+
+static void restore_http_profile_for_test(char* original_value)
+{
+    restore_test_env_value("SLOPPY_HTTP_PROFILE", original_value);
+    free(original_value);
+    sl_http_profile_reset();
 }
 
 static bool str_contains(SlStr text, const char* expected)
@@ -3420,6 +3462,101 @@ static int test_native_static_empty_and_problem_responses_skip_engine(void)
     return 0;
 }
 
+static int test_profile_counters_distinguish_static_and_dynamic_dispatch(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handlers[2] = {0};
+    SlPlanRoute routes[2] = {0};
+    SlPlan plan = {0};
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    char* original_profile = NULL;
+
+    handlers[0].id = 1U;
+    handlers[0].export_name = sl_str_from_cstr("__sloppy_static");
+    handlers[1].id = 2U;
+    handlers[1].export_name = sl_str_from_cstr("__sloppy_dynamic");
+
+    routes[0].method = sl_str_from_cstr("GET");
+    routes[0].pattern = sl_str_from_cstr("/static-status");
+    routes[0].handler_id = 1U;
+    routes[0].native_response_kind = sl_str_from_cstr("empty");
+    routes[0].native_response_status = 204U;
+
+    routes[1].method = sl_str_from_cstr("GET");
+    routes[1].pattern = sl_str_from_cstr("/dynamic");
+    routes[1].handler_id = 2U;
+
+    plan.version = SL_PLAN_CURRENT_VERSION;
+    plan.handlers = handlers;
+    plan.handler_count = 2U;
+    plan.routes = routes;
+    plan.route_count = 2U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0 ||
+        enable_http_profile_for_test(&original_profile) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 180;
+    }
+
+    if (parse_request(&arena, "GET /static-status HTTP/1.1\r\nHost: example\r\n\r\n", &request) !=
+            0 ||
+        expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.response.status != 204U || result.response.body.length != 0U)
+    {
+        sl_engine_destroy(engine);
+        restore_http_profile_for_test(original_profile);
+        return 181;
+    }
+    {
+        const char* expected[] = {"\"nativeResponseHits\": 1", "\"v8HandlerCalls\": 0",
+                                  "\"noJsResponsePlanHits\": 1", "\"nativeStaticResponseHits\": 1"};
+        if (http_profile_contains_all(expected, sizeof(expected) / sizeof(expected[0])) != 0) {
+            sl_engine_destroy(engine);
+            restore_http_profile_for_test(original_profile);
+            return 182;
+        }
+    }
+
+    result = (SlEngineResult){0};
+    diag = (SlDiag){0};
+    request = (SlHttpRequestHead){0};
+    if (parse_request(&arena, "GET /dynamic HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_UNSUPPORTED) != 0)
+    {
+        sl_engine_destroy(engine);
+        restore_http_profile_for_test(original_profile);
+        return 183;
+    }
+    {
+        const char* expected[] = {"\"v8HandlerCalls\": 1", "\"v8HandlerCacheHits\": 2",
+                                  "\"v8HandlerCacheMisses\": 0", "\"noJsResponsePlanMisses\": 1"};
+        if (http_profile_contains_all(expected, sizeof(expected) / sizeof(expected[0])) != 0) {
+            sl_engine_destroy(engine);
+            restore_http_profile_for_test(original_profile);
+            return 184;
+        }
+    }
+
+    sl_engine_destroy(engine);
+    restore_http_profile_for_test(original_profile);
+    return 0;
+}
+
 static void set_native_text_route(SlPlanRoute* route, const char* method, const char* pattern,
                                   SlHandlerId handler_id, const char* body)
 {
@@ -3964,6 +4101,7 @@ int main(void)
         HTTP_DISPATCH_TEST(test_plan_route_with_middleware_keeps_query_conservative),
         HTTP_DISPATCH_TEST(test_native_static_text_response_skips_engine),
         HTTP_DISPATCH_TEST(test_native_static_empty_and_problem_responses_skip_engine),
+        HTTP_DISPATCH_TEST(test_profile_counters_distinguish_static_and_dynamic_dispatch),
         HTTP_DISPATCH_TEST(test_compiled_and_classic_dispatch_agree_in_validate_mode),
         HTTP_DISPATCH_TEST(test_dispatch_records_native_metrics_by_route_pattern),
         HTTP_DISPATCH_TEST(test_dispatch_json_metrics_respect_dispatch_mode),

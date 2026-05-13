@@ -1114,10 +1114,10 @@ SlSourceSpan sl_v8_exception_span(v8::Local<v8::Context> context, v8::TryCatch& 
 }
 
 SlStatus sl_v8_write_exception_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCode code,
-                                     SlStatusCode failure_code, v8::Isolate* isolate,
-                                     v8::Local<v8::Context> context, v8::TryCatch& try_catch,
-                                     SlStr fallback_source_name, const char* fallback_message,
-                                     SlStr hint)
+                                    SlStatusCode failure_code, v8::Isolate* isolate,
+                                    v8::Local<v8::Context> context, v8::TryCatch& try_catch,
+                                    SlStr fallback_source_name, const char* fallback_message,
+                                    SlStr hint)
 {
     uint64_t started_ns = sl_http_profile_now_ns();
     std::string message = sl_v8_exception_message(isolate, try_catch, fallback_message);
@@ -1140,9 +1140,8 @@ SlStatus sl_v8_write_exception_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCo
             sizeof("Malformed source map; reporting the generated JavaScript location.") - 1U);
     }
 
-    SlStatus status = sl_v8_write_diag_string_with_span(engine->arena, out_diag, code,
-                                                        failure_code, message, span, final_hint,
-                                                        stack_summary);
+    SlStatus status = sl_v8_write_diag_string_with_span(engine->arena, out_diag, code, failure_code,
+                                                        message, span, final_hint, stack_summary);
     sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_EXCEPTION_COUNT, 1U);
     sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_EXCEPTION_MAPPING,
                                  sl_http_profile_now_ns() - started_ns);
@@ -2091,7 +2090,8 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
                                              v8::Local<v8::Value> js_result,
                                              const SlHttpRequestContext* request_context,
                                              const SlCancellationToken* cancellation,
-                                             SlEngineResult* out_result, SlDiag* out_diag);
+                                             SlEngineResult* out_result, SlDiag* out_diag,
+                                             bool count_return_type);
 
 static SlStatus sl_v8_write_promise_rejection_diag(SlEngine* engine, v8::Isolate* isolate,
                                                    v8::Local<v8::Value> reason, SlDiag* out_diag)
@@ -2232,7 +2232,7 @@ static SlStatus sl_v8_convert_promise_result(v8::Isolate* isolate, v8::Local<v8:
     }
 
     return sl_v8_convert_handler_result(isolate, context, engine, arena, promise->Result(),
-                                        request_context, cancellation, out_result, out_diag);
+                                        request_context, cancellation, out_result, out_diag, false);
 }
 
 extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena,
@@ -2328,7 +2328,7 @@ extern "C" SlStatus sl_engine_v8_call_function0(SlEngine* engine, SlArena* arena
     }
 
     return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, nullptr,
-                                        nullptr, out_result, out_diag);
+                                        nullptr, out_result, out_diag, true);
 }
 
 static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -2336,7 +2336,8 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
                                              v8::Local<v8::Value> js_result,
                                              const SlHttpRequestContext* request_context,
                                              const SlCancellationToken* cancellation,
-                                             SlEngineResult* out_result, SlDiag* out_diag)
+                                             SlEngineResult* out_result, SlDiag* out_diag,
+                                             bool count_return_type)
 {
     SlStatus cancel_status = sl_v8_check_cancelled(engine, cancellation, out_diag);
     if (!sl_status_is_ok(cancel_status)) {
@@ -2344,13 +2345,17 @@ static SlStatus sl_v8_convert_handler_result(v8::Isolate* isolate, v8::Local<v8:
     }
 
     if (js_result->IsPromise()) {
-        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_PROMISE_RETURNS, 1U);
+        if (count_return_type) {
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_PROMISE_RETURNS, 1U);
+        }
         return sl_v8_convert_promise_result(isolate, context, engine, arena,
                                             js_result.As<v8::Promise>(), request_context,
                                             cancellation, out_result, out_diag);
     }
 
-    sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_SYNC_RETURNS, 1U);
+    if (count_return_type) {
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_SYNC_RETURNS, 1U);
+    }
     return sl_v8_convert_http_handler_result(isolate, context, engine, arena, js_result,
                                              request_context, out_result, out_diag);
 }
@@ -2475,7 +2480,7 @@ sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr 
         uint64_t started_ns = sl_http_profile_now_ns();
         status = sl_v8_convert_handler_result(isolate, context, engine, arena, js_result,
                                               request_context, request_context->cancellation,
-                                              out_result, out_diag);
+                                              out_result, out_diag, true);
         sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_RESULT_CONVERSION,
                                      sl_http_profile_now_ns() - started_ns);
     }
@@ -2607,7 +2612,7 @@ extern "C" SlStatus sl_engine_v8_call_registered_handler_with_context(
         uint64_t started_ns = sl_http_profile_now_ns();
         status = sl_v8_convert_handler_result(isolate, context, engine, arena, js_result,
                                               request_context, request_context->cancellation,
-                                              out_result, out_diag);
+                                              out_result, out_diag, true);
         sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_RESULT_CONVERSION,
                                      sl_http_profile_now_ns() - started_ns);
     }

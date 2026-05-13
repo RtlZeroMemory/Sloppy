@@ -2770,7 +2770,7 @@ bool http_v8_has_result_descriptor_shape(v8::Isolate* isolate, v8::Local<v8::Con
         if (!sl_status_is_ok(http_v8_cached_string(isolate, keys[index], &key))) {
             return false;
         }
-        has_property = object->Has(context, key);
+        has_property = object->HasOwnProperty(context, key);
         if (has_property.IsNothing()) {
             return false;
         }
@@ -4192,14 +4192,47 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
         return sl_status_ok();
     }
 
+    if (js_result->IsNull() || js_result->IsNumber() || js_result->IsBoolean()) {
+        v8::Local<v8::String> json;
+        SlBytes bytes = sl_bytes_empty();
+        SlStatus status = sl_status_ok();
+
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_PLAIN_VALUE_CONVERSIONS, 1U);
+        if (!http_v8_stringify_json(context, js_result, &json)) {
+            return http_v8_write_diag(
+                engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
+                http_v8_literal("JavaScript primitive result could not be serialized",
+                                sizeof("JavaScript primitive result could not be serialized") - 1U),
+                sl_str_empty());
+        }
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_JSON_STRINGIFY_CALLS, 1U);
+
+        status = http_v8_copy_value_bytes(isolate, arena, json, &bytes);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+
+        {
+            uint64_t started_ns = sl_http_profile_now_ns();
+            out_result->kind = SL_ENGINE_RESULT_JSON;
+            out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
+            out_result->response = sl_http_response_json(200U, bytes);
+            sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_RESULT_CONSTRUCTION,
+                                         sl_http_profile_now_ns() - started_ns);
+        }
+        return sl_status_ok();
+    }
+
     if (!js_result->IsObject()) {
         sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_GENERIC_FALLBACKS, 1U);
         return http_v8_write_diag(
             engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_UNSUPPORTED,
             http_v8_literal("JavaScript handler returned an unsupported result type",
                             sizeof("JavaScript handler returned an unsupported result type") - 1U),
-            http_v8_literal("Return a string or a supported Results.* descriptor.",
-                            sizeof("Return a string or a supported Results.* descriptor.") - 1U));
+            http_v8_literal("Return a string, JSON value, or supported Results.* descriptor.",
+                            sizeof("Return a string, JSON value, or supported Results.* "
+                                   "descriptor.") -
+                                1U));
     }
 
     v8::Local<v8::Object> object = js_result.As<v8::Object>();
@@ -4221,9 +4254,9 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
             if (!http_v8_stringify_json(context, object, &json)) {
                 return http_v8_write_diag(
                     engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
-                    http_v8_literal("JavaScript plain object result could not be serialized",
-                                    sizeof("JavaScript plain object result could not be serialized") -
-                                        1U),
+                    http_v8_literal(
+                        "JavaScript plain object result could not be serialized",
+                        sizeof("JavaScript plain object result could not be serialized") - 1U),
                     sl_str_empty());
             }
             sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_JSON_STRINGIFY_CALLS, 1U);

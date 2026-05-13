@@ -1,9 +1,10 @@
 # HTTP runtime
 
 The HTTP layer accepts bytes from a socket, parses them into a Sloppy
-request, matches a route, dispatches a handler through the V8 bridge,
-and writes a response. HTTP/1.1 and HTTP/2 share the same route/handler
-model; protocol-specific code stays in the transport and adapter layers.
+request, matches a route, dispatches either a native response plan or a
+handler through the V8 bridge, and writes a response. HTTP/1.1 and HTTP/2 share
+the same route/handler model; protocol-specific code stays in the transport and
+adapter layers.
 
 ## Layout
 
@@ -54,6 +55,7 @@ sl_http_dispatch_dispatch          http_dispatch.c
    │  method match
    │  request_validation.c: body kind, JSON media type, body size
    │  Plan jsonRequest: schema-backed native JSON validation/reject when present
+   │  native no-JS response plan when the route is static and supported
    ▼
 build SlHttpContext                http_context.c
    │  route params, query (last-wins), headers, body helpers
@@ -121,6 +123,15 @@ represented as preencoded native response descriptors and written by the common
 response writer. Empty static responses use the native no-body response path.
 Named Plan routes can generate native URLs with percent-encoded path
 parameters.
+
+Dynamic handlers still cross the V8 bridge. The dispatcher uses Plan-emitted
+handler metadata to materialize only the request facets the generated handler
+needs: route params, query params, header facade, body helpers, service scope,
+request facade, and cancellation signal are tracked independently. A header-only
+typed binding should not build the full request facade; a query-only binding
+should not build headers, body, or service materialization; body JSON bindings
+use the body helper instead of `request.json()` when the full request object is
+not otherwise needed.
 
 ## Body / content-type policy
 

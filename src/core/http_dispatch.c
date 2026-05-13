@@ -3043,14 +3043,11 @@ static SlHttpDispatchContextNeeds sl_http_dispatch_context_needs(const SlPlanRou
             break;
         case SL_PLAN_REQUEST_BINDING_HEADER:
             needs.headers = true;
-            if (sl_str_is_empty(route->bindings[index].parameter)) {
-                needs.header_facade = true;
-            }
-            else {
-                needs.request = true;
-            }
+            needs.header_facade = true;
             break;
         case SL_PLAN_REQUEST_BINDING_BODY_JSON:
+            needs.body = true;
+            break;
         case SL_PLAN_REQUEST_BINDING_BODY_FORM:
         case SL_PLAN_REQUEST_BINDING_BODY_MULTIPART:
             needs.body = true;

@@ -71,6 +71,13 @@ kind for each static Plan route. Execution kind is `v8-handler`,
 `native-static-text`, `native-static-json`, `native-static-empty`, or
 `native-static-problem`.
 
+Native static response plans are eligible only when the compiler can prove the
+response body, status, and content type from the route body. Static JSON,
+static text, empty status responses such as `204`, and static problem responses
+can bypass handler lookup and V8 execution. Dynamic handlers, plain object
+returns, request-dependent values, and values that require runtime JavaScript
+execution stay on the registered V8 handler path.
+
 `routes[].jsonRequest` and `routes[].jsonResponse` record per-route JSON modes.
 Fallback reasons are part of the contract: if the route cannot use native JSON,
 inspection tools show why instead of silently implying success.

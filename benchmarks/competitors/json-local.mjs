@@ -455,6 +455,29 @@ async function waitForTcpReady(port) {
   throw lastError ?? new Error("server did not become ready");
 }
 
+async function waitForHttpReady(baseUrl) {
+  const deadline = Date.now() + 10_000;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${baseUrl}/static-json`, {
+        headers: { "cache-control": "no-store" },
+      });
+      if (response.status === 200) {
+        const body = await response.json();
+        if (body && body.ok === true && body.mode === "static") {
+          return;
+        }
+      }
+      lastError = new Error(`HTTP readiness probe returned status ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw lastError ?? new Error("server did not pass HTTP readiness probe");
+}
+
 async function startSloppyServer(mode, sloppyInfo, profile = null) {
   const port = await getFreePort();
   const appRoot = path.join(scriptDir, "sloppy-json");
@@ -496,6 +519,9 @@ async function startSloppyServer(mode, sloppyInfo, profile = null) {
   const baseUrl = `http://127.0.0.1:${port}`;
   try {
     await waitForTcpReady(port);
+    if (profile === null) {
+      await waitForHttpReady(baseUrl);
+    }
   } catch (error) {
     child.kill("SIGINT");
     throw new Error(`sloppy server did not become ready: ${error.message}\n${stderr}`);
@@ -694,6 +720,9 @@ async function runRuntime(name, version, start) {
   ];
   try {
     if (httpProfile && name.startsWith("sloppy:loopback:")) {
+      server = await start();
+      await server.close();
+      server = null;
       const rows = [];
       for (let repeatIndex = 1; repeatIndex <= repeat; repeatIndex += 1) {
         for (const scenario of scenarios) {

@@ -3872,12 +3872,64 @@ export default app;
 
     assert_eq!(app.routes.len(), 2);
     assert!(app.dynamic_routes.is_empty());
+    assert_eq!(
+        emitted_js
+            .source
+            .matches("globalThis.__sloppy_register_handler(")
+            .count(),
+        2
+    );
     assert!(emitted_js
         .source
-        .contains("globalThis.__sloppy_register_handler(1"));
+        .contains("globalThis.__sloppy_register_handler(1, globalThis.__sloppy_handler_1);"));
     assert!(emitted_js
         .source
-        .contains("globalThis.__sloppy_register_handler(2"));
+        .contains("globalThis.__sloppy_register_handler(2, globalThis.__sloppy_handler_2);"));
+}
+
+#[test]
+fn inline_json_primitive_handlers_match_runtime_contract() {
+    let source = r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+app.get("/object", () => ({ ok: true }));
+app.get("/array", () => [1, 2, 3]);
+app.get("/number", () => 42);
+app.get("/boolean", () => true);
+app.get("/null", () => null);
+app.get("/undefined", () => undefined);
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("JSON value handlers should extract");
+    let emitted_js = super::emit_app_js(&app);
+
+    assert_eq!(app.routes.len(), 6);
+    assert!(app.dynamic_routes.is_empty());
+    assert_eq!(
+        emitted_js
+            .source
+            .matches("globalThis.__sloppy_register_handler(")
+            .count(),
+        6
+    );
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(1, globalThis.__sloppy_handler_1);"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(2, globalThis.__sloppy_handler_2);"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(3, globalThis.__sloppy_handler_3);"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(4, globalThis.__sloppy_handler_4);"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(5, globalThis.__sloppy_handler_5);"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(6, globalThis.__sloppy_handler_6);"));
 }
 
 #[test]
@@ -3924,19 +3976,58 @@ export default app;
     let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
     let emitted_js = super::emit_app_js(&app);
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
-    let plan = super::emit_plan(
+    let plan_text = super::emit_plan(
         &app,
         &super::sha256_hex(&emitted_js.source),
         &super::sha256_hex(&emitted_source_map),
     )
     .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    let routes = plan["routes"]
+        .as_array()
+        .expect("plan routes should be an array");
+    let empty_route = routes
+        .iter()
+        .find(|route| route["pattern"] == serde_json::json!("/empty"))
+        .expect("empty route should be present");
+    let problem_route = routes
+        .iter()
+        .find(|route| route["pattern"] == serde_json::json!("/problem"))
+        .expect("problem route should be present");
 
-    assert!(plan.contains("\"kind\": \"empty\""));
-    assert!(plan.contains("\"executionKind\": \"native-static-empty\""));
-    assert!(plan.contains("\"kind\": \"problem\""));
-    assert!(plan.contains("\"executionKind\": \"native-static-problem\""));
-    assert!(plan.contains("\"contentType\": \"application/problem+json\""));
-    assert!(plan.contains("\"body\": \"{\\\"code\\\":\\\"SLOPPY_E_STATIC_PROBLEM\\\",\\\"status\\\":400,\\\"title\\\":\\\"Static problem\\\"}\""));
+    assert_eq!(
+        empty_route["dispatch"]["executionKind"],
+        serde_json::json!("native-static-empty")
+    );
+    assert_eq!(
+        empty_route["nativeResponse"]["kind"],
+        serde_json::json!("empty")
+    );
+    assert_eq!(
+        empty_route["nativeResponse"]["status"],
+        serde_json::json!(204)
+    );
+    assert_eq!(
+        problem_route["dispatch"]["executionKind"],
+        serde_json::json!("native-static-problem")
+    );
+    assert_eq!(
+        problem_route["nativeResponse"]["kind"],
+        serde_json::json!("problem")
+    );
+    assert_eq!(
+        problem_route["nativeResponse"]["contentType"],
+        serde_json::json!("application/problem+json")
+    );
+    let problem_body: serde_json::Value =
+        serde_json::from_str(problem_route["nativeResponse"]["body"].as_str().unwrap())
+            .expect("problem body should parse");
+    assert_eq!(
+        problem_body["code"],
+        serde_json::json!("SLOPPY_E_STATIC_PROBLEM")
+    );
+    assert_eq!(problem_body["status"].as_f64(), Some(400.0));
+    assert_eq!(problem_body["title"], serde_json::json!("Static problem"));
 }
 
 #[test]
@@ -7814,13 +7905,35 @@ export default app;
     assert!(emitted_js
         .source
         .contains("globalThis.__sloppy_handler_1 = (ctx) =>"));
-    assert!(emitted_js.source.contains("ctx.request.json()"));
+    assert!(emitted_js.source.contains("ctx.body.json()"));
+    assert!(!emitted_js.source.contains("ctx.request.json()"));
     assert!(emitted_js
         .source
         .contains("return __sloppy_typed_handler(__sloppy_framework_arg"));
     assert!(!emitted_js
         .source
         .contains("const __sloppy_args = await Promise.all(["));
+}
+
+#[test]
+fn typed_framework_header_bindings_use_header_facade() {
+    let source = r#"import { Sloppy, Results, Header } from "sloppy";
+const app = Sloppy.create();
+app.get("/trace", (trace: Header<"x-trace">) => Results.ok({ trace }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed header handler should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("ctx.header[__sloppy_framework_header_property(binding.name)]"));
+    assert!(emitted_js
+        .source
+        .contains("function __sloppy_framework_header_property(name)"));
+    assert!(!emitted_js
+        .source
+        .contains("ctx.request.headers.get(binding.name)"));
 }
 
 #[test]

@@ -55,6 +55,14 @@ hits, V8 handler calls, Promise vs sync returns, materialization counts, result
 conversion counts, JSON stringify calls, and exception mapping counts. They are
 not cross-runtime benchmark scores.
 
+Current HTTP/V8 profile evidence separates static no-JS routes from dynamic
+handler routes. Static `Results.json`, `Results.text`, empty-status, and
+problem-details rows are expected to show native/no-JS hits with zero V8 handler
+calls. Dynamic handlers still enter V8; their current cost is concentrated in
+the V8 call, request/context materialization when the handler asks for context
+facets, and result conversion/JSON stringify for object and large JSON
+responses.
+
 The V8 path has opt-in startup experiments through `SLOPPY_V8_CODE_CACHE_DIR`
 and `SLOPPY_V8_SNAPSHOT_DIR`. They are engineering knobs for startup
 measurement, not default runtime guarantees. Code-cache entries are invalidated

@@ -7,7 +7,7 @@ const __sloppy_framework_services = __createFrameworkServiceProvider();
 __sloppy_framework_services.addSingleton("queue.emails", () => WorkQueue.create("emails"));
 const __sloppy_framework_provider_configs = new Map([["data.main", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__postgres__main__connectionString","connectionStringKey":"Sloppy:Providers:postgres:main:connectionString","providerKind":"postgres"}], ["data.audit", {"access":"readwrite","connectionStringEnv":null,"connectionStringKey":null,"providerKind":"sqlite"}], ["data.search", {"access":"readwrite","connectionStringEnv":"Sloppy__Providers__sqlserver__search__connectionString","connectionStringKey":"Sloppy:Providers:sqlserver:search:connectionString","providerKind":"sqlserver"}]]);
 function __sloppy_framework_arg(ctx, scope, binding) {
-  if (binding.kind === "body.json") { return ctx.request.json(); }
+  if (binding.kind === "body.json") { return ctx.body.json(); }
   if (binding.kind === "body.form") { return ctx.request.form(); }
   if (binding.kind === "body.multipart") { return ctx.request.multipart(); }
   if (binding.kind === "context") { return ctx; }
@@ -16,9 +16,19 @@ function __sloppy_framework_arg(ctx, scope, binding) {
   let value;
   if (binding.kind === "route") { value = ctx.route[binding.name]; }
   else if (binding.kind === "query") { value = ctx.query[binding.name]; }
-  else if (binding.kind === "header") { value = ctx.request.headers.get(binding.name); }
+  else if (binding.kind === "header") { value = ctx.header[__sloppy_framework_header_property(binding.name)]; }
   else { throw new TypeError(`Sloppy Framework binding kind '${binding.kind}' is not supported.`); }
   return __sloppy_framework_coerce(value, binding);
+}
+function __sloppy_framework_header_property(name) {
+  let output = "";
+  let uppercaseNext = false;
+  for (const ch of String(name)) {
+    if (ch === "-") { uppercaseNext = output.length !== 0; continue; }
+    output += uppercaseNext ? ch.toUpperCase() : ch;
+    uppercaseNext = false;
+  }
+  return output;
 }
 function __sloppy_framework_coerce(value, binding) {
   if (value === null || value === undefined) { return value; }

@@ -142,7 +142,7 @@
   "modules": [],
   "routeDispatch": {
     "artifact": {
-      "hash": "sha256:174057fc1d6937625f9edee7c2aedc81f8ebe5e23421a6157df6f47c98a038a9",
+      "hash": "sha256:ad87949247eecaccba1701eac57d5496d90554ec6b27207db1013c9c12847f41",
       "kind": "slrt",
       "path": "routes.slrt"
     },
@@ -180,7 +180,7 @@
       }
     },
     "mode": "native-compiled",
-    "nativeNoJsEndpoints": 2,
+    "nativeNoJsEndpoints": 3,
     "parameterRoutes": 3,
     "routeCount": 5,
     "staticRoutes": 2,
@@ -375,7 +375,7 @@
       },
       "dispatch": {
         "endpointId": 5,
-        "executionKind": "v8-handler",
+        "executionKind": "native-static-empty",
         "mode": "native-compiled",
         "specializable": true,
         "strategy": "segment-trie"
@@ -392,10 +392,17 @@
       },
       "method": "DELETE",
       "name": "Users.Delete",
+      "nativeResponse": {
+        "body": "",
+        "contentType": "text/plain; charset=utf-8",
+        "kind": "empty",
+        "status": 204
+      },
       "pattern": "/users/{id:int}",
       "response": {
         "helper": "noContent",
         "kind": "empty",
+        "nativeBody": "",
         "status": 204
       },
       "source": {

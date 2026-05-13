@@ -29,7 +29,7 @@ const server = Bun.serve({
       });
     }
     if (request.method === "GET" && url.pathname === "/static-status") {
-      return new Response("", { status: 204 });
+      return new Response(null, { status: 204 });
     }
     if (request.method === "GET" && url.pathname === "/static-problem") {
       return json({ status: 400, title: "Static problem", code: "SLOPPY_E_STATIC_PROBLEM" }, 400);

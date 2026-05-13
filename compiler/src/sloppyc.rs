@@ -18047,19 +18047,19 @@ fn status_result_has_no_body(call: &CallExpression<'_>) -> bool {
 }
 
 fn problem_result_code(call: &CallExpression<'_>) -> Option<u16> {
-    let option_status = call
+    if let Some(status) = call
         .arguments
         .get(1)
         .and_then(json_value_from_argument)
-        .and_then(|value| value.get("status").and_then(json_http_status_value));
-    if option_status.is_some_and(|status| (100..=599).contains(&status)) {
-        return option_status;
+        .and_then(|value| value.get("status").and_then(json_http_status_value))
+    {
+        return Some(status);
     }
+
     call.arguments
         .first()
         .and_then(json_value_from_argument)
         .and_then(|value| value.get("status").and_then(json_http_status_value))
-        .filter(|status| (100..=599).contains(status))
 }
 
 fn json_http_status_value(value: &Value) -> Option<u16> {
@@ -19324,7 +19324,7 @@ fn return_statement_returns_supported_result(
     }
 
     return_statement_expression(statement).is_some_and(|expression| {
-        expression_is_inline_json_safe_value(expression, allowed_roots, schema_names)
+        expression_is_supported_handler_return_value(expression, allowed_roots, schema_names)
     })
 }
 
@@ -19340,7 +19340,7 @@ fn expression_statement_is_supported_result(
     }
 
     expression_statement_expression(statement).is_some_and(|expression| {
-        expression_is_inline_json_safe_value(expression, allowed_roots, schema_names)
+        expression_is_supported_handler_return_value(expression, allowed_roots, schema_names)
     })
 }
 
@@ -19748,6 +19748,25 @@ fn expression_is_inline_json_safe_value(
         ),
         Expression::StaticMemberExpression(member) => {
             static_member_root_name(&member.object).is_some_and(|root| allowed_roots.contains(root))
+        }
+        _ => false,
+    }
+}
+
+fn expression_is_supported_handler_return_value(
+    expression: &Expression<'_>,
+    allowed_roots: &BTreeSet<String>,
+    schema_names: &BTreeSet<String>,
+) -> bool {
+    expression_is_inline_json_safe_value(expression, allowed_roots, schema_names)
+        || expression_is_undefined_identifier(expression)
+}
+
+fn expression_is_undefined_identifier(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::Identifier(identifier) => identifier.name == "undefined",
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_is_undefined_identifier(&parenthesized.expression)
         }
         _ => false,
     }
@@ -20372,7 +20391,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  if (binding.kind === \"body.json\") { return ctx.request.json(); }",
+            "  if (binding.kind === \"body.json\") { return ctx.body.json(); }",
         );
         push_generated_line(
             &mut output,
@@ -20421,7 +20440,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "  else if (binding.kind === \"header\") { value = ctx.request.headers.get(binding.name); }",
+            "  else if (binding.kind === \"header\") { value = ctx.header[__sloppy_framework_header_property(binding.name)]; }",
         );
         push_generated_line(
             &mut output,
@@ -20433,6 +20452,40 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             &mut generated_line,
             "  return __sloppy_framework_coerce(value, binding);",
         );
+        push_generated_line(&mut output, &mut generated_line, "}");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_framework_header_property(name) {",
+        );
+        push_generated_line(&mut output, &mut generated_line, "  let output = \"\";");
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  let uppercaseNext = false;",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "  for (const ch of String(name)) {",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    if (ch === \"-\") { uppercaseNext = output.length !== 0; continue; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    output += uppercaseNext ? ch.toUpperCase() : ch;",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "    uppercaseNext = false;",
+        );
+        push_generated_line(&mut output, &mut generated_line, "  }");
+        push_generated_line(&mut output, &mut generated_line, "  return output;");
         push_generated_line(&mut output, &mut generated_line, "}");
         push_generated_line(
             &mut output,
