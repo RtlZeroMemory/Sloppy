@@ -211,9 +211,12 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
         endif()
     endforeach()
     if(public_template STREQUAL "package-api")
+        # --omit=dev keeps the smoke offline-safe before the first @slopware
+        # alpha is published: only the local file:./fixtures dependency is
+        # required to build and run the template.
         if(SLOPPY_TEST_NODE AND EXISTS "${SLOPPY_TEST_NODE}" AND DEFINED SLOPPY_TEST_NPM_CLI AND EXISTS "${SLOPPY_TEST_NPM_CLI}")
             execute_process(
-                COMMAND "${SLOPPY_TEST_NODE}" "${SLOPPY_TEST_NPM_CLI}" install --ignore-scripts --no-audit
+                COMMAND "${SLOPPY_TEST_NODE}" "${SLOPPY_TEST_NPM_CLI}" install --ignore-scripts --no-audit --omit=dev
                 WORKING_DIRECTORY "${public_project_dir}"
                 TIMEOUT 120
                 RESULT_VARIABLE public_npm_result
@@ -221,7 +224,7 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
                 ERROR_VARIABLE public_npm_stderr)
         elseif(SLOPPY_TEST_NPM)
             execute_process(
-                COMMAND "${SLOPPY_TEST_NPM}" install --ignore-scripts --no-audit
+                COMMAND "${SLOPPY_TEST_NPM}" install --ignore-scripts --no-audit --omit=dev
                 WORKING_DIRECTORY "${public_project_dir}"
                 TIMEOUT 120
                 RESULT_VARIABLE public_npm_result

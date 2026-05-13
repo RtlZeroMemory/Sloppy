@@ -43,8 +43,8 @@ Current product state:
   shape are planned separately.
 - The bounded `sloppy run` path currently loads generated artifacts, not this
   source-stdlib SQLite example directly.
-- Executable SQLite runtime coverage lives in the handler-execution artifact
-  fixture.
+- Executable SQLite runtime coverage currently lives in the handler-execution
+  artifact fixture.
 - PostgreSQL and SQL Server providers are covered by their own examples and tests.
 - PostgreSQL has its own true-async bridge and live PostgreSQL checks.
 - ORM, migrations, expanded pooling, public prepared statement handles, and mid-operation

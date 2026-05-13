@@ -1,3 +1,5 @@
+cmake_policy(SET CMP0057 NEW)
+
 set(bootstrap_dir "${PROJECT_SOURCE_DIR}/tests/bootstrap")
 set(registration_file "${PROJECT_SOURCE_DIR}/cmake/SloppyExampleBootstrapTests.cmake")
 
