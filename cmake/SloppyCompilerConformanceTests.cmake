@@ -195,6 +195,18 @@
     set_tests_properties(sloppy.cli.metrics_auth_malformed_bool
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
+    foreach(auth_conflict_command IN ITEMS routes health metrics audit doctor openapi)
+        add_test(
+            NAME sloppy.cli.${auth_conflict_command}_auth_conflicting_bools
+            COMMAND
+                "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+                "-DSLOPPY_CLI_ARGS=${auth_conflict_command};--plan;tests/fixtures/cli/auth-conflicting-bools.plan.json"
+                "-DSLOPPY_EXPECTED_ERROR=routes\\[\\]\\.auth\\.required and routes\\[\\]\\.auth\\.allowAnonymous cannot both be true"
+                -P "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+        set_tests_properties(sloppy.cli.${auth_conflict_command}_auth_conflicting_bools
+                             PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+    endforeach()
+
     add_test(
         NAME sloppy.cli.rate_limit_malformed_partial
         COMMAND
@@ -243,6 +255,16 @@
             "-DSLOPPY_EXPECTED_ERROR=expected a JSON boolean" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.cli.schema_malformed_bool
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.cli.schema_too_many_properties
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=routes;--plan;tests/fixtures/cli/schema-too-many-properties.plan.json"
+            "-DSLOPPY_EXPECTED_ERROR=too many schema properties in metadata" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.cli.schema_too_many_properties
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(

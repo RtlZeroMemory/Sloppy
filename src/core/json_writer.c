@@ -130,18 +130,19 @@ SlStatus sl_json_writer_escaped_string_codepoint_controls_length(SlStr text, siz
     return sl_json_writer_escaped_string_length_with_mode(text, true, out_length);
 }
 
-static SlStatus sl_json_writer_append_codepoint_escape(SlStringBuilder* builder, unsigned char ch)
+static SlStatus sl_json_writer_sink_codepoint_escape(SlJsonWriterSink sink, void* user,
+                                                     unsigned char ch)
 {
     static const char hex[] = "0123456789abcdef";
-    SlStatus status = sl_string_builder_append_cstr(builder, "\\u00");
+    unsigned char escaped[6] = {'\\', 'u', '0', '0', 0, 0};
 
-    if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU]);
+    if (sink == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_char(builder, hex[ch & 0x0FU]);
-    }
-    return status;
+
+    escaped[4] = (unsigned char)hex[(ch >> 4U) & 0x0FU];
+    escaped[5] = (unsigned char)hex[ch & 0x0FU];
+    return sink(user, sl_bytes_from_parts(escaped, sizeof(escaped)));
 }
 
 static char sl_json_writer_escape_letter(unsigned char ch)
@@ -162,9 +163,26 @@ static char sl_json_writer_escape_letter(unsigned char ch)
     }
 }
 
-static SlStatus sl_json_writer_append_escaped_string_with_mode(SlStringBuilder* builder, SlStr text,
-                                                               bool codepoint_controls,
-                                                               bool profile_enabled)
+static SlStatus sl_json_writer_sink_cstr(SlJsonWriterSink sink, void* user, const char* text,
+                                         size_t length)
+{
+    if (sink == NULL || text == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sink(user, sl_bytes_from_parts((const unsigned char*)text, length));
+}
+
+static SlStatus sl_json_writer_sink_str(SlJsonWriterSink sink, void* user, SlStr text)
+{
+    if (sink == NULL || (text.ptr == NULL && text.length != 0U)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sink(user, sl_bytes_from_parts((const unsigned char*)text.ptr, text.length));
+}
+
+static SlStatus sl_json_writer_sink_escaped_string_with_mode(SlStr text, bool codepoint_controls,
+                                                             bool profile_enabled,
+                                                             SlJsonWriterSink sink, void* user)
 {
     uint64_t scan_start =
         profile_enabled ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_SCAN)
@@ -173,7 +191,7 @@ static SlStatus sl_json_writer_append_escaped_string_with_mode(SlStringBuilder* 
     uint64_t write_start = 0U;
     SlStatus status;
 
-    if (builder == NULL || (text.ptr == NULL && text.length != 0U)) {
+    if (sink == NULL || (text.ptr == NULL && text.length != 0U)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
@@ -189,70 +207,129 @@ static SlStatus sl_json_writer_append_escaped_string_with_mode(SlStringBuilder* 
     write_start = profile_enabled
                       ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE)
                       : 0U;
-    status = sl_string_builder_append_char(builder, '"');
+    status = sl_json_writer_sink_cstr(sink, user, "\"", 1U);
     if (!sl_status_is_ok(status)) {
-        if (profile_enabled) {
-            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
-        }
-        return status;
+        goto done;
     }
     if (!needs_escape) {
-        status = sl_string_builder_append_str(builder, text);
+        status = sl_json_writer_sink_str(sink, user, text);
         if (sl_status_is_ok(status)) {
-            status = sl_string_builder_append_char(builder, '"');
+            status = sl_json_writer_sink_cstr(sink, user, "\"", 1U);
         }
-        if (profile_enabled) {
-            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
-        }
-        return status;
+        goto done;
     }
 
+    size_t run_start = 0U;
     for (size_t index = 0U; index < text.length; index += 1U) {
         unsigned char ch = (unsigned char)text.ptr[index];
+        const char* escaped = NULL;
+        size_t escaped_length = 0U;
 
         switch (ch) {
         case '"':
+            escaped = "\\\"";
+            escaped_length = 2U;
+            break;
         case '\\':
-            status = sl_string_builder_append_char(builder, '\\');
-            if (sl_status_is_ok(status)) {
-                status = sl_string_builder_append_char(builder, (char)ch);
-            }
+            escaped = "\\\\";
+            escaped_length = 2U;
             break;
         case '\b':
         case '\f':
         case '\n':
         case '\r':
         case '\t':
-            if (codepoint_controls) {
-                status = sl_json_writer_append_codepoint_escape(builder, ch);
-                break;
-            }
-            status = sl_string_builder_append_char(builder, '\\');
-            if (sl_status_is_ok(status)) {
-                status = sl_string_builder_append_char(builder, sl_json_writer_escape_letter(ch));
+            if (!codepoint_controls) {
+                char escape[2] = {'\\', sl_json_writer_escape_letter(ch)};
+                if (run_start < index) {
+                    status = sl_json_writer_sink_str(
+                        sink, user, sl_str_from_parts(text.ptr + run_start, index - run_start));
+                    if (!sl_status_is_ok(status)) {
+                        goto done;
+                    }
+                }
+                status =
+                    sink(user, sl_bytes_from_parts((const unsigned char*)escape, sizeof(escape)));
+                if (!sl_status_is_ok(status)) {
+                    goto done;
+                }
+                run_start = index + 1U;
+                continue;
             }
             break;
         default:
-            if (ch < 0x20U) {
-                status = sl_json_writer_append_codepoint_escape(builder, ch);
-            }
-            else {
-                status = sl_string_builder_append_char(builder, (char)ch);
+            if (ch >= 0x20U) {
+                continue;
             }
             break;
         }
-        if (!sl_status_is_ok(status)) {
-            if (profile_enabled) {
-                sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
+
+        if (run_start < index) {
+            status = sl_json_writer_sink_str(
+                sink, user, sl_str_from_parts(text.ptr + run_start, index - run_start));
+            if (!sl_status_is_ok(status)) {
+                goto done;
             }
-            return status;
+        }
+        if (escaped != NULL) {
+            status = sl_json_writer_sink_cstr(sink, user, escaped, escaped_length);
+        }
+        else {
+            status = sl_json_writer_sink_codepoint_escape(sink, user, ch);
+        }
+        if (!sl_status_is_ok(status)) {
+            goto done;
+        }
+        run_start = index + 1U;
+    }
+    if (run_start < text.length) {
+        status = sl_json_writer_sink_str(
+            sink, user, sl_str_from_parts(text.ptr + run_start, text.length - run_start));
+        if (!sl_status_is_ok(status)) {
+            goto done;
         }
     }
-    status = sl_string_builder_append_char(builder, '"');
+    status = sl_json_writer_sink_cstr(sink, user, "\"", 1U);
+
+done:
     if (profile_enabled) {
         sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_STRING_ESCAPE_WRITE, write_start);
     }
     return status;
+}
+
+static SlStatus sl_json_writer_string_builder_sink(void* user, SlBytes bytes)
+{
+    SlStringBuilder* builder = (SlStringBuilder*)user;
+
+    if (builder == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_string_builder_append_str(builder,
+                                        sl_str_from_parts((const char*)bytes.ptr, bytes.length));
+}
+
+static SlStatus sl_json_writer_append_escaped_string_with_mode(SlStringBuilder* builder, SlStr text,
+                                                               bool codepoint_controls,
+                                                               bool profile_enabled)
+{
+    if (builder == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    return sl_json_writer_sink_escaped_string_with_mode(
+        text, codepoint_controls, profile_enabled, sl_json_writer_string_builder_sink, builder);
+}
+
+SlStatus sl_json_writer_write_escaped_string_to(SlStr text, SlJsonWriterSink sink, void* user)
+{
+    return sl_json_writer_sink_escaped_string_with_mode(text, false, false, sink, user);
+}
+
+SlStatus sl_json_writer_write_escaped_string_codepoint_controls_to(SlStr text,
+                                                                   SlJsonWriterSink sink,
+                                                                   void* user)
+{
+    return sl_json_writer_sink_escaped_string_with_mode(text, true, false, sink, user);
 }
 
 SlStatus sl_json_writer_append_escaped_string(SlStringBuilder* builder, SlStr text)

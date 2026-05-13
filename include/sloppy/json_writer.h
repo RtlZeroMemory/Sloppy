@@ -21,6 +21,7 @@ typedef struct SlJsonWriter
 
 typedef struct SlByteBuilder SlByteBuilder;
 typedef struct SlStringBuilder SlStringBuilder;
+typedef SlStatus (*SlJsonWriterSink)(void* user, SlBytes bytes);
 
 SlStatus sl_json_writer_init_fixed(SlJsonWriter* writer, unsigned char* buffer, size_t capacity);
 SlBytes sl_json_writer_view(const SlJsonWriter* writer);
@@ -29,6 +30,10 @@ SlStatus sl_json_writer_write_str(SlJsonWriter* writer, SlStr text);
 SlStatus sl_json_writer_write_char(SlJsonWriter* writer, char value);
 SlStatus sl_json_writer_escaped_string_length(SlStr text, size_t* out_length);
 SlStatus sl_json_writer_escaped_string_codepoint_controls_length(SlStr text, size_t* out_length);
+SlStatus sl_json_writer_write_escaped_string_to(SlStr text, SlJsonWriterSink sink, void* user);
+SlStatus sl_json_writer_write_escaped_string_codepoint_controls_to(SlStr text,
+                                                                   SlJsonWriterSink sink,
+                                                                   void* user);
 SlStatus sl_json_writer_append_escaped_string_bytes(SlByteBuilder* builder, SlStr text);
 SlStatus sl_json_writer_append_escaped_string_codepoint_controls(SlStringBuilder* builder,
                                                                  SlStr text);

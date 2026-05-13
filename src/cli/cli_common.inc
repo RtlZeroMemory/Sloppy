@@ -1546,41 +1546,32 @@ static bool sl_cli_write_str(FILE* file, SlStr str)
     return str.length == 0U || fwrite(str.ptr, 1U, str.length, file) == str.length;
 }
 
-static void sl_cli_json_escape(FILE* file, SlCliSpan span)
+static SlStatus sl_cli_file_json_sink(void* user, SlBytes bytes)
 {
-    unsigned char stack_storage[1024];
-    unsigned char* storage = stack_storage;
-    size_t escaped_length = 0U;
-    SlHeapBuffer heap_storage = {0};
-    SlByteBuilder builder = {0};
-    SlStr text = sl_cli_span_str(span);
-    SlStatus status = sl_json_writer_escaped_string_length(text, &escaped_length);
+    FILE* file = (FILE*)user;
+
+    if (file == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (bytes.length == 0U) {
+        return sl_status_ok();
+    }
+    if (bytes.ptr == NULL || fwrite(bytes.ptr, 1U, bytes.length, file) != bytes.length) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    return sl_status_ok();
+}
+
+static bool sl_cli_json_escape(FILE* file, SlCliSpan span)
+{
+    SlStatus status =
+        sl_json_writer_write_escaped_string_to(sl_cli_span_str(span), sl_cli_file_json_sink, file);
 
     if (!sl_status_is_ok(status)) {
-        fputs("\"<json-escape-error>\"", file);
-        return;
+        sl_cli_write_cstr(stderr, "sloppy: failed to write JSON string\n");
+        return false;
     }
-    if (escaped_length > sizeof(stack_storage)) {
-        status = sl_heap_buffer_alloc(&heap_storage, escaped_length);
-        if (!sl_status_is_ok(status)) {
-            fputs("\"<out-of-memory>\"", file);
-            return;
-        }
-        storage = heap_storage.ptr;
-    }
-
-    status = sl_byte_builder_init_fixed(&builder, storage, escaped_length);
-    if (sl_status_is_ok(status)) {
-        status = sl_json_writer_append_escaped_string_bytes(&builder, text);
-    }
-    if (sl_status_is_ok(status)) {
-        SlBytes escaped = sl_byte_builder_view(&builder);
-        fwrite(escaped.ptr, 1U, escaped.length, file);
-    }
-    else {
-        fputs("\"<json-escape-error>\"", file);
-    }
-    sl_heap_buffer_dispose(&heap_storage);
+    return true;
 }
 
 static SlStr sl_cli_redacted_span(SlArena* arena, SlCliSpan text)

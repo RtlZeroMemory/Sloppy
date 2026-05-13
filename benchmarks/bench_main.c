@@ -1,7 +1,5 @@
 #include "bench_internal.h"
 
-#include "sloppy/alloc.h"
-#include "sloppy/builder.h"
 #include "sloppy/json_profile.h"
 #include "sloppy/json_writer.h"
 #include "sloppy/platform.h"
@@ -44,41 +42,33 @@ static void sl_bench_print_error_text(const char* text)
     fputs(text, stderr);
 }
 
-static void sl_bench_print_json_string(const char* text)
+static SlStatus sl_bench_json_file_sink(void* user, SlBytes bytes)
 {
-    unsigned char stack_storage[512];
-    unsigned char* storage = stack_storage;
-    size_t escaped_length = 0U;
-    SlHeapBuffer heap_storage = {0};
-    SlByteBuilder builder = {0};
+    FILE* file = (FILE*)user;
+
+    if (file == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (bytes.length == 0U) {
+        return sl_status_ok();
+    }
+    if (bytes.ptr == NULL || fwrite(bytes.ptr, 1U, bytes.length, file) != bytes.length) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    return sl_status_ok();
+}
+
+static bool sl_bench_print_json_string(const char* text)
+{
     SlStr value = text == NULL ? sl_str_empty() : sl_str_from_cstr(text);
-    SlStatus status = sl_json_writer_escaped_string_length(value, &escaped_length);
+    SlStatus status =
+        sl_json_writer_write_escaped_string_to(value, sl_bench_json_file_sink, stdout);
 
     if (!sl_status_is_ok(status)) {
-        fputs("\"<json-escape-error>\"", stdout);
-        return;
+        sl_bench_print_error_text("failed to write benchmark JSON string\n");
+        return false;
     }
-    if (escaped_length > sizeof(stack_storage)) {
-        status = sl_heap_buffer_alloc(&heap_storage, escaped_length);
-        if (!sl_status_is_ok(status)) {
-            fputs("\"<out-of-memory>\"", stdout);
-            return;
-        }
-        storage = heap_storage.ptr;
-    }
-
-    status = sl_byte_builder_init_fixed(&builder, storage, escaped_length);
-    if (sl_status_is_ok(status)) {
-        status = sl_json_writer_append_escaped_string_bytes(&builder, value);
-    }
-    if (sl_status_is_ok(status)) {
-        SlBytes escaped = sl_byte_builder_view(&builder);
-        fwrite(escaped.ptr, 1U, escaped.length, stdout);
-    }
-    else {
-        fputs("\"<json-escape-error>\"", stdout);
-    }
-    sl_heap_buffer_dispose(&heap_storage);
+    return true;
 }
 
 static int sl_bench_parse_options(int argc, char** argv, SlBenchOptions* out_options)
@@ -405,15 +395,19 @@ static void sl_bench_print_json_header(const SlBenchOptions* options)
     printf("  \"benchmarks\": [\n");
 }
 
-static void sl_bench_print_json_result(const SlBenchResult* result, bool first)
+static bool sl_bench_print_json_result(const SlBenchResult* result, bool first)
 {
     printf("%s", first ? "" : ",\n");
     printf("    {\n");
     printf("      \"name\": ");
-    sl_bench_print_json_string(result->name);
+    if (!sl_bench_print_json_string(result->name)) {
+        return false;
+    }
     printf(",\n");
     printf("      \"category\": ");
-    sl_bench_print_json_string(result->category);
+    if (!sl_bench_print_json_string(result->category)) {
+        return false;
+    }
     printf(",\n");
     printf("      \"warmupIterations\": %" PRIu64 ",\n", result->warmup_iterations);
     printf("      \"iterations\": %" PRIu64 ",\n", result->iterations);
@@ -441,9 +435,12 @@ static void sl_bench_print_json_result(const SlBenchResult* result, bool first)
         printf(",\n");
     }
     printf("      \"note\": ");
-    sl_bench_print_json_string(result->note);
+    if (!sl_bench_print_json_string(result->note)) {
+        return false;
+    }
     printf("\n");
     printf("    }");
+    return true;
 }
 
 static void sl_bench_print_json_footer(bool any_result)
@@ -501,8 +498,8 @@ static int sl_bench_run(const SlBenchOptions* options)
             if (options->format == SL_BENCH_FORMAT_TEXT) {
                 sl_bench_print_text_result(&result);
             }
-            else {
-                sl_bench_print_json_result(&result, !any_result);
+            else if (!sl_bench_print_json_result(&result, !any_result)) {
+                return 1;
             }
             any_result = true;
         }

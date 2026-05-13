@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-schema-too-many-properties-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-schema-too-many-properties-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Users.List"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/users",
+      "handlerId": 1,
+      "name": "Users.List",
+      "response": {
+        "kind": "json",
+        "helper": "json",
+        "status": 200,
+        "bodySchema": "TooLarge"
+      }
+    }
+  ],
+  "schemas": [
+    {
+      "name": "TooLarge",
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "p00": { "kind": "string" },
+          "p01": { "kind": "string" },
+          "p02": { "kind": "string" },
+          "p03": { "kind": "string" },
+          "p04": { "kind": "string" },
+          "p05": { "kind": "string" },
+          "p06": { "kind": "string" },
+          "p07": { "kind": "string" },
+          "p08": { "kind": "string" },
+          "p09": { "kind": "string" },
+          "p10": { "kind": "string" },
+          "p11": { "kind": "string" },
+          "p12": { "kind": "string" },
+          "p13": { "kind": "string" },
+          "p14": { "kind": "string" },
+          "p15": { "kind": "string" },
+          "p16": { "kind": "string" },
+          "p17": { "kind": "string" },
+          "p18": { "kind": "string" },
+          "p19": { "kind": "string" },
+          "p20": { "kind": "string" },
+          "p21": { "kind": "string" },
+          "p22": { "kind": "string" },
+          "p23": { "kind": "string" },
+          "p24": { "kind": "string" },
+          "p25": { "kind": "string" },
+          "p26": { "kind": "string" },
+          "p27": { "kind": "string" },
+          "p28": { "kind": "string" },
+          "p29": { "kind": "string" },
+          "p30": { "kind": "string" },
+          "p31": { "kind": "string" },
+          "p32": { "kind": "string" }
+        }
+      }
+    }
+  ]
+}

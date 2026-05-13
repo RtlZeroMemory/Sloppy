@@ -1668,6 +1668,17 @@ static SlStatus sl_plan_parse_route_auth(SlPlanParseContext* ctx, yyjson_val* ro
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    if (out->auth.required && out->auth.allow_anonymous) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan auth metadata",
+                                  sizeof("invalid app plan auth metadata") - 1U),
+            sl_plan_parse_literal(
+                "routes[].auth.required and routes[].auth.allowAnonymous cannot both be true",
+                sizeof("routes[].auth.required and routes[].auth.allowAnonymous cannot both be "
+                       "true") -
+                    1U));
+    }
     return sl_status_ok();
 }
 

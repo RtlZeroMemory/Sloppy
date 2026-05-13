@@ -260,6 +260,7 @@ static int sl_cli_parse_route_auth(yyjson_val* value, SlCliRoute* route)
     bool required = false;
     bool required_set = false;
     bool allow_anonymous = false;
+    bool allow_anonymous_set = false;
 
     if (auth == NULL) {
         return 0;
@@ -269,6 +270,7 @@ static int sl_cli_parse_route_auth(yyjson_val* value, SlCliRoute* route)
         return 1;
     }
     required_set = yyjson_obj_get(auth, "required") != NULL;
+    allow_anonymous_set = yyjson_obj_get(auth, "allowAnonymous") != NULL;
     if (sl_cli_parse_optional_bool(
             auth, "required", "sloppy: malformed metadata: route auth.required must be a boolean\n",
             &required) != 0)
@@ -283,10 +285,12 @@ static int sl_cli_parse_route_auth(yyjson_val* value, SlCliRoute* route)
         return 1;
     }
     route->auth_allow_anonymous = allow_anonymous;
-    route->auth_required = required_set ? required : !route->auth_allow_anonymous;
-    if (route->auth_allow_anonymous) {
-        route->auth_required = false;
+    if (required_set && allow_anonymous_set && required && allow_anonymous) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: routes[].auth.required and "
+                                  "routes[].auth.allowAnonymous cannot both be true\n");
+        return 1;
     }
+    route->auth_required = required_set ? required : !route->auth_allow_anonymous;
     route->auth_policy = sl_cli_json_span(auth, "policy");
     if (sl_cli_parse_route_auth_array(yyjson_obj_get(auth, "schemes"), route->auth_schemes,
                                       &route->auth_scheme_count,
@@ -837,8 +841,12 @@ static int sl_cli_parse_schema_property(yyjson_val* property_value, SlCliSpan na
     SlCliSchemaProperty property = {0};
     yyjson_val* items = NULL;
 
-    if (!yyjson_is_obj(property_value) || schema->property_count >= SL_CLI_MAX_SCHEMA_PROPERTIES) {
+    if (!yyjson_is_obj(property_value)) {
         return 0;
+    }
+    if (schema->property_count >= SL_CLI_MAX_SCHEMA_PROPERTIES) {
+        sl_cli_write_cstr(stderr, "sloppy: too many schema properties in metadata\n");
+        return 1;
     }
     property.name = name;
     property.kind = sl_cli_json_span(property_value, "kind");
