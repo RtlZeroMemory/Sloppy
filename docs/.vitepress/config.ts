@@ -13,21 +13,24 @@ export default defineConfig({
       provider: "local"
     },
     nav: [
+      { text: "Install", link: "/install" },
       { text: "Quickstart", link: "/quickstart" },
       { text: "Tutorials", link: "/tutorials/" },
+      { text: "Examples", link: "/guide/examples" },
       { text: "API", link: "/api/" },
       { text: "CLI", link: "/cli/" },
-      { text: "Roadmap", link: "/roadmap" },
+      { text: "Reference", link: "/reference/" },
       { text: "GitHub", link: "https://github.com/RtlZeroMemory/Slop" }
     ],
     sidebar: [
       {
-        text: "Start Here",
+        text: "Start",
         items: [
           { text: "What is Sloppy?", link: "/about/what-is-sloppy" },
           { text: "Install", link: "/install" },
           { text: "Quickstart", link: "/quickstart" },
           { text: "Create your first API", link: "/tutorials/first-api" },
+          { text: "Examples", link: "/guide/examples" },
           { text: "Current status", link: "/reference/stability" }
         ]
       },
@@ -43,7 +46,7 @@ export default defineConfig({
         ]
       },
       {
-        text: "Guides",
+        text: "Build Apps",
         items: [
           { text: "Project layout", link: "/guide/project-layout" },
           { text: "Templates", link: "/guide/templates" },
@@ -63,10 +66,7 @@ export default defineConfig({
           { text: "Program Mode", link: "/guide/program-mode" },
           { text: "Examples and demo app", link: "/guide/examples" },
           { text: "Testing apps", link: "/api/testing" },
-          { text: "Troubleshooting", link: "/guide/troubleshooting" },
-          { text: "Sloppy vs Node/Bun/Deno", link: "/about/sloppy-vs-node-bun-deno" },
-          { text: "Compiler performance", link: "/about/performance" },
-          { text: "Why no node_modules?", link: "/about/why-no-node-modules" }
+          { text: "Troubleshooting", link: "/guide/troubleshooting" }
         ]
       },
       {
@@ -147,8 +147,22 @@ export default defineConfig({
         ]
       },
       {
-        text: "Internals",
+        text: "Understand Sloppy",
         items: [
+          { text: "About", link: "/about/" },
+          { text: "Compiler-first runtime", link: "/about/compiler-first-runtime" },
+          { text: "Sloppy vs Node/Bun/Deno", link: "/about/sloppy-vs-node-bun-deno" },
+          { text: "Why no node_modules?", link: "/about/why-no-node-modules" },
+          { text: "V8 bridge", link: "/about/v8-bridge" },
+          { text: "Security", link: "/about/security" },
+          { text: "Performance", link: "/about/performance" },
+          { text: "Roadmap", link: "/roadmap" }
+        ]
+      },
+      {
+        text: "Work On Sloppy",
+        items: [
+          { text: "Contributor docs", link: "/contributor/" },
           { text: "Architecture", link: "/internals/architecture" },
           { text: "Compiler", link: "/internals/compiler" },
           { text: "Runtime", link: "/internals/runtime" },
@@ -164,19 +178,13 @@ export default defineConfig({
           { text: "Platform boundaries", link: "/internals/platform-boundaries" },
           { text: "Security model", link: "/internals/security-model" }
         ]
-      },
-      {
-        text: "Roadmap",
-        items: [
-          { text: "Roadmap", link: "/roadmap" }
-        ]
       }
     ],
     socialLinks: [
       { icon: "github", link: "https://github.com/RtlZeroMemory/Slop" }
     ],
     footer: {
-      message: "Public alpha, pre-production runtime. APIs and artifact formats may change.",
+      message: "Public alpha runtime. APIs and artifact formats may change.",
       copyright: "Released under the Sloppy project license."
     }
   }

@@ -1,6 +1,6 @@
 # Install
 
-The public alpha, pre-production package is `@slopware/sloppy`.
+Install the public alpha package from npm:
 
 ```sh
 npm install -g @slopware/sloppy@alpha

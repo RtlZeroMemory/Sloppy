@@ -3,7 +3,7 @@
 This guide shows a small API protected with JWT bearer tokens, signed session
 cookies, API keys, and a named authorization policy.
 
-Auth is a public alpha, pre-production framework feature. Sloppy provides auth
+Auth is a public alpha framework feature. Sloppy provides auth
 building blocks for API apps; it is not an identity provider.
 
 ## Configure Secrets

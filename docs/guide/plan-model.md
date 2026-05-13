@@ -97,5 +97,5 @@ or compiler flags, not to edit the artifact.
 ## Plan version
 
 The schema version is recorded as `schemaVersion: "plan/v1-alpha"`.
-Public alpha, pre-production breaking changes are possible. If a runtime
+Public alpha breaking changes are possible. If a runtime
 upgrade rejects an old Plan, rebuild with the matching compiler.

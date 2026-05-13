@@ -41,7 +41,7 @@ which provider implementations to wire up.
   existing Node apps unchanged. It runs Sloppy applications.
 - **Not a library you bolt onto an existing app.** It's a runtime; you
   invoke `sloppy run`, not `node`.
-- **Public alpha, pre-production.** Sloppy is ready for experiments, demos, and
+- **Public alpha.** Sloppy is ready for experiments, demos, and
   feedback, but not production deployments yet. APIs and artifact formats can
   change between alpha revisions.
 
@@ -65,7 +65,7 @@ Real:
   service injection, structured logging,
   configuration with typed binding.
 
-Public alpha, pre-production:
+Public alpha:
 
 - Production hardening (long graceful drain, broader TLS posture).
 - The app-host feature surface and compiler subset are intentionally narrow:

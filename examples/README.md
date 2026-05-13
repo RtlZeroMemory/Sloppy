@@ -1,8 +1,7 @@
 # Sloppy Examples
 
 Examples are split by confidence level. Runnable examples are useful to try by
-hand during the public alpha, pre-production period. Fixture examples are small
-source shapes kept stable by tests.
+hand. Fixture examples are small source shapes kept stable by tests.
 
 Run commands from the repository root unless a row says otherwise. `sloppy run`
 handler execution requires a V8-enabled build.
@@ -27,7 +26,7 @@ sloppy create my-tool --template program
 | `dynamic-module-include` | compile-only / tooling fixture | `sloppy build && sloppy deps .sloppy` from the example directory | Computed dynamic imports over `moduleInclude` plus asset metadata | Runtime dynamic import succeeds only for modules sealed into the graph. |
 | `hello-minimal` | runnable with source input | `sloppy run examples/hello-minimal/src/main.ts --once GET /hello/Ada` | Smallest project/source-input app | V8 lane writes a full HTTP response with `{"hello":"Ada"}` body. |
 | `web-dynamic-routes` | runnable with source input | `sloppyc build examples/web-dynamic-routes/app.ts --out .sloppy` | Static and dynamic web route registration with partial Plan metadata | Static route metadata remains complete; dynamic routes emit findings and require V8 for handler execution. |
-| `prealpha-control-plane` | contributor/internal app-host and source-input run | `ctest -R "bootstrap.stdlib.prealpha_control_plane_dogfood\|conformance.prealpha_control_plane"` | Multi-file app, modules, CORS, request IDs/logging, ProblemDetails, SQLite-shaped provider, services, health | App-host test passes; V8 source-input lane returns `Compiler Platform`. |
+| `control-plane` | control-plane coverage app-host and source-input run | `ctest -R "bootstrap.stdlib.control_plane_dogfood\|conformance.control_plane"` | Multi-file app, modules, CORS, request IDs/logging, ProblemDetails, SQLite-shaped provider, services, health | App-host test passes; V8 source-input lane returns `Compiler Platform`. |
 | `testhost-basic` | documentation example | Read `examples/testhost-basic/README.md` | `TestHost.create(app)` fluent request/response assertions | Plain JavaScript example; covered by bootstrap TestHost tests. |
 | `testhost-db` | documentation example | Read `examples/testhost-db/README.md` | Test data helper shape for SQLite-backed tests | SQLite execution depends on the active native bridge lane. |
 | `testservices-postgres` | documentation example | Read `examples/testservices-postgres/README.md` | Experimental Docker-backed PostgreSQL service with migrations, seed, reset, and TestHost | Requires Docker, the opt-in TestServices gate, and the PostgreSQL provider bridge. |
@@ -88,7 +87,7 @@ sloppy create my-tool --template program
 | `orm-cursor-export` | documentation example | Read `examples/orm-cursor-export/README.md` | ORM cursor metadata and NDJSON adapter with the bounded `Results.stream` descriptor | Handler execution needs `ctx.db` to be supplied by an active Sloppy database provider. |
 | `orm-migrations` | compile-only / tooling fixture | `sloppy build && sloppy orm migration script .sloppy --provider main` from the example directory | Compiler-emitted ORM Plan metadata and CLI migration draft/status/apply commands | Produces reviewable SQL from static table metadata; `status` and `apply` use the configured provider database and migration history. |
 | `orm-testservices` | documentation example | Read `examples/orm-testservices/README.md` | ORM app-host test shape with `TestServices.postgres/sqlServer` skip semantics | Live execution requires environment-provided database services and native provider support; missing prerequisites report `SKIPPED`. |
-| `dogfood` | contributor/internal machine-readable catalog | `.\tools\windows\dogfood.ps1 -StatusOnly -Json` | Scenario vocabulary and lane expectations | Catalog validation; not an app by itself. |
+| `dogfood` | machine-readable evidence catalog | `.\tools\windows\dogfood.ps1 -StatusOnly -Json` | Scenario vocabulary and lane expectations | Catalog validation; not an app by itself. |
 | `ergonomics` | API-shape fixture | `ctest -R examples.ergonomics.api_shape` | Route groups, Results helpers, config/log/services shape | Static example check only. |
 | `framework-controller` | API-shape fixture | `ctest -R examples.framework.api_shape` | Controller mapper and DI shape | App-host fixture; compiler source input covers the static controller mapping subset in compiler fixtures. |
 | `fs-basic` | API-shape fixture | `ctest -R examples.fs.api_shape` | Directory/File helpers and deadline option | Static example check only. |

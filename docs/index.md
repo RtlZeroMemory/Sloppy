@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Sloppy
   text: Compiler-first TypeScript backend runtime
-  tagline: Public alpha, pre-production runtime for TypeScript APIs, CLIs, local tools, and packaged app artifacts.
+  tagline: Build TypeScript APIs, CLIs, local tools, and packaged app artifacts from a compiler-visible app model.
   image:
     src: /logo.svg
     alt: Sloppy
@@ -93,13 +93,11 @@ app package, and proves the package can run outside the source checkout.
 - [Compiler-first runtime](about/compiler-first-runtime.md) explains why the
   Plan exists.
 
-## Public Alpha Limits
+## Current limits
 
-Sloppy is a public alpha, pre-production runtime. It is ready for experiments,
-demos, feedback, and early exploration, but not production deployments yet.
-APIs and artifacts can change between alpha revisions. Package support is
-limited to compatible installed JavaScript that Sloppy can bundle, and Sloppy is
-not a full Node runtime.
+Sloppy is public alpha software. APIs and artifacts can change between alpha
+revisions. Package support is limited to compatible installed JavaScript that
+Sloppy can bundle, and Sloppy is not a full Node runtime.
 
 Platform npm packages cover Windows x64, Linux x64 glibc, and macOS. Linux
 arm64 and Windows arm64 are source-build paths until matching alpha packages

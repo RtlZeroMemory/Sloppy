@@ -1,6 +1,6 @@
 # SQL Server Guide
 
-SQL Server support is public alpha, pre-production, optional, and live-service
+SQL Server support is public alpha, optional, and live-service
 gated.
 
 This walkthrough uses SQL Server, so it needs a SQL Server connection string

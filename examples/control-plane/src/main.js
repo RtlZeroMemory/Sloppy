@@ -10,7 +10,7 @@ import { projectsModule } from "./routes/projects.js";
 const app = Sloppy.create();
 
 app.use(ProblemDetails.defaults());
-app.use(sqlite("main", { database: "prealpha-control-plane.db" }));
+app.use(sqlite("main", { database: "control-plane.db" }));
 app.useModule(healthModule);
 app.useModule(projectsModule);
 app.useModule(appsModule);

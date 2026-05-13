@@ -71,8 +71,8 @@ capability tokens share storage.
 
 ## Schema versioning
 
-`schemaVersion` is a single string today (`"plan/v1-alpha"`). Pre-alpha
-breaking changes are expected. The parser rejects any version it doesn't
+`schemaVersion` is a single string today (`"plan/v1-alpha"`). Alpha schema
+changes are expected. The parser rejects any version it doesn't
 recognize.
 
 When the schema bumps, both ends move together: `sloppyc` writes the new

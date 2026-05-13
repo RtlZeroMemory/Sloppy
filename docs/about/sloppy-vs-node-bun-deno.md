@@ -229,7 +229,7 @@ The costs are real:
 - The compiler accepts a focused TypeScript/JavaScript source subset.
 - Dynamic web app shapes can run, but metadata may be partial. Sloppy shows
   the incomplete parts instead of pretending they are complete.
-- Sloppy is public alpha, pre-production software. APIs, artifact formats, and
+- Sloppy is public alpha software. APIs, artifact formats, and
   internal boundaries can still change.
 
 Use this rule of thumb: Sloppy is a good fit when you want compiler-first
@@ -302,7 +302,7 @@ boundary as a Sloppy app.
 | Dynamic JavaScript freedom | Intentionally limited in Web Mode | High | High | High |
 | Program/CLI apps | Program Mode via Sloppy stdlib | Mature | Mature | Mature |
 | Node built-ins | Explicit Sloppy APIs and partial `node:*` shims | Native surface | Broad support | Available through compatibility surfaces where supported |
-| Production maturity | Public alpha, pre-production | Mature | Mature | Mature |
+| Production maturity | Public alpha | Mature | Mature | Mature |
 
 ## When to use Sloppy
 

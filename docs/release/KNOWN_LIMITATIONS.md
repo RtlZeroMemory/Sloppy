@@ -34,7 +34,7 @@ own status.
 
 ## Package and Release Limits
 
-- Packages are public alpha, pre-production artifacts.
+- Packages are public alpha artifacts.
 - No installer, signing, notarization, auto-update, Homebrew, winget, or public
   GitHub release is included in the dry-run.
 - npm dry-run packages install Sloppy itself; app dependencies are still

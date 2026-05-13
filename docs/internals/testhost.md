@@ -1,7 +1,7 @@
 # TestHost Internals
 
 `stdlib/sloppy/testing.js` owns the first-party JavaScript TestHost API.
-The API is experimental while Sloppy is pre-alpha; keep behavior under test and
+The API is experimental while TestHost behavior evolves; keep behavior under test and
 avoid treating helper shape as stable runtime surface.
 
 ## Modes

@@ -1,6 +1,6 @@
 # Roadmap
 
-Sloppy is public alpha, pre-production software. This page separates what
+Sloppy is public alpha software. This page separates what
 exists now from the directions that are still being designed.
 
 ## Current Runtime

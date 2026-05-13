@@ -14,7 +14,7 @@ import {
 import { createTestHost } from "../../stdlib/sloppy/testing.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const exampleRoot = path.join(repoRoot, "examples", "prealpha-control-plane");
+const exampleRoot = path.join(repoRoot, "examples", "control-plane");
 
 class FakeControlPlaneDb {
     #nextProjectId = 3;
@@ -173,8 +173,8 @@ function compareById(left, right) {
 }
 
 async function importRouteModulesFromExampleCopy() {
-    const tempRoot = await mkdtemp(path.join(tmpdir(), "sloppy-prealpha-control-plane-"));
-    const copiedExample = path.join(tempRoot, "prealpha-control-plane");
+    const tempRoot = await mkdtemp(path.join(tmpdir(), "sloppy-control-plane-"));
+    const copiedExample = path.join(tempRoot, "control-plane");
     await cp(exampleRoot, copiedExample, { recursive: true });
 
     const sloppyPackage = path.join(copiedExample, "node_modules", "sloppy");

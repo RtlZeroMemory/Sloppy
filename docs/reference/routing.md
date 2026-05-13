@@ -126,4 +126,4 @@ Compiler extraction currently enforces:
 - Sloppy routing currently follows Sloppy app/group registration and supported
   route patterns. Node-style router APIs are not part of the current surface.
 - Package-manager route plugins are outside the current public alpha,
-  pre-production route table.
+  alpha route table.

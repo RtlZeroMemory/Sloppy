@@ -101,7 +101,7 @@ if(CARGO_EXECUTABLE AND SLOPPY_BUILD_COMPILER AND SLOPPY_ENABLE_V8)
                          validation-errors
                          request-context
                          users-api-sqlite
-                         prealpha-control-plane
+                         control-plane
                          framework-hello
                          framework-validation-errors
                          framework-explicit-binding

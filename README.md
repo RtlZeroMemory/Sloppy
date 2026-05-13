@@ -7,21 +7,20 @@
 [![CI](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/RtlZeroMemory/Slop/actions/workflows/codeql.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/codeql.yml)
 [![npm alpha](https://img.shields.io/npm/v/@slopware/sloppy/alpha?label=npm%20alpha)](https://www.npmjs.com/package/@slopware/sloppy)
-![public alpha, pre-production](https://img.shields.io/badge/status-public%20alpha%2C%20pre--production-yellow)
+![public alpha](https://img.shields.io/badge/status-public%20alpha-yellow)
 ![license](https://img.shields.io/badge/license-see%20LICENSE-blue)
 
-> Public alpha, pre-production TypeScript runtime and application framework for backend apps, tools, and local programs.
+> Compiler-first TypeScript backend runtime and application framework for APIs, tools, and packaged app artifacts.
 
-Sloppy is a public alpha, pre-production TypeScript runtime built around a
-compiler-visible app model. You write supported TypeScript, `sloppyc` lowers
-the source into a structured Plan, and the native runtime executes that known
-shape through an isolated V8 bridge.
+Sloppy is a TypeScript runtime built around a compiler-visible app model. You
+write supported TypeScript, `sloppyc` lowers the source into a structured Plan,
+and the native runtime executes that known shape through an isolated V8 bridge.
 
 Sloppy has two current execution shapes:
 
-- **Web apps** ? routes, middleware, Results, OpenAPI, HTTP runtime, and app
+- **Web apps** - routes, middleware, Results, OpenAPI, HTTP runtime, and app
   metadata.
-- **Program Mode** ? route-free console-style tools with `main(args, ctx)`,
+- **Program Mode** - route-free console-style tools with `main(args, ctx)`,
   stdlib imports, packaging, and artifact execution.
 
 The Plan contains the parts a backend runtime usually has to discover while the
@@ -66,9 +65,8 @@ sloppy run src/main.ts -- Ada
 
 More detail: [Program Mode](docs/guide/program-mode.md).
 
-Public alpha, pre-production means Sloppy is ready for experiments, demos,
-feedback, and early exploration, but not production deployments yet. APIs and
-artifact formats may still change.
+Sloppy is in public alpha. The current package is useful for experiments,
+demos, and feedback while APIs and artifact formats continue to settle.
 
 ## Start here
 
@@ -86,7 +84,7 @@ available under [`docs/`](docs/README.md).
 
 ## Install
 
-The public alpha, pre-production package is:
+Install the public alpha package:
 
 ```sh
 npm install -g @slopware/sloppy@alpha
@@ -109,12 +107,11 @@ sloppy run .sloppy/package --once GET /health
 For an edit-refresh loop from the same project:
 
 ```sh
-# Experimental.
 sloppy dev
 ```
 
-`sloppy dev` is experimental and may change during the public alpha,
-pre-production period.
+`sloppy dev` rebuilds watched inputs and restarts the local server after
+successful builds.
 
 Create and package a route-free Program Mode tool:
 
@@ -206,15 +203,15 @@ For a practical comparison, see
 Surface-by-surface status is tracked in
 [Stability Reference](docs/reference/stability.md).
 
-## What public alpha, pre-production means
+## Current limits
 
-Sloppy is usable for experiments, demos, and feedback. It is not hardened as a
-production edge runtime.
+Sloppy is public alpha software. Keep these boundaries in mind when you build
+with it:
 
 Current limits:
 
 - API and artifact formats can change between alpha revisions.
-- Package/dependency support is experimental. Sloppy consumes existing
+- Package/dependency support consumes existing
   installed pure-JavaScript packages when they can be resolved, transformed,
   bundled, and executed inside Sloppy's runtime boundary. It does not install
   from a registry or solve semver ranges.
@@ -247,7 +244,7 @@ dependency story, native interop, and production-hardening direction.
 
 ## Documentation
 
-- [Quickstart](docs/quickstart.md) - create, build, run, experimental dev-watch, and package a first API
+- [Quickstart](docs/quickstart.md) - create, build, run, use the dev loop, and package a first API
 - [Install](docs/install.md) - npm, source builds, and platform notes
 - [Tutorials](docs/tutorials/index.md) - guided app-building path
 - [API](docs/api/index.md) - first-party stdlib and app APIs
@@ -260,9 +257,9 @@ dependency story, native interop, and production-hardening direction.
 
 ## Contributing and feedback
 
-Sloppy is public alpha, pre-production software. Reports from real attempts are
-useful: install problems, confusing diagnostics, examples that do not match
-behavior, missing docs, and small API paper cuts.
+Reports from real attempts are useful: install problems, confusing
+diagnostics, examples that do not match behavior, missing docs, and small API
+paper cuts.
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [Contributor docs](docs/contributor/index.md)

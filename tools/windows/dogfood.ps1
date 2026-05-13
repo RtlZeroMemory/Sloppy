@@ -58,7 +58,7 @@ function Assert-DogfoodManifest {
         }
     }
 
-    foreach ($requiredId in @("hello-artifact", "hello-source-input", "prealpha-control-plane", "package-hello-artifact", "http-app", "https-app", "sqlite-app", "postgresql-app", "sqlserver-app", "framework-app")) {
+    foreach ($requiredId in @("hello-artifact", "hello-source-input", "control-plane", "package-hello-artifact", "http-app", "https-app", "sqlite-app", "postgresql-app", "sqlserver-app", "framework-app")) {
         Assert-True ($ids.Contains($requiredId)) "Dogfood catalog missing required scenario '$requiredId'."
     }
 }
@@ -148,7 +148,7 @@ function Invoke-SelfTest {
         scenarios = @(
             [pscustomobject]@{ id = "hello-artifact"; status = "v8-gated"; reason = "requires V8" },
             [pscustomobject]@{ id = "hello-source-input"; status = "v8-gated"; reason = "requires V8" },
-            [pscustomobject]@{ id = "prealpha-control-plane"; status = "v8-gated"; reason = "requires V8 and source-input compiler" },
+            [pscustomobject]@{ id = "control-plane"; status = "v8-gated"; reason = "requires V8 and source-input compiler" },
             [pscustomobject]@{ id = "package-hello-artifact"; status = "package-gated"; reason = "requires package" },
             [pscustomobject]@{ id = "http-app"; status = "blocked"; reason = "owned by HTTP track" },
             [pscustomobject]@{ id = "https-app"; status = "blocked"; reason = "owned by TLS track" },
@@ -177,7 +177,7 @@ foreach ($scenario in @($manifest.scenarios)) {
     } elseif ([string]$scenario.status -eq "v8-gated") {
         $scenarioId = [string]$scenario.id
         $canRunHelloDogfood = $scenarioId -in @("hello-artifact", "hello-source-input") -and -not [string]::IsNullOrWhiteSpace($SloppyExe)
-        $canRunControlPlaneDogfood = $scenarioId -eq "prealpha-control-plane" -and -not [string]::IsNullOrWhiteSpace($SloppyExe) -and -not [string]::IsNullOrWhiteSpace($SloppycExe)
+        $canRunControlPlaneDogfood = $scenarioId -eq "control-plane" -and -not [string]::IsNullOrWhiteSpace($SloppyExe) -and -not [string]::IsNullOrWhiteSpace($SloppycExe)
         if (-not $StatusOnly -and ($canRunHelloDogfood -or $canRunControlPlaneDogfood)) {
             continue
         }
@@ -244,7 +244,7 @@ if (-not $StatusOnly) {
         Add-Result -Results $results -Lane "hello-source-input" -Status $sourceStatus -Reason $sourceReason
         Add-Result -Results $results -Lane "source-input" -Status $sourceStatus -Reason $sourceReason
 
-        $controlScenario = @($manifest.scenarios | Where-Object { $_.id -eq "prealpha-control-plane" })[0]
+        $controlScenario = @($manifest.scenarios | Where-Object { $_.id -eq "control-plane" })[0]
         $controlRoot = Join-Path $Root ([string]$controlScenario.project)
         $controlRun = Invoke-CapturedProcess `
             -Executable (Resolve-Path -LiteralPath $SloppyExe).Path `
@@ -259,26 +259,26 @@ if (-not $StatusOnly) {
         $controlText = $controlRun.Stdout + $controlRun.Stderr
         if ($controlRun.ExitCode -eq 0) {
             if (-not $RequireV8Runtime) {
-                throw "prealpha-control-plane dogfood unexpectedly executed without -RequireV8Runtime."
+                throw "control-plane dogfood unexpectedly executed without -RequireV8Runtime."
             }
             foreach ($needle in @($controlScenario.stdoutContains)) {
                 if (-not $controlText.Contains([string]$needle)) {
-                    throw "prealpha-control-plane dogfood output did not contain expected text '$needle'."
+                    throw "control-plane dogfood output did not contain expected text '$needle'."
                 }
             }
-            Add-Result -Results $results -Lane "prealpha-control-plane" -Status "PASS" -Reason "V8-gated source-input project-mode dogfood returned the expected response."
+            Add-Result -Results $results -Lane "control-plane" -Status "PASS" -Reason "V8-gated source-input project-mode dogfood returned the expected response."
         } elseif ($controlText.Contains("requires V8-enabled build")) {
             if ($RequireV8Runtime) {
-                throw "prealpha-control-plane dogfood required V8 execution, but the binary reported V8 unavailable."
+                throw "control-plane dogfood required V8 execution, but the binary reported V8 unavailable."
             }
-            Add-Result -Results $results -Lane "prealpha-control-plane" -Status "UNAVAILABLE" -Reason "non-V8 build reported the required V8 diagnostic after project-mode source-input compile."
+            Add-Result -Results $results -Lane "control-plane" -Status "UNAVAILABLE" -Reason "non-V8 build reported the required V8 diagnostic after project-mode source-input compile."
         } else {
-            throw "prealpha-control-plane dogfood failed unexpectedly: $controlText"
+            throw "control-plane dogfood failed unexpectedly: $controlText"
         }
     } else {
         Add-Result -Results $results -Lane "hello-artifact" -Status "SKIPPED" -Reason "SloppyExe was not provided."
         Add-Result -Results $results -Lane "hello-source-input" -Status "SKIPPED" -Reason "SloppyExe and SloppycExe were not provided."
-        Add-Result -Results $results -Lane "prealpha-control-plane" -Status "SKIPPED" -Reason "SloppyExe and SloppycExe were not provided."
+        Add-Result -Results $results -Lane "control-plane" -Status "SKIPPED" -Reason "SloppyExe and SloppycExe were not provided."
         Add-Result -Results $results -Lane "source-input" -Status "SKIPPED" -Reason "SloppyExe and SloppycExe were not provided."
     }
 

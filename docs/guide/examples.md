@@ -1,12 +1,11 @@
 # Examples
 
-`/examples/` in the repository has many small apps. Most are smoke fixtures
-that let the test suite exercise compiler/runtime behavior. A smaller set is
-worth running by hand to learn real Sloppy idioms.
+`/examples/` contains runnable apps, focused API examples, live-provider
+examples, and fixtures used by the test suite. Start with the curated examples
+below when you want code to learn from. Use the full inventory when you need to
+find the evidence source for a specific feature.
 
-This page starts with the curated set, then lists every example directory with
-its current role. If a row says "fixture", treat it as test evidence rather
-than a tutorial.
+If a row says "fixture", treat it as test evidence rather than a tutorial.
 
 For a complete test-oriented inventory, see `examples/README.md` in the
 repository.
@@ -17,12 +16,8 @@ repository.
 | --- | --- |
 | [`framework-hello`](#framework-hello) | `Sloppy.create()`, typed route param, JSON response |
 | [`hello-minimal`](#hello-minimal) | The smallest runnable app |
-
-## Contributor/Internal Coverage
-
-| Example | Shows |
-| --- | --- |
-| [`prealpha-control-plane`](#prealpha-control-plane) | Multi-file project-mode app host, SQLite capability, app test host coverage |
+| [`program-hello`](#program-hello) | Route-free Program Mode entrypoint |
+| [`package-zod-like`](#package-zod-like) | Installed package graph with a local file dependency |
 
 ## Routing
 
@@ -108,15 +103,6 @@ sloppy build examples/framework-hello/app.ts --out .sloppy-tmp
 sloppy run .sloppy-tmp --once GET /hello/Ada
 ```
 
-Project-mode examples, such as `prealpha-control-plane`, run from their own
-directory:
-
-```powershell
-cd examples/prealpha-control-plane
-sloppy build
-sloppy run .sloppy --once GET /projects?owner=runtime
-```
-
 `sloppy run` enters V8. Default non-V8 builds report the V8 requirement after
 compiling source input and writing artifacts; that diagnostic confirms the
 handoff path, but it is not positive handler execution.
@@ -133,14 +119,15 @@ Two routes, one typed parameter, deterministic JSON response. The example the
 The smallest possible app: `Sloppy.create()`, one route, one `Results.text(...)`
 response. Useful when something else stops working and you want to bisect.
 
-### prealpha-control-plane
+### program-hello
 
-A multi-file contributor/internal project with `sloppy.json`,
-`appsettings*.json`, function modules, route groups, JSON bodies, path and
-query params, SQLite provider metadata, health routes, diagnostics, and
-app-host coverage. Its app-host test imports the same route modules and covers
-CORS, ProblemDetails, request IDs, request logging redaction, service-scope
-cleanup, negative paths, and host lifecycle.
+Route-free Program Mode source with `main(args, ctx)`, relative module imports,
+arguments after `--`, and stdout.
+
+### package-zod-like
+
+Installed package graph example that uses a local `file:` dependency. It is the
+smallest example for package resolution without depending on registry access.
 
 ### framework-controller
 
@@ -232,7 +219,7 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `crypto-random-token` | Crypto API-shape fixture |
 | `crypto-secret-constant-time` | Crypto API-shape fixture |
 | `data-foundation` | Data/capability API-shape fixture |
-| `dogfood` | Contributor/internal machine-readable evidence catalog |
+| `dogfood` | Machine-readable evidence catalog |
 | `ergonomics` | API ergonomics fixture |
 | `framework-controller` | Curated routing/controller example |
 | `framework-di-services` | Curated services example |
@@ -259,7 +246,7 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `net-tcp-server` | TCP server API-shape fixture |
 | `os-runtime-api` | OS API-shape fixture |
 | `postgres-basic` | PostgreSQL provider fixture, live-provider gated |
-| `prealpha-control-plane` | Contributor/internal control-plane coverage app |
+| `control-plane` | Legacy control-plane coverage fixture |
 | `request-context` | Curated request context example |
 | `sqlite-basic` | SQLite provider fixture |
 | `sqlserver-basic` | SQL Server provider fixture, live-provider gated |

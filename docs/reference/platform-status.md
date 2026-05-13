@@ -1,6 +1,6 @@
 # Platform Status Reference
 
-Sloppy is designed to be cross-platform. The public alpha, pre-production
+Sloppy is designed to be cross-platform. The public alpha
 package set covers Windows x64, Linux x64 glibc, and macOS.
 
 ## npm Platform Packages

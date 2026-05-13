@@ -39,9 +39,9 @@
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_sqlite_basic_example.cmake")
     add_test(
-        NAME examples.prealpha_control_plane.api_shape
+        NAME examples.control_plane.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
-                "${PROJECT_SOURCE_DIR}/tests/cmake/check_prealpha_control_plane_example.cmake")
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_control_plane_example.cmake")
     add_test(
         NAME examples.postgres_basic.api_shape
         COMMAND "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}" -P
@@ -192,9 +192,9 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_testhost_full_framework_matrix.mjs")
         add_test(
-            NAME bootstrap.stdlib.prealpha_control_plane_dogfood
+            NAME bootstrap.stdlib.control_plane_dogfood
             COMMAND "${NODE_EXECUTABLE}"
-                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_prealpha_control_plane_dogfood.mjs")
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_control_plane_dogfood.mjs")
         add_test(
             NAME bootstrap.stdlib.static_files
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_static_files.mjs")
@@ -312,7 +312,7 @@
             bootstrap.stdlib.testhost_framework_matrix bootstrap.stdlib.testhost_services_matrix
             bootstrap.stdlib.testhost_ops_matrix bootstrap.stdlib.testhost_full_framework_matrix
             bootstrap.stdlib.realtime_framework bootstrap.stdlib.runtime_classic_surface
-            bootstrap.stdlib.prealpha_control_plane_dogfood
+            bootstrap.stdlib.control_plane_dogfood
             bootstrap.stdlib.static_files
             bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.orm bootstrap.stdlib.orm_runtime_classic

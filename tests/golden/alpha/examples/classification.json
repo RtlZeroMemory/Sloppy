@@ -165,7 +165,7 @@
     {
       "kind": "metadata",
       "name": "dogfood",
-      "reason": "dogfood metadata fixture remains internal; prealpha-control-plane covers the supported dogfood flow",
+      "reason": "dogfood metadata fixture remains internal; control-plane covers the supported dogfood flow",
       "tier": "pr"
     },
     {
@@ -390,7 +390,7 @@
     {
       "entry": "src/main.js",
       "kind": "web",
-      "name": "prealpha-control-plane",
+      "name": "control-plane",
       "package": true,
       "prSmoke": true,
       "tier": "pr"

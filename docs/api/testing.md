@@ -151,7 +151,7 @@ behavior, and live database setup are covered by separate integration
 checks.
 
 The control-plane app-host test is the largest current app-host example. It
-imports `examples/prealpha-control-plane` route modules, mounts a fake SQLite
+imports `examples/control-plane` route modules, mounts a fake SQLite
 provider, and checks the app contract before the same project goes through the
 compiler, source-input, and V8 checks.
 

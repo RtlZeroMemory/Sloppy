@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "public alpha, pre-production",
+  "status": "public alpha",
   "purpose": "Lightweight manifest of public command snippets that should stay aligned with README, docs, templates, and current CLI reference.",
   "snippets": [
     {

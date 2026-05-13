@@ -128,33 +128,23 @@ Imports are file-local. `main.ts` does not import `Results` unless it contains
 handlers that call `Results.*`; route modules import `Results` for their own
 handlers.
 
-For a larger current example, see `examples/prealpha-control-plane/`:
+For a larger source layout, use the default `api` template or inspect
+`examples/modules-api/`:
 
 ```text
-prealpha-control-plane/
+modules-api/
   sloppy.json
   appsettings.json
   appsettings.Development.json
   src/
     main.js
     routes/
-      projects.js
-      apps.js
-      builds.js
-      deployments.js
-      diagnostics.js
-      health.js
-    services/
-    db/
-    validation/
+      users.js
 ```
 
-That example keeps the compiler entry thin, registers feature modules with
-`app.useModule(...)`, and uses `sloppy/providers/sqlite` for provider metadata.
-The current compiler can extract that function-module shape. More general
-helper calls inside module files, request logging imports at the source root,
-and `app.mapHealthChecks()` are still covered by app-host tests rather than by
-compiled project source.
+That shape keeps the compiler entry thin and registers feature modules with
+`app.useModule(...)`. Use the provider-specific examples when you want to see
+SQLite, PostgreSQL, or SQL Server configuration.
 
 ## `.sloppy/`
 

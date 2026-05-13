@@ -112,7 +112,7 @@ tools/unix/dev.sh dogfood
 ```
 
 The Unix dogfood script validates the shared catalog and can run package-mode smoke when a
-TAR archive is supplied. Positive source-input and pre-alpha control-plane execution remain
+TAR archive is supplied. Positive source-input and control-plane execution remain
 V8-gated and must be reported separately from this static Unix lane.
 
 `tools/unix/dev.sh npm-dry-run --package-path artifacts/packages/sloppy-linux-x64.tar.gz`

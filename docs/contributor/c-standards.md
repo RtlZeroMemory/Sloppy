@@ -21,7 +21,7 @@ not depend on compiler-specific behavior in core unless it is abstracted.
 
 ## Representation and Layout Optimization
 
-Sloppy is still pre-alpha, so we can change native contracts when a better layout removes
+Sloppy is still alpha, so we can change native contracts when a better layout removes
 real cost. Use that freedom carefully. Layout work is useful when a type appears many times
 in memory, moves through a hot path, or sits in a cache-sensitive batch. Examples include
 HTTP/2 event arrays, route tables, request contexts, log fields, and engine result values.

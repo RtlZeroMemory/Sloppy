@@ -1,9 +1,8 @@
 # Build A Multi-File API
 
 Use the `api` template when you want route modules, configuration, services,
-SQLite provider metadata, and packaging flow. It is a public alpha,
-pre-production starter:
-use it for early apps and experiments, not as a production-stability contract.
+SQLite provider metadata, and packaging flow. It is a public alpha starter:
+use it for early apps and experiments, not as a stable API contract.
 
 ## Create
 

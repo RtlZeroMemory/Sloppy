@@ -1,6 +1,6 @@
 # Stability Reference
 
-Sloppy is public alpha, pre-production software. It is ready for experiments,
+Sloppy is public alpha software. It is ready for experiments,
 demos, feedback, and early exploration, but not production deployments yet.
 Contracts and behavior can change between alpha revisions.
 
@@ -45,7 +45,7 @@ Parser behavior:
 
 This matrix is the compact current-state map. `supported` means the surface is
 covered by current source and tests in that column. `experimental` means the
-surface exists in the public alpha, pre-production runtime but may change. `rejected` means the
+surface exists in the public alpha runtime but may change. `rejected` means the
 compiler refuses the input rather than emitting a partial Plan.
 
 | Feature | App-host/test-host | Compiler source input | Generated `app.js` / Plan | Native/V8 `sloppy run` | Notes |
