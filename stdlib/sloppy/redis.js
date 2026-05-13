@@ -1,3 +1,4 @@
+import { isPlainObject } from "./internal/validation.js";
 import { Base64, Text } from "./codec.js";
 import { Random, Secret } from "./crypto.js";
 import { Metrics } from "./metrics.js";
@@ -77,14 +78,6 @@ class RedisErrorReply {
 
 function redisError(code, message, options = undefined) {
     return new SloppyRedisError(code, message, options);
-}
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
 }
 
 function secretToText(value) {

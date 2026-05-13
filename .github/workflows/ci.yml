@@ -283,6 +283,7 @@ jobs:
           .\tools\windows\check-c-standards.ps1 -SelfTest
           .\tools\windows\check-c-standards.ps1
           .\tools\windows\check-js-ts-standards.ps1
+          .\tools\windows\check-js-syntax.ps1
           .\tools\windows\check-rust-standards.ps1
           .\tools\windows\check-docs-freshness.ps1
           .\tools\windows\check-core-api-integration.ps1 -SelfTest

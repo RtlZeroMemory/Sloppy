@@ -2041,6 +2041,7 @@ async function flushMicrotasks(count = 6) {
     assert.equal(provider.name, "main");
     assert.equal(provider.options.database, ":memory:");
     assert.equal(provider.options.queueCapacity, 8);
+    assertThrowsMessage(() => sqlite("main", { database: ":memory:", typo: true }), /not supported/);
 }
 
 {
@@ -2317,13 +2318,20 @@ async function flushMicrotasks(count = 6) {
             return { messages: this.messages };
         },
     };
+    let providerCloseCount = 0;
+    const providerOverride = {
+        kind: "sqlite-test",
+        close() {
+            providerCloseCount += 1;
+        },
+    };
     let host;
     try {
         host = await TestHost.create(app, {
             config: { "Feature:Enabled": true },
             secrets: { JWT_SECRET: "super-secret-value" },
             services: { mail },
-            providers: { main: { kind: "sqlite-test" } },
+            providers: { main: providerOverride },
             clock,
         });
         assert.equal(host.mode, "inProcess");
@@ -2402,6 +2410,7 @@ async function flushMicrotasks(count = 6) {
         }
     }
 
+    assert.equal(providerCloseCount, 1);
     assert.equal(clock.now().toISOString(), "2026-01-01T00:00:00.000Z");
     clock.advanceBy({ minutes: 5 });
     assert.equal(clock.now().toISOString(), "2026-01-01T00:05:00.000Z");

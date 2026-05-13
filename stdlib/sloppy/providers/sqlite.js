@@ -1,3 +1,5 @@
+import { validateSqliteProviderOptions } from "../internal/validation.js";
+
 const SQLITE_PROVIDER_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/u;
 
 function validateSqliteProviderName(name) {
@@ -11,22 +13,6 @@ function validateSqliteProviderName(name) {
     }
 }
 
-function validateSqliteProviderOptions(options) {
-    if (options === undefined) {
-        return Object.freeze({});
-    }
-    if (options === null || typeof options !== "object" || Array.isArray(options)) {
-        throw new TypeError("Sloppy sqlite provider options must be a plain object.");
-    }
-    if (
-        Object.prototype.hasOwnProperty.call(options, "database") &&
-        (typeof options.database !== "string" || options.database.includes("\0"))
-    ) {
-        throw new TypeError("Sloppy sqlite provider database option must be a string without NUL.");
-    }
-    return Object.freeze({ ...options });
-}
-
 export function sqlite(name, options) {
     validateSqliteProviderName(name);
 
@@ -35,6 +21,6 @@ export function sqlite(name, options) {
         kind: "sqlite",
         name,
         token: name.includes(".") ? name : `data.${name}`,
-        options: validateSqliteProviderOptions(options),
+        options: options === undefined ? Object.freeze({}) : validateSqliteProviderOptions(options),
     });
 }

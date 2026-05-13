@@ -88,3 +88,13 @@ Keep core, platform, provider, CLI, and V8 boundaries explicit; use checked
 arithmetic and bounded builders for size-sensitive paths; return `SlStatus`
 when callers need diagnostics; and add focused tests or fuzz seeds for parser,
 serializer, ownership, or cleanup changes.
+
+## JavaScript Stdlib Contract
+
+JavaScript runtime and stdlib changes must follow
+`docs/internals/javascript-stdlib-standards.md`. Keep public modules as small
+facades over focused internals where useful, normalize public inputs at
+boundaries, keep hot paths on normalized descriptors, use shared internal
+validation/redaction/disposal helpers instead of copy-paste helpers, and add
+tests for source modules plus any runtime-classic or embedded variant that can
+drift.

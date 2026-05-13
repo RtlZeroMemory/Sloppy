@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import tls from "node:tls";
 
-import { CancellationController, Deadline, HttpClient } from "../../stdlib/sloppy/index.js";
+import { CancellationController, Deadline, Http, HttpClient, HttpClientFactory } from "../../stdlib/sloppy/index.js";
 
 async function assertRejectsMessage(fn, expected) {
     await assert.rejects(fn, (error) => {
@@ -26,6 +26,27 @@ async function waitForCondition(predicate, message) {
     assert.fail(message);
 }
 
+function deferredCloseTransport() {
+    let resolveClose;
+    const closed = new Promise((resolve) => {
+        resolveClose = resolve;
+    });
+    let closeCalls = 0;
+    return {
+        get closeCalls() {
+            return closeCalls;
+        },
+        close() {
+            closeCalls += 1;
+            return closed;
+        },
+        request() {
+            throw new Error("transport request should not be reached after client close");
+        },
+        resolveClose,
+    };
+}
+
 function assertReceivedStreamIds(received, expected) {
     assert.deepEqual(
         received.map((entry) => entry.streamId).sort((left, right) => left - right),
@@ -38,6 +59,74 @@ function assertReceivedConnectionIds(received, expected) {
         received.map((entry) => entry.connectionId).sort((left, right) => left - right),
         expected,
     );
+}
+
+{
+    const transport = deferredCloseTransport();
+    const client = Http.client("sync-dispose", { baseUrl: "http://example.test" }, transport);
+    const builder = client.get("/built-before-close");
+    const firstDispose = client.dispose();
+    assert.throws(() => client.get("/x"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    await assert.rejects(() => builder.send(), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    assert.equal(client.dispose(), firstDispose);
+    assert.equal(client.close(), firstDispose);
+    await Promise.resolve();
+    assert.equal(transport.closeCalls, 1);
+    transport.resolveClose();
+    await firstDispose;
+}
+
+{
+    const transport = deferredCloseTransport();
+    const client = Http.client("sync-close", { baseUrl: "http://example.test" }, transport);
+    const firstClose = client.close();
+    assert.throws(() => client.get("/x"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    assert.equal(client.close(), firstClose);
+    assert.equal(client.dispose(), firstClose);
+    await Promise.resolve();
+    assert.equal(transport.closeCalls, 1);
+    transport.resolveClose();
+    await firstClose;
+}
+
+{
+    const typed = Http.typedClient("typed-sync-dispose", {
+        baseUrl: "http://example.test",
+        endpoints: {
+            ping: Http.get("/ping").returns(200),
+        },
+    });
+    const firstDispose = typed.dispose();
+    await assert.rejects(() => typed.ping(), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    assert.equal(typed.dispose(), firstDispose);
+    await firstDispose;
+}
+
+{
+    const transport = deferredCloseTransport();
+    const client = Http.client("factory-dispose", { baseUrl: "http://example.test" }, transport);
+    const factory = HttpClientFactory.create({ clients: [client] });
+    const firstDispose = factory.dispose();
+    assert.throws(() => factory.get("factory-dispose"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    assert.throws(() => client.get("/x"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    assert.equal(factory.dispose(), firstDispose);
+    await Promise.resolve();
+    assert.equal(transport.closeCalls, 1);
+    transport.resolveClose();
+    await firstDispose;
+}
+
+{
+    const client = HttpClient.create({ baseUrl: "http://example.test" });
+    const firstClose = client.close();
+    assert.throws(() => client.get("/x"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    assert.throws(() => client.text("/x"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    assert.throws(() => client.json("/x"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    assert.throws(() => client.bytes("/x"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    assert.throws(() => client.getJson("/x"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    assert.throws(() => client.postJson("/x", { ok: true }), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+    assert.equal(client.dispose(), firstClose);
+    await firstClose;
 }
 
 function readSocketRequest(socket) {

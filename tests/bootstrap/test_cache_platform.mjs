@@ -337,6 +337,68 @@ async function withCacheBridge(callback) {
         current += 20;
         assert.equal(await expiringMemory.get("bounded"), undefined);
         assert.equal(await expiringHybrid.get("bounded"), undefined);
+
+        let memoryDisposed = false;
+        let distributedDisposed = false;
+        const asyncMemory = Cache.memory("async-front", { maxEntries: 10 });
+        const memoryPrototype = Object.getPrototypeOf(asyncMemory);
+        const originalMemoryDispose = memoryPrototype.dispose;
+        memoryPrototype.dispose = async function dispose() {
+            await Promise.resolve();
+            if (this === asyncMemory) {
+                memoryDisposed = true;
+            }
+            originalMemoryDispose.call(this);
+        };
+        const asyncDistributed = Cache.sqlite(sqliteDb, { name: "async-back", namespace: "async-hybrid" });
+        const distributedPrototype = Object.getPrototypeOf(asyncDistributed);
+        const originalDistributedDispose = distributedPrototype.dispose;
+        distributedPrototype.dispose = async function dispose() {
+            await Promise.resolve();
+            if (this === asyncDistributed) {
+                distributedDisposed = true;
+            }
+            return originalDistributedDispose.call(this);
+        };
+        try {
+            await Cache.hybrid("async-main", { memory: asyncMemory, distributed: asyncDistributed }).dispose();
+            assert.equal(memoryDisposed, true);
+            assert.equal(distributedDisposed, true);
+        } finally {
+            memoryPrototype.dispose = originalMemoryDispose;
+            distributedPrototype.dispose = originalDistributedDispose;
+        }
+
+        let failureMemoryDisposed = false;
+        let failureDistributedDisposed = false;
+        const failureMemory = Cache.memory("async-fail-front", { maxEntries: 10 });
+        const failureDistributed = Cache.sqlite(sqliteDb, { name: "async-fail-back", namespace: "async-hybrid-fail" });
+        memoryPrototype.dispose = async function dispose() {
+            await Promise.resolve();
+            if (this === failureMemory) {
+                failureMemoryDisposed = true;
+            }
+            return originalMemoryDispose.call(this);
+        };
+        distributedPrototype.dispose = async function dispose() {
+            await Promise.resolve();
+            if (this === failureDistributed) {
+                failureDistributedDisposed = true;
+                throw new Error("distributed dispose failed");
+            }
+            return originalDistributedDispose.call(this);
+        };
+        try {
+            await assert.rejects(
+                () => Cache.hybrid("async-fail-main", { memory: failureMemory, distributed: failureDistributed }).dispose(),
+                /distributed dispose failed/u,
+            );
+            assert.equal(failureMemoryDisposed, true);
+            assert.equal(failureDistributedDisposed, true);
+        } finally {
+            memoryPrototype.dispose = originalMemoryDispose;
+            distributedPrototype.dispose = originalDistributedDispose;
+        }
     });
 }
 

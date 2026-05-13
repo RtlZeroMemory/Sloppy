@@ -32,6 +32,7 @@ import {
 } from "./internal/routes.js";
 import { createServiceProvider, createServicesBuilder } from "./internal/services.js";
 import { createMutationGuard, isPlainObject } from "./internal/shared.js";
+import { validateSqliteProviderOptions } from "./internal/validation.js";
 import { Health, createHealthHandler as createOpsHealthHandler } from "./health.js";
 import { isCache } from "./cache.js";
 import { Metrics } from "./metrics.js";
@@ -368,14 +369,7 @@ function sqliteProviderToken(name) {
 
 function validateMergedProviderOptions(provider, options) {
     if (provider.kind === "sqlite") {
-        if (!isPlainObject(options)) {
-            throw new TypeError("Sloppy sqlite provider options must be a plain object.");
-        }
-        if (typeof options.database !== "string" || options.database.length === 0) {
-            throw new TypeError(
-                "Sloppy sqlite provider database option must be a non-empty string.",
-            );
-        }
+        validateSqliteProviderOptions(options, { requireDatabase: true });
     }
 }
 

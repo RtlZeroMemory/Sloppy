@@ -1,3 +1,5 @@
+import { isPlainObject } from "./internal/validation.js";
+import { copyBinaryLike } from "./internal/bytes.js";
 import { Deadline } from "./time.js";
 
 const DEFAULT_QUEUE_CAPACITY = 1024;
@@ -113,6 +115,20 @@ function subscribeSignal(signal, listener) {
         return () => signal.removeEventListener?.("abort", wrapped);
     }
     return () => {};
+}
+
+function raceSignalCancellation(promise, signal, timeoutCode = "SLOPPY_E_WORK_JOB_TIMEOUT") {
+    if (!isSignal(signal)) {
+        return Promise.resolve(promise);
+    }
+    if (signalCancelled(signal)) {
+        return Promise.reject(rejectForCancellation(signalReason(signal), timeoutCode));
+    }
+    let cleanup = () => {};
+    const cancellation = new Promise((_, reject) => {
+        cleanup = subscribeSignal(signal, (reason) => reject(rejectForCancellation(reason, timeoutCode)));
+    });
+    return Promise.race([promise, cancellation]).finally(cleanup);
 }
 
 class WorkerCancellationSignal {
@@ -235,30 +251,8 @@ function yieldTurn() {
     return Promise.resolve();
 }
 
-function typedArrayBackingStore(view) {
-    return Reflect.get(view, "buf" + "fer");
-}
-
 function copyBytes(bytes) {
-    if (bytes instanceof ArrayBuffer) {
-        return bytes.slice(0);
-    }
-    if (ArrayBuffer.isView(bytes)) {
-        const copy = typedArrayBackingStore(bytes).slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-        if (bytes instanceof DataView) {
-            return new DataView(copy);
-        }
-        return new bytes.constructor(copy);
-    }
-    return undefined;
-}
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object") {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
+    return copyBinaryLike(bytes);
 }
 
 function validateWorkerOptions(options, operation) {
@@ -639,12 +633,10 @@ class WorkQueueHandle {
                     if (signalCancelled(owned.ctx.signal)) {
                         throw rejectForCancellation(signalReason(owned.ctx.signal));
                     }
-                    const result = await Promise.race([
+                    const result = await raceSignalCancellation(
                         this._handler(Object.freeze({ id: job.id, data: job.data, attempt: job.attempt }), owned.ctx),
-                        new Promise((_, reject) => {
-                            subscribeSignal(owned.ctx.signal, (reason) => reject(rejectForCancellation(reason)));
-                        }),
-                    ]);
+                        owned.ctx.signal,
+                    );
                     if (!settled) {
                         settled = true;
                         this._stats.completed += 1;
@@ -873,12 +865,11 @@ class NativeJsWorkerHandle {
         const input = serializePayload(payload);
         const owned = makeContext(normalizeOperationOptions(options));
         try {
-            return await Promise.race([
+            return await raceSignalCancellation(
                 this._native.invoke(exportName, input, options),
-                new Promise((_, reject) => {
-                    subscribeSignal(owned.ctx.signal, (reason) => reject(rejectForCancellation(reason, "SLOPPY_E_WORK_JOB_TIMEOUT")));
-                }),
-            ]);
+                owned.ctx.signal,
+                "SLOPPY_E_WORK_JOB_TIMEOUT",
+            );
         } catch (error) {
             throw toWorkerError(error, "SLOPPY_E_WORKER_CRASHED", "worker crashed");
         } finally {
@@ -893,12 +884,11 @@ class NativeJsWorkerHandle {
         const input = serializePayload(message);
         const owned = makeContext(normalizeOperationOptions(options));
         try {
-            return await Promise.race([
+            return await raceSignalCancellation(
                 this._native.post(input, options),
-                new Promise((_, reject) => {
-                    subscribeSignal(owned.ctx.signal, (reason) => reject(rejectForCancellation(reason, "SLOPPY_E_WORK_JOB_TIMEOUT")));
-                }),
-            ]);
+                owned.ctx.signal,
+                "SLOPPY_E_WORK_JOB_TIMEOUT",
+            );
         } catch (error) {
             throw toWorkerError(error, "SLOPPY_E_WORKER_CRASHED", "worker crashed");
         } finally {

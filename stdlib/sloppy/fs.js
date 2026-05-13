@@ -1,3 +1,4 @@
+import { isPlainObject } from "./internal/validation.js";
 import {
     CancelledError,
     InvalidDeadlineError,
@@ -7,15 +8,6 @@ import {
 import { Text } from "./codec.js";
 
 const MAX_TIMEOUT_MS = 0xffffffff;
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
 
 function nativeFsBridge(operation) {
     const bridge = globalThis.__sloppy?.fs ?? null;

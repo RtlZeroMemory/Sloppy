@@ -245,6 +245,19 @@ function deadlineDelayMs(deadline) {
     return deadline.remainingMs();
 }
 
+function registerCancellationTimer(controller, delayMs, reasonFactory) {
+    const timer = setTimeout(() => {
+        if (!controller._disposed) {
+            try {
+                controller.cancel(reasonFactory());
+            } catch {
+                // Timer-triggered cancellation should not crash the host when listeners throw.
+            }
+        }
+    }, Math.ceil(delayMs));
+    controller._cleanups.push(() => clearTimeout(timer));
+}
+
 class CancellationController {
     constructor(options = undefined) {
         this.signal = new CancellationSignal();
@@ -260,18 +273,14 @@ class CancellationController {
 
         if (options?.timeoutMs !== undefined) {
             const timeoutMs = validateDelayMs(options.timeoutMs, "CancellationController timeout");
-            Time.delay(timeoutMs)
-                .then(() => this.cancel(timeoutError()))
-                .catch(() => {});
+            registerCancellationTimer(this, timeoutMs, () => timeoutError());
         }
         if (options?.deadline !== undefined) {
             const remaining = deadlineDelayMs(options.deadline);
             if (remaining <= 0) {
                 this.cancel(timeoutError(options.deadline));
             } else if (remaining !== Infinity) {
-                Time.delay(remaining)
-                    .then(() => this.cancel(timeoutError(options.deadline)))
-                    .catch(() => {});
+                registerCancellationTimer(this, remaining, () => timeoutError(options.deadline));
             }
         }
     }

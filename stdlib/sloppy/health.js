@@ -1,3 +1,4 @@
+import { isPlainObject } from "./internal/validation.js";
 import * as fs from "node:fs/promises";
 import * as net from "node:net";
 
@@ -10,19 +11,11 @@ const STATUS_RANK = Object.freeze({
     degraded: 1,
     unhealthy: 2,
 });
-const SECRET_KEY_PATTERN = /authorization|cookie|credential|connectionstring|password|secret|token|apikey|api_key|accesskey|privatekey/iu;
+const SECRET_KEY_PATTERN = /authorization|cookie|credential|connection[-_]?string|password|secret|token|api[-_]?key|accesskey|private[-_]?key|client[-_]?secret|set[-_]?cookie/iu;
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_DATA_DEPTH = 4;
 const DEFAULT_MAX_DATA_KEYS = 32;
 const DEFAULT_MAX_STRING = 256;
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
 
 function assertName(name, subject) {
     if (typeof name !== "string" || name.length === 0 || name.includes("\0")) {

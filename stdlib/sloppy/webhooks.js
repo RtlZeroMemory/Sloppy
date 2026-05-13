@@ -1,5 +1,7 @@
+import { isPlainObject } from "./internal/validation.js";
 import { Hex, Text } from "./codec.js";
 import { Hash, Hmac, Random, Secret } from "./crypto.js";
+import { headerValue } from "./internal/headers.js";
 
 const WEBHOOKS_TOKEN_PREFIX = "webhooks";
 const DEFAULT_WEBHOOKS_TOKEN = WEBHOOKS_TOKEN_PREFIX;
@@ -36,14 +38,6 @@ class SloppyWebhookError extends Error {
 
 function webhookError(code, message, options = undefined) {
     return new SloppyWebhookError(code, message, options);
-}
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
 }
 
 function stableToken(name = undefined) {
@@ -283,15 +277,26 @@ function isPrivateHostname(hostname) {
     if (PRIVATE_HOSTS.has(host)) {
         return true;
     }
+    const bareHost = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
+    if (PRIVATE_HOSTS.has(bareHost)) {
+        return true;
+    }
     if (/^10\./u.test(host) || /^192\.168\./u.test(host)) {
         return true;
+    }
+    const matchLoopback = /^127\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/u.exec(host);
+    if (matchLoopback !== null) {
+        return matchLoopback.slice(1).every((part) => Number(part) <= 255);
     }
     const match172 = /^172\.(\d{1,3})\./u.exec(host);
     if (match172 !== null) {
         const part = Number(match172[1]);
         return part >= 16 && part <= 31;
     }
-    return /^169\.254\./u.test(host) || /^fc[0-9a-f]{2}:/u.test(host) || /^fd[0-9a-f]{2}:/u.test(host);
+    return /^169\.254\./u.test(host) ||
+        /^fc[0-9a-f]{2}:/u.test(bareHost) ||
+        /^fd[0-9a-f]{2}:/u.test(bareHost) ||
+        /^fe[89ab][0-9a-f]:/u.test(bareHost);
 }
 
 function validateEndpointUrl(url, options = {}) {
@@ -616,7 +621,7 @@ async function sign(payload, options) {
     const eventName = validateEventName(options.event ?? options.eventName);
     const attempt = requirePositiveInteger(options.attempt ?? 1, "signature attempt");
     const body = typeof payload === "string" ? payload : assertSerializable(payload);
-    const signingInput = `${timestamp}.${body}`;
+    const signingInput = webhookSigningInput(timestamp, Text.utf8.encode(body));
     const prepared = secretForHmac(options.secret, options.config, "signing secret");
     try {
         const digest = await Hmac.sha256(prepared.secret, signingInput);
@@ -638,20 +643,6 @@ async function sign(payload, options) {
     } finally {
         prepared.dispose();
     }
-}
-
-function headerValue(headers, name) {
-    if (headers === undefined || headers === null) {
-        return undefined;
-    }
-    if (typeof headers.get === "function") {
-        return headers.get(name) ?? headers.get(name.toLowerCase()) ?? undefined;
-    }
-    if (isPlainObject(headers)) {
-        const found = Object.entries(headers).find(([key]) => key.toLowerCase() === name.toLowerCase());
-        return found?.[1];
-    }
-    return undefined;
 }
 
 async function requestBodyBytes(ctxOrRequest) {
@@ -689,6 +680,14 @@ function constantTimeHexEquals(left, right) {
     return diff === 0;
 }
 
+function webhookSigningInput(timestamp, bodyBytes) {
+    const prefix = Text.utf8.encode(`${timestamp}.`);
+    const bytes = new Uint8Array(prefix.byteLength + bodyBytes.byteLength);
+    bytes.set(prefix, 0);
+    bytes.set(bodyBytes, prefix.byteLength);
+    return bytes;
+}
+
 async function verify(ctxOrRequest, options) {
     if (!isPlainObject(options)) {
         throw new TypeError("Sloppy Webhooks.verify options must be a plain object.");
@@ -716,12 +715,13 @@ async function verify(ctxOrRequest, options) {
         throw webhookError("SLOPPY_E_WEBHOOK_EVENT_VALIDATION_FAILED", "Webhook body exceeds the configured limit.");
     }
     const bodyText = Text.utf8.decode(body);
+    const signingInput = webhookSigningInput(timestamp, body);
     const secrets = Array.isArray(options.secrets) ? options.secrets : [options.secret];
     const expected = [];
     for (const secret of secrets) {
         const prepared = secretForHmac(secret, options.config ?? ctxOrRequest?.config, "verification secret");
         try {
-            const digest = await Hmac.sha256(prepared.secret, `${timestamp}.${bodyText}`);
+            const digest = await Hmac.sha256(prepared.secret, signingInput);
             expected.push(Hex.encode(digest).toLowerCase());
         } finally {
             prepared.dispose();
@@ -739,10 +739,6 @@ async function verify(ctxOrRequest, options) {
         if (await options.dedupe.seen(deliveryId, options.provider ?? "sloppy")) {
             throw webhookError("SLOPPY_E_WEBHOOK_REPLAY_DETECTED", "Webhook delivery was already processed.");
         }
-        await options.dedupe.mark(deliveryId, options.provider ?? "sloppy", {
-            timestamp,
-            expiresAt: new Date(timestampMs + toleranceMs).toISOString(),
-        });
     }
     let payload;
     try {
@@ -752,6 +748,12 @@ async function verify(ctxOrRequest, options) {
     }
     if (options.event !== undefined) {
         options.event.validate(payload);
+    }
+    if (options.dedupe !== undefined && deliveryId.length > 0) {
+        await options.dedupe.mark(deliveryId, options.provider ?? "sloppy", {
+            timestamp,
+            expiresAt: new Date(timestampMs + toleranceMs).toISOString(),
+        });
     }
     return Object.freeze({
         id: deliveryId,

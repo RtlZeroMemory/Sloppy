@@ -1,3 +1,4 @@
+import { isPlainObject } from "./internal/validation.js";
 import { Migrations, sql as dataSql } from "./data.js";
 import { schema as Schema, isSchema } from "./schema.js";
 
@@ -272,14 +273,6 @@ async function withProviderErrors(operation, tableObject, callback) {
     } catch (error) {
         throw wrapProviderError(error, operation, tableObject);
     }
-}
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
 }
 
 function assertIdentifier(name, subject) {

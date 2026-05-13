@@ -232,7 +232,12 @@ pub(super) fn app_auth_policy_call(
         .with_path(path)
         .with_span(policy_span)
     })?;
-    let policy_source = if policy_source.trim_start().starts_with("Auth.policy") {
+    let trimmed_policy_source = policy_source.trim_start();
+    let is_auth_policy_helper = trimmed_policy_source
+        .strip_prefix("Auth.policy")
+        .map(|after| after.trim_start().starts_with('('))
+        .unwrap_or(false);
+    let policy_source = if is_auth_policy_helper {
         policy_source.replacen("Auth.policy", "__sloppy_auth_policy", 1)
     } else {
         validate_auth_policy_source(path, &policy_source, policy_span)?;

@@ -1,68 +1,25 @@
+file(READ "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/bootstrap.manifest.json" bootstrap_manifest_json)
+file(READ "${SLOPPY_BOOTSTRAP_BUILD_DIR}/bootstrap.manifest.json" bootstrap_manifest_build_json)
+if(NOT bootstrap_manifest_build_json STREQUAL bootstrap_manifest_json)
+    message(FATAL_ERROR "bootstrap.manifest.json in build dir differs from source")
+endif()
+string(JSON bootstrap_module_count LENGTH "${bootstrap_manifest_json}" modules)
+
 set(required_bootstrap_assets
     README.md
-    app.js
-    auth.js
-    bootstrap.manifest.json
-    cache.js
-    codec.js
-    config.js
-    crypto.js
-    data.js
-    fs.js
-    health.js
-    http.js
-    metrics.js
-    net.js
-    os.js
-    orm.js
-    problem-details.js
-    request-id.js
-    request-logging.js
-    time.js
-    webhooks.js
-    workers.js
-    index.js
-    node/assert.js
-    node/buffer.js
-    node/console.js
-    node/constants.js
-    node/crypto.js
-    node/diagnostics_channel.js
-    node/events.js
-    node/fs.js
-    node/fs/promises.js
-    node/assert/strict.js
-    node/http.js
-    node/https.js
-    node/module.js
-    node/os.js
-    node/path.js
-    node/perf_hooks.js
-    node/process.js
-    node/querystring.js
-    node/stream.js
-    node/stream/promises.js
-    node/string_decoder.js
-    node/timers.js
-    node/tty.js
-    node/url.js
-    node/util.js
-    node/zlib.js
-    providers/sqlite.js
-    redis.js
-    results.js
-    schema.js
-    testservices.js
-    testing.js
-    internal/capabilities.js
-    internal/config.js
-    internal/intrinsics.js
-    internal/logging.js
-    internal/modules.js
-    internal/routes.js
-    internal/services.js
-    internal/shared.js
-    internal/runtime-classic.js)
+    bootstrap.manifest.json)
+
+math(EXPR last_bootstrap_module_index "${bootstrap_module_count} - 1")
+foreach(module_index RANGE 0 ${last_bootstrap_module_index})
+    string(JSON module_path GET "${bootstrap_manifest_json}" modules ${module_index})
+    if(NOT module_path MATCHES "^sloppy/.+\\.js$")
+        message(FATAL_ERROR "Invalid bootstrap manifest module path: ${module_path}")
+    endif()
+    string(REGEX REPLACE "^sloppy/" "" asset "${module_path}")
+    list(APPEND required_bootstrap_assets "${asset}")
+endforeach()
+
+list(REMOVE_DUPLICATES required_bootstrap_assets)
 
 foreach(asset IN LISTS required_bootstrap_assets)
     set(source_asset "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/${asset}")

@@ -1,3 +1,4 @@
+import { isPlainObject } from "./internal/validation.js";
 const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 const BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const HEX_ALPHABET = "0123456789abcdef";
@@ -26,14 +27,6 @@ function requireString(value, operation) {
         throw new TypeError(`${operation} requires a string.`);
     }
     return value;
-}
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
 }
 
 function validateOptionsObject(options, operation) {

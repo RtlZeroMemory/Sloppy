@@ -322,6 +322,22 @@ try {
             }),
             /private or loopback/,
         );
+        await assert.rejects(
+            () => webhooks.subscriptions.create({
+                event: "order.created",
+                url: "http://127.0.0.2/hook",
+                secret: "secret",
+            }),
+            /private or loopback/,
+        );
+        await assert.rejects(
+            () => webhooks.subscriptions.create({
+                event: "order.created",
+                url: "http://[fe80::1]/hook",
+                secret: "secret",
+            }),
+            /private or loopback/,
+        );
         await webhooks.subscriptions.disable(subscription.id);
         assert.equal((await webhooks.subscriptions.get(subscription.id)).enabled, false);
         await webhooks.subscriptions.enable(subscription.id);
@@ -666,6 +682,55 @@ try {
             }),
             /SLOPPY_E_WEBHOOK_TIMESTAMP_OUT_OF_RANGE/,
         );
+
+        const rawBody = new Uint8Array([0xff, 0x00, 0x61]);
+        const rawTimestamp = "2001";
+        const rawSignatureInput = Buffer.concat([Buffer.from(`${rawTimestamp}.`, "utf8"), Buffer.from(rawBody)]);
+        const rawSignature = crypto.createHmac("sha256", "byte-secret").update(rawSignatureInput).digest("hex");
+        await assert.doesNotReject(() => Webhooks.verify({
+            headers: new Map([
+                ["sloppy-webhook-timestamp", rawTimestamp],
+                ["sloppy-webhook-signature", `v1=${rawSignature}`],
+            ]),
+            bytes() {
+                return rawBody;
+            },
+        }, {
+            secret: "byte-secret",
+            toleranceMs: 1000,
+            nowMs: Number(rawTimestamp) * 1000,
+        }));
+
+        const invalidBody = JSON.stringify({ orderId: "missing-total" });
+        const invalidSigned = await Webhooks.sign(invalidBody, {
+            secret: "inbound-secret",
+            event: "order.created",
+            id: "delivery_invalid",
+            timestamp: "2002",
+        });
+        let invalidMarked = 0;
+        await assert.rejects(
+            () => Webhooks.verify({
+                headers: new Map(Object.entries(invalidSigned.headers).map(([name, value]) => [name.toLowerCase(), value])),
+                bytes() {
+                    return new TextEncoder().encode(invalidBody);
+                },
+            }, {
+                secret: "inbound-secret",
+                toleranceMs: 1000,
+                nowMs: 2002 * 1000,
+                event: OrderCreated,
+                dedupe: {
+                    seen() {
+                        return false;
+                    },
+                    mark() {
+                        invalidMarked += 1;
+                    },
+                },
+            }),
+        );
+        assert.equal(invalidMarked, 0);
     }
 
     {

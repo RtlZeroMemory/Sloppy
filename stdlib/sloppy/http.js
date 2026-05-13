@@ -1,12 +1,20 @@
 import { Text } from "./codec.js";
 import { Random } from "./crypto.js";
+import { disposeAll } from "./internal/disposable.js";
+import { createHeaderLookup } from "./internal/headers.js";
+import { redactHeaders, redactUrlTemplate } from "./internal/redaction.js";
+import {
+    isPlainObject,
+    optionalNonNegativeInteger,
+    optionalPositiveInteger,
+    requireHttpToken,
+    requirePlainObject,
+} from "./internal/validation.js";
 import { HttpClient } from "./net.js";
 
 const CLIENT_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/u;
 const METHOD_WITH_BODY = new Set(["POST", "PUT", "PATCH"]);
 const SAFE_RETRY_METHODS = new Set(["GET", "HEAD", "PUT", "DELETE"]);
-const SENSITIVE_HEADER_PATTERN = /^(authorization|cookie|set-cookie|x-api-key|api-key)$/iu;
-const SENSITIVE_QUERY_PATTERN = /(token|secret|password|authorization|api[_-]?key)/iu;
 const HTTP_CLIENT_TOKEN_PREFIX = "http.";
 const TYPED_CLIENT_RESERVED_ENDPOINT_NAMES = new Set(["send", "metrics", "diagnostics", "dispose", "close"]);
 
@@ -29,14 +37,6 @@ class SloppyHttpClientError extends Error {
 }
 
 const HttpError = SloppyHttpClientError;
-
-function isPlainObject(value) {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) {
-        return false;
-    }
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-}
 
 function isSchema(value) {
     return value !== null && typeof value === "object" && typeof value.validate === "function";
@@ -105,14 +105,10 @@ function validateHeaders(headers, subject) {
     if (headers === undefined) {
         return undefined;
     }
-    if (!isPlainObject(headers)) {
-        throw new TypeError(`${subject} headers must be a plain object.`);
-    }
+    requirePlainObject(headers, `${subject} headers must be a plain object.`);
     const normalized = {};
     for (const [name, value] of Object.entries(headers)) {
-        if (!/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u.test(name)) {
-            throw new TypeError(`${subject} header names must be safe HTTP tokens.`);
-        }
+        requireHttpToken(name, `${subject} header names must be safe HTTP tokens.`);
         if (typeof value !== "string" || /[\x00-\x08\x0A-\x1F\x7F]/u.test(value)) {
             throw new TypeError(`${subject} header values must be safe strings.`);
         }
@@ -122,32 +118,18 @@ function validateHeaders(headers, subject) {
 }
 
 function positiveInteger(value, subject, defaultValue = undefined) {
-    if (value === undefined) {
-        return defaultValue;
-    }
-    if (!Number.isInteger(value) || value <= 0) {
-        throw new TypeError(`${subject} must be a positive integer.`);
-    }
-    return value;
+    return optionalPositiveInteger(value, `${subject} must be a positive integer.`, defaultValue);
 }
 
 function nonNegativeInteger(value, subject, defaultValue = undefined) {
-    if (value === undefined) {
-        return defaultValue;
-    }
-    if (!Number.isInteger(value) || value < 0) {
-        throw new TypeError(`${subject} must be a non-negative integer.`);
-    }
-    return value;
+    return optionalNonNegativeInteger(value, `${subject} must be a non-negative integer.`, defaultValue);
 }
 
 function optionalDelayMs(options, subject) {
     if (options === undefined) {
         return undefined;
     }
-    if (!isPlainObject(options)) {
-        throw new TypeError(`${subject} options must be a plain object.`);
-    }
+    requirePlainObject(options, `${subject} options must be a plain object.`);
     return nonNegativeInteger(options.delayMs, `${subject} delayMs`);
 }
 
@@ -329,29 +311,6 @@ function createDiagnostics(limit = 128) {
             return Object.freeze([...records]);
         },
     };
-}
-
-function redactHeaders(headers = {}) {
-    const output = {};
-    for (const [name, value] of Object.entries(headers)) {
-        output[name] = SENSITIVE_HEADER_PATTERN.test(name) ? "[REDACTED]" : value;
-    }
-    return Object.freeze(output);
-}
-
-function redactUrlTemplate(path, query = undefined) {
-    if (query === undefined || query === null) {
-        return path;
-    }
-    const keys = Object.keys(query);
-    if (keys.length === 0) {
-        return path;
-    }
-    const rendered = keys
-        .sort()
-        .map((key) => `${encodeURIComponent(key)}=${SENSITIVE_QUERY_PATTERN.test(key) ? "[REDACTED]" : "{value}"}`)
-        .join("&");
-    return `${path}?${rendered}`;
 }
 
 function sleep(ms, signal) {
@@ -668,7 +627,7 @@ class HttpClientFactory {
     dispose() {
         if (this._disposePromise === undefined) {
             this._closed = true;
-            this._disposePromise = Promise.all(Array.from(this._clients.values(), (client) => client.dispose?.())).then(() => undefined);
+            this._disposePromise = disposeAll(this._clients.values());
         }
         return this._disposePromise;
     }
@@ -686,7 +645,6 @@ function createManagedClient(name, options, transport = undefined) {
         pool: options.pool,
     });
     let closed = false;
-    let closePromise;
 
     function assertOpen() {
         if (closed) {
@@ -694,11 +652,15 @@ function createManagedClient(name, options, transport = undefined) {
         }
     }
 
-    async function closeClient() {
-        if (closePromise === undefined) {
-            closed = true;
-            closePromise = Promise.resolve(lowLevel.close?.() ?? lowLevel.dispose?.()).then(() => undefined);
+    let closePromise = undefined;
+    function closeClient() {
+        if (closePromise !== undefined) {
+            return closePromise;
         }
+        closed = true;
+        closePromise = Promise.resolve()
+            .then(() => lowLevel.close?.() ?? lowLevel.dispose?.())
+            .then(() => undefined);
         return closePromise;
     }
 
@@ -1399,13 +1361,12 @@ function generateHttpClientFromOpenApi(openapi, options = {}) {
 
 function mockResponse(status, headers, body) {
     const bodyBytes = typeof body === "string" ? Text.utf8.encode(body) : body;
+    const headerLookup = createHeaderLookup(headers);
     return createResponse({
         status,
         headers: Object.freeze({
             get(name) {
-                const lower = String(name).toLowerCase();
-                const entry = Object.entries(headers).find(([key]) => key.toLowerCase() === lower);
-                return entry?.[1] ?? null;
+                return headerLookup.get(name) ?? null;
             },
         }),
         async text() {
@@ -1431,15 +1392,25 @@ function pathPatternToRegExp(path) {
 class TestHttpMock {
     constructor() {
         this._routes = [];
+        this._routesByKey = new Map();
+        this._routesByMethod = new Map();
         this._calls = [];
         this._unexpected = [];
     }
 
     _route(method, path) {
-        let route = this._routes.find((candidate) => candidate.method === method && candidate.path === path);
+        const key = `${method} ${path}`;
+        let route = this._routesByKey.get(key);
         if (route === undefined) {
             route = { method, path, pattern: pathPatternToRegExp(path), responses: [] };
             this._routes.push(route);
+            this._routesByKey.set(key, route);
+            const methodRoutes = this._routesByMethod.get(method);
+            if (methodRoutes === undefined) {
+                this._routesByMethod.set(method, [route]);
+            } else {
+                methodRoutes.push(route);
+            }
         }
         return Object.freeze({
             replyJson: (status, value, headers = {}, options = undefined) => {
@@ -1476,7 +1447,7 @@ class TestHttpMock {
         const path = rawUrl.startsWith("http://") || rawUrl.startsWith("https://")
             ? new URL(rawUrl).pathname
             : rawUrl.split("?")[0];
-        const route = this._routes.find((candidate) => candidate.method === method && candidate.pattern.test(path));
+        const route = this._routesByMethod.get(method)?.find((candidate) => candidate.pattern.test(path));
         const call = Object.freeze({ method, path, url, json, text, bytes, headers: redactHeaders(headers) });
         this._calls.push(call);
         if (route === undefined) {
