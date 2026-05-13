@@ -110,6 +110,9 @@ await ws.close();
 The WebSocket builder supports `.header(...)`, `.headers(...)`, `.origin(...)`,
 `.protocols(...)`, `.bearer(...)`, `.apiKey(...)`, `.withJwt(...)`,
 `.withSession(...)`, `.asUser(...)`, and `.timeout(...)`.
+`.protocols(...)` validates each value as a WebSocket subprotocol token.
+`ws.expectJson(...)` accepts JSON messages and text messages containing JSON; it
+rejects binary, ping, pong, and close frames with a clear assertion error.
 
 Rejected handshakes use `expectRejected(status)`:
 
@@ -124,10 +127,10 @@ before the socket handler accepts. Origin and subprotocol policy are checked
 before the handler runs. Message size and send-queue limits are enforced by the
 in-memory socket.
 
-Artifact and package hosts do not claim WebSocket runtime support yet.
-`host.websocket(...).connect()` rejects with `501` and records
-`SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` unless a future runtime bridge
-provides real WebSocket support for that lane.
+Artifact and package hosts do not connect their WebSocket helper to native
+`sloppy run` yet. `host.websocket(...).connect()` rejects with `501` and
+records `SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` unless a supplied runtime
+host implements `websocketConnect`.
 
 ## Responses
 
@@ -181,12 +184,83 @@ requests. Service overrides are resolved before the app's service provider for
 matching tokens. Provider overrides are exposed under both the provider name
 and `data.<name>` service token.
 
+Outbound HTTP clients can be replaced with `TestHttp.mock()`:
+
+```ts
+import { TestHost, TestHttp } from "sloppy";
+
+const billing = TestHttp.mock()
+  .get("/invoices/inv_1")
+  .replyJson(200, { id: "inv_1", status: "paid", amount: 42 });
+
+const host = await TestHost.create(app, {
+    httpClients: {
+        billing,
+    },
+});
+```
+
+The `httpClients` keys are named-client names. They override the `http.<name>`
+service token and also work for typed clients registered through
+`app.services.addHttpClient(TypedClient)`.
+
+Artifact, package, and loopback hosts accept the same map:
+
+```ts
+const host = await TestHost.fromArtifacts(".sloppy", {
+    httpClients: {
+        billing,
+    },
+});
+```
+
+In process-backed modes TestHost starts a local mock HTTP server and injects
+the matching named-client base URL into the child process configuration. That
+keeps outbound calls on the normal low-level `HttpClient` path while preserving
+mock call recording and unexpected-call diagnostics.
+
+Mocks can return JSON, text, or bytes, provide a sequence of responses,
+simulate timeouts or connection errors, and assert calls:
+
+```ts
+billing.expectCalled("GET", "/invoices/inv_1");
+billing.expectNoUnexpectedCalls();
+```
+
 `FakeClock.fixed(...)` implements Sloppy's test clock shape for app-host code
 that accepts clock injection.
 
 `TestData.sqliteMemory()` and `TestData.sqliteTempFile()` create test data
 provider descriptors with `open()` helpers. SQLite native bridge availability
 still depends on the active runtime lane.
+
+For real PostgreSQL and SQL Server integration tests, use
+[`TestServices`](testservices.md) (experimental):
+
+```ts
+import { Sloppy, TestHost, TestServices } from "sloppy";
+
+const app = Sloppy.create();
+await using pg = await TestServices.postgres();
+
+await using host = await TestHost.create(app, {
+    providers: {
+        main: pg.provider(),
+    },
+});
+```
+
+Artifact, package, and loopback hosts receive service environment through
+normal `TestHost` options:
+
+```ts
+import { TestHost, TestServices } from "sloppy";
+
+await using pg = await TestServices.postgres();
+await using host = await TestHost.fromArtifacts(".sloppy", {
+    env: pg.env(),
+});
+```
 
 ## Diagnostics, Health, Metrics, Jobs, OpenAPI
 
@@ -229,7 +303,8 @@ them after dispatch.
 - `TestHost.create(app)` is an app-host test lane, not a native runtime lane.
 - Artifact and package one-off CLI mode starts `sloppy run --once` per request.
 - Loopback mode requires an artifact or package path.
-- WebSocket helpers are app-host only today. Artifact/package WebSockets use an
+- WebSocket helpers are app-host only unless the supplied runtime host provides
+  a `websocketConnect` implementation. Artifact/package WebSockets use an
   explicit unsupported diagnostic.
 - Multipart request builder sugar is not exposed yet.
 - Explicit multipart bytes plus a `Content-Type: multipart/form-data; boundary=...`
@@ -237,6 +312,5 @@ them after dispatch.
 - App-host multipart parsing is a bounded helper for form fields and file
   descriptors; it is not binary-fidelity upload testing unless the native
   app-host upload lane implements that behavior.
-- Docker-backed PostgreSQL and SQL Server helpers are not bundled into the
-  JavaScript API. Use the existing live-provider lanes and report them
-  separately.
+- Docker-backed PostgreSQL and SQL Server helpers are opt-in through
+  `TestServices`; default CI must report those live container lanes separately.

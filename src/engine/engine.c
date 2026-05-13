@@ -467,6 +467,126 @@ SlStatus sl_engine_call_registered_handler_with_context(SlEngine* engine, SlAren
 #endif
 }
 
+SlStatus sl_engine_call_registered_websocket_handler_with_context(
+    SlEngine* engine, SlArena* arena, SlHandlerId handler_id,
+    const SlHttpRequestContext* request_context, const SlEngineWebSocketBridge* bridge,
+    SlEngineWebSocketSession** out_session, SlDiag* out_diag)
+{
+    if (out_session == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_session = NULL;
+
+    if (engine == NULL || arena == NULL || !sl_handler_id_valid(handler_id) ||
+        request_context == NULL || request_context->request == NULL || bridge == NULL ||
+        bridge->send == NULL || bridge->close == NULL ||
+        (request_context->route_param_count != 0U && request_context->route_params == NULL) ||
+        (request_context->query_param_count != 0U && request_context->query_params == NULL))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    if (!engine->active) {
+        return sl_engine_write_invalid_lifecycle_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("sl_engine_call_registered_websocket_handler_with_context",
+                              sizeof("sl_engine_call_registered_websocket_handler_with_context") -
+                                  1U));
+    }
+
+    if (engine->kind != SL_ENGINE_KIND_V8) {
+        return sl_engine_write_unsupported_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("engine WebSocket handler calls require V8",
+                              sizeof("engine WebSocket handler calls require V8") - 1U),
+            sl_engine_literal("Configure with SLOPPY_ENABLE_V8=ON and a valid V8 SDK.",
+                              sizeof("Configure with SLOPPY_ENABLE_V8=ON and a valid V8 SDK.") -
+                                  1U));
+    }
+
+#if defined(SLOPPY_ENABLE_V8_BRIDGE)
+    sl_breadcrumb_global_record(SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_ENTER,
+                                SL_STATUS_OK, request_context->request_id,
+                                request_context->connection_id, 0U, (uint64_t)handler_id,
+                                sl_str_empty());
+    {
+        SlStatus status = sl_engine_v8_call_registered_websocket_handler_with_context(
+            engine, arena, handler_id, request_context, bridge, out_session, out_diag);
+        sl_breadcrumb_global_record(
+            SL_DIAG_SUBSYSTEM_V8,
+            sl_status_is_ok(status) ? SL_BREADCRUMB_EVENT_V8_HANDLER_EXIT
+                                    : SL_BREADCRUMB_EVENT_V8_HANDLER_EXCEPTION,
+            sl_status_code(status), request_context->request_id, request_context->connection_id, 0U,
+            (uint64_t)handler_id, sl_engine_breadcrumb_detail(out_diag, sl_str_empty()));
+        return status;
+    }
+#else
+    (void)out_diag;
+    return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+#endif
+}
+
+SlStatus sl_engine_websocket_receive(SlEngine* engine, SlEngineWebSocketSession* session,
+                                     const SlWebSocketFrame* frame, SlDiag* out_diag)
+{
+    if (engine == NULL || session == NULL || frame == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!engine->active) {
+        return sl_engine_write_invalid_lifecycle_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("sl_engine_websocket_receive",
+                              sizeof("sl_engine_websocket_receive") - 1U));
+    }
+    if (engine->kind != SL_ENGINE_KIND_V8) {
+        return sl_engine_write_unsupported_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("engine WebSocket receive requires V8",
+                              sizeof("engine WebSocket receive requires V8") - 1U),
+            sl_engine_literal("Configure with SLOPPY_ENABLE_V8=ON and a valid V8 SDK.",
+                              sizeof("Configure with SLOPPY_ENABLE_V8=ON and a valid V8 SDK.") -
+                                  1U));
+    }
+#if defined(SLOPPY_ENABLE_V8_BRIDGE)
+    return sl_engine_v8_websocket_receive(engine, session, frame, out_diag);
+#else
+    (void)out_diag;
+    return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+#endif
+}
+
+SlStatus sl_engine_websocket_close(SlEngine* engine, SlEngineWebSocketSession* session,
+                                   uint16_t code, SlStr reason, SlDiag* out_diag)
+{
+    if (engine == NULL || session == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!engine->active) {
+        return sl_engine_write_invalid_lifecycle_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("sl_engine_websocket_close",
+                              sizeof("sl_engine_websocket_close") - 1U));
+    }
+    if (engine->kind != SL_ENGINE_KIND_V8) {
+        return sl_engine_write_unsupported_diag(
+            engine->arena, out_diag,
+            sl_engine_literal("engine WebSocket close requires V8",
+                              sizeof("engine WebSocket close requires V8") - 1U),
+            sl_engine_literal("Configure with SLOPPY_ENABLE_V8=ON and a valid V8 SDK.",
+                              sizeof("Configure with SLOPPY_ENABLE_V8=ON and a valid V8 SDK.") -
+                                  1U));
+    }
+#if defined(SLOPPY_ENABLE_V8_BRIDGE)
+    return sl_engine_v8_websocket_close(engine, session, code, reason, out_diag);
+#else
+    (void)code;
+    (void)reason;
+    (void)out_diag;
+    return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+#endif
+}
+
 SlStatus sl_engine_call_handler(SlEngine* engine, const SlEngineHandlerCall* call,
                                 SlEngineResult* out_result, SlDiag* out_diag)
 {

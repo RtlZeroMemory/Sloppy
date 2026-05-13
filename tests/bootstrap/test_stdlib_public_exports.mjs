@@ -8,6 +8,13 @@ import {
     Path,
 } from "../../stdlib/sloppy/fs.js";
 import {
+    Http,
+    HttpClientFactory,
+    HttpError,
+    SloppyHttpClientError,
+    TestHttp,
+} from "../../stdlib/sloppy/http.js";
+import {
     HttpClient,
     LocalEndpoint,
     NamedPipe,
@@ -68,11 +75,17 @@ import {
     Config,
     FakeClock,
     Health,
+    Http as RootHttp,
+    HttpClientFactory as RootHttpClientFactory,
+    HttpError as RootHttpError,
+    SloppyHttpClientError as RootSloppyHttpClientError,
     Metrics,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
+    TestHttp as RootTestHttp,
     TestData,
     TestHost,
+    TestServices,
     unsafeFfi as RootUnsafeFfi,
     WorkQueue as RootWorkQueue,
     Worker as RootWorker,
@@ -81,6 +94,7 @@ import {
 
 const documentedSubpathExports = {
     "sloppy/fs": [File, Directory, FileHandle, FileWatcher, Path],
+    "sloppy/http": [Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp],
     "sloppy/net": [
         HttpClient,
         TcpClient,
@@ -115,6 +129,11 @@ for (const [specifier, exports] of Object.entries(documentedSubpathExports)) {
 }
 
 assert.equal(RootHttpClient, HttpClient);
+assert.equal(RootHttp, Http);
+assert.equal(RootHttpClientFactory, HttpClientFactory);
+assert.equal(RootHttpError, HttpError);
+assert.equal(RootSloppyHttpClientError, SloppyHttpClientError);
+assert.equal(RootTestHttp, TestHttp);
 assert.equal(typeof Auth.jwtBearer, "function");
 assert.equal(typeof Auth.apiKey, "function");
 assert.equal(typeof Auth.cookieSession, "function");
@@ -133,6 +152,9 @@ assert.equal(typeof Metrics.createRegistry, "function");
 assert.equal(typeof TestHost.create, "function");
 assert.equal(typeof TestHost.fromArtifacts, "function");
 assert.equal(typeof TestHost.fromPackage, "function");
+assert.equal(typeof TestServices.postgres, "function");
+assert.equal(typeof TestServices.sqlServer, "function");
+assert.equal(typeof TestServices.docker.available, "function");
 assert.equal(typeof FakeClock.fixed, "function");
 assert.equal(typeof TestData.sqliteMemory, "function");
 assert.equal(RootBackgroundService, BackgroundService);

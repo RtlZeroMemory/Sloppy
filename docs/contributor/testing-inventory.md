@@ -107,6 +107,21 @@ CI exposes `live-postgres`, `live-sqlserver`, `live-providers`, and
 `full-ci` labels. Missing Docker, missing ODBC driver, or unavailable
 async support is `UNAVAILABLE` — never folded into a default pass.
 
+## TestServices lane (experimental, opt-in)
+
+```powershell
+$env:SLOPPY_TESTSERVICES = "1"
+ctest --test-dir build/windows-dev -R bootstrap.stdlib.testservices_runtime --output-on-failure
+```
+
+The default bootstrap test runs through `sloppy run --artifacts` and uses a
+fake Docker backend for deterministic provider-unavailable coverage. Non-V8
+builds report the contract as `UNAVAILABLE`. V8-enabled runs also probe the
+real Docker CLI only as a status object. Real TestServices PostgreSQL and SQL
+Server containers require Docker CLI/daemon, the matching V8/native provider
+bridge, and the explicit gate. When any requirement is absent, report the lane
+as `SKIPPED` or `UNAVAILABLE` with the specific reason.
+
 ## Sanitizer lanes
 
 ```powershell

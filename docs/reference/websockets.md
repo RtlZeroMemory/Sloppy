@@ -10,7 +10,7 @@ This page is the compact lookup for the current WebSocket primitive contract.
 | `TestHost.fromArtifacts(...)` | Returns `501 SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED`. |
 | `TestHost.fromPackage(...)` | Returns `501 SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED`. |
 | Loopback TestHost | Returns `501 SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` unless a supplied runtime host implements `websocketConnect`. |
-| Native `sloppy run` HTTP Upgrade | Unavailable. WebSocket route handlers return `501 SLOPPY_E_REALTIME_WEBSOCKET_UNAVAILABLE` through normal HTTP dispatch. |
+| Native `sloppy run` HTTP Upgrade | Supports HTTP/1.1 WebSocket Upgrade for V8-backed routes, text and binary frame delivery, server sends, close frames, and ping-to-pong handling. |
 
 ## Route Metadata
 
@@ -31,6 +31,23 @@ include:
 
 Compiler Plan output records route `kind: "websocket"` and auth scope metadata
 when the source uses static route builders.
+
+## Native Runtime Handshake
+
+Native `sloppy run` accepts only HTTP/1.1 Upgrade requests that match a
+WebSocket route. The runtime validates:
+
+- `Upgrade: websocket`
+- `Connection: Upgrade`
+- `Sec-WebSocket-Version: 13`
+- `Sec-WebSocket-Key`
+- route origin policy when `Origin` is present
+- route subprotocol policy when protocols are configured
+
+Successful handshakes return `101 Switching Protocols`, `Sec-WebSocket-Accept`,
+and the selected `Sec-WebSocket-Protocol` when one was negotiated. Direct
+non-Upgrade HTTP calls to a WebSocket route fail with a diagnostic that the
+route requires an Upgrade request.
 
 ## Handshake Checks In App-Host Tests
 
@@ -71,16 +88,22 @@ deterministic status.
 | `pong` | `text` | none |
 | `close` | `code`, `reason` | none |
 
-## Unsupported Protocol Features
+The native runtime currently delivers `text` and `binary` messages to V8
+handlers. App-host TestHost additionally models JSON, ping, pong, validation,
+queue limits, heartbeat, and idle-timeout behavior.
+
+## Current Native Limits
 
 The native runtime lane does not yet implement:
 
-- `Sec-WebSocket-Accept` handshake response
-- native frame parser/writer
-- client masking validation
-- fragmented frame handling
-- native ping/pong timers
-- native backpressure over libuv writes
-- a V8 object that owns a long-lived upgraded transport connection
+- fragmented message reassembly
+- per-message compression
+- heartbeat timers
+- app-host send queue/backpressure policies
+- full app-host message helpers such as `message.json()` and `message.validate(...)`
+- native authentication principal materialization for protected WebSocket routes
 
-Those remain runtime work, not app-host behavior.
+Protected WebSocket routes fail closed in the native lane until the auth
+principal bridge is attached to the upgraded connection. Use public or
+`allowAnonymous` WebSocket routes for native smoke tests, and use app-host
+TestHost for protected WebSocket route behavior.

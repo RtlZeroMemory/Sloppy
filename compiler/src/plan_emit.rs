@@ -9,6 +9,7 @@ use crate::diagnostic::Diagnostic;
 use crate::graph::{
     route_parameter_names, route_pattern_has_params, AuthSchemeMetadata, ConfigurationPackageEntry,
     DependencyGraph, ExtractedApp, ProjectKind, RequestBinding, ResponseMetadata,
+    WebSocketOriginsMetadata, WebSocketRouteOptionsMetadata,
 };
 use crate::hash::sha256_hex;
 use crate::route_artifact::{
@@ -252,6 +253,25 @@ fn route_json_response_plan(
 
 fn route_json_mode(value: &Value) -> &str {
     value.get("mode").and_then(Value::as_str).unwrap_or("none")
+}
+
+fn websocket_options_json(options: &WebSocketRouteOptionsMetadata) -> Value {
+    let origins = match &options.origins {
+        Some(WebSocketOriginsMetadata::Any) => json!("*"),
+        Some(WebSocketOriginsMetadata::List(origins)) => json!(origins),
+        None => Value::Null,
+    };
+    json!({
+        "protocols": &options.protocols,
+        "origins": origins,
+        "maxMessageBytes": options.max_message_bytes,
+        "maxSendQueueBytes": options.max_send_queue_bytes,
+        "heartbeatMs": options.heartbeat_ms,
+        "idleTimeoutMs": options.idle_timeout_ms,
+        "closeTimeoutMs": options.close_timeout_ms,
+        "slowClientPolicy": options.slow_client_policy.as_ref(),
+        "compression": options.compression.unwrap_or(false)
+    })
 }
 
 fn route_dispatch_json(
@@ -565,6 +585,277 @@ fn resolve_schema_references(
     }
 }
 
+fn skip_ascii_ws(source: &str, mut index: usize) -> usize {
+    while index < source.len() && source.as_bytes()[index].is_ascii_whitespace() {
+        index += 1;
+    }
+    index
+}
+
+fn is_identifier_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$'
+}
+
+fn parse_string_literal_at(source: &str, index: usize) -> Option<(String, usize)> {
+    let quote = *source.as_bytes().get(index)?;
+    if quote != b'\'' && quote != b'"' {
+        return None;
+    }
+    let mut output = String::new();
+    let mut cursor = index + 1;
+    while cursor < source.len() {
+        let byte = source.as_bytes()[cursor];
+        if byte == quote {
+            return Some((output, cursor + 1));
+        }
+        if byte == b'\\' {
+            cursor += 1;
+            if cursor >= source.len() {
+                return None;
+            }
+        }
+        output.push(source.as_bytes()[cursor] as char);
+        cursor += 1;
+    }
+    None
+}
+
+fn skip_template_literal_at(source: &str, index: usize) -> Option<usize> {
+    if source.as_bytes().get(index) != Some(&b'`') {
+        return None;
+    }
+    let mut cursor = index + 1;
+    while cursor < source.len() {
+        let byte = source.as_bytes()[cursor];
+        if byte == b'`' {
+            return Some(cursor + 1);
+        }
+        if byte == b'\\' {
+            cursor += 1;
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn skip_line_comment_at(source: &str, index: usize) -> Option<usize> {
+    if !source.as_bytes().get(index..)?.starts_with(b"//") {
+        return None;
+    }
+    let mut cursor = index + 2;
+    while cursor < source.len() && source.as_bytes()[cursor] != b'\n' {
+        cursor += 1;
+    }
+    Some(cursor)
+}
+
+fn skip_block_comment_at(source: &str, index: usize) -> Option<usize> {
+    if !source.as_bytes().get(index..)?.starts_with(b"/*") {
+        return None;
+    }
+    let mut cursor = index + 2;
+    while cursor + 1 < source.len() {
+        if source.as_bytes()[cursor] == b'*' && source.as_bytes()[cursor + 1] == b'/' {
+            return Some(cursor + 2);
+        }
+        cursor += 1;
+    }
+    Some(source.len())
+}
+
+fn skip_non_code_at(source: &str, index: usize) -> Option<usize> {
+    let byte = *source.as_bytes().get(index)?;
+    if byte == b'\'' || byte == b'"' {
+        return parse_string_literal_at(source, index).map(|(_, end)| end);
+    }
+    if byte == b'`' {
+        return skip_template_literal_at(source, index);
+    }
+    skip_line_comment_at(source, index).or_else(|| skip_block_comment_at(source, index))
+}
+
+fn find_code_token(source: &str, token: &str, start: usize) -> Option<usize> {
+    let token = token.as_bytes();
+    let mut cursor = start;
+    while cursor + token.len() <= source.len() {
+        if let Some(next) = skip_non_code_at(source, cursor) {
+            cursor = next;
+            continue;
+        }
+        if source.as_bytes()[cursor..].starts_with(token)
+            && token_has_code_boundaries(source, cursor, token)
+        {
+            return Some(cursor);
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn token_has_code_boundaries(source: &str, index: usize, token: &[u8]) -> bool {
+    let starts_with_identifier = token.first().is_some_and(|byte| is_identifier_byte(*byte));
+    let ends_with_identifier = token.last().is_some_and(|byte| is_identifier_byte(*byte));
+    if starts_with_identifier {
+        let before = index
+            .checked_sub(1)
+            .and_then(|idx| source.as_bytes().get(idx));
+        if before.is_some_and(|byte| is_identifier_byte(*byte) || *byte == b'.') {
+            return false;
+        }
+    }
+    if ends_with_identifier {
+        let after = source.as_bytes().get(index + token.len());
+        if after.is_some_and(|byte| is_identifier_byte(*byte)) {
+            return false;
+        }
+    }
+    true
+}
+
+fn find_matching_delimiter(source: &str, open_index: usize, open: u8, close: u8) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut cursor = open_index;
+    while cursor < source.len() {
+        if let Some(next) = skip_non_code_at(source, cursor) {
+            cursor = next;
+            continue;
+        }
+        let byte = source.as_bytes()[cursor];
+        if byte == open {
+            depth += 1;
+        } else if byte == close {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                return Some(cursor);
+            }
+        }
+        cursor += 1;
+    }
+    None
+}
+
+fn find_property_value(source: &str, property: &str) -> Option<usize> {
+    let mut cursor = 0usize;
+    let needle = property.as_bytes();
+    while cursor + needle.len() <= source.len() {
+        let property_index = find_code_token(source, property, cursor)?;
+        let before = property_index
+            .checked_sub(1)
+            .and_then(|idx| source.as_bytes().get(idx));
+        let after = source.as_bytes().get(property_index + needle.len());
+        let identifier_before = before.is_some_and(|byte| is_identifier_byte(*byte));
+        let identifier_after = after.is_some_and(|byte| is_identifier_byte(*byte));
+        if !identifier_before && !identifier_after {
+            let colon = skip_ascii_ws(source, property_index + needle.len());
+            if source.as_bytes().get(colon) == Some(&b':') {
+                return Some(skip_ascii_ws(source, colon + 1));
+            }
+        }
+        cursor = property_index + needle.len();
+    }
+    None
+}
+
+fn parse_http_base_url(source: &str) -> (Option<String>, Option<String>) {
+    let Some(value_index) = find_property_value(source, "baseUrl") else {
+        return (None, None);
+    };
+    if let Some((literal, _)) = parse_string_literal_at(source, value_index) {
+        return (Some(literal), None);
+    }
+    let config_call = "Config.required(";
+    if source[value_index..].starts_with(config_call) {
+        let string_index = skip_ascii_ws(source, value_index + config_call.len());
+        if let Some((key, _)) = parse_string_literal_at(source, string_index) {
+            return (None, Some(key));
+        }
+    }
+    (None, None)
+}
+
+fn parse_http_endpoints(source: &str) -> Vec<Value> {
+    let mut endpoints = Vec::new();
+    for method in ["get", "post", "put", "patch", "delete"] {
+        let mut cursor = 0usize;
+        let needle = format!("Http.{method}(");
+        while let Some(call_index) = find_code_token(source, &needle, cursor) {
+            let path_index = skip_ascii_ws(source, call_index + needle.len());
+            if let Some((path, end_index)) = parse_string_literal_at(source, path_index) {
+                let chain_end = find_code_token(source, "Http.", end_index).unwrap_or(source.len());
+                let chain = &source[end_index..chain_end.min(end_index + 1000)];
+                let mut returns = Vec::new();
+                let mut return_cursor = 0usize;
+                while let Some(return_index) = find_code_token(chain, ".returns(", return_cursor) {
+                    let status_index = skip_ascii_ws(chain, return_index + ".returns(".len());
+                    let status_text = chain[status_index..]
+                        .chars()
+                        .take_while(|ch| ch.is_ascii_digit())
+                        .collect::<String>();
+                    if let Ok(status) = status_text.parse::<u16>() {
+                        if (100..=599).contains(&status) {
+                            returns.push(json!({ "status": status }));
+                        }
+                    }
+                    return_cursor = status_index + status_text.len();
+                }
+                endpoints.push(json!({
+                    "method": method.to_ascii_uppercase(),
+                    "path": path,
+                    "returns": returns
+                }));
+            }
+            cursor = call_index + needle.len();
+        }
+    }
+    endpoints
+}
+
+fn http_clients_from_sources(app: &ExtractedApp) -> Vec<Value> {
+    let mut clients = Vec::new();
+    for source_file in &app.source_files {
+        let source = &source_file.source;
+        for (call, kind) in [("Http.client(", "named"), ("Http.typedClient(", "typed")] {
+            let mut cursor = 0usize;
+            while let Some(call_index) = find_code_token(source, call, cursor) {
+                let name_index = skip_ascii_ws(source, call_index + call.len());
+                let Some((name, after_name)) = parse_string_literal_at(source, name_index) else {
+                    clients.push(json!({
+                        "target": "dynamic",
+                        "kind": kind,
+                        "source": source_file.name
+                    }));
+                    cursor = call_index + call.len();
+                    continue;
+                };
+                let end_index =
+                    find_matching_delimiter(source, call_index + call.len() - 1, b'(', b')')
+                        .unwrap_or_else(|| source.len().saturating_sub(1));
+                let call_source = &source[after_name..end_index];
+                let (base_url, base_url_config_key) = parse_http_base_url(call_source);
+                let mut client = json!({
+                    "name": name,
+                    "kind": kind,
+                    "target": if base_url.is_some() || base_url_config_key.is_some() { "static" } else { "dynamic" },
+                    "source": source_file.name
+                });
+                if let Some(base_url) = base_url {
+                    client["baseUrl"] = json!(base_url);
+                }
+                if let Some(config_key) = base_url_config_key {
+                    client["baseUrlConfigKey"] = json!(config_key);
+                }
+                let endpoints = parse_http_endpoints(call_source);
+                if !endpoints.is_empty() {
+                    client["endpoints"] = json!(endpoints);
+                }
+                clients.push(client);
+                cursor = end_index.saturating_add(1);
+            }
+        }
+    }
+    clients
+}
+
 #[cfg(test)]
 pub(crate) fn emit_plan(
     app: &ExtractedApp,
@@ -727,6 +1018,9 @@ pub(crate) fn emit_plan_with_route_artifact(
             if route.kind != "http" {
                 route_json["kind"] = json!(route.kind);
             }
+            if let Some(websocket) = &route.websocket {
+                route_json["websocket"] = websocket_options_json(websocket);
+            }
             if let Some(module) = &route.module {
                 route_json["module"] = json!(module);
             }
@@ -848,6 +1142,7 @@ pub(crate) fn emit_plan_with_route_artifact(
                 || route.health.is_some()
                 || !route.middleware.is_empty()
                 || route.auth.is_some()
+                || route.websocket.is_some()
                 || route.cors.is_some()
                 || route.summary.is_some()
                 || route.description.is_some()
@@ -1682,11 +1977,39 @@ pub(crate) fn emit_plan_with_route_artifact(
         required_features.push("stdlib.httpclient".to_string());
         value["strongPlan"]["evidence"]["httpClient"] = json!(true);
         value["features"]["httpClient"] = json!(true);
+        let http_clients = http_clients_from_sources(app);
+        if !http_clients.is_empty() {
+            let static_http_clients = http_clients
+                .iter()
+                .all(|client| client["target"] == "static");
+            value["httpClients"] = json!(http_clients);
+            value["strongPlan"]["evidence"]["httpClients"] = json!(static_http_clients);
+        }
         doctor_checks.push(json!({
             "id": "stdlib.httpclient.contract",
-            "status": "warn",
-            "message": "HttpClient is Plan-visible; default compiler metadata does not infer static outbound targets yet"
+            "status": "ok",
+            "message": "HttpClient feature metadata is Plan-visible"
         }));
+        if value["httpClients"]
+            .as_array()
+            .is_some_and(|clients| clients.iter().any(|client| client["target"] == "static"))
+        {
+            doctor_checks.push(json!({
+                "id": "stdlib.httpclient.static-targets",
+                "status": "ok",
+                "message": "static outbound HTTP client metadata is visible without secret values"
+            }));
+        }
+        if value["httpClients"]
+            .as_array()
+            .is_some_and(|clients| clients.iter().any(|client| client["target"] == "dynamic"))
+        {
+            doctor_checks.push(json!({
+                "id": "stdlib.httpclient.dynamic-targets",
+                "status": "warn",
+                "message": "dynamic outbound HTTP client metadata is partial and must be checked at runtime"
+            }));
+        }
     }
     if app.uses_workers_runtime {
         required_features.push("stdlib.workers".to_string());

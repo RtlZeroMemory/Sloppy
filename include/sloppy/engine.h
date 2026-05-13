@@ -15,12 +15,14 @@
 #include "sloppy/plan.h"
 #include "sloppy/status.h"
 #include "sloppy/string.h"
+#include "sloppy/websocket.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef struct SlEngine SlEngine;
+typedef struct SlEngineWebSocketSession SlEngineWebSocketSession;
 
 typedef enum SlEngineKind
 {
@@ -160,6 +162,14 @@ typedef struct SlEngineResult
     };
 } SlEngineResult;
 
+typedef struct SlEngineWebSocketBridge
+{
+    void* user;
+    SlStr protocol;
+    SlStatus (*send)(void* user, const SlWebSocketFrameWriteOptions* options, SlDiag* out_diag);
+    SlStatus (*close)(void* user, uint16_t code, SlStr reason, SlDiag* out_diag);
+} SlEngineWebSocketBridge;
+
 /*
  * Creates an opaque engine instance for the requested kind.
  *
@@ -267,6 +277,28 @@ SlStatus sl_engine_call_registered_handler_with_context(SlEngine* engine, SlAren
                                                         const SlHttpRequestContext* request_context,
                                                         SlEngineResult* out_result,
                                                         SlDiag* out_diag);
+
+/*
+ * Calls a runtime-registered WebSocket handler by numeric ID.
+ *
+ * The request context and bridge callbacks are borrowed for the native session lifetime.
+ * JavaScript receives a framework socket facade only; transport handles, native pointers,
+ * and V8 values stay behind this ABI.
+ */
+SlStatus sl_engine_call_registered_websocket_handler_with_context(
+    SlEngine* engine, SlArena* arena, SlHandlerId handler_id,
+    const SlHttpRequestContext* request_context, const SlEngineWebSocketBridge* bridge,
+    SlEngineWebSocketSession** out_session, SlDiag* out_diag);
+/*
+ * Delivers a parsed native WebSocket frame to a previously opened session.
+ *
+ * Only text and binary data frames are enqueued for JavaScript. Close frames should use
+ * sl_engine_websocket_close so pending async iteration can settle as done.
+ */
+SlStatus sl_engine_websocket_receive(SlEngine* engine, SlEngineWebSocketSession* session,
+                                     const SlWebSocketFrame* frame, SlDiag* out_diag);
+SlStatus sl_engine_websocket_close(SlEngine* engine, SlEngineWebSocketSession* session,
+                                   uint16_t code, SlStr reason, SlDiag* out_diag);
 
 /*
  * Calls a handler by numeric Sloppy Plan handler ID.

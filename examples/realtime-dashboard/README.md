@@ -3,8 +3,8 @@
 This example shows the current alpha realtime API shape:
 
 - `app.sse("/events", ...)` records and emits an SSE route.
-- `app.ws("/socket", ...)` records WebSocket route intent, but runtime upgrade
-  execution is unavailable and returns `501`.
+- `app.ws("/socket", ...)` records WebSocket route intent and executes through
+  native HTTP/1.1 Upgrade in V8-backed `sloppy run`.
 - `Realtime.hub("dashboard")` is an in-process helper, not an external broker.
 
 Build and inspect the route metadata:

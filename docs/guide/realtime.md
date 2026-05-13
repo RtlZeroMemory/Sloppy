@@ -1,8 +1,9 @@
 # Realtime Updates
 
 Use realtime routes when you want Plan-visible endpoints for event streams or
-future WebSocket upgrades. The current alpha supports SSE route registration and
-metadata, plus an explicit WebSocket-unavailable path.
+WebSocket upgrades. The current alpha supports SSE route registration,
+metadata, and native HTTP/1.1 WebSocket Upgrade for V8-backed `sloppy run`
+routes.
 
 ## Add An SSE Route
 
@@ -57,10 +58,9 @@ app.ws("/socket", async (ctx, socket) => {
 ```
 
 This records WebSocket route intent in the Plan and OpenAPI output. Native
-upgrade execution is not available yet; a request to the generated handler
-returns `501 SLOPPY_E_REALTIME_WEBSOCKET_UNAVAILABLE`. Keep this endpoint behind
-feature flags or use it for tooling and forward-compatible route design until
-the runtime upgrade path lands.
+Upgrade execution accepts valid HTTP/1.1 WebSocket handshakes and delivers text
+and binary messages to V8. Direct non-Upgrade HTTP calls fail because the route
+requires an Upgrade request.
 
 ## Use A Hub In Tests
 
@@ -82,6 +82,9 @@ and are not connected to WebSocket upgrades in this alpha.
 ## Check The Boundaries
 
 - Use SSE for current route/API shape work.
-- Use WebSocket routes only when `501` unavailable behavior is acceptable.
-- Do not claim browser push, socket backpressure, replay, or cross-node fan-out.
+- Use TestHost for protected WebSocket route coverage; native protected
+  WebSocket routes fail closed until auth principals are materialized on
+  upgraded connections.
+- Do not claim browser push, socket backpressure, heartbeat timers, replay, or
+  cross-node fan-out.
 - Use [`Realtime API`](../api/realtime.md) for exact method and option details.

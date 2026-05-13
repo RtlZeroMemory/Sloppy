@@ -149,6 +149,7 @@ set(
     ffi.js
     fs.js
     health.js
+    http.js
     metrics.js
     crypto.js
     net.js
@@ -189,6 +190,7 @@ set(
     providers/sqlite.js
     results.js
     schema.js
+    testservices.js
     testing.js
     internal/capabilities.js
     internal/config.js

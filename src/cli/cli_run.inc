@@ -2325,7 +2325,7 @@ static bool sl_run_dispatch_failure_is_cli_mapped(SlStatus status, const SlDiag*
         return true;
     }
     if (sl_status_code(status) == SL_STATUS_INVALID_ARGUMENT &&
-        diag->code == SL_DIAG_MALFORMED_JSON)
+        (diag->code == SL_DIAG_MALFORMED_JSON || diag->code == SL_DIAG_INVALID_HTTP_REQUEST))
     {
         return true;
     }
@@ -2974,6 +2974,192 @@ static SlStatus sl_run_transport_dispatch(SlHttpTransportConnection* connection,
     return transport_status;
 }
 
+static SlStatus sl_run_transport_websocket_upgrade(SlHttpTransportConnection* connection,
+                                                   SlArena* arena,
+                                                   const SlHttpRequestLifecycle* request,
+                                                   SlWebSocketHandshakeResult* out_result,
+                                                   SlDiag* out_diag, void* user)
+{
+    SlRunApp* app = (SlRunApp*)user;
+    SlHttpDispatchRouteMatch match = {0};
+    SlStatus status;
+
+    (void)connection;
+    if (out_result != NULL) {
+        *out_result = (SlWebSocketHandshakeResult){0};
+    }
+    if (app == NULL || arena == NULL || request == NULL || out_result == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_http_dispatch_match_route(arena, &app->plan, &app->route_table.dispatch,
+                                          &request->head, &match, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (match.route == NULL) {
+        out_result->http_status = match.method_mismatch ? 405U : 404U;
+        return sl_status_ok();
+    }
+    if (!sl_plan_route_is_websocket(match.route)) {
+        out_result->http_status = 400U;
+        return sl_status_ok();
+    }
+
+    return sl_websocket_build_server_handshake(arena, &request->head, match.route, out_result,
+                                               out_diag);
+}
+
+static SlStatus sl_run_websocket_bridge_send(void* user,
+                                             const SlWebSocketFrameWriteOptions* options,
+                                             SlDiag* out_diag)
+{
+    return sl_http_transport_websocket_send((SlHttpTransportConnection*)user, options, out_diag);
+}
+
+static SlStatus sl_run_websocket_bridge_close(void* user, uint16_t code, SlStr reason,
+                                              SlDiag* out_diag)
+{
+    SlHttpTransportConnection* connection = (SlHttpTransportConnection*)user;
+    unsigned char payload[125];
+    SlWebSocketFrameWriteOptions options = {0};
+    bool previous_close_after_write = false;
+    SlStatus status;
+
+    if (connection == NULL || reason.length + 2U > sizeof(payload)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    payload[0] = (unsigned char)((code >> 8U) & 0xFFU);
+    payload[1] = (unsigned char)(code & 0xFFU);
+    if (reason.length != 0U) {
+        for (size_t index = 0U; index < reason.length; index += 1U) {
+            payload[2U + index] = (unsigned char)reason.ptr[index];
+        }
+    }
+    options.fin = true;
+    options.opcode = SL_WEBSOCKET_OPCODE_CLOSE;
+    options.payload = sl_bytes_from_parts(payload, reason.length + 2U);
+    previous_close_after_write = connection->close_after_write;
+    connection->close_after_write = true;
+    status = sl_http_transport_websocket_send(connection, &options, out_diag);
+    if (!sl_status_is_ok(status)) {
+        connection->close_after_write = previous_close_after_write;
+    }
+    return status;
+}
+
+static SlStr sl_run_extract_query_string(SlStr raw_target)
+{
+    if (raw_target.ptr == NULL) {
+        return sl_str_empty();
+    }
+    for (size_t index = 0U; index < raw_target.length; index += 1U) {
+        if (raw_target.ptr[index] == '?') {
+            return sl_str_from_parts(raw_target.ptr + index + 1U, raw_target.length - index - 1U);
+        }
+    }
+    return sl_str_empty();
+}
+
+static SlStatus sl_run_transport_websocket_open(SlHttpTransportConnection* connection,
+                                                SlArena* arena,
+                                                const SlHttpRequestLifecycle* request,
+                                                SlDiag* out_diag, void* user)
+{
+    SlRunApp* app = (SlRunApp*)user;
+    SlHttpDispatchRouteMatch match = {0};
+    SlHttpQuery query = {0};
+    SlHttpRequestContext context = {0};
+    SlEngineWebSocketBridge bridge = {0};
+    SlEngineWebSocketSession* session = NULL;
+    SlStatus status;
+
+    if (connection == NULL || arena == NULL || request == NULL || app == NULL ||
+        app->engine == NULL)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    status = sl_http_dispatch_match_route(arena, &app->plan, &app->route_table.dispatch,
+                                          &request->head, &match, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (match.route == NULL || !sl_plan_route_is_websocket(match.route)) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+
+    status = sl_http_query_parse(arena, request->head.raw_target, &query);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    context.request = &request->head;
+    context.request_id = request->id;
+    context.connection_id = request->connection == NULL ? 0U : request->connection->id;
+    context.scheme = sl_str_is_empty(request->scheme) ? sl_str_from_cstr("http") : request->scheme;
+    context.protocol = sl_str_from_cstr("HTTP/1.1");
+    context.route_params = match.route_match.params;
+    context.route_param_count = match.route_match.param_count;
+    context.query_string = sl_run_extract_query_string(request->head.raw_target);
+    context.query_params = query.params;
+    context.query_param_count = query.param_count;
+    context.cancellation = &request->cancellation;
+    context.route_name = match.route->name;
+    context.route_pattern = match.binding == NULL || match.binding->pattern == NULL
+                                ? match.route->pattern
+                                : match.binding->pattern->source;
+    context.needs_route_params = true;
+    context.needs_query_params = true;
+    context.needs_headers = true;
+    context.needs_header_facade = true;
+    context.needs_request = true;
+    context.needs_connection = true;
+    context.needs_signal = true;
+    context.needs_log = true;
+    context.needs_metadata = true;
+
+    bridge.user = connection;
+    bridge.protocol = connection->websocket_selected_protocol;
+    bridge.send = sl_run_websocket_bridge_send;
+    bridge.close = sl_run_websocket_bridge_close;
+
+    status = sl_engine_call_registered_websocket_handler_with_context(
+        app->engine, arena, match.route->handler_id, &context, &bridge, &session, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    connection->websocket_user_state = session;
+    return sl_status_ok();
+}
+
+static SlStatus sl_run_transport_websocket_frame(SlHttpTransportConnection* connection,
+                                                 SlArena* arena, const SlWebSocketFrame* frame,
+                                                 SlDiag* out_diag, void* user)
+{
+    SlRunApp* app = (SlRunApp*)user;
+    SlEngineWebSocketSession* session =
+        connection == NULL ? NULL : (SlEngineWebSocketSession*)connection->websocket_user_state;
+
+    (void)arena;
+    if (app == NULL || app->engine == NULL || session == NULL || frame == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (frame->opcode == SL_WEBSOCKET_OPCODE_CLOSE) {
+        SlStr reason = sl_str_empty();
+        uint16_t code = 1000U;
+        if (frame->payload.length >= 2U) {
+            code = (uint16_t)(((uint16_t)frame->payload.ptr[0] << 8U) | frame->payload.ptr[1]);
+            if (frame->payload.length > 2U) {
+                reason = sl_str_from_parts((const char*)frame->payload.ptr + 2U,
+                                           frame->payload.length - 2U);
+            }
+        }
+        return sl_engine_websocket_close(app->engine, session, code, reason, out_diag);
+    }
+    return sl_engine_websocket_receive(app->engine, session, frame, out_diag);
+}
+
 static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t port, SlRunApp* app)
 {
     SlHttpTransportConfig config = {0};
@@ -3086,6 +3272,12 @@ static SlHttpTransportConfig sl_run_transport_config(const char* host, uint16_t 
     }
     config.dispatch = sl_run_transport_dispatch;
     config.dispatch_user = app;
+    config.websocket_upgrade = sl_run_transport_websocket_upgrade;
+    config.websocket_upgrade_user = app;
+    config.websocket_open = sl_run_transport_websocket_open;
+    config.websocket_open_user = app;
+    config.websocket_frame = sl_run_transport_websocket_frame;
+    config.websocket_frame_user = app;
     return config;
 }
 

@@ -83,9 +83,10 @@ HTTP/2 dispatcher; handlers do not see a different API.
 
 Realtime routes currently stay inside this route/response model. SSE handlers
 return bounded `Results.stream` descriptors with `text/event-stream` metadata.
-WebSocket route registrations are Plan-visible, but the native HTTP upgrade
-execution path is not implemented and generated handlers return `501`
-unavailable.
+WebSocket route registrations are Plan-visible. The native HTTP/1.1 Upgrade
+path validates WebSocket handshakes, writes `101 Switching Protocols`, moves
+the connection into frame mode, and delivers text/binary frames to V8-backed
+registered handlers.
 
 Native Core streams are the internal byte-flow vocabulary for bounded response
 descriptors, transport stream emission, HTTP/2 response body mapping, and
@@ -350,8 +351,8 @@ connection draining) is the responsibility of an in-front reverse proxy.
 ## Not implemented
 
 - HTTP/3, gRPC, WebTransport.
-- Native WebSocket upgrade/runtime execution. WebSocket route intent is
-  Plan-visible, but the runtime returns the alpha unavailable response.
+- Native WebSocket fragmentation, compression, heartbeat timers, send-queue
+  backpressure policy, and protected-route principal materialization.
 - SSE is experimental/alpha and currently uses bounded `Results.stream`
   descriptors. HTTP/1.1 serialization is chunked, but handler execution still
   completes before the descriptor is submitted.

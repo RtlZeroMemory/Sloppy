@@ -1338,6 +1338,10 @@ async function flushMicrotasks(count = 6) {
         await socket.accept();
         for await (const message of socket.messages()) {
             if (message.kind === "text") {
+                if (message.text === "json-text") {
+                    await socket.sendText(JSON.stringify({ type: "text-json" }));
+                    continue;
+                }
                 await socket.sendText(`echo:${message.text}`);
                 continue;
             }
@@ -1395,14 +1399,18 @@ async function flushMicrotasks(count = 6) {
     await ws.expectJson({ type: "pong" });
     await ws.sendJson({ type: "echo", text: "hi" });
     await ws.expectJson({ type: "echo", text: "hi" });
+    await ws.sendText("json-text");
+    await ws.expectJson({ type: "text-json" });
+    await ws.sendBytes(new Uint8Array([1, 2, 3]));
+    await assertRejectsMessage(async () => ws.expectJson(), /expected WebSocket JSON message, got 'binary'/);
     await ws.sendBytes(new Uint8Array([1, 2, 3]));
     await ws.expectBytes(new Uint8Array([1, 2, 3]));
     await ws.close();
-    websocketHost.metrics.expectCounter("websocket.messages.in.total", 1, {
+    websocketHost.metrics.expectCounter("websocket.messages.in.total", 2, {
         route: "/ws",
         kind: "binary",
     });
-    websocketHost.metrics.expectCounter("websocket.bytes.out.total", 3, {
+    websocketHost.metrics.expectCounter("websocket.bytes.out.total", 6, {
         route: "/ws",
         kind: "binary",
     });
@@ -1514,6 +1522,27 @@ async function flushMicrotasks(count = 6) {
     limitsWebsocketHost.diagnostics.expectCode("SLOPPY_E_WEBSOCKET_HANDLER_ERROR");
     await limitsWebsocketHost.close();
 
+    const timeoutBuilder = Sloppy.createBuilder();
+    let timeoutScopeDisposals = 0;
+    timeoutBuilder.services.addScoped("probe", () => ({
+        dispose() {
+            timeoutScopeDisposals += 1;
+        },
+    }));
+    const timeoutWebsocketApp = timeoutBuilder.build();
+    timeoutWebsocketApp.websocket("/never-accepts", async (socket) => {
+        socket.ctx.services.get("probe");
+        await new Promise(() => {});
+    });
+    const timeoutWebsocketHost = await TestHost.create(timeoutWebsocketApp);
+    await timeoutWebsocketHost.websocket("/never-accepts")
+        .timeout(20)
+        .connect()
+        .expectRejected(504);
+    timeoutWebsocketHost.diagnostics.expectCode("SLOPPY_E_WEBSOCKET_ACCEPT_TIMEOUT");
+    assert.equal(timeoutScopeDisposals, 1);
+    await timeoutWebsocketHost.close();
+
     const artifactWebSocketHost = await TestHost.fromArtifacts(".sloppy", { cliPath: "sloppy" });
     await artifactWebSocketHost.websocket("/ws").connect().expectRejected(501);
     artifactWebSocketHost.diagnostics.expectCode("SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED");
@@ -1528,6 +1557,12 @@ async function flushMicrotasks(count = 6) {
         () => invalidWebSocketOptions.websocket("/bad-protocol", async () => {}, { protocols: ["bad token"] }),
         /subprotocol/,
     );
+    const invalidWebSocketHost = await TestHost.create(Sloppy.create());
+    assertThrowsMessage(
+        () => invalidWebSocketHost.websocket("/bad-protocol").protocols(["bad token"]),
+        /subprotocol/,
+    );
+    await invalidWebSocketHost.close();
 
     const protectedWs = Sloppy.create();
     protectedWs.ws("/admin/ws", async () => {}).requireAuth({ role: "admin" });

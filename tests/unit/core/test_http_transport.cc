@@ -159,6 +159,24 @@ typedef struct DispatchHook
     SlBytes body;
 } DispatchHook;
 
+typedef struct WebSocketUpgradeHook
+{
+    size_t count;
+    SlPlanRoute route;
+    SlHttpMethod method;
+    SlStr path;
+    char path_storage[64];
+} WebSocketUpgradeHook;
+
+typedef struct WebSocketFrameHook
+{
+    size_t count;
+    SlWebSocketOpcode opcode;
+    unsigned char payload[32];
+    size_t payload_length;
+    bool echo_ok;
+} WebSocketFrameHook;
+
 typedef struct SequenceDispatchHook
 {
     size_t count;
@@ -225,6 +243,57 @@ static SlStatus dispatch_hook(SlHttpTransportConnection* connection, SlArena* ar
     }
 
     *out_response = hook->response;
+    return sl_status_ok();
+}
+
+static SlStatus websocket_upgrade_hook(SlHttpTransportConnection* connection, SlArena* arena,
+                                       const SlHttpRequestLifecycle* request,
+                                       SlWebSocketHandshakeResult* out_result, SlDiag* out_diag,
+                                       void* user)
+{
+    WebSocketUpgradeHook* hook = static_cast<WebSocketUpgradeHook*>(user);
+
+    (void)connection;
+    if (hook == nullptr || arena == nullptr || request == nullptr || out_result == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    hook->count += 1U;
+    hook->method = request->head.method;
+    if (request->head.path.length < sizeof(hook->path_storage)) {
+        memcpy(hook->path_storage, request->head.path.ptr, request->head.path.length);
+        hook->path_storage[request->head.path.length] = '\0';
+        hook->path = sl_str_from_parts(hook->path_storage, request->head.path.length);
+    }
+    else {
+        hook->path = sl_str_empty();
+    }
+    return sl_websocket_build_server_handshake(arena, &request->head, &hook->route, out_result,
+                                               out_diag);
+}
+
+static SlStatus websocket_frame_hook(SlHttpTransportConnection* connection, SlArena* arena,
+                                     const SlWebSocketFrame* frame, SlDiag* out_diag, void* user)
+{
+    WebSocketFrameHook* hook = static_cast<WebSocketFrameHook*>(user);
+
+    (void)arena;
+    if (hook == nullptr || connection == nullptr || frame == nullptr) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    hook->count += 1U;
+    hook->opcode = frame->opcode;
+    hook->payload_length = frame->payload.length;
+    if (frame->payload.length <= sizeof(hook->payload)) {
+        memcpy(hook->payload, frame->payload.ptr, frame->payload.length);
+    }
+    if (hook->echo_ok) {
+        SlWebSocketFrameWriteOptions options = {};
+        options.fin = true;
+        options.opcode = SL_WEBSOCKET_OPCODE_TEXT;
+        options.payload = bytes_from_cstr("ok");
+        return sl_http_transport_websocket_send(connection, &options, out_diag);
+    }
     return sl_status_ok();
 }
 
@@ -2839,6 +2908,243 @@ static int test_dispatch_success_writes_response_and_closes(void)
     return 0;
 }
 
+static int test_websocket_upgrade_writes_101_and_keeps_connection_upgraded(void)
+{
+    static const char expected[] = "HTTP/1.1 101 Switching Protocols\r\n"
+                                   "Upgrade: websocket\r\n"
+                                   "Connection: Upgrade\r\n"
+                                   "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"
+                                   "Sec-WebSocket-Protocol: chat\r\n"
+                                   "\r\n";
+    SlStr protocols[] = {sl_str_from_cstr("chat")};
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    SlHttpTransportConfig config = {};
+    ClientConnect client = {};
+    WebSocketUpgradeHook upgrade = {};
+    SlDiag diag = {};
+
+    upgrade.route.kind = sl_str_from_cstr("websocket");
+    upgrade.route.method = sl_str_from_cstr("GET");
+    upgrade.route.websocket.protocols = protocols;
+    upgrade.route.websocket.protocol_count = 1U;
+    config = small_config(nullptr);
+    config.websocket_upgrade = websocket_upgrade_hook;
+    config.websocket_upgrade_user = &upgrade;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0) {
+        return 82;
+    }
+    if (expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 83;
+    }
+    if (expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /ws HTTP/1.1\r\n"
+                                          "Host: local\r\n"
+                                          "Connection: keep-alive, Upgrade\r\n"
+                                          "Upgrade: websocket\r\n"
+                                          "Sec-WebSocket-Version: 13\r\n"
+                                          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                                          "Sec-WebSocket-Protocol: chat\r\n"
+                                          "\r\n"),
+                          &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 84;
+    }
+    if (poll_until_connection_state(&server, &client, SL_HTTP_TRANSPORT_CONNECTION_STATE_UPGRADED,
+                                    sizeof(expected) - 1U) != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 85;
+    }
+    if (upgrade.count != 1U || upgrade.method != SL_HTTP_METHOD_GET ||
+        !sl_str_equal(upgrade.path, sl_str_from_cstr("/ws")))
+    {
+        stop_one_connection(&server, &client);
+        return 86;
+    }
+    if (server.backend.active_requests != 0U ||
+        sl_http_transport_server_active_connections(&server) != 1U)
+    {
+        stop_one_connection(&server, &client);
+        return 87;
+    }
+    if (expect_bytes_equal(sl_bytes_from_parts(client.read_buffer, client.read_length), expected) !=
+        0)
+    {
+        stop_one_connection(&server, &client);
+        return 88;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
+static int test_websocket_upgrade_rejection_writes_http_error_without_dispatch(void)
+{
+    SlStr origins[] = {sl_str_from_cstr("https://allowed.example")};
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    SlHttpTransportConfig config = {};
+    ClientConnect client = {};
+    DispatchHook dispatch = {};
+    WebSocketUpgradeHook upgrade = {};
+    SlDiag diag = {};
+
+    dispatch.response = sl_http_response_text(200U, sl_str_from_cstr("wrong\n"));
+    upgrade.route.kind = sl_str_from_cstr("websocket");
+    upgrade.route.method = sl_str_from_cstr("GET");
+    upgrade.route.websocket.origin_policy = SL_PLAN_WEBSOCKET_ORIGINS_LIST;
+    upgrade.route.websocket.origins = origins;
+    upgrade.route.websocket.origin_count = 1U;
+    config = small_config(nullptr);
+    config.dispatch = dispatch_hook;
+    config.dispatch_user = &dispatch;
+    config.websocket_upgrade = websocket_upgrade_hook;
+    config.websocket_upgrade_user = &upgrade;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /ws HTTP/1.1\r\n"
+                                          "Host: local\r\n"
+                                          "Connection: Upgrade\r\n"
+                                          "Upgrade: websocket\r\n"
+                                          "Origin: https://blocked.example\r\n"
+                                          "Sec-WebSocket-Version: 13\r\n"
+                                          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                                          "\r\n"),
+                          &diag),
+                      SL_STATUS_OK) != 0 ||
+        poll_server_and_client_until_closed(&server, &client) != 0 || upgrade.count != 1U ||
+        dispatch.count != 0U || sl_http_transport_server_active_connections(&server) != 0U ||
+        server.backend.active_requests != 0U ||
+        find_http1_header_end(sl_bytes_from_parts(client.read_buffer, client.read_length)) == 0U ||
+        std::string(reinterpret_cast<char*>(client.read_buffer), client.read_length)
+                .find("HTTP/1.1 403 Forbidden\r\n") != 0U)
+    {
+        stop_one_connection(&server, &client);
+        return 83;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
+static int test_websocket_upgraded_connection_dispatches_frames(void)
+{
+    static const unsigned char client_text[] = {0x81U, 0x82U, 0x01U, 0x02U,
+                                                0x03U, 0x04U, 0x69U, 0x6bU};
+    static const unsigned char client_ping[] = {0x89U, 0x82U, 0x01U, 0x02U,
+                                                0x03U, 0x04U, 0x69U, 0x6bU};
+    static const unsigned char server_text[] = {0x81U, 0x02U, 'o', 'k'};
+    static const unsigned char server_pong[] = {0x8AU, 0x02U, 'h', 'i'};
+    unsigned char storage[65536];
+    SlArena arena = {};
+    SlHttpTransportServer server = {};
+    SlHttpTransportConfig config = {};
+    ClientConnect client = {};
+    WebSocketUpgradeHook upgrade = {};
+    WebSocketFrameHook frames = {};
+    SlDiag diag = {};
+    size_t after_handshake = 0U;
+    size_t after_echo = 0U;
+
+    upgrade.route.kind = sl_str_from_cstr("websocket");
+    upgrade.route.method = sl_str_from_cstr("GET");
+    frames.echo_ok = true;
+    config = small_config(nullptr);
+    config.websocket_upgrade = websocket_upgrade_hook;
+    config.websocket_upgrade_user = &upgrade;
+    config.websocket_frame = websocket_frame_hook;
+    config.websocket_frame_user = &frames;
+
+    if (expect_status(sl_arena_init(&arena, storage, sizeof(storage)), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_init(&server, &arena, &config, &diag),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_server_listen(&server, &diag), SL_STATUS_OK) != 0 ||
+        connect_client(sl_http_transport_server_bound_port(&server), &client) != 0 ||
+        start_client_read(&client) != 0 ||
+        expect_status(sl_http_transport_server_poll(&server, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          bytes_from_cstr("GET /ws HTTP/1.1\r\n"
+                                          "Host: local\r\n"
+                                          "Connection: Upgrade\r\n"
+                                          "Upgrade: websocket\r\n"
+                                          "Sec-WebSocket-Version: 13\r\n"
+                                          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
+                                          "\r\n"),
+                          &diag),
+                      SL_STATUS_OK) != 0 ||
+        poll_until_connection_state(&server, &client, SL_HTTP_TRANSPORT_CONNECTION_STATE_UPGRADED,
+                                    129U) != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 89;
+    }
+
+    after_handshake = client.read_length;
+    if (expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          sl_bytes_from_parts(client_text, sizeof(client_text)), &diag),
+                      SL_STATUS_OK) != 0 ||
+        poll_until_connection_state(&server, &client, SL_HTTP_TRANSPORT_CONNECTION_STATE_UPGRADED,
+                                    after_handshake + sizeof(server_text)) != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 90;
+    }
+    if (frames.count != 1U || frames.opcode != SL_WEBSOCKET_OPCODE_TEXT ||
+        frames.payload_length != 2U || memcmp(frames.payload, "hi", 2U) != 0 ||
+        memcmp(client.read_buffer + after_handshake, server_text, sizeof(server_text)) != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 91;
+    }
+
+    after_echo = client.read_length;
+    if (expect_status(sl_http_transport_connection_feed_test(
+                          &server.connections[0],
+                          sl_bytes_from_parts(client_ping, sizeof(client_ping)), &diag),
+                      SL_STATUS_OK) != 0 ||
+        poll_until_connection_state(&server, &client, SL_HTTP_TRANSPORT_CONNECTION_STATE_UPGRADED,
+                                    after_echo + sizeof(server_pong)) != 0)
+    {
+        stop_one_connection(&server, &client);
+        return 92;
+    }
+    if (frames.count != 1U ||
+        memcmp(client.read_buffer + after_echo, server_pong, sizeof(server_pong)) != 0 ||
+        server.backend.active_requests != 0U ||
+        sl_http_transport_server_active_connections(&server) != 1U)
+    {
+        stop_one_connection(&server, &client);
+        return 93;
+    }
+
+    stop_one_connection(&server, &client);
+    return 0;
+}
+
 static int test_event_loop_dispatch_writes_response_and_closes(void)
 {
     static const char expected[] =
@@ -4442,6 +4748,12 @@ static int run_named_transport_case(const char* name)
     if (strcmp(name, "http2_h2c_upgrade") == 0) {
         return test_h2c_upgrade_reaches_dispatch_stream1();
     }
+    if (strcmp(name, "websocket_upgrade") == 0) {
+        SLOPPY_TRANSPORT_CASE_SEQUENCE(
+            test_websocket_upgrade_writes_101_and_keeps_connection_upgraded,
+            test_websocket_upgrade_rejection_writes_http_error_without_dispatch,
+            test_websocket_upgraded_connection_dispatches_frames);
+    }
     if (strcmp(name, "http2_tls_alpn") == 0) {
         return test_https_h2_alpn_reaches_dispatch();
     }
@@ -4532,6 +4844,18 @@ int main(int argc, char** argv)
         return result;
     }
     result = test_dispatch_success_writes_response_and_closes();
+    if (result != 0) {
+        return result;
+    }
+    result = test_websocket_upgrade_writes_101_and_keeps_connection_upgraded();
+    if (result != 0) {
+        return result;
+    }
+    result = test_websocket_upgrade_rejection_writes_http_error_without_dispatch();
+    if (result != 0) {
+        return result;
+    }
+    result = test_websocket_upgraded_connection_dispatches_frames();
     if (result != 0) {
         return result;
     }

@@ -15,6 +15,7 @@ use super::{
     command_from_args, config_key_is_diagnostic_sensitive, config_key_is_sensitive, extract,
     help_text, noncrypto_hash_security_context_visible, redact_config_value,
     route_pattern_supported, CliCommand, CompileOptions, ConfigurationModel,
+    WebSocketOriginsMetadata,
 };
 
 fn fixture_temp_dir(name: &str) -> PathBuf {
@@ -3048,9 +3049,7 @@ export default app;
     assert!(!app.uses_net_runtime);
 
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js
-        .source
-        .contains("const { Results, HttpClient } = __sloppyRuntime;"));
+    assert!(emitted_js.source.contains("HttpClient"));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,
@@ -6404,9 +6403,7 @@ export default app;
     assert!(!app.uses_net_runtime);
 
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js
-        .source
-        .contains("const { Results, HttpClient } = __sloppyRuntime;"));
+    assert!(emitted_js.source.contains("HttpClient"));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,
@@ -6429,6 +6426,151 @@ export default app;
         value["doctorChecks"][0]["id"],
         serde_json::json!("stdlib.httpclient.contract")
     );
+}
+
+#[test]
+fn sloppy_http_import_emits_http_client_required_feature() {
+    let source = r#"import { Sloppy, Results, schema } from "sloppy";
+import { Http, HttpClientFactory, TestHttp } from "sloppy/http";
+const ignored = "Http.client(\"from-string\", { baseUrl: \"https://string.invalid\" })";
+// Http.client("from-line-comment", { baseUrl: "https://line-comment.invalid" });
+/* Http.typedClient("from-block-comment", { baseUrl: "https://block-comment.invalid" }); */
+function ignoredBoundaryProbe() {
+  MyHttp.client("not-sloppy-http", { baseUrl: "https://myhttp.invalid" });
+  TestHttp.mock().get("/invoices/inv_1").replyJson(200, { id: "inv_1" });
+}
+const Invoice = schema.object({ id: schema.string() });
+const Billing = Http.typedClient("billing", {
+  baseUrl: "https://billing.example.test",
+  endpoints: {
+    getInvoice: Http.get("/invoices/{id}")
+      .returns(200, Invoice),
+    invalidStatus: Http.get("/invalid-status")
+      .returns(999, Invoice),
+  },
+});
+const factory = HttpClientFactory.create({ clients: [Billing] });
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text(factory.get("billing").name));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/http import should be recognized");
+    assert!(app.uses_http_client_runtime);
+    assert!(!app.uses_net_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    for expected_export in [
+        "HttpClient",
+        "Http",
+        "HttpClientFactory",
+        "HttpError",
+        "SloppyHttpClientError",
+        "TestHttp",
+    ] {
+        assert!(emitted_js.source.contains(expected_export));
+    }
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["requiredFeatures"],
+        serde_json::json!(["stdlib.httpclient"])
+    );
+    assert_eq!(value["features"]["httpClient"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["httpClient"],
+        serde_json::json!(true)
+    );
+    assert_eq!(value["httpClients"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        value["httpClients"][0]["name"],
+        serde_json::json!("billing")
+    );
+    assert_eq!(
+        value["httpClients"][0]["target"],
+        serde_json::json!("static")
+    );
+    assert_eq!(
+        value["httpClients"][0]["baseUrl"],
+        serde_json::json!("https://billing.example.test")
+    );
+    assert_eq!(
+        value["httpClients"][0]["endpoints"][0]["method"],
+        serde_json::json!("GET")
+    );
+    assert_eq!(
+        value["httpClients"][0]["endpoints"][0]["path"],
+        serde_json::json!("/invoices/{id}")
+    );
+    assert_eq!(
+        value["strongPlan"]["evidence"]["httpClients"],
+        serde_json::json!(true)
+    );
+    assert!(value["httpClients"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|client| client["name"] != "not-sloppy-http"));
+    assert!(value["httpClients"][0]["endpoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|endpoint| endpoint["returns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["status"] != serde_json::json!(0)
+                && item["status"] != serde_json::json!(999))));
+}
+
+#[test]
+fn dynamic_sloppy_http_client_emits_partial_plan_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Http } from "sloppy/http";
+const clientName = "billing";
+const baseUrl = "https://billing.example.test";
+const billing = Http.client(clientName, { baseUrl });
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text(billing.name));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("dynamic sloppy/http client should still compile");
+    assert!(app.uses_http_client_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["httpClients"][0]["target"],
+        serde_json::json!("dynamic")
+    );
+    assert_eq!(value["httpClients"][0]["kind"], serde_json::json!("named"));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["httpClients"],
+        serde_json::json!(false)
+    );
+    assert!(value["doctorChecks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |check| check["id"] == "stdlib.httpclient.dynamic-targets" && check["status"] == "warn"
+        ));
 }
 
 #[test]
@@ -7866,6 +8008,14 @@ export default app;
             "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
         ),
         (
+            r#"import { Sloppy, Results, TestServices } from "sloppy";
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+        ),
+        (
             r#"import { Sloppy, Results, FakeClock } from "sloppy";
 const app = Sloppy.create();
 app.get("/", () => Results.ok({ ok: true }));
@@ -8578,12 +8728,15 @@ app.sse("/events", async (ctx, stream) => {
 const group = app.group("/live");
 group.websocket("/ws", async (ctx, socket) => {
     await socket.sendJson({ ok: true });
-}, { maxMessageBytes: 65536 }).requiresAuth().requiresScope("realtime");
+}, { protocols: ["sloppy.realtime"], maxMessageBytes: 64 * 1024, maxSendQueueBytes: 1024 * 1024, heartbeatMs: 15000, idleTimeoutMs: 30000, closeTimeoutMs: 5000, compression: false, slowClientPolicy: "close" }).requiresAuth().requiresScope("realtime").allowedOrigins(["https://app.example.com"]);
+app.ws("/option-first", { protocols: ["option.first"], origins: "*", maxMessageBytes: 4096 }, async (socket) => {
+    await socket.accept();
+});
 export default app;
 "#;
     let path = std::path::Path::new("realtime.js");
     let app = extract(path, source).expect("realtime app should extract");
-    assert_eq!(app.routes.len(), 2);
+    assert_eq!(app.routes.len(), 3);
     assert_eq!(app.routes[0].method, "GET");
     assert_eq!(app.routes[0].kind, "sse");
     assert!(app.routes[0]
@@ -8592,10 +8745,28 @@ export default app;
         .contains("Realtime.sse("));
     assert_eq!(app.routes[1].pattern, "/live/ws");
     assert_eq!(app.routes[1].kind, "websocket");
+    assert_eq!(
+        app.routes[1].websocket.as_ref().unwrap().protocols[0],
+        "sloppy.realtime"
+    );
+    assert!(matches!(
+        app.routes[1].websocket.as_ref().unwrap().origins,
+        Some(WebSocketOriginsMetadata::List(_))
+    ));
     assert!(app.routes[1]
         .handler
         .emitted_source
         .contains("Realtime.websocket("));
+    assert_eq!(app.routes[2].pattern, "/option-first");
+    assert_eq!(app.routes[2].kind, "websocket");
+    assert_eq!(
+        app.routes[2].websocket.as_ref().unwrap().protocols[0],
+        "option.first"
+    );
+    assert!(matches!(
+        app.routes[2].websocket.as_ref().unwrap().origins,
+        Some(WebSocketOriginsMetadata::Any)
+    ));
 
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("Results, Realtime"));
@@ -8609,12 +8780,71 @@ export default app;
     let value: serde_json::Value = serde_json::from_str(&plan).expect("plan should parse");
     assert_eq!(value["routes"][0]["kind"], "sse");
     assert_eq!(value["routes"][1]["kind"], "websocket");
+    assert_eq!(
+        value["routes"][1]["websocket"]["protocols"][0],
+        "sloppy.realtime"
+    );
+    assert_eq!(
+        value["routes"][1]["websocket"]["origins"][0],
+        "https://app.example.com"
+    );
+    assert_eq!(value["routes"][1]["websocket"]["maxMessageBytes"], 65536);
+    assert_eq!(
+        value["routes"][1]["websocket"]["maxSendQueueBytes"],
+        1048576
+    );
+    assert_eq!(value["routes"][1]["websocket"]["heartbeatMs"], 15000);
+    assert_eq!(value["routes"][1]["websocket"]["idleTimeoutMs"], 30000);
+    assert_eq!(value["routes"][1]["websocket"]["closeTimeoutMs"], 5000);
+    assert_eq!(value["routes"][1]["websocket"]["compression"], false);
+    assert_eq!(value["routes"][1]["websocket"]["slowClientPolicy"], "close");
+    assert_eq!(value["routes"][2]["websocket"]["origins"], "*");
     assert_eq!(value["routes"][1]["auth"]["scopes"][0], "realtime");
     assert_eq!(value["features"]["realtime"], true);
     assert!(value["requiredFeatures"]
         .as_array()
         .expect("requiredFeatures should be an array")
         .contains(&serde_json::json!("runtime.realtime")));
+}
+
+#[test]
+fn websocket_route_options_reject_unsupported_static_shapes() {
+    for source in [
+        r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+const options = { protocols: ["chat"] };
+app.ws("/ws", options, async (socket) => {
+    await socket.accept();
+});
+export default app;
+"#,
+        r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+app.websocket("/ws", async (ctx, socket) => {
+    await socket.accept();
+}, { protocols: ["bad token"] });
+export default app;
+"#,
+        r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+app.ws("/ws", { compression: true }, async (socket) => {
+    await socket.accept();
+});
+export default app;
+"#,
+        r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+const origin = "https://app.example.com";
+app.ws("/ws", async (socket) => {
+    await socket.accept();
+}).allowedOrigins(origin);
+export default app;
+"#,
+    ] {
+        let diagnostic = extract(std::path::Path::new("app.js"), source)
+            .expect_err("unsupported websocket options should fail");
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS");
+    }
 }
 
 #[test]
