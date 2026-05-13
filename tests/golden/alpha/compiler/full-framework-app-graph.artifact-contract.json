@@ -7,7 +7,8 @@
     "app.js",
     "app.js.map",
     "app.plan.json",
-    "deps.graph.json"
+    "deps.graph.json",
+    "routes.slrt"
   ],
   "planKind": "web",
   "sourceMapHasXSloppy": true,

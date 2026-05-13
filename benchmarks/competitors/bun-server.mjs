@@ -28,8 +28,37 @@ const server = Bun.serve({
         headers: { "content-type": "text/plain; charset=utf-8", "content-length": "3" },
       });
     }
+    if (request.method === "GET" && url.pathname === "/static-status") {
+      return new Response("", { status: 204 });
+    }
+    if (request.method === "GET" && url.pathname === "/static-problem") {
+      return json({ status: 400, title: "Static problem", code: "SLOPPY_E_STATIC_PROBLEM" }, 400);
+    }
     if (request.method === "GET" && url.pathname === "/dynamic-json") {
       return json({ ok: true, mode: "dynamic-0" });
+    }
+    if (request.method === "GET" && url.pathname === "/dynamic-text") {
+      return new Response("dynamic-text\n", {
+        headers: { "content-type": "text/plain; charset=utf-8", "content-length": "13" },
+      });
+    }
+    if (request.method === "GET" && url.pathname === "/dynamic-async") {
+      return json({ ok: true, mode: await Promise.resolve("async-dynamic") });
+    }
+    if (request.method === "GET" && url.pathname === "/ctx-query") {
+      return json({ ok: true, query: url.searchParams.get("q") });
+    }
+    if (request.method === "GET" && url.pathname === "/ctx-headers") {
+      return json({ ok: true, trace: request.headers.get("x-trace") });
+    }
+    if (request.method === "GET" && url.pathname === "/ctx-services") {
+      return json({ ok: true, service: "bench-service" });
+    }
+    if (request.method === "GET" && url.pathname === "/plain-object") {
+      return json({ ok: true, mode: "plain-object" });
+    }
+    if (request.method === "GET" && url.pathname === "/exception") {
+      return json({ status: 500, title: "Internal Server Error" }, 500);
     }
     if (request.method === "GET" && url.pathname.startsWith("/route/")) {
       return json({ ok: true, route: url.pathname });

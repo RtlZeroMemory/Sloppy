@@ -2380,7 +2380,6 @@ static int test_generic_json_route_still_uses_json_media_and_size_policy(void)
         return 154;
     }
 
-    sl_arena_reset(&arena);
     result = (SlEngineResult){0};
     diag = (SlDiag){0};
     if (parse_request(&arena,
@@ -3345,6 +3344,82 @@ static int test_native_static_text_response_skips_engine(void)
         sl_str_equal(result.response.content_type, sl_str_from_cstr("text/sloppy-test")));
 }
 
+static int test_native_static_empty_and_problem_responses_skip_engine(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlanRoute routes[2] = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    static const unsigned char problem_body[] =
+        "{\"status\":400,\"title\":\"Static problem\",\"code\":\"SLOPPY_E_STATIC_PROBLEM\"}";
+
+    routes[0].method = sl_str_from_cstr("GET");
+    routes[0].pattern = sl_str_from_cstr("/empty");
+    routes[0].handler_id = 1U;
+    routes[0].native_response_kind = sl_str_from_cstr("empty");
+    routes[0].native_response_status = 204U;
+
+    routes[1].method = sl_str_from_cstr("GET");
+    routes[1].pattern = sl_str_from_cstr("/problem");
+    routes[1].handler_id = 1U;
+    routes[1].native_response_kind = sl_str_from_cstr("problem");
+    routes[1].native_response_status = 400U;
+    routes[1].native_response_body =
+        sl_str_from_parts((const char*)problem_body, sizeof(problem_body) - 1U);
+    routes[1].native_response_content_type = sl_str_from_cstr("application/problem+json");
+    plan.routes = routes;
+    plan.route_count = 2U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 177;
+    }
+
+    if (parse_request(&arena, "GET /empty HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_NONE ||
+        result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE ||
+        result.response.status != 204U || result.response.body.length != 0U)
+    {
+        sl_engine_destroy(engine);
+        return 178;
+    }
+
+    result = (SlEngineResult){0};
+    request = (SlHttpRequestHead){0};
+    if (parse_request(&arena, "GET /problem HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_ERROR ||
+        result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE ||
+        result.response.status != 400U ||
+        !sl_str_equal(result.response.content_type, sl_str_from_cstr("application/problem+json")) ||
+        result.response.body.length != sizeof(problem_body) - 1U ||
+        memcmp(result.response.body.ptr, problem_body, sizeof(problem_body) - 1U) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 179;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static void set_native_text_route(SlPlanRoute* route, const char* method, const char* pattern,
                                   SlHandlerId handler_id, const char* body)
 {
@@ -3888,6 +3963,7 @@ int main(void)
         HTTP_DISPATCH_TEST(test_plan_route_with_query_binding_rejects_malformed_query),
         HTTP_DISPATCH_TEST(test_plan_route_with_middleware_keeps_query_conservative),
         HTTP_DISPATCH_TEST(test_native_static_text_response_skips_engine),
+        HTTP_DISPATCH_TEST(test_native_static_empty_and_problem_responses_skip_engine),
         HTTP_DISPATCH_TEST(test_compiled_and_classic_dispatch_agree_in_validate_mode),
         HTTP_DISPATCH_TEST(test_dispatch_records_native_metrics_by_route_pattern),
         HTTP_DISPATCH_TEST(test_dispatch_json_metrics_respect_dispatch_mode),

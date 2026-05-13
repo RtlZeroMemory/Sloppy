@@ -46,6 +46,15 @@ the artifact before materializing the runtime table from `app.plan.json`.
 Native no-JS static responses and native URL writers are reported by their Plan
 counters; those are structure evidence, not benchmark results.
 
+HTTP/V8 profiling is opt-in. `SLOPPY_HTTP_PROFILE=1` records HTTP dispatch,
+native response, response serialization, and V8 bridge phase summaries when
+`SLOPPY_HTTP_PROFILE_OUT` points at a local artifact path. `SLOPPY_V8_PROFILE=1`
+also enables that profile output for V8-focused runs. Profile counters are
+engineering attribution data: handler lookup/cache hits, no-JS/native response
+hits, V8 handler calls, Promise vs sync returns, materialization counts, result
+conversion counts, JSON stringify calls, and exception mapping counts. They are
+not cross-runtime benchmark scores.
+
 The V8 path has opt-in startup experiments through `SLOPPY_V8_CODE_CACHE_DIR`
 and `SLOPPY_V8_SNAPSHOT_DIR`. They are engineering knobs for startup
 measurement, not default runtime guarantees. Code-cache entries are invalidated

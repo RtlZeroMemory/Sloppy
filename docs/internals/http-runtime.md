@@ -114,10 +114,13 @@ route metadata after artifact validation. Exact static routes are indexed by
 method and path. Parameter routes are matched through a method-specific native
 segment trie, with first-static-segment candidate buckets retained as an
 internal fallback for partial or manually constructed tables. Provably static
-`Results.text`, `Results.json`, and `Results.ok` literal handlers can return a
-native no-JS response. Static JSON bodies are represented as preencoded native
-response descriptors and written by the common response writer. Named Plan
-routes can generate native URLs with percent-encoded path parameters.
+`Results.text`, `Results.json`, `Results.ok`, `Results.noContent`,
+`Results.status(code)` without a body, and supported literal `Results.problem`
+handlers can return a native no-JS response. Static JSON and problem bodies are
+represented as preencoded native response descriptors and written by the common
+response writer. Empty static responses use the native no-body response path.
+Named Plan routes can generate native URLs with percent-encoded path
+parameters.
 
 ## Body / content-type policy
 
@@ -241,12 +244,13 @@ HTTP/1.1 chunked frames under `max-pending-write-bytes` and
 `max-response-bytes`.
 
 Native static JSON responses use the fixed-response path with preencoded JSON
-bytes. Supported schema-backed dynamic JSON responses use the bounded native
-JSON response writer for objects, arrays, nested objects, strings, finite
-numbers, integers, booleans, nulls, nullable values, and optional object fields.
-Unsupported schema shapes remain explicit fallback. Live incremental JSON writer
-state is future work; bounded response descriptors and Core streams are the
-current native output surfaces.
+bytes. Native static problem responses use `application/problem+json`.
+Native static empty responses return no response body. Supported schema-backed
+dynamic JSON responses use the bounded native JSON response writer for objects,
+arrays, nested objects, strings, finite numbers, integers, booleans, nulls,
+nullable values, and optional object fields. Unsupported schema shapes remain
+explicit fallback. Live incremental JSON writer state is future work; bounded
+response descriptors and Core streams are the current native output surfaces.
 
 For HTTP/2, the dispatcher submits response HEADERS and DATA for the stream.
 HTTP/2 does not use HTTP/1.1 chunked framing or connection-specific headers.

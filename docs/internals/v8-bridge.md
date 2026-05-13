@@ -121,12 +121,19 @@ V8-enabled build".
 
 ## Result conversion
 
-A handler returns a result descriptor (`Results.*`). The bridge:
+A handler usually returns a result descriptor (`Results.*`). The bridge:
 
 1. Validates the descriptor shape (kind, status, headers, body).
 2. Copies any body bytes / strings into Sloppy-owned storage.
 3. Releases V8 handles for that response.
 4. Returns the descriptor through the C ABI.
+
+Plain JavaScript objects with no Sloppy result-descriptor fields are converted
+to `200 application/json` responses by JSON stringifying the object and copying
+the bytes into the result arena. Objects that contain Sloppy descriptor-shaped
+fields such as `__sloppyResult`, `kind`, `status`, `body`, or `bodyResult`,
+including inherited fields, are not treated as plain JSON; they must be valid
+descriptors or they fail closed.
 
 If the descriptor is malformed (missing `kind`, bad status code, body
 type that doesn't match `kind`), the bridge returns a diagnostic and the

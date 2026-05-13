@@ -3854,6 +3854,33 @@ export default app;
 }
 
 #[test]
+fn plain_object_and_throw_handlers_stay_on_registered_route_path() {
+    let source = r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+app.get("/plain-object", (ctx) => ({
+  ok: true,
+  method: ctx.request.method,
+}));
+app.get("/exception", () => {
+  throw new Error("bench exception");
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("plain object and throw handlers should extract");
+    let emitted_js = super::emit_app_js(&app);
+
+    assert_eq!(app.routes.len(), 2);
+    assert!(app.dynamic_routes.is_empty());
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(1"));
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_register_handler(2"));
+}
+
+#[test]
 fn rejects_static_route_segments_with_stray_braces() {
     assert!(!route_pattern_supported("/foo{bar"));
     assert!(!route_pattern_supported("/a}b"));
@@ -3884,6 +3911,32 @@ export default app;
     assert_eq!(app.routes[7].pattern, "/problem");
     assert_eq!(app.routes[8].pattern, "/html");
     assert_eq!(app.routes[9].pattern, "/bytes");
+}
+
+#[test]
+fn static_status_and_problem_results_emit_native_response_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/empty", () => Results.status(204));
+app.get("/problem", () => Results.problem({ status: 400, title: "Static problem", code: "SLOPPY_E_STATIC_PROBLEM" }, { status: 400 }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source).expect("fixture should extract");
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+
+    assert!(plan.contains("\"kind\": \"empty\""));
+    assert!(plan.contains("\"executionKind\": \"native-static-empty\""));
+    assert!(plan.contains("\"kind\": \"problem\""));
+    assert!(plan.contains("\"executionKind\": \"native-static-problem\""));
+    assert!(plan.contains("\"contentType\": \"application/problem+json\""));
+    assert!(plan.contains("\"body\": \"{\\\"code\\\":\\\"SLOPPY_E_STATIC_PROBLEM\\\",\\\"status\\\":400,\\\"title\\\":\\\"Static problem\\\"}\""));
 }
 
 #[test]
@@ -7745,7 +7798,7 @@ export default app;
 }
 
 #[test]
-fn typed_framework_body_bindings_are_awaited_before_handler_entry() {
+fn typed_framework_sync_body_bindings_emit_sync_wrapper() {
     let source = r#"import { Sloppy, Results, Body } from "sloppy";
 type UserCreate = { name: string; email: string };
 const app = Sloppy.create();
@@ -7760,14 +7813,40 @@ export default app;
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js
         .source
-        .contains("const __sloppy_args = await Promise.all(["));
+        .contains("globalThis.__sloppy_handler_1 = (ctx) =>"));
     assert!(emitted_js.source.contains("ctx.request.json()"));
     assert!(emitted_js
         .source
-        .contains("return await __sloppy_typed_handler(...__sloppy_args);"));
+        .contains("return __sloppy_typed_handler(__sloppy_framework_arg"));
     assert!(!emitted_js
         .source
-        .contains("return await __sloppy_typed_handler(__sloppy_framework_arg"));
+        .contains("const __sloppy_args = await Promise.all(["));
+}
+
+#[test]
+fn typed_framework_service_bindings_keep_async_scope_cleanup() {
+    let source = r#"import { Sloppy, Results, Service } from "sloppy";
+type Clock = { now: string };
+const app = Sloppy.create();
+app.services.addScoped("Clock", () => ({ now: "2026-05-13T00:00:00Z" }));
+app.get("/clock", (clock: Service<Clock>) => Results.ok({ now: clock.now }));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed service handler should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("globalThis.__sloppy_handler_1 = async (ctx) =>"));
+    assert!(emitted_js
+        .source
+        .contains("const __sloppy_args = await Promise.all(["));
+    assert!(emitted_js
+        .source
+        .contains("return await __sloppy_typed_handler(...__sloppy_args);"));
+    assert!(emitted_js
+        .source
+        .contains("await __sloppy_scope.dispose();"));
 }
 
 #[test]

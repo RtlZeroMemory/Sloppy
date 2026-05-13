@@ -2295,9 +2295,13 @@ bool http_v8_body_json_value(v8::Isolate* isolate, v8::Local<v8::Context> contex
         return true;
     }
 
+    uint64_t started_ns = sl_http_profile_now_ns();
     if (!v8::JSON::Parse(context, body.As<v8::String>()).ToLocal(&parsed)) {
         return false;
     }
+    sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_BODY_JSON_MATERIALIZED, 1U);
+    sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_BODY_JSON_MATERIALIZATION,
+                                 sl_http_profile_now_ns() - started_ns);
     if (!http_v8_set_private_value(isolate, context, object, SL_V8_HTTP_PRIVATE_BODY_JSON, parsed))
     {
         return false;
@@ -2744,6 +2748,40 @@ bool http_v8_has_result_marker(v8::Isolate* isolate, v8::Local<v8::Context> cont
     }
 
     return value->BooleanValue(isolate);
+}
+
+bool http_v8_has_result_descriptor_shape(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                         v8::Local<v8::Object> object, bool* out)
+{
+    const SlV8HttpStringKey keys[] = {SL_V8_HTTP_STRING_SLOPPY_RESULT, SL_V8_HTTP_STRING_KIND,
+                                      SL_V8_HTTP_STRING_STATUS, SL_V8_HTTP_STRING_BODY,
+                                      SL_V8_HTTP_STRING_BODY_RESULT};
+    size_t index = 0U;
+    bool present = false;
+    v8::Local<v8::String> key;
+    v8::Maybe<bool> has_property = v8::Nothing<bool>();
+
+    if (out == nullptr) {
+        return false;
+    }
+
+    *out = false;
+    for (index = 0U; index < sizeof(keys) / sizeof(keys[0]); index += 1U) {
+        if (!sl_status_is_ok(http_v8_cached_string(isolate, keys[index], &key))) {
+            return false;
+        }
+        has_property = object->Has(context, key);
+        if (has_property.IsNothing()) {
+            return false;
+        }
+        present = has_property.FromJust();
+        if (present) {
+            *out = true;
+            return true;
+        }
+    }
+
+    return true;
 }
 
 bool http_v8_status_supported(uint16_t status)
@@ -3669,6 +3707,7 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         out_result->kind = SL_ENGINE_RESULT_TEXT;
         out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
         out_result->response = sl_http_response_text(200U, sl_str_from_cstr("ok"));
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_RESULTS_TEXT_CONVERSIONS, 1U);
         *out_handled = true;
         return sl_status_ok();
 
@@ -3685,6 +3724,7 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         out_result->kind = SL_ENGINE_RESULT_NONE;
         out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
         out_result->response = sl_http_response_empty(204U);
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_RESULTS_STATUS_CONVERSIONS, 1U);
         *out_handled = true;
         return sl_status_ok();
 
@@ -3712,6 +3752,7 @@ SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Con
         out_result->kind = SL_ENGINE_RESULT_JSON;
         out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
         out_result->response = sl_http_response_json(status_code, bytes);
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_RESULTS_JSON_CONVERSIONS, 1U);
         if (fast_kind == HTTP_V8_FAST_RESULT_CREATED) {
             bool has_location = false;
             std::string location;
@@ -3753,7 +3794,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
                                     const SlHttpRequestContext* request_context,
                                     v8::Local<v8::Object>* out)
 {
-    v8::Local<v8::Object> ctx = v8::Object::New(isolate);
+    v8::Local<v8::Object> ctx;
     v8::Local<v8::Object> route;
     v8::Local<v8::Object> query;
     v8::Local<v8::Object> request;
@@ -3774,9 +3815,17 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     SlStr method = sl_str_empty();
     std::string request_id;
     std::string connection_id;
+    uint64_t request_started_ns = 0U;
 
     if (request_context == nullptr || request_context->request == nullptr || out == nullptr) {
         return false;
+    }
+    sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_CTX_CREATED, 1U);
+    {
+        uint64_t started_ns = sl_http_profile_now_ns();
+        ctx = v8::Object::New(isolate);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_CONTEXT_BASE_OBJECT,
+                                     sl_http_profile_now_ns() - started_ns);
     }
     if (request_context->needs_request) {
         method = http_v8_request_method_name(request_context->request->method);
@@ -3786,6 +3835,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     }
 
     if (request_context->needs_route_params) {
+        uint64_t started_ns = sl_http_profile_now_ns();
         route = v8::Object::New(isolate);
         for (index = 0U; index < request_context->route_param_count; index += 1U) {
             const SlRouteParam* param = &request_context->route_params[index];
@@ -3798,9 +3848,13 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
                 return false;
             }
         }
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_ROUTE_PARAMS_MATERIALIZED, 1U);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_ROUTE_PARAMS_MATERIALIZATION,
+                                     sl_http_profile_now_ns() - started_ns);
     }
 
     if (request_context->needs_query_params) {
+        uint64_t started_ns = sl_http_profile_now_ns();
         query = v8::Object::New(isolate);
         for (index = 0U; index < request_context->query_param_count; index += 1U) {
             const SlHttpQueryParam* param = &request_context->query_params[index];
@@ -3813,6 +3867,9 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
                 return false;
             }
         }
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_QUERY_MATERIALIZED, 1U);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_QUERY_MATERIALIZATION,
+                                     sl_http_profile_now_ns() - started_ns);
     }
 
     if (request_context->needs_signal &&
@@ -3820,10 +3877,14 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     {
         return false;
     }
-    if (request_context->needs_headers && request_context->needs_request &&
-        !http_v8_make_header_bag(isolate, context, request_context->request, &headers))
-    {
-        return false;
+    if (request_context->needs_headers && request_context->needs_request) {
+        uint64_t started_ns = sl_http_profile_now_ns();
+        if (!http_v8_make_header_bag(isolate, context, request_context->request, &headers)) {
+            return false;
+        }
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_HEADERS_MATERIALIZED, 1U);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_HEADERS_MATERIALIZATION,
+                                     sl_http_profile_now_ns() - started_ns);
     }
     if (request_context->needs_request &&
         !http_v8_make_cookie_bag(isolate, context, request_context->request, &cookies))
@@ -3834,6 +3895,9 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         !http_v8_make_header_facade(isolate, context, request_context->request, &header_facade))
     {
         return false;
+    }
+    if (request_context->needs_header_facade) {
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_HEADERS_MATERIALIZED, 1U);
     }
 
     if (request_context->needs_metadata || request_context->needs_log ||
@@ -3852,6 +3916,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         return false;
     }
     if (request_context->needs_body) {
+        uint64_t started_ns = sl_http_profile_now_ns();
         if (request_context->request->body.length != 0U ||
             request_context->body_kind != SL_HTTP_REQUEST_BODY_NONE)
         {
@@ -3884,7 +3949,13 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
             {
                 return false;
             }
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_BODY_JSON_MATERIALIZED, 1U);
+            sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_BODY_JSON_MATERIALIZATION,
+                                         sl_http_profile_now_ns() - started_ns);
         }
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_BODY_FACADE_MATERIALIZED, 1U);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_BODY_FACADE_MATERIALIZATION,
+                                     sl_http_profile_now_ns() - started_ns);
     }
 
     if (request_context->needs_body) {
@@ -3917,6 +3988,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     }
 
     if (request_context->needs_request) {
+        request_started_ns = sl_http_profile_now_ns();
         request = v8::Object::New(isolate);
         if (!http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_REQUEST,
                                       &request_prototype) ||
@@ -4070,6 +4142,8 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         {
             return false;
         }
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_REQUEST_FACADE,
+                                     sl_http_profile_now_ns() - request_started_ns);
     }
 
     if (request_context->needs_signal &&
@@ -4102,6 +4176,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                                            SlEngineResult* out_result, SlDiag* out_diag)
 {
     if (js_result->IsString()) {
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_PLAIN_VALUE_CONVERSIONS, 1U);
         SlStatus status = http_v8_copy_value_string(isolate, arena, js_result, &out_result->text);
         if (!sl_status_is_ok(status)) {
             return status;
@@ -4118,6 +4193,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
     }
 
     if (!js_result->IsObject()) {
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_GENERIC_FALLBACKS, 1U);
         return http_v8_write_diag(
             engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_UNSUPPORTED,
             http_v8_literal("JavaScript handler returned an unsupported result type",
@@ -4128,6 +4204,46 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
 
     v8::Local<v8::Object> object = js_result.As<v8::Object>();
     if (!http_v8_has_result_marker(isolate, context, object)) {
+        bool has_descriptor_shape = false;
+        v8::Local<v8::String> json;
+        SlBytes bytes = sl_bytes_empty();
+        SlStatus status = sl_status_ok();
+
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_PLAIN_VALUE_CONVERSIONS, 1U);
+        if (!http_v8_has_result_descriptor_shape(isolate, context, object, &has_descriptor_shape)) {
+            return http_v8_write_diag(
+                engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
+                http_v8_literal("JavaScript result descriptor could not be inspected",
+                                sizeof("JavaScript result descriptor could not be inspected") - 1U),
+                sl_str_empty());
+        }
+        if (!has_descriptor_shape) {
+            if (!http_v8_stringify_json(context, object, &json)) {
+                return http_v8_write_diag(
+                    engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_INVALID_STATE,
+                    http_v8_literal("JavaScript plain object result could not be serialized",
+                                    sizeof("JavaScript plain object result could not be serialized") -
+                                        1U),
+                    sl_str_empty());
+            }
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_JSON_STRINGIFY_CALLS, 1U);
+
+            status = http_v8_copy_value_bytes(isolate, arena, json, &bytes);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+
+            {
+                uint64_t started_ns = sl_http_profile_now_ns();
+                out_result->kind = SL_ENGINE_RESULT_JSON;
+                out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
+                out_result->response = sl_http_response_json(200U, bytes);
+                sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_RESULT_CONSTRUCTION,
+                                             sl_http_profile_now_ns() - started_ns);
+            }
+            return sl_status_ok();
+        }
+
         return http_v8_write_diag(
             engine, out_diag, SL_DIAG_INVALID_HTTP_RESULT, SL_STATUS_UNSUPPORTED,
             http_v8_literal("JavaScript handler returned an unsupported result type",
@@ -4135,6 +4251,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
             http_v8_literal("Result descriptors must include __sloppyResult: true.",
                             sizeof("Result descriptors must include __sloppyResult: true.") - 1U));
     }
+    sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_RESULT_DESCRIPTOR_CONVERSIONS, 1U);
 
     bool fast_result_handled = false;
     SlStatus fast_result_status = http_v8_try_convert_fast_result(
@@ -4186,6 +4303,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
     }
 
     if (sl_str_equal(kind, sl_str_from_cstr("empty"))) {
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_RESULTS_STATUS_CONVERSIONS, 1U);
         out_result->kind = SL_ENGINE_RESULT_NONE;
         out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
         out_result->response = sl_http_response_empty(status_code);
@@ -4233,6 +4351,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
     if (sl_str_equal(kind, sl_str_from_cstr("text")) ||
         sl_str_equal(kind, sl_str_from_cstr("html")))
     {
+        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_RESULTS_TEXT_CONVERSIONS, 1U);
         SlStr body_text = sl_str_empty();
 
         if (!body->IsString()) {
@@ -4377,6 +4496,7 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
                                     sizeof("Results.json body could not be serialized") - 1U),
                     sl_str_empty());
             }
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_JSON_STRINGIFY_CALLS, 1U);
 
             status = http_v8_copy_value_bytes(isolate, arena, json, &bytes);
             if (!sl_status_is_ok(status)) {
@@ -4386,6 +4506,9 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
 
         {
             uint64_t started_ns = sl_http_profile_now_ns();
+            sl_http_profile_count(is_json ? SL_HTTP_PROFILE_COUNTER_RESULTS_JSON_CONVERSIONS
+                                          : SL_HTTP_PROFILE_COUNTER_RESULTS_PROBLEM_CONVERSIONS,
+                                  1U);
             out_result->kind = is_json ? SL_ENGINE_RESULT_JSON : SL_ENGINE_RESULT_ERROR;
             out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
             out_result->response = is_json ? sl_http_response_json(status_code, bytes)

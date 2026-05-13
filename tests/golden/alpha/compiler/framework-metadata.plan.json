@@ -215,6 +215,8 @@
     "capabilities": true,
     "dataProviders": true,
     "metadataInference": true,
+    "nativeEndpointDispatch": true,
+    "nativeJsonDispatch": true,
     "os": true,
     "sourceMaps": true,
     "strongPlanMetadata": true,
@@ -250,6 +252,52 @@
     "stdlib.os",
     "stdlib.workers"
   ],
+  "routeDispatch": {
+    "artifact": {
+      "hash": "sha256:f45e3920042c1d939697368d2933ead2f7e8145c3dbb52099efeb2f874883d39",
+      "kind": "slrt",
+      "path": "routes.slrt"
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [],
+      "exactStaticPaths": 1,
+      "parameterCandidateBuckets": 1,
+      "segmentTrieNodes": 3,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
+      ]
+    },
+    "endpointCount": 2,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    },
+    "json": {
+      "request": {
+        "fallback": 0,
+        "generic": 0,
+        "materialized": 2,
+        "native": 2
+      },
+      "response": {
+        "fallback": 1,
+        "generic": 0,
+        "native": 1
+      }
+    },
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 0,
+    "parameterRoutes": 1,
+    "routeCount": 2,
+    "staticRoutes": 1,
+    "urlGeneration": true,
+    "urlWriters": 0,
+    "version": 1
+  },
   "routes": [
     {
       "bindings": [
@@ -342,6 +390,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "exact-static-hash"
+      },
       "handlerId": 1,
       "injections": [
         {
@@ -373,6 +428,20 @@
           "providerKind": "workqueue"
         }
       ],
+      "jsonRequest": {
+        "materialization": "materialize-once",
+        "maxBodyBytes": 65536,
+        "maxDepth": 50,
+        "mode": "native-schema",
+        "schema": "UserCreate",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "contentType": "application/json",
+        "mode": "native-schema",
+        "schema": "UserDto",
+        "writer": "bounded"
+      },
       "method": "POST",
       "name": null,
       "pattern": "/users",
@@ -474,6 +543,13 @@
         "reasons": [],
         "status": "complete"
       },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "v8-handler",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
+      },
       "frameworkPath": "/users/:id",
       "handlerId": 2,
       "injections": [
@@ -485,6 +561,19 @@
           "providerKind": "postgres"
         }
       ],
+      "jsonRequest": {
+        "materialization": "materialize-once",
+        "maxBodyBytes": 65536,
+        "maxDepth": 50,
+        "mode": "native-schema",
+        "schema": "UserCreate",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "mixed-json-response-schema-coverage",
+        "mode": "fallback",
+        "writer": "none"
+      },
       "method": "GET",
       "name": null,
       "pattern": "/users/{id}",
@@ -499,6 +588,7 @@
           "bodySchema": "UserDto",
           "helper": "ok",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 17,
@@ -511,6 +601,7 @@
           "bodySchema": null,
           "helper": "notFound",
           "kind": "json",
+          "nativeBody": null,
           "partial": false,
           "source": {
             "column": 36,
@@ -661,8 +752,10 @@
       "capabilities": true,
       "effects": false,
       "ffi": false,
+      "nativeJsonDispatch": true,
       "os": true,
       "providers": true,
+      "routeDispatch": true,
       "routes": true,
       "sourceGraph": true,
       "workers": true

@@ -17859,7 +17859,7 @@ fn dedupe_response_metadata(responses: Vec<ResponseMetadata>) -> Vec<ResponseMet
 
 fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMetadata> {
     let (receiver, helper) = static_member_name(&call.callee)?;
-    let (status, kind) = match receiver {
+    let (status, mut kind) = match receiver {
         "Auth" => match helper {
             "signIn" => (200, "json"),
             "signOut" => (204, "empty"),
@@ -17878,12 +17878,15 @@ fn response_metadata_from_call(call: &CallExpression<'_>) -> Option<ResponseMeta
             "badRequest" => (400, "json"),
             "unauthorized" => (401, "json"),
             "notFound" => (404, "json"),
-            "problem" => (500, "problem"),
+            "problem" => (problem_result_code(call).unwrap_or(500), "problem"),
             "status" => (status_result_code(call)?, "json"),
             _ => return None,
         },
         _ => return None,
     };
+    if receiver == "Results" && helper == "status" && status_result_has_no_body(call) {
+        kind = "empty";
+    }
     Some(ResponseMetadata {
         helper: helper.to_string(),
         status,
@@ -17904,6 +17907,18 @@ fn native_response_body_from_call(helper: &str, call: &CallExpression<'_>) -> Op
                 return None;
             };
             Some(literal.value.to_string())
+        }
+        "noContent" => Some(String::new()),
+        "status" => {
+            if status_result_has_no_body(call) {
+                return Some(String::new());
+            }
+            let value = json_value_from_argument(call.arguments.get(1)?)?;
+            serde_json::to_string(&value).ok()
+        }
+        "problem" => {
+            let value = json_value_from_argument(call.arguments.first()?)?;
+            serde_json::to_string(&value).ok()
         }
         "json" | "ok" => {
             let value = json_value_from_argument(call.arguments.first()?)?;
@@ -18022,6 +18037,35 @@ fn status_result_code(call: &CallExpression<'_>) -> Option<u16> {
     let value = literal.value;
     if value.fract() == 0.0 && (100.0..=599.0).contains(&value) {
         Some(value as u16)
+    } else {
+        None
+    }
+}
+
+fn status_result_has_no_body(call: &CallExpression<'_>) -> bool {
+    call.arguments.len() == 1
+}
+
+fn problem_result_code(call: &CallExpression<'_>) -> Option<u16> {
+    let option_status = call
+        .arguments
+        .get(1)
+        .and_then(json_value_from_argument)
+        .and_then(|value| value.get("status").and_then(json_http_status_value));
+    if option_status.is_some_and(|status| (100..=599).contains(&status)) {
+        return option_status;
+    }
+    call.arguments
+        .first()
+        .and_then(json_value_from_argument)
+        .and_then(|value| value.get("status").and_then(json_http_status_value))
+        .filter(|status| (100..=599).contains(status))
+}
+
+fn json_http_status_value(value: &Value) -> Option<u16> {
+    let number = value.as_f64()?;
+    if number.fract() == 0.0 && (100.0..=599.0).contains(&number) {
+        Some(number as u16)
     } else {
         None
     }
@@ -19246,6 +19290,7 @@ fn handler_body_is_supported_arrow(
     function.body.statements.len() == 1
         && function.body.statements.first().is_some_and(|statement| {
             return_statement_returns_supported_result(statement, &roots, schema_names)
+                || statement_is_supported_throw(statement)
         })
 }
 
@@ -19263,6 +19308,7 @@ fn handler_body_is_supported_function(
     body.statements.len() == 1
         && body.statements.first().is_some_and(|statement| {
             return_statement_returns_supported_result(statement, &roots, schema_names)
+                || statement_is_supported_throw(statement)
         })
 }
 
@@ -19271,8 +19317,15 @@ fn return_statement_returns_supported_result(
     allowed_roots: &BTreeSet<String>,
     schema_names: &BTreeSet<String>,
 ) -> bool {
-    return_statement_result_call(statement)
+    if return_statement_result_call(statement)
         .is_some_and(|call| results_call_arguments_are_supported(call, allowed_roots, schema_names))
+    {
+        return true;
+    }
+
+    return_statement_expression(statement).is_some_and(|expression| {
+        expression_is_inline_json_safe_value(expression, allowed_roots, schema_names)
+    })
 }
 
 fn expression_statement_is_supported_result(
@@ -19280,8 +19333,33 @@ fn expression_statement_is_supported_result(
     allowed_roots: &BTreeSet<String>,
     schema_names: &BTreeSet<String>,
 ) -> bool {
-    expression_statement_result_call(statement)
+    if expression_statement_result_call(statement)
         .is_some_and(|call| results_call_arguments_are_supported(call, allowed_roots, schema_names))
+    {
+        return true;
+    }
+
+    expression_statement_expression(statement).is_some_and(|expression| {
+        expression_is_inline_json_safe_value(expression, allowed_roots, schema_names)
+    })
+}
+
+fn statement_is_supported_throw(statement: &Statement<'_>) -> bool {
+    matches!(statement, Statement::ThrowStatement(_))
+}
+
+fn return_statement_expression<'a>(statement: &'a Statement<'a>) -> Option<&'a Expression<'a>> {
+    let Statement::ReturnStatement(return_statement) = statement else {
+        return None;
+    };
+    return_statement.argument.as_ref()
+}
+
+fn expression_statement_expression<'a>(statement: &'a Statement<'a>) -> Option<&'a Expression<'a>> {
+    let Statement::ExpressionStatement(expression_statement) = statement else {
+        return None;
+    };
+    Some(&expression_statement.expression)
 }
 
 fn return_statement_result_call<'a>(
@@ -20889,6 +20967,7 @@ function __sloppy_framework_injection(scope, binding) {
     });
   }
   const app = {
+    services: __sloppy_framework_services,
     get(pattern, handler) { return register("GET", pattern, handler); },
     post(pattern, handler) { return register("POST", pattern, handler); },
     put(pattern, handler) { return register("PUT", pattern, handler); },
@@ -20945,6 +21024,7 @@ function __sloppy_dynamic_match(pattern, path) {
 function __sloppy_dynamic_response(result) {
   if (typeof result === "string") { return { __sloppyResult: true, kind: "text", status: 200, contentType: "text/plain; charset=utf-8", body: result }; }
   if (result !== null && typeof result === "object" && result.__sloppyResult === true) { return result; }
+  if (result !== null && typeof result === "object" && result.kind === undefined && result.status === undefined && result.body === undefined) { return { __sloppyResult: true, kind: "json", status: 200, contentType: "application/json; charset=utf-8", body: result }; }
   const status = Number.isInteger(result?.status) ? result.status : 200;
   const kind = result?.kind ?? "text";
   if (kind === "empty") { return { __sloppyResult: true, kind: "empty", status, contentType: "text/plain; charset=utf-8", body: "" }; }

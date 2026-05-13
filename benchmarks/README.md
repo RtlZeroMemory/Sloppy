@@ -247,18 +247,27 @@ rows are the only JSON rows in this family intended for local
 Sloppy-vs-runtime loopback comparison. In-process `sloppy_bench` JSON rows must
 not be compared directly against competitor loopback rows.
 
-The Sloppy loopback matrix includes static no-JS `Results.json` and
-`Results.text` rows, a dynamic V8 `Results.json` row, request-body JSON rows,
-large JSON response rows, and route-table rows. When `-HttpProfile` is enabled,
-the static no-JS rows should show `nativeResponseHits > 0`; a zero value means
-the benchmark app did not exercise the native response path being investigated.
+The Sloppy loopback matrix includes static no-JS `Results.json`,
+`Results.text`, empty-status, and problem-details rows; dynamic V8
+`Results.json`, `Results.text`, async, plain-object, and exception rows;
+request-body JSON rows; query/header/service context rows; large JSON response
+rows; and route-table rows. When `-HttpProfile` is enabled, static no-JS rows
+should show `noJsResponsePlanHits > 0`, `nativeResponseHits > 0`, and
+`v8HandlerCalls == 0`. Dynamic V8 rows should show `v8HandlerCalls > 0`. A zero
+value in the path being investigated means the benchmark app did not exercise
+that path.
 
 Pass `-HttpProfile` to run Sloppy loopback rows with `SLOPPY_HTTP_PROFILE=1`.
 The runner starts a fresh Sloppy process per profiled scenario and writes
 machine-readable phase summaries to `artifacts/bench/http-profile-*.json`, plus
 `artifacts/bench/http-profile-summary.md`. Profiling is disabled by default and
 the runtime writes no profile file unless `SLOPPY_HTTP_PROFILE_OUT` is set by
-the harness or by an explicit local profiling command.
+the harness or by an explicit local profiling command. `SLOPPY_V8_PROFILE=1`
+also enables the same profile output for V8-focused local runs. Profile rows
+include handler lookup/cache counters, context/request materialization phases,
+Promise/sync return counters, result conversion counters, JSON stringify
+counters, exception mapping counters, no-JS/native response counters, and
+generic fallback counters.
 
 The competitor `route-table` scenario validates `/route/{id}` loopback routing
 for IDs in a 1000-value cycle. Raw Node/Bun/Deno implementations may use a

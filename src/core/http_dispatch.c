@@ -3229,6 +3229,21 @@ static SlStatus sl_http_dispatch_native_response(const SlPlanRoute* route,
         }
         return sl_status_ok();
     }
+    if (sl_str_equal(route->native_response_kind, sl_str_from_cstr("empty"))) {
+        out_result->kind = SL_ENGINE_RESULT_NONE;
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
+        out_result->response = sl_http_response_empty(route->native_response_status);
+        return sl_status_ok();
+    }
+    if (sl_str_equal(route->native_response_kind, sl_str_from_cstr("problem"))) {
+        out_result->kind = SL_ENGINE_RESULT_ERROR;
+        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
+        out_result->response = sl_http_response_problem(route->native_response_status, body);
+        if (!sl_str_is_empty(route->native_response_content_type)) {
+            out_result->response.content_type = route->native_response_content_type;
+        }
+        return sl_status_ok();
+    }
 
     return sl_status_from_code(SL_STATUS_UNSUPPORTED);
 }
@@ -3354,22 +3369,33 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
                               : SL_HTTP_PROFILE_COUNTER_NATIVE_ROUTE_HITS,
                           1U);
 
-    if (dispatch_table->handler_cache_trusted && dispatch_table->plan == plan &&
-        binding->handler != NULL && binding->handler->id == binding->handler_id &&
-        !sl_str_is_empty(binding->handler->export_name))
     {
-        handler = binding->handler;
-        use_cached_handler = true;
-    }
-    else {
-        status = sl_plan_find_handler_by_id(plan, binding->handler_id, &handler);
-        if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
-            return sl_http_dispatch_missing_handler(arena, out_diag);
+        uint64_t started_ns = sl_http_profile_now_ns();
+        if (dispatch_table->handler_cache_trusted && dispatch_table->plan == plan &&
+            binding->handler != NULL && binding->handler->id == binding->handler_id &&
+            !sl_str_is_empty(binding->handler->export_name))
+        {
+            handler = binding->handler;
+            use_cached_handler = true;
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_V8_HANDLER_CACHE_HITS, 1U);
         }
+        else {
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_V8_HANDLER_CACHE_MISSES, 1U);
+            status = sl_plan_find_handler_by_id(plan, binding->handler_id, &handler);
+            if (sl_status_code(status) == SL_STATUS_OUT_OF_RANGE) {
+                sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_HANDLER_LOOKUP,
+                                             sl_http_profile_now_ns() - started_ns);
+                return sl_http_dispatch_missing_handler(arena, out_diag);
+            }
 
-        if (!sl_status_is_ok(status)) {
-            return status;
+            if (!sl_status_is_ok(status)) {
+                sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_HANDLER_LOOKUP,
+                                             sl_http_profile_now_ns() - started_ns);
+                return status;
+            }
         }
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_HANDLER_LOOKUP,
+                                     sl_http_profile_now_ns() - started_ns);
     }
 
     validation_route = sl_http_dispatch_find_validation_route(plan, binding);
@@ -3500,6 +3526,8 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
                 validation_route->pattern);
             sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NATIVE_RESPONSE_ELIGIBLE, 1U);
             sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NATIVE_RESPONSE_HITS, 1U);
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NO_JS_RESPONSE_PLAN_HITS, 1U);
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NATIVE_STATIC_RESPONSE_HITS, 1U);
             started_ns = sl_http_profile_now_ns();
             status = sl_http_dispatch_native_response(validation_route, out_result);
             sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_NATIVE_RESPONSE_SELECTION,
@@ -3507,6 +3535,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
             return status;
         }
     }
+    sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_NO_JS_RESPONSE_PLAN_MISSES, 1U);
 
     sl_http_dispatch_record_breadcrumb(
         SL_DIAG_SUBSYSTEM_V8, SL_BREADCRUMB_EVENT_V8_HANDLER_ENTER, SL_STATUS_OK,

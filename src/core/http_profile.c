@@ -80,7 +80,18 @@ static const char* sl_http_profile_phase_name(SlHttpProfilePhase phase)
         "socket_write_scheduling",
         "write_completion",
         "connection_keep_alive_reuse_close",
-        "diagnostics_logging_breadcrumb_overhead"};
+        "diagnostics_logging_breadcrumb_overhead",
+        "v8_handler_lookup",
+        "v8_context_base_object_creation",
+        "v8_request_facade_creation",
+        "v8_route_params_materialization",
+        "v8_query_materialization",
+        "v8_headers_materialization",
+        "v8_body_facade_materialization",
+        "v8_body_json_materialization",
+        "v8_services_materialization",
+        "v8_promise_await_microtask",
+        "v8_exception_mapping"};
     if ((unsigned int)phase >= SL_HTTP_PROFILE_PHASE_COUNT) {
         return "unknown";
     }
@@ -113,7 +124,30 @@ static const char* sl_http_profile_counter_name(SlHttpProfileCounter counter)
                                                                "arenaResets",
                                                                "diagnosticsRendered",
                                                                "breadcrumbsRecorded",
-                                                               "nativeResponseEligible"};
+                                                               "nativeResponseEligible",
+                                                               "v8HandlerCacheHits",
+                                                               "v8HandlerCacheMisses",
+                                                               "ctxCreated",
+                                                               "routeParamsMaterialized",
+                                                               "queryMaterialized",
+                                                               "headersMaterialized",
+                                                               "bodyFacadeMaterialized",
+                                                               "bodyJsonMaterialized",
+                                                               "servicesMaterialized",
+                                                               "syncReturns",
+                                                               "promiseReturns",
+                                                               "resultDescriptorConversions",
+                                                               "plainValueConversions",
+                                                               "resultsJsonConversions",
+                                                               "resultsTextConversions",
+                                                               "resultsStatusConversions",
+                                                               "resultsProblemConversions",
+                                                               "jsonStringifyCalls",
+                                                               "exceptionCount",
+                                                               "noJsResponsePlanHits",
+                                                               "noJsResponsePlanMisses",
+                                                               "nativeStaticResponseHits",
+                                                               "genericFallbacks"};
     if ((unsigned int)counter >= SL_HTTP_PROFILE_COUNTER_COUNT) {
         return "unknown";
     }
@@ -134,8 +168,10 @@ bool sl_http_profile_enabled(void)
     char value[16];
     if (!sl_http_profile_enabled_initialized) {
         sl_http_profile_enabled_cached =
-            sl_http_profile_env_copy("SLOPPY_HTTP_PROFILE", value, sizeof(value)) &&
-            sl_http_profile_env_truthy(value);
+            (sl_http_profile_env_copy("SLOPPY_HTTP_PROFILE", value, sizeof(value)) &&
+             sl_http_profile_env_truthy(value)) ||
+            (sl_http_profile_env_copy("SLOPPY_V8_PROFILE", value, sizeof(value)) &&
+             sl_http_profile_env_truthy(value));
         sl_http_profile_enabled_initialized = true;
     }
     return sl_http_profile_enabled_cached;

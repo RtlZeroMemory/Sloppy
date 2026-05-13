@@ -2406,11 +2406,13 @@ static void sl_http_transport_complete_write(SlHttpPlatformConnection* platform,
 
     if (status == 0 && connection->keep_alive_after_write && !connection->close_after_write) {
         sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_REQUESTS_TOTAL, 1U);
+        (void)sl_http_profile_flush_if_requested();
         sl_http_transport_restart_keep_alive_read(connection, NULL);
         return;
     }
 
     sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_REQUESTS_TOTAL, 1U);
+    (void)sl_http_profile_flush_if_requested();
     sl_http_transport_connection_close(connection, NULL);
 }
 

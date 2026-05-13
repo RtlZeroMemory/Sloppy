@@ -1284,7 +1284,7 @@ static int test_registered_handler_throw_remaps_source_map_location(void)
     return 0;
 }
 
-static int test_unsupported_result_returns_call_diagnostic(void)
+static int test_plain_object_result_returns_json_response(void)
 {
     unsigned char engine_storage[8192];
     unsigned char result_storage[1024];
@@ -1317,15 +1317,15 @@ static int test_unsupported_result_returns_call_diagnostic(void)
 
     if (expect_status(sl_engine_call_function0(engine, &result_arena,
                                                sl_str_from_cstr("sloppy_object"), &result, &diag),
-                      SL_STATUS_UNSUPPORTED) != 0)
+                      SL_STATUS_OK) != 0)
     {
         sl_engine_destroy(engine);
         return 53;
     }
 
-    if (result.kind != SL_ENGINE_RESULT_NONE || diag.severity != SL_DIAG_SEVERITY_ERROR ||
-        diag.code != SL_DIAG_INVALID_HTTP_RESULT ||
-        expect_str_contains(diag.message, sl_str_from_cstr("unsupported result type")) != 0)
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE || result.response.status != 200U ||
+        expect_bytes_equal(result.response.body, "{\"ok\":true}") != 0)
     {
         sl_engine_destroy(engine);
         return 54;
@@ -7845,7 +7845,7 @@ int main(int argc, char** argv)
         return result;
     }
 
-    result = test_unsupported_result_returns_call_diagnostic();
+    result = test_plain_object_result_returns_json_response();
     if (result != 0) {
         return result;
     }
