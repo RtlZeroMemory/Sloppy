@@ -628,14 +628,27 @@ static void sl_cli_audit_cache(const SlCliOptions* options, const SlCliMetadata*
     bool has_cache_feature = sl_cli_metadata_requires_feature(metadata, "stdlib.cache");
     bool has_output_cache = false;
     bool has_cache_headers = false;
-    bool has_auth_output_cache = false;
+    bool has_auth_output_cache_without_user = false;
+    bool has_shared_auth_output_cache = false;
 
     for (size_t index = 0U; index < metadata->route_count; index += 1U) {
         const SlCliRoute* route = &metadata->routes[index];
         if (route->output_cache_value != NULL) {
             has_output_cache = true;
             if (route->auth_required) {
-                has_auth_output_cache = true;
+                yyjson_val* vary_by_user = yyjson_obj_get(route->output_cache_value, "varyByUser");
+                yyjson_val* shared =
+                    yyjson_obj_get(route->output_cache_value, "allowSharedAuthenticated");
+                bool has_user_partition = vary_by_user != NULL && yyjson_is_bool(vary_by_user) &&
+                                          yyjson_get_bool(vary_by_user);
+                bool has_shared_partition =
+                    shared != NULL && yyjson_is_bool(shared) && yyjson_get_bool(shared);
+                if (!has_user_partition) {
+                    has_auth_output_cache_without_user = true;
+                }
+                if (has_shared_partition) {
+                    has_shared_auth_output_cache = true;
+                }
             }
         }
         if (route->cache_headers_value != NULL) {
@@ -653,10 +666,16 @@ static void sl_cli_audit_cache(const SlCliOptions* options, const SlCliMetadata*
                           "OutputCache route metadata is visible without raw cache keys",
                           "routes.outputCache", findings, errors);
     }
-    if (has_auth_output_cache) {
+    if (has_auth_output_cache_without_user) {
         sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OUTPUT_CACHE_AUTH_ROUTE",
-                          "protected OutputCache routes must vary by user, role, claim, or bypass "
-                          "authenticated requests at runtime",
+                          "protected OutputCache routes must vary by user or bypass authenticated "
+                          "requests at runtime",
+                          "routes.outputCache", findings, errors);
+    }
+    if (has_shared_auth_output_cache) {
+        sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OUTPUT_CACHE_SHARED_AUTH",
+                          "shared authenticated OutputCache routes require an application-level "
+                          "data isolation review",
                           "routes.outputCache", findings, errors);
     }
     if (has_cache_headers) {

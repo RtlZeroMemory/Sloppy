@@ -66,6 +66,17 @@ function normalizeName(name, subject = "cache name") {
     return name;
 }
 
+function normalizeTokenName(name, subject = "cache token name") {
+    if (typeof name !== "string") {
+        throw new TypeError(`Sloppy ${subject} must be a non-empty stable token name.`);
+    }
+    const normalized = name.trim().toLowerCase().replace(/\s+/gu, "-");
+    if (normalized.length === 0 || normalized.length > 128 || !/^[a-z0-9][a-z0-9._-]*$/u.test(normalized)) {
+        throw new TypeError(`Sloppy ${subject} must start with a letter or digit and contain only letters, digits, '.', '_', or '-'.`);
+    }
+    return normalized;
+}
+
 function normalizeKey(key, options = {}) {
     const maxLength = options.maxKeyLength ?? DEFAULT_KEY_MAX_LENGTH;
     if (!Number.isInteger(maxLength) || maxLength < 1 || maxLength > 4096) {
@@ -179,7 +190,7 @@ function validateValueWithSchema(value, schema, key) {
 }
 
 function cacheToken(name = "default") {
-    return `cache.${normalizeName(name, "cache token name")}`;
+    return `cache.${normalizeTokenName(name, "cache token name")}`;
 }
 
 function cacheMetricName(operation) {
@@ -554,10 +565,8 @@ function providerKind(db, operation) {
     if (debug?.kind === "sqlserver-connection") {
         return "sqlserver";
     }
-    if (debug?.kind === "fake-data-provider" && debug.cacheProviderKind !== undefined) {
-        return debug.cacheProviderKind;
-    }
-    throw new TypeError(`Sloppy Cache.${operation} requires a real sqlite, postgres, or sqlserver connection from sloppy/data.`);
+    const expected = operation === "sqlServer" ? "sqlserver" : operation;
+    throw new TypeError(`Sloppy Cache.${operation} requires a real ${expected} connection from sloppy/data.`);
 }
 
 function placeholder(kind, index) {
@@ -599,11 +608,11 @@ function distributedSql(kind, table) {
     }
     if (kind === "sqlserver") {
         return Object.freeze({
-            ensure: `if object_id(N'dbo.${table}', N'U') is null create table dbo.${table} (` +
-                "namespace nvarchar(128) not null, cache_key nvarchar(512) not null, value_json nvarchar(max) not null, " +
+            ensure: `if object_id(N'dbo.${table}', N'U') is null begin create table dbo.${table} (` +
+                "namespace nvarchar(128) not null, cache_key nvarchar(256) not null, value_json nvarchar(max) not null, " +
                 "created_at nvarchar(64) not null, updated_at nvarchar(64) not null, expires_at nvarchar(64) null, " +
                 "sliding_expiration_ms int null, tags_json nvarchar(max) not null, constraint " +
-                `pk_${table} primary key (namespace, cache_key))`,
+                `pk_${table} primary key (namespace, cache_key)) end`,
             get: `select value_json, expires_at, sliding_expiration_ms, tags_json from dbo.${table} where namespace = ? and cache_key = ?`,
             selectNamespace: `select cache_key, tags_json from dbo.${table} where namespace = ?`,
             deleteOne: `delete from dbo.${table} where namespace = ? and cache_key = ?`,
@@ -730,16 +739,7 @@ class DistributedCache extends BaseCache {
         const expiresAt = this._iso(expiresAtFromOptions(normalizedOptions, this.clock));
         const tagsJson = serializeJson(normalizedOptions.tags);
         if (this.provider === "sqlserver") {
-            const updated = await this.db.exec(this.sql.update, [
-                json,
-                timestamp,
-                expiresAt,
-                normalizedOptions.slidingExpirationMs ?? null,
-                tagsJson,
-                this.namespace,
-                normalizedKey,
-            ]);
-            if (Number(updated?.rowsAffected ?? updated?.affectedRows ?? updated ?? 0) === 0) {
+            try {
                 await this.db.exec(this.sql.insert, [
                     this.namespace,
                     normalizedKey,
@@ -749,6 +749,16 @@ class DistributedCache extends BaseCache {
                     expiresAt,
                     normalizedOptions.slidingExpirationMs ?? null,
                     tagsJson,
+                ]);
+            } catch {
+                await this.db.exec(this.sql.update, [
+                    json,
+                    timestamp,
+                    expiresAt,
+                    normalizedOptions.slidingExpirationMs ?? null,
+                    tagsJson,
+                    this.namespace,
+                    normalizedKey,
                 ]);
             }
         } else {
@@ -840,6 +850,7 @@ class HybridCache extends BaseCache {
 
     async get(key, schemaOrOptions = undefined) {
         this._assertOpen("get");
+        this._record("gets");
         const normalizedKey = this._key(key);
         const memory = await this.memory.get(normalizedKey, schemaOrOptions);
         if (memory !== undefined) {

@@ -1,4 +1,5 @@
 import { isPromiseLike } from "./shared.js";
+import { Cache, isCache } from "../cache.js";
 
 function validateServiceToken(token) {
     if (typeof token !== "string" || token.length === 0) {
@@ -7,14 +8,11 @@ function validateServiceToken(token) {
 }
 
 function cacheServiceToken(name = "default") {
-    if (typeof name !== "string" || name.length === 0) {
-        throw new TypeError("Sloppy cache service name must be a non-empty string.");
-    }
-    return `cache.${name}`;
+    return Cache.token(name);
 }
 
 function validateCacheInstance(cache) {
-    if (cache === null || typeof cache !== "object" || cache.__sloppyCache !== true || typeof cache.stats !== "function") {
+    if (!isCache(cache) || typeof cache.stats !== "function") {
         throw new TypeError("Sloppy services.addCache expects a Cache instance.");
     }
 }

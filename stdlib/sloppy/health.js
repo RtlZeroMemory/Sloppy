@@ -553,10 +553,10 @@ const Health = Object.freeze({
     tcp: tcpCheck,
     openApi: () => unavailableCheck("openapi"),
     cache: (cache) => () => {
-        if (cache === undefined) {
+        if (cache === undefined || cache === null) {
             return { status: "degraded", message: "cache is not configured", data: { configured: false } };
         }
-        const stats = typeof cache.stats === "function" ? cache.stats() : cache.state;
+        const stats = typeof cache?.stats === "function" ? cache.stats() : cache.state;
         if (stats?.disposed === true) {
             return { status: "unhealthy", message: "cache is disposed", errorCode: "SLOPPY_E_CACHE_DISPOSED", data: redactValue(stats) };
         }

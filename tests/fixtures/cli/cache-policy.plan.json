@@ -22,6 +22,11 @@
       "id": 1,
       "exportName": "__sloppy_handler_1",
       "displayName": "Cache.Products"
+    },
+    {
+      "id": 2,
+      "exportName": "__sloppy_handler_2",
+      "displayName": "Cache.AdminSummary"
     }
   ],
   "requiredFeatures": ["stdlib.cache"],
@@ -75,6 +80,43 @@
         "status": "complete",
         "reasons": []
       }
+    },
+    {
+      "method": "GET",
+      "pattern": "/admin-summary",
+      "handlerId": 2,
+      "name": "Cache.AdminSummary",
+      "auth": {
+        "required": true,
+        "roles": ["admin"]
+      },
+      "outputCache": {
+        "ttlMs": 5000,
+        "cacheName": "default",
+        "varyByQuery": [],
+        "varyByHeader": [],
+        "varyByRouteParams": [],
+        "varyByUser": false,
+        "varyByRole": true,
+        "varyByClaim": [],
+        "tags": ["admin-summary"],
+        "statusCodes": [200],
+        "maxBodyBytes": 65536,
+        "allowAuthenticated": true,
+        "allowSharedAuthenticated": true,
+        "allowSetCookie": false,
+        "staleWhileRevalidateMs": 0
+      },
+      "response": {
+        "kind": "json",
+        "helper": "json",
+        "status": 200,
+        "bodySchema": "ProductsResponse"
+      },
+      "completeness": {
+        "status": "complete",
+        "reasons": []
+      }
     }
   ],
   "cache": {
@@ -86,6 +128,12 @@
         "pattern": "/products",
         "cacheName": "default",
         "ttlMs": 30000
+      },
+      {
+        "method": "GET",
+        "pattern": "/admin-summary",
+        "cacheName": "default",
+        "ttlMs": 5000
       }
     ]
   },

@@ -4,7 +4,6 @@
 
 ```ts
 import { Cache, SloppyCacheError } from "sloppy";
-import { Cache } from "sloppy/cache";
 ```
 
 The root import and `sloppy/cache` export the same `Cache` object.
@@ -106,15 +105,19 @@ be simple SQL identifiers.
   maxBodyBytes?: number;
   allowSetCookie?: boolean;
   allowAuthenticated?: boolean;
+  allowSharedAuthenticated?: boolean;
 }
 ```
 
 Default cacheable statuses are `200`, `203`, and `204`. The default maximum body size is
-1 MiB. Authenticated output cache requires `varyByUser`, `varyByClaim`, or `varyByRole`;
-`allowAuthenticated: true` without a partition is rejected.
+1 MiB, counted as UTF-8 bytes. Authenticated output cache requires `varyByUser: true`.
+Shared authenticated caching by role or claim requires `allowSharedAuthenticated: true`
+and should only be used when every user in that partition may receive the same body.
+`allowAuthenticated: true` without a user partition or explicit shared partition is rejected.
 
-Output cache stores Sloppy result descriptors for JSON, text, HTML, bytes, and empty results.
-Streaming results bypass.
+Output cache stores Sloppy result descriptors for JSON, text, bytes, and empty/status-only
+results. Streams, files/static results, redirects, custom/native descriptors, and descriptors
+with functions, symbols, or non-JSON body values bypass.
 
 ## Metrics
 

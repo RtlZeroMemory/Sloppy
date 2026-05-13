@@ -4919,6 +4919,7 @@ fn mark_sloppy_root_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclar
             continue;
         }
         match specifier.imported.name().as_str() {
+            "Cache" | "SloppyCacheError" => graph.uses_cache_runtime = true,
             "data" => graph.uses_data_runtime = true,
             "sql" => {
                 graph.uses_data_runtime = true;
@@ -6126,6 +6127,8 @@ fn extract_import(
                 ("Auth", "Auth") => state.auth_imported = true,
                 ("Realtime", "Realtime") => state.realtime_imported = true,
                 ("Config", "Config") => state.config_imported = true,
+                ("Cache", "Cache") => state.cache_imported = true,
+                ("SloppyCacheError", "SloppyCacheError") => state.cache_imported = true,
                 ("ProblemDetails", "ProblemDetails") => state.problem_details_imported = true,
                 ("RequestId", "RequestId") => state.request_id_imported = true,
                 ("RequestLogging", "RequestLogging") => state.request_logging_imported = true,
@@ -14522,6 +14525,7 @@ fn route_metadata_chain<'a>(
     let mut current = expression;
     let mut metadata = RouteMetadata::default();
     let mut auth_replaced_by_later_setter = false;
+    let mut output_cache_setter_seen = false;
     while let Expression::CallExpression(call) = current {
         let Expression::StaticMemberExpression(member) = &call.callee else {
             break;
@@ -14671,14 +14675,18 @@ fn route_metadata_chain<'a>(
                 current = &member.object;
             }
             "outputCache" => {
-                if metadata.output_cache.is_none() {
+                if !output_cache_setter_seen {
                     metadata.output_cache =
                         Some(route_static_metadata_from_call(call, "outputCache")?);
+                    output_cache_setter_seen = true;
                 }
                 current = &member.object;
             }
             "noOutputCache" => {
-                metadata.output_cache = None;
+                if !output_cache_setter_seen {
+                    metadata.output_cache = None;
+                    output_cache_setter_seen = true;
+                }
                 current = &member.object;
             }
             "cacheHeaders" => {
@@ -20169,7 +20177,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             .any(|binding| binding.kind == "config")
     });
     let queue_service_entries = framework_queue_service_entries(app);
+    let needs_output_cache_runtime = app.routes.iter().any(|route| route.output_cache.is_some());
     let needs_framework_services = needs_framework_arg_helper
+        || needs_output_cache_runtime
         || !app.service_registrations.is_empty()
         || !queue_service_entries.is_empty()
         || app.routes.iter().any(|route| {
@@ -20283,7 +20293,10 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     if app.uses_codec_runtime {
         runtime_exports.extend(CODEC_EXPORTS.iter().copied());
     }
-    if app.uses_cache_runtime {
+    if needs_output_cache_runtime && !app.uses_codec_runtime {
+        runtime_exports.push("Text");
+    }
+    if app.uses_cache_runtime || needs_output_cache_runtime {
         runtime_exports.extend(["Cache", "SloppyCacheError"]);
     }
     if app.uses_net_runtime {
@@ -20860,6 +20873,58 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             "function __sloppy_cors_preflight(policy, routeMethods, ctx) { const allowed = __sloppy_cors_allowed_origin(policy, __sloppy_request_header(ctx, \"origin\")); const requestedMethod = (__sloppy_request_header(ctx, \"access-control-request-method\") ?? \"\").toUpperCase(); const requestedHeaders = __sloppy_request_header(ctx, \"access-control-request-headers\"); const methods = policy.methods.length === 0 ? routeMethods : policy.methods; if (allowed === undefined || !methods.includes(requestedMethod) || !__sloppy_cors_requested_headers_allowed(policy, requestedHeaders)) { return Results.status(403); } const headers = { \"Access-Control-Allow-Origin\": allowed, \"Access-Control-Allow-Methods\": methods.join(\", \") }; if (!policy.origins.includes(\"*\")) { headers.Vary = \"Origin, Access-Control-Request-Method, Access-Control-Request-Headers\"; } if (policy.credentials) { headers[\"Access-Control-Allow-Credentials\"] = \"true\"; } if (policy.headers.length !== 0) { headers[\"Access-Control-Allow-Headers\"] = policy.headers.join(\", \"); } if (policy.maxAgeSeconds !== null && policy.maxAgeSeconds !== undefined) { headers[\"Access-Control-Max-Age\"] = String(policy.maxAgeSeconds); } return Results.status(204, undefined, { headers }); }",
         );
     }
+    if needs_output_cache_runtime {
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_plain_object(value) { return value !== null && typeof value === \"object\" && !Array.isArray(value); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_header(result, value) { return { ...result, headers: { ...(__sloppy_output_cache_plain_object(result?.headers) ? result.headers : {}), \"X-Sloppy-Output-Cache\": value } }; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_request_value(value) { return value === undefined || value === null ? \"\" : String(value); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_request_header(ctx, name) { const headers = ctx?.request?.headers; if (headers === undefined || headers === null) { return undefined; } const lower = String(name).toLowerCase(); if (typeof headers.get === \"function\") { const direct = headers.get(name) ?? headers.get(lower); if (direct !== undefined && direct !== null) { return direct; } if (typeof headers.entries === \"function\") { for (const [key, value] of headers.entries()) { if (String(key).toLowerCase() === lower) { return value; } } } return undefined; } if (__sloppy_output_cache_plain_object(headers)) { for (const [key, value] of Object.entries(headers)) { if (key.toLowerCase() === lower) { return value; } } } return undefined; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_body_size(result) { if (result?.body === undefined) { return 0; } if (typeof result.body === \"string\") { return Text.utf8.encode(result.body).byteLength; } if (result.body instanceof Uint8Array) { return result.body.byteLength; } const serialized = JSON.stringify(result.body); return serialized === undefined ? 0 : Text.utf8.encode(serialized).byteLength; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_non_json(value, seen = new Set()) { if (value === null || typeof value === \"string\" || typeof value === \"number\" || typeof value === \"boolean\") { return false; } if (typeof value === \"function\" || typeof value === \"symbol\" || typeof value === \"undefined\" || typeof value === \"bigint\") { return true; } if (typeof value !== \"object\" || seen.has(value)) { return true; } seen.add(value); if (Array.isArray(value)) { return value.some((item) => __sloppy_output_cache_non_json(item, seen)); } if (!__sloppy_output_cache_plain_object(value)) { return true; } return Object.values(value).some((item) => __sloppy_output_cache_non_json(item, seen)); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_unsupported_reason(result) { if (result?.__sloppyResult !== true) { return \"unsupported-result\"; } if (result.kind === \"stream\") { return \"streaming\"; } if (result.kind === \"json\") { return __sloppy_output_cache_non_json(result.body) ? \"unsupported-body\" : undefined; } if (result.kind === \"text\") { return typeof result.body === \"string\" ? undefined : \"unsupported-body\"; } if (result.kind === \"bytes\") { return result.body instanceof Uint8Array ? undefined : \"unsupported-body\"; } if (result.kind === \"empty\") { return result.body === undefined ? undefined : \"unsupported-body\"; } return \"unsupported-result-kind\"; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_key(ctx, routeKey, options, authRequired) { const query = __sloppy_output_cache_plain_object(ctx?.query) ? ctx.query : {}; const queryParts = options.varyByQuery === \"all\" ? Object.entries(query).sort(([left], [right]) => String(left).localeCompare(String(right))) : (Array.isArray(options.varyByQuery) ? options.varyByQuery : []).map((name) => [name, __sloppy_output_cache_request_value(query[name])]); const headerParts = (Array.isArray(options.varyByHeader) ? options.varyByHeader : []).map((name) => [String(name).toLowerCase(), __sloppy_output_cache_request_value(__sloppy_output_cache_request_header(ctx, name))]); const route = __sloppy_output_cache_plain_object(ctx?.route) ? ctx.route : {}; const routeParts = (Array.isArray(options.varyByRouteParams) ? options.varyByRouteParams : []).map((name) => [name, __sloppy_output_cache_request_value(route[name])]); const partition = []; if (authRequired || options.allowAuthenticated === true) { if (options.varyByUser === true) { const sub = ctx?.user?.sub ?? ctx?.user?.id; if (typeof sub !== \"string\" || sub.length === 0) { return undefined; } partition.push([\"user\", sub]); } else if (options.allowSharedAuthenticated === true) { if (options.varyByRole === true) { const roles = Array.isArray(ctx?.user?.roles) ? ctx.user.roles.map(String).sort().join(\",\") : \"\"; partition.push([\"roles\", roles]); } if (Array.isArray(options.varyByClaim)) { for (const claim of options.varyByClaim) { const value = typeof ctx?.user?.claim === \"function\" ? ctx.user.claim(claim) : ctx?.user?.claims?.[claim]; partition.push([`claim:${claim}`, __sloppy_output_cache_request_value(value)]); } } if (partition.length === 0) { return undefined; } } else { return undefined; } } return `output:${JSON.stringify({ routeKey, query: queryParts, headers: headerParts, params: routeParts, partition })}`; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_bypass_reason(ctx, result, options, authRequired) { if ((ctx?.request?.method ?? \"GET\") !== \"GET\" && (ctx?.request?.method ?? \"GET\") !== \"HEAD\") { return \"method\"; } if (authRequired && options.allowAuthenticated !== true) { return \"auth-unsafe\"; } const unsupported = __sloppy_output_cache_unsupported_reason(result); if (unsupported !== undefined) { return unsupported; } const statusCodes = Array.isArray(options.statusCodes) ? options.statusCodes : [200, 203, 204]; if (!statusCodes.includes(result.status)) { return \"status\"; } if (Array.isArray(result.setCookies) && result.setCookies.length !== 0 && options.allowSetCookie !== true) { return \"set-cookie\"; } const headers = __sloppy_output_cache_plain_object(result.headers) ? result.headers : {}; if (Object.keys(headers).some((name) => name.toLowerCase() === \"set-cookie\") && options.allowSetCookie !== true) { return \"set-cookie\"; } const maxBodyBytes = Number.isInteger(options.maxBodyBytes) ? options.maxBodyBytes : 1048576; if (__sloppy_output_cache_body_size(result) > maxBodyBytes) { return \"body-too-large\"; } return undefined; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "async function __sloppy_output_cache(ctx, routeKey, options, authRequired, terminal) { const scope = __sloppy_framework_services.createScope(ctx); ctx.services = scope; try { const cache = scope.get(Cache.token(options.cacheName ?? \"default\")); const key = __sloppy_output_cache_key(ctx, routeKey, options, authRequired); if (key !== undefined) { const cached = await cache.get(key); if (cached !== undefined) { return __sloppy_output_cache_header(cached, \"HIT\"); } } const result = await terminal(ctx); const reason = key === undefined ? \"auth-unsafe\" : __sloppy_output_cache_bypass_reason(ctx, result, options, authRequired); if (reason !== undefined) { return __sloppy_output_cache_header(result, \"BYPASS\"); } await cache.set(key, result, { ttlMs: options.ttlMs, tags: Array.isArray(options.tags) ? options.tags : [`route:${routeKey}`] }); return __sloppy_output_cache_header(result, \"MISS\"); } finally { await scope.dispose(); } }",
+        );
+    }
     push_generated_line(&mut output, &mut generated_line, "");
 
     for helper_source in &app.helper_sources {
@@ -20895,9 +20960,25 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         ));
 
         output.push_str(&prefix);
-        output.push_str(&route.handler.emitted_source);
-        output.push_str(";\n");
-        generated_line += route.handler.emitted_source.matches('\n').count() + 1;
+        if let Some(output_cache) = &route.output_cache {
+            let route_key =
+                serde_json::to_string(&format!("output:{}:{}", route.method, route.pattern))
+                    .unwrap_or_else(|_| "\"\"".to_string());
+            let options_json =
+                serde_json::to_string(output_cache).unwrap_or_else(|_| "{}".to_string());
+            let auth_required = route.auth.is_some();
+            let wrapped = format!(
+                "async function(ctx) {{ return await __sloppy_output_cache(ctx, {route_key}, {options_json}, {auth_required}, ({})); }}",
+                route.handler.emitted_source
+            );
+            output.push_str(&wrapped);
+            output.push_str(";\n");
+            generated_line += wrapped.matches('\n').count() + 1;
+        } else {
+            output.push_str(&route.handler.emitted_source);
+            output.push_str(";\n");
+            generated_line += route.handler.emitted_source.matches('\n').count() + 1;
+        }
         push_generated_line(
             &mut output,
             &mut generated_line,

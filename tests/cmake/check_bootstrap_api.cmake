@@ -478,6 +478,14 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "class SloppyCacheError"
+        "const Cache = Object.freeze"
+        "Cache,"
+        "SloppyCacheError,")
+    require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected cache runtime export pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "const HTTP_CLIENT_PROTOCOLS = new Set([\"auto\", \"http/1.1\", \"h2\", \"h2c\"]);"
         "function normalizeHttpProtocol(baseOptions, requestObject, operation)"
         "async function sendHttp2RequestOnce(request, pool, lifecycle)"

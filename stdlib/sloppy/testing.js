@@ -1,5 +1,5 @@
 import { Base64Url, Text } from "./codec.js";
-import { Cache } from "./cache.js";
+import { Cache, isCache } from "./cache.js";
 import { Hmac, Random, Secret } from "./crypto.js";
 import { data, Migrations } from "./data.js";
 import { Directory, File } from "./fs.js";
@@ -744,7 +744,7 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides,
         merged.set(`data.${name}`, provider);
     }
     for (const [name, cache] of Object.entries(cacheMap)) {
-        if (cache === null || typeof cache !== "object" || cache.__sloppyCache !== true) {
+        if (!isCache(cache)) {
             throw new TypeError(`Sloppy TestHost cache override '${name}' must be a Cache instance.`);
         }
         merged.set(Cache.token(name), cache);

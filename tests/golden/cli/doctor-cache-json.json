@@ -11,6 +11,7 @@
     { "id": "stdlib.cache.required", "status": "ok", "message": "Cache feature metadata is Plan-visible" },
     { "id": "route.output-cache.metadata", "status": "ok", "message": "OutputCache route metadata is visible without raw cache keys" },
     { "id": "route.cache-headers.metadata", "status": "ok", "message": "cache header route metadata is visible" },
+    { "id": "route.output-cache.shared-auth", "status": "warn", "message": "shared authenticated OutputCache routes require application data isolation review" },
     { "id": "app.auth.schemes", "status": "ok", "message": "auth scheme metadata is Plan-visible without secret values" },
     { "id": "app.auth.protected-routes", "status": "ok", "message": "protected route auth metadata is Plan-visible" },
     { "id": "optimization.native-json-candidate", "status": "ok", "message": "route has response metadata for future native JSON analysis" },

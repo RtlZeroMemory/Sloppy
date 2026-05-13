@@ -7,6 +7,7 @@ import {
     snapshotAuthRequirement,
 } from "../auth.js";
 import { Cache, isCache, stableHash } from "../cache.js";
+import { Text } from "../codec.js";
 import {
     createSseRouteHandler,
     createWebSocketRouteHandler,
@@ -570,12 +571,12 @@ function normalizeOutputCacheOptions(options) {
     if (!Number.isInteger(maxBodyBytes) || maxBodyBytes < 0) {
         throw new TypeError("Sloppy outputCache maxBodyBytes must be a non-negative integer.");
     }
-    if (options.allowAuthenticated === true &&
-        options.varyByUser !== true &&
-        options.varyByRole !== true &&
-        options.varyByClaim === undefined)
-    {
-        throw new TypeError("Sloppy outputCache allowAuthenticated requires varyByUser, varyByRole, or varyByClaim.");
+    const varyByClaim = normalizeRouteStringList(options.varyByClaim, "outputCache varyByClaim");
+    const sharedAuthenticated = options.allowSharedAuthenticated === true;
+    if (options.allowAuthenticated === true && options.varyByUser !== true) {
+        if (!sharedAuthenticated || (options.varyByRole !== true && varyByClaim.length === 0)) {
+            throw new TypeError("Sloppy outputCache allowAuthenticated requires varyByUser; shared role/claim caching requires allowSharedAuthenticated.");
+        }
     }
     if (options.tags !== undefined && typeof options.tags !== "function" && !Array.isArray(options.tags)) {
         throw new TypeError("Sloppy outputCache tags must be an array or function.");
@@ -587,14 +588,14 @@ function normalizeOutputCacheOptions(options) {
         varyByHeader: normalizeRouteStringList(options.varyByHeader, "outputCache varyByHeader", { lower: true }),
         varyByRouteParams: normalizeRouteStringList(options.varyByRouteParams, "outputCache varyByRouteParams"),
         varyByUser: options.varyByUser === true,
-        varyByClaim: normalizeRouteStringList(options.varyByClaim, "outputCache varyByClaim"),
+        varyByClaim,
         varyByRole: options.varyByRole === true,
         tags: options.tags,
         statusCodes: Object.freeze([...new Set(statusCodes)]),
         maxBodyBytes,
         allowSetCookie: options.allowSetCookie === true,
-        allowAuthenticated: options.allowAuthenticated === true || options.varyByUser === true ||
-            options.varyByRole === true || options.varyByClaim !== undefined,
+        allowSharedAuthenticated: sharedAuthenticated,
+        allowAuthenticated: options.varyByUser === true || (sharedAuthenticated && (options.varyByRole === true || varyByClaim.length !== 0)),
     });
 }
 
@@ -634,12 +635,58 @@ function resultBodySize(result) {
         return 0;
     }
     if (typeof result.body === "string") {
-        return result.body.length;
+        return Text.utf8.encode(result.body).byteLength;
     }
     if (result.body instanceof Uint8Array) {
         return result.body.byteLength;
     }
-    return JSON.stringify(result.body).length;
+    const serialized = JSON.stringify(result.body);
+    return serialized === undefined ? 0 : Text.utf8.encode(serialized).byteLength;
+}
+
+function containsNonJsonValue(value, seen = new Set()) {
+    if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        return false;
+    }
+    if (typeof value === "function" || typeof value === "symbol" || typeof value === "undefined" || typeof value === "bigint") {
+        return true;
+    }
+    if (typeof value !== "object") {
+        return true;
+    }
+    if (seen.has(value)) {
+        return true;
+    }
+    seen.add(value);
+    if (Array.isArray(value)) {
+        return value.some((item) => containsNonJsonValue(item, seen));
+    }
+    if (!isPlainObject(value)) {
+        return true;
+    }
+    return Object.values(value).some((item) => containsNonJsonValue(item, seen));
+}
+
+function outputCacheUnsupportedResultReason(result) {
+    if (result?.__sloppyResult !== true) {
+        return "unsupported-result";
+    }
+    if (result.kind === "stream") {
+        return "streaming";
+    }
+    if (result.kind === "json") {
+        return containsNonJsonValue(result.body) ? "unsupported-body" : undefined;
+    }
+    if (result.kind === "text") {
+        return typeof result.body === "string" ? undefined : "unsupported-body";
+    }
+    if (result.kind === "bytes") {
+        return result.body instanceof Uint8Array ? undefined : "unsupported-body";
+    }
+    if (result.kind === "empty") {
+        return result.body === undefined ? undefined : "unsupported-body";
+    }
+    return "unsupported-result-kind";
 }
 
 function outputCacheBypassReason(result, options, context, routeInfo) {
@@ -650,11 +697,9 @@ function outputCacheBypassReason(result, options, context, routeInfo) {
     if (routeInfo.auth !== undefined && options.allowAuthenticated !== true) {
         return "auth-unsafe";
     }
-    if (result?.__sloppyResult !== true) {
-        return "unsupported-result";
-    }
-    if (result.kind === "stream") {
-        return "streaming";
+    const unsupported = outputCacheUnsupportedResultReason(result);
+    if (unsupported !== undefined) {
+        return unsupported;
     }
     if (!options.statusCodes.includes(result.status)) {
         return "status";
@@ -1649,20 +1694,27 @@ function registerRoute(
     const realtimeMetadata = kind === "websocket"
         ? { kind, websocket: webSocketRouteOptions(args.handler) ?? normalizeWebSocketRouteOptions() }
         : { kind };
-    const metadata = {
+    let metadata = {
         ...(metadataBase ? mergeRouteMetadata(metadataBase, args.metadata) : createRouteMetadata(args.metadata)),
         ...((kind === "http") ? {} : { realtime: realtimeMetadata }),
         ...((currentModule !== null) ? { module: currentModule } : {}),
         middleware: middlewareMetadata(orderedMiddleware),
         ...((corsPolicy !== null) ? { cors: snapshotCorsPolicy(corsPolicy) } : {}),
     };
+    const outputCache = metadata.outputCache === undefined ? undefined : normalizeOutputCacheOptions(metadata.outputCache);
+    const cacheHeaders = metadata.cacheHeaders === undefined ? undefined : normalizeCacheHeaderOptions(metadata.cacheHeaders);
+    metadata = {
+        ...metadata,
+        outputCache,
+        cacheHeaders,
+    };
     const routeInfo = {
         method,
         pattern: args.pattern,
         name: typeof args.metadata?.name === "string" ? args.metadata.name : null,
         auth: metadata.auth,
-        outputCache: metadata.outputCache,
-        cacheHeaders: metadata.cacheHeaders,
+        outputCache,
+        cacheHeaders,
         kind,
         urlFor(name, params = {}, query = undefined) {
             return urlForRoute(routes, name, params, query);

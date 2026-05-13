@@ -132,7 +132,7 @@ The output cache key uses the route pattern, selected query keys, selected heade
 selected route params, and optional auth partition. It does not use raw full URLs,
 `Authorization`, or `Cookie` values.
 
-Authenticated routes are not cached unless a safe partition is configured:
+Authenticated routes are not cached unless they vary by user:
 
 ```ts
 app.get("/me/dashboard", dashboard)
@@ -144,13 +144,27 @@ app.get("/me/dashboard", dashboard)
     });
 ```
 
+Shared authenticated caching is opt-in. Use it only when every user in the
+selected role or claim partition is allowed to see exactly the same response.
+
+```ts
+app.get("/admin/summary", adminSummary)
+    .requiresAuth({ roles: ["admin"] })
+    .outputCache({
+        ttlMs: 5000,
+        varyByRole: true,
+        allowSharedAuthenticated: true,
+    });
+```
+
 Output cache bypasses unsafe responses:
 
 - methods other than GET/HEAD
-- authenticated routes without safe variation
+- authenticated routes without `varyByUser: true`, unless shared authenticated caching is explicit
 - responses with `Set-Cookie`, unless `allowSetCookie: true`
 - status codes outside the configured allowlist
-- streaming results
+- unsupported descriptor kinds, including streams, files, redirects, and custom/native descriptors
+- descriptors with functions, symbols, or non-JSON body values
 - response bodies larger than `maxBodyBytes`
 
 ## Cache Headers

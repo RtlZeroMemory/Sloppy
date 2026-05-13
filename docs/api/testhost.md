@@ -160,6 +160,8 @@ await host.delete("/users/42").expectNoBody();
 Use TestHost options for per-host app-host overrides:
 
 ```ts
+import { Cache, TestData, TestHost } from "sloppy";
+
 const host = await TestHost.create(app, {
     config: {
         "Feature:Enabled": true,
@@ -174,6 +176,7 @@ const host = await TestHost.create(app, {
         main: TestData.sqliteMemory(),
     },
     caches: {
+        // Experimental: Cache.memory is a per-process app-host cache.
         main: Cache.memory({ maxEntries: 100 }),
     },
 });

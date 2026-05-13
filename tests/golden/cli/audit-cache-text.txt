@@ -1,9 +1,11 @@
 Sloppy Audit
 
 [note] SLOPPY_AUDIT_OPT_NATIVE_JSON_CANDIDATE route response metadata is available for future native JSON analysis (optimization)
+[note] SLOPPY_AUDIT_OPT_NATIVE_JSON_CANDIDATE route response metadata is available for future native JSON analysis (optimization)
 [note] SLOPPY_AUDIT_AUTH_SCHEMES_VISIBLE auth scheme metadata is Plan-visible without secret values (auth)
 [note] SLOPPY_AUDIT_AUTH_PROTECTED_ROUTES protected route auth metadata is Plan-visible (auth)
 [note] SLOPPY_AUDIT_CACHE_PLAN_VISIBLE sloppy/cache is Plan-visible as stdlib.cache (requiredFeatures)
 [note] SLOPPY_AUDIT_OUTPUT_CACHE_VISIBLE OutputCache route metadata is visible without raw cache keys (routes.outputCache)
-[warn] SLOPPY_AUDIT_OUTPUT_CACHE_AUTH_ROUTE protected OutputCache routes must vary by user, role, claim, or bypass authenticated requests at runtime (routes.outputCache)
+[warn] SLOPPY_AUDIT_OUTPUT_CACHE_AUTH_ROUTE protected OutputCache routes must vary by user or bypass authenticated requests at runtime (routes.outputCache)
+[warn] SLOPPY_AUDIT_OUTPUT_CACHE_SHARED_AUTH shared authenticated OutputCache routes require an application-level data isolation review (routes.outputCache)
 [note] SLOPPY_AUDIT_CACHE_HEADERS_VISIBLE cache header route metadata is visible in OpenAPI extensions (routes.cacheHeaders)

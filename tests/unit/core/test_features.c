@@ -200,6 +200,8 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FS);
     const SlRuntimeFeatureDescriptor* config =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CONFIG);
+    const SlRuntimeFeatureDescriptor* cache =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_CACHE);
     const SlRuntimeFeatureDescriptor* node_path =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_NODE_COMPAT_PATH);
     const SlRuntimeFeatureDescriptor* node_fs_promises =
@@ -211,13 +213,13 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     const SlRuntimeFeatureDescriptor* ffi =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FFI);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 45) {
+    if (SL_RUNTIME_FEATURE_COUNT != 46) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || sqlserver == NULL || data == NULL || time == NULL ||
         crypto == NULL || codec == NULL || net == NULL || os == NULL || http_client == NULL ||
-        fs == NULL || config == NULL || node_path == NULL || node_fs_promises == NULL ||
-        node_assert == NULL || node_stream == NULL || ffi == NULL)
+        fs == NULL || config == NULL || cache == NULL || node_path == NULL ||
+        node_fs_promises == NULL || node_assert == NULL || node_stream == NULL || ffi == NULL)
     {
         return 61;
     }
@@ -300,6 +302,15 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         !sl_str_is_empty(config->v8_intrinsic_namespace))
     {
         return 64;
+    }
+    if (!sl_str_equal(cache->stable_id, sl_str_from_cstr("stdlib.cache")) ||
+        !sl_str_equal(cache->stdlib_import, sl_str_from_cstr("sloppy/cache")) ||
+        !sl_str_is_empty(cache->v8_intrinsic_namespace) || cache->requires_v8_intrinsics ||
+        !cache->available ||
+        (cache->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_APP)) == 0U ||
+        (cache->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CODEC)) == 0U)
+    {
+        return 77;
     }
     if (!sl_str_equal(ffi->stable_id, sl_str_from_cstr("stdlib.ffi")) ||
         !sl_str_equal(ffi->stdlib_import, sl_str_from_cstr("sloppy/ffi")) ||

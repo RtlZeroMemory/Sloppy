@@ -10,14 +10,14 @@ async function assertRejectsMessage(fn, expected) {
     });
 }
 
-function user(sub) {
+function user(sub, roles = []) {
     return Object.freeze({
         authenticated: true,
         sub,
-        roles: Object.freeze([]),
+        roles: Object.freeze(roles),
         claims: Object.freeze({ sub }),
         hasRole() {
-            return false;
+            return roles.includes(...arguments);
         },
         hasClaim(claim) {
             return claim === "sub";
@@ -166,6 +166,7 @@ async function withCacheBridge(callback) {
 {
     assert.equal(Cache, CacheSubpath);
     assert.equal(Cache.token("main"), "cache.main");
+    assert.equal(Cache.token(" Main Cache "), "cache.main-cache");
     assert.equal(Cache.key("users", 42), "users:42");
     assert.deepEqual(Cache.tags("users", ["user:42"]), ["users", "user:42"]);
     assert.throws(() => Cache.memory({ maxEntries: 0 }), /maxEntries/);
@@ -249,12 +250,21 @@ async function withCacheBridge(callback) {
             () => Cache.sqlite(data.createFakeProvider({ query: () => [], exec: () => ({ affectedRows: 0 }) })),
             /requires a real sqlite/,
         );
+        assert.throws(
+            () => Cache.postgres(data.createFakeProvider({ query: () => [], exec: () => ({ affectedRows: 0 }) })),
+            /requires a real postgres/,
+        );
+        assert.throws(
+            () => Cache.sqlServer(data.createFakeProvider({ query: () => [], exec: () => ({ affectedRows: 0 }) })),
+            /requires a real sqlserver/,
+        );
 
         const memory = Cache.memory("front", { maxEntries: 10 });
         const distributed = Cache.sqlite(sqliteDb, { name: "back", namespace: "hybrid" });
         const hybrid = Cache.hybrid("main", { memory, distributed });
         await distributed.set("only-back", { value: 1 }, { tags: ["hybrid"] });
         assert.deepEqual(await hybrid.get("only-back"), { value: 1 });
+        assert.equal(hybrid.stats().gets, 1);
         assert.deepEqual(await memory.get("only-back"), { value: 1 });
         await hybrid.set("both", { value: 2 }, { tags: ["hybrid"] });
         assert.deepEqual(await memory.get("both"), { value: 2 });
@@ -311,10 +321,34 @@ async function withCacheBridge(callback) {
         .outputCache({ ttlMs: 1000 });
     app.get("/too-large", () => Results.text("abcdef"))
         .outputCache({ ttlMs: 1000, maxBodyBytes: 2 });
+    app.get("/utf8-text", () => Results.text("é"))
+        .outputCache({ ttlMs: 1000, maxBodyBytes: 1 });
+    app.get("/utf8-json", () => Results.json({ value: "é" }))
+        .outputCache({ ttlMs: 1000, maxBodyBytes: 13 });
+    app.get("/ascii", () => Results.text("abc"))
+        .outputCache({ ttlMs: 1000, maxBodyBytes: 3 });
+    app.get("/html", () => Results.html("<strong>asset</strong>"))
+        .outputCache({ ttlMs: 1000 });
+    app.get("/problem", () => Results.problem("broken", { status: 500 }))
+        .outputCache({ ttlMs: 1000, statusCodes: [500] });
+    app.get("/stream", () => Results.stream((writer) => writer.writeText("hello")))
+        .outputCache({ ttlMs: 1000 });
+    app.get("/function-body", () => Object.freeze({ __sloppyResult: true, kind: "json", status: 200, body: { fn() {} } }))
+        .outputCache({ ttlMs: 1000 });
     const host = await TestHost.create(app);
     assert.equal((await host.get("/set-cookie")).headers.get("x-sloppy-output-cache"), "BYPASS");
     assert.equal((await host.post("/mutate")).headers.get("x-sloppy-output-cache"), "BYPASS");
     assert.equal((await host.get("/too-large")).headers.get("x-sloppy-output-cache"), "BYPASS");
+    assert.equal((await host.get("/utf8-text")).headers.get("x-sloppy-output-cache"), "BYPASS");
+    assert.equal((await host.get("/utf8-json")).headers.get("x-sloppy-output-cache"), "BYPASS");
+    assert.equal((await host.get("/ascii")).headers.get("x-sloppy-output-cache"), "MISS");
+    assert.equal((await host.get("/ascii")).headers.get("x-sloppy-output-cache"), "HIT");
+    assert.equal((await host.get("/html")).headers.get("x-sloppy-output-cache"), "BYPASS");
+    assert.equal((await host.get("/problem")).headers.get("x-sloppy-output-cache"), "BYPASS");
+    assert.equal((await host.get("/stream")).headers.get("x-sloppy-output-cache"), "BYPASS");
+    await assert.rejects(() => host.get("/function-body"), /cannot serialize function/);
+    assert.equal(host.diagnostics.snapshot().some((entry) =>
+        entry.code === "SLOPPY_OUTPUT_CACHE_BYPASS" && entry.fields.reason === "unsupported-body"), true);
     await host.close();
 }
 
@@ -344,13 +378,33 @@ async function withCacheBridge(callback) {
         varyByUser: true,
     });
     app.get("/unsafe", () => Results.json({ ok: true })).requiresAuth().outputCache({ ttlMs: 1000 });
+    app.get("/role-unsafe", () => Results.json({ ok: true })).requiresAuth().outputCache({
+        ttlMs: 1000,
+        varyByRole: true,
+    });
+    let sharedCalls = 0;
+    app.get("/role-shared", () => {
+        sharedCalls += 1;
+        return Results.json({ calls: sharedCalls });
+    }).requiresAuth().outputCache({
+        ttlMs: 1000,
+        varyByRole: true,
+        allowSharedAuthenticated: true,
+    });
     const host = await TestHost.create(app);
     const userA = user("a");
     const userB = user("b");
+    const adminA = user("admin-a", ["admin"]);
+    const adminB = user("admin-b", ["admin"]);
+    const ops = user("ops", ["ops"]);
     assert.equal((await host.get("/me/dashboard", { user: userA })).headers.get("x-sloppy-output-cache"), "MISS");
     assert.equal((await host.get("/me/dashboard", { user: userA })).headers.get("x-sloppy-output-cache"), "HIT");
     assert.deepEqual(await (await host.get("/me/dashboard", { user: userB })).json(), { calls: 2, sub: "b" });
     assert.equal((await host.get("/unsafe", { user: userA })).headers.get("x-sloppy-output-cache"), "BYPASS");
+    assert.equal((await host.get("/role-unsafe", { user: adminA })).headers.get("x-sloppy-output-cache"), "BYPASS");
+    assert.equal((await host.get("/role-shared", { user: adminA })).headers.get("x-sloppy-output-cache"), "MISS");
+    assert.equal((await host.get("/role-shared", { user: adminB })).headers.get("x-sloppy-output-cache"), "HIT");
+    assert.equal((await host.get("/role-shared", { user: ops })).headers.get("x-sloppy-output-cache"), "MISS");
     await host.close();
 }
 
@@ -365,7 +419,7 @@ async function withCacheBridge(callback) {
     const response = await host.get("/asset");
     assert.equal(response.headers.get("cache-control"), "public, max-age=60");
     assert.equal(response.headers.get("vary"), "Accept-Encoding");
-    assert.match(response.headers.get("etag"), /^"fnv1a32:/);
+    assert.match(response.headers.get("etag"), /^".+"$/);
     await host.close();
 
     const result = Results.json({ ok: true })
@@ -373,11 +427,12 @@ async function withCacheBridge(callback) {
         .cacheHeaders({ vary: ["Accept-Language"], etag: true });
     assert.equal(result.headers["Cache-Control"], "private, max-age=30");
     assert.equal(result.headers.Vary, "Accept-Language");
-    assert.match(result.headers.ETag, /^"fnv1a32:/);
+    assert.match(result.headers.ETag, /^".+"$/);
 }
 
 {
     const cache = Cache.memory("health", { maxEntries: 10 });
+    assert.equal(Health.cache(null)().status, "degraded");
     assert.equal(Health.cache(cache)().status, "healthy");
     cache.dispose();
     assert.equal(Health.cache(cache)().status, "unhealthy");

@@ -1,6 +1,7 @@
 import { Cache, Results, Sloppy, TestHost } from "../../stdlib/sloppy/index.js";
 
-const iterations = Number.parseInt(process.env.SLOPPY_CACHE_BENCH_ITERATIONS ?? "1000", 10);
+const requestedIterations = Number.parseInt(process.env.SLOPPY_CACHE_BENCH_ITERATIONS ?? "1000", 10);
+const iterations = Number.isFinite(requestedIterations) && requestedIterations > 0 ? requestedIterations : 1000;
 const warmup = Math.min(100, iterations);
 
 function nowNs() {
@@ -20,7 +21,7 @@ async function measure(name, operation, count = iterations) {
         name,
         iterations: count,
         elapsedNs,
-        nsPerOp: elapsedNs / count,
+        nsPerOp: elapsedNs / Math.max(1, count),
     };
 }
 

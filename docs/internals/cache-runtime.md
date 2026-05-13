@@ -47,8 +47,10 @@ The raw request URL, `Authorization`, `Cookie`, and user ID are not used directl
 responses also bypass when the result has `Set-Cookie`, a non-cacheable status, a stream
 body, an unsupported descriptor shape, or a body over the configured limit.
 
-Authenticated routes require safe variation. A route with auth metadata and no
-`varyByUser`, `varyByClaim`, or `varyByRole` bypasses rather than storing a shared response.
+Authenticated routes require a user partition by default. A route with auth metadata and no
+`varyByUser` bypasses rather than storing a shared response. Shared authenticated caching by
+role or claim requires an explicit `allowSharedAuthenticated` option so the application
+author has to acknowledge that every user in that partition may receive the same body.
 
 ## Compiler And Tooling
 

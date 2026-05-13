@@ -2,7 +2,83 @@ const __sloppyRuntime = globalThis.__sloppy_runtime;
 if (__sloppyRuntime === undefined) {
   throw new Error("Sloppy bootstrap runtime was not loaded");
 }
-const { Environment, Results, data } = __sloppyRuntime;
+const { Cache, Environment, Results, data } = __sloppyRuntime;
+
+async function postgresDelay(db, seconds = "0.05") {
+  await db.query(`select pg_sleep(${seconds})`, [], { timeoutMs: 1000 });
+}
+
+async function postgresCacheEvidence(db) {
+  const cache = Cache.postgres(db, {
+    name: "main",
+    namespace: "pg_cache_a",
+    table: "sloppy_pg_cache_live",
+  });
+  const other = Cache.postgres(db, {
+    name: "other",
+    namespace: "pg_cache_b",
+    table: "sloppy_pg_cache_live",
+  });
+  await cache.clear({ dangerouslyClearAll: true });
+  try {
+    await cache.set("alpha", { value: "one" });
+    const getOk = (await cache.get("alpha")).value === "one";
+    await cache.remove("alpha");
+    const removeOk = await cache.get("alpha") === undefined;
+
+    await cache.set("ttl", "expired", { ttlMs: 1 });
+    await postgresDelay(db);
+    const ttlExpired = await cache.get("ttl") === undefined;
+
+    await cache.set("slide", "ok", { slidingExpirationMs: 80 });
+    await postgresDelay(db, "0.03");
+    const slidingFirst = await cache.get("slide") === "ok";
+    await postgresDelay(db, "0.03");
+    const slidingSecond = await cache.get("slide") === "ok";
+    await postgresDelay(db, "0.12");
+    const slidingExpired = await cache.get("slide") === undefined;
+
+    await cache.set("tagged", "x", { tags: ["tag-a"] });
+    await cache.invalidateTag("tag-a");
+    const tagInvalidated = await cache.get("tagged") === undefined;
+
+    await cache.set("cleanup", "x", { ttlMs: 1 });
+    await postgresDelay(db);
+    await cache.cleanup();
+    const cleanupOk = await cache.get("cleanup") === undefined;
+
+    await cache.set("shared", "a");
+    await other.set("shared", "b");
+    const namespaceIsolation =
+      (await cache.get("shared")) === "a" && (await other.get("shared")) === "b";
+
+    await cache.set("hybrid", "pg");
+    const hybrid = Cache.hybrid("hybrid", {
+      memory: Cache.memory("front"),
+      distributed: cache,
+    });
+    const hybridFirst = await hybrid.get("hybrid") === "pg";
+    const hybridMemory = await hybrid.memory.get("hybrid") === "pg";
+    const hybridGets = hybrid.stats().gets >= 1;
+
+    return {
+      getOk,
+      removeOk,
+      ttlExpired,
+      slidingFirst,
+      slidingSecond,
+      slidingExpired,
+      tagInvalidated,
+      cleanupOk,
+      namespaceIsolation,
+      hybridFirst,
+      hybridMemory,
+      hybridGets,
+    };
+  } finally {
+    await cache.clear({ dangerouslyClearAll: true });
+  }
+}
 
 globalThis.__sloppy_handler_1 = async () => {
   try {
@@ -104,6 +180,7 @@ globalThis.__sloppy_handler_1 = async () => {
         postgresTimedOut = String(error && error.message ? error.message : error).includes("deadline was exceeded");
       }
       const users = await db.query("select id, name from sloppy_pg_bridge_cursor where name in ($1, $2) order by id", ["Ada", "Grace"]);
+      const cacheEvidence = await postgresCacheEvidence(db);
       return Results.json({
         users,
         postgresTimedOut,
@@ -116,6 +193,7 @@ globalThis.__sloppy_handler_1 = async () => {
         poolPinned,
         afterCloseCount: afterClose.count,
         cursorTimedOut,
+        cacheEvidence,
       });
     } finally {
       try {

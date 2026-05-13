@@ -74,6 +74,7 @@ import {
     FakeClock,
     Health,
     Metrics,
+    SloppyCacheError as RootSloppyCacheError,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
     TestData,
@@ -122,6 +123,7 @@ for (const [specifier, exports] of Object.entries(documentedSubpathExports)) {
 
 assert.equal(RootHttpClient, HttpClient);
 assert.equal(Cache, CacheSubpath);
+assert.equal(RootSloppyCacheError, SloppyCacheError);
 assert.equal(typeof Cache.memory, "function");
 assert.equal(typeof Cache.hybrid, "function");
 assert.equal(typeof Cache.token, "function");

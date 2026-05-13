@@ -46,10 +46,12 @@ exec /opt/mssql-tools/bin/sqlcmd "$@"
         if ($LASTEXITCODE -ne 0) {
             throw "SQL Server live init copy failed."
         }
-        docker exec $container /bin/bash -lc $script -- -S localhost -U sa -P $password -C -b -i /tmp/sloppy-live-init.sql | Out-Null
+        $sqlcmdArgs = @("-S", "localhost", "-U", "sa", "-P", $password, "-C", "-b", "-i", "/tmp/sloppy-live-init.sql")
+        docker exec $container /bin/bash -lc $script -- @sqlcmdArgs | Out-Null
     }
     else {
-        docker exec $container /bin/bash -lc $script -- -S localhost -U sa -P $password -C -b -Q $Query | Out-Null
+        $sqlcmdArgs = @("-S", "localhost", "-U", "sa", "-P", $password, "-C", "-b", "-Q", $Query)
+        docker exec $container /bin/bash -lc $script -- @sqlcmdArgs | Out-Null
     }
     if ($LASTEXITCODE -ne 0) {
         throw "SQL Server live query failed."
@@ -84,7 +86,7 @@ if (-not $NoDocker) {
     $ready = $false
     for ($attempt = 0; $attempt -lt 90; $attempt += 1) {
         try {
-            Invoke-SqlServerContainerQuery -Query "select 1"
+            Invoke-SqlServerContainerQuery -Query "select(1)"
             $ready = $true
             break
         }

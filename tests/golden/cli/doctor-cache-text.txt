@@ -11,6 +11,7 @@ Sloppy Doctor
 [ok] stdlib.cache.required: Cache feature metadata is Plan-visible
 [ok] route.output-cache.metadata: OutputCache route metadata is visible without raw cache keys
 [ok] route.cache-headers.metadata: cache header route metadata is visible
+[warn] route.output-cache.shared-auth: shared authenticated OutputCache routes require application data isolation review
 [ok] app.auth.schemes: auth scheme metadata is Plan-visible without secret values
 [ok] app.auth.protected-routes: protected route auth metadata is Plan-visible
 [ok] optimization.native-json-candidate: route has response metadata for future native JSON analysis

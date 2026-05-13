@@ -1,12 +1,13 @@
 {
   "bundle": {
-    "hash": "sha256:a149104101355abaea3c06c9ad6599749c40c7bb881aed001803fa817faf6463",
+    "hash": "sha256:36c7eda9a8b27d476fc8e9ef82c6f16ca6a5b3544cfbbf235ae146ca47de2618",
     "id": "postgres-bridge-app-js",
     "path": "app.js"
   },
   "compilerVersion": "handwritten-data-postgres-bridge-fixture",
   "requiredFeatures": [
     "provider.postgres",
+    "stdlib.cache",
     "stdlib.os"
   ],
   "capabilities": [

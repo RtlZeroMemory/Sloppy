@@ -313,10 +313,18 @@ static void sl_cli_doctor_emit_cache(const SlCliOptions* options, SlArena* arena
     bool has_cache_feature = sl_cli_metadata_requires_feature(metadata, "stdlib.cache");
     bool has_output_cache = false;
     bool has_cache_headers = false;
+    bool has_shared_auth_output_cache = false;
 
     for (size_t index = 0U; index < metadata->route_count; index += 1U) {
-        has_output_cache = has_output_cache || metadata->routes[index].output_cache_value != NULL;
-        has_cache_headers = has_cache_headers || metadata->routes[index].cache_headers_value != NULL;
+        const SlCliRoute* route = &metadata->routes[index];
+        has_output_cache = has_output_cache || route->output_cache_value != NULL;
+        has_cache_headers = has_cache_headers || route->cache_headers_value != NULL;
+        if (route->auth_required && route->output_cache_value != NULL) {
+            yyjson_val* shared = yyjson_obj_get(route->output_cache_value, "allowSharedAuthenticated");
+            has_shared_auth_output_cache = has_shared_auth_output_cache ||
+                                           (shared != NULL && yyjson_is_bool(shared) &&
+                                            yyjson_get_bool(shared));
+        }
     }
 
     if (has_cache_feature) {
@@ -334,6 +342,14 @@ static void sl_cli_doctor_emit_cache(const SlCliOptions* options, SlArena* arena
         sl_cli_doctor_emit(
             options, arena, sl_cli_span_cstr("route.cache-headers.metadata"), sl_cli_span_cstr("ok"),
             sl_cli_span_cstr("cache header route metadata is visible"), emitted);
+    }
+    if (has_shared_auth_output_cache) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("route.output-cache.shared-auth"),
+            sl_cli_span_cstr("warn"),
+            sl_cli_span_cstr(
+                "shared authenticated OutputCache routes require application data isolation review"),
+            emitted);
     }
 }
 

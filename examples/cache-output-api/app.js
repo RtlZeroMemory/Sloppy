@@ -1,17 +1,23 @@
 import { Cache, Results, Sloppy } from "sloppy";
 
 const app = Sloppy.create();
-const cache = Cache.memory("default", { maxEntries: 1000, ttlMs: 30000 });
 
-app.services.addCache(cache);
+function createOutputCache() {
+    return Cache.memory("default", { maxEntries: 1000, ttlMs: 30000 });
+}
+
+app.services.addSingleton("cache.default", () => createOutputCache());
 
 let productCalls = 0;
 app.get("/products", (ctx) => {
     productCalls += 1;
+    const calls = productCalls;
+    const category = ctx.query.category ?? "all";
+    const page = Number(ctx.query.page ?? 1);
     return Results.json({
-        category: ctx.query.category ?? "all",
-        page: Number(ctx.query.page ?? 1),
-        calls: productCalls,
+        category,
+        page,
+        calls,
     });
 }).outputCache({
     ttlMs: 30000,
