@@ -15,6 +15,6 @@ sloppy routes .sloppy
 sloppy openapi .sloppy
 ```
 
-Handler execution through `sloppy run --once` requires a V8-enabled build.
+Handler execution through `sloppy run --once` requires a handler-capable build.
 The SSE route uses the bounded `Results.stream` descriptor path; it does not
 claim production socket backpressure or incremental live push yet.

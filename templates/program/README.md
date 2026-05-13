@@ -1,6 +1,6 @@
 # Program Mode Template
 
-This is the smallest public alpha, pre-production route-free Program Mode
+This is the smallest public alpha route-free Program Mode
 starter for console tools, local jobs, and scripts.
 
 ```sh

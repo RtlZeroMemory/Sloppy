@@ -8,7 +8,7 @@ Run from this directory:
 ```
 
 On a non-V8 build this still compiles and emits `.sloppy\app.plan.json`, then fails before
-serving with the normal V8-required diagnostic. With V8 enabled, it enters the same
+serving with the normal handler-execution diagnostic. With V8 enabled, it enters the same
 artifact runtime path.
 
 The example demonstrates `sloppy.json`, `appsettings.json`, `appsettings.Development.json`, and

@@ -31,15 +31,15 @@ For runtime/compiler/V8-adjacent work, also run the V8 lane:
 .\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
 ```
 
-Dogfood evidence is a separate wrapper over existing lanes:
+Coverage catalog evidence is a separate wrapper over existing lanes:
 
 ```powershell
 .\tools\windows\dev.ps1 dogfood
 ```
 
-Without V8 it must report V8-required dogfood lanes as `UNAVAILABLE` after
+Without V8 it must report handler-execution lanes as `UNAVAILABLE` after
 verifying compile/diagnostic behavior. With `-EnableV8`, the same wrapper may
-record `PASS` for V8-gated hello and `control-plane` execution.
+record `PASS` for hello and `control-plane` execution.
 
 For cross-lane evidence, use the test engine wrapper:
 
@@ -80,7 +80,7 @@ Use these statuses in PR reports: `PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`,
 `DEFERRED`, `NOT RUN`.
 
 Use these evidence lane names exactly when they apply: default non-V8,
-compiler/Plan, V8-gated, source-input, package outside-checkout,
+compiler/Plan, handler execution, source-input, package outside-checkout,
 platform-specific, dependency-backed, live-network/live-provider,
 advanced static analysis, fuzz/property, stress/torture,
 sanitizer/memory-safety, and benchmark.
@@ -91,7 +91,7 @@ These run on demand or when labels/inputs select them:
 
 | Lane                 | Trigger                                                         |
 | -------------------- | --------------------------------------------------------------- |
-| V8-gated             | Required for runtime/compiler/V8-adjacent PRs                   |
+| Handler execution    | Required for runtime/compiler/V8-adjacent PRs                   |
 | Source-input         | Triggered by source-input fixture changes                       |
 | Dogfood              | App/example coverage catalog; wraps source-input, V8, and package evidence |
 | Package outside-checkout | `package-smoke` / `full-ci` label, or `workflow_dispatch`   |

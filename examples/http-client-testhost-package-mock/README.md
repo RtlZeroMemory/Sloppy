@@ -21,6 +21,6 @@ await host.close();
 
 For artifact and package hosts, TestHost starts a local loopback mock server and
 injects the generated base URL through config environment variables such as
-`Billing__BaseUrl`. Handler execution in this example requires a V8-enabled
+`Billing__BaseUrl`. Handler execution in this example requires a handler-capable
 `sloppy` CLI; the process-host harness is covered by
 `tests/bootstrap/test_testhost_process_modes.mjs`.

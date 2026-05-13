@@ -8,7 +8,7 @@ Run from this directory:
 ```
 
 The command compiles through `sloppy.json` and emits `.sloppy\app.plan.json`. Non-V8 builds
-stop at the expected V8-required diagnostic after artifact emission; V8 builds can execute
+stop at the expected handler-execution diagnostic after artifact emission; V8 builds can execute
 the emitted route handlers.
 
 Routes:

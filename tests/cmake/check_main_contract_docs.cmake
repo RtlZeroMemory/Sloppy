@@ -34,7 +34,7 @@ endforeach()
 
 foreach(required IN ITEMS
         "Default (non-V8)"
-        "V8-gated"
+        "Handler execution"
         "Package outside-checkout"
         "Live providers"
         "Benchmark")

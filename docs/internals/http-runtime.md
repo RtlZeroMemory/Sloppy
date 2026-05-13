@@ -334,7 +334,7 @@ connection draining) is the responsibility of an in-front reverse proxy.
   golden response checking.
 - **Transport tests** exercise the running libuv listener, keep-alive,
   `HEAD`, `405`, `417`, TLS configuration, and response serialization.
-- **V8-gated run lanes** execute compiled handlers through `sloppy run --once`.
+- **Handler-execution run lanes** execute compiled handlers through `sloppy run --once`.
   Listener-to-V8 socket coverage is tracked separately from synthetic
   `--once` dispatch.
 - **HTTP/2 transport lanes** cover h2c prior knowledge, h2c Upgrade, TLS ALPN

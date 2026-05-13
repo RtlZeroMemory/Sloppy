@@ -43,6 +43,9 @@ ok
 The root package installs a small launcher plus the matching supported
 platform package through npm optional dependencies. It does not build native
 code during install, run `node-gyp`, or download V8 in `postinstall`.
+Supported npm platform packages include the runtime needed to execute
+handlers. You do not need to build or download V8 separately when installing a
+supported package from npm.
 
 For editor IntelliSense in an app workspace, install the package locally as a
 dev dependency too:
@@ -83,6 +86,9 @@ Linux x64:
 Full toolchain notes live in
 [Building from source](contributor/building-from-source.md).
 
+Source builds restore or use the V8 SDK artifact/cache before building a
+runtime that executes handlers.
+
 ## Build a local archive
 
 Archives are useful for release testing and for installing a local build without
@@ -108,17 +114,18 @@ Extracted packages include `bin/`, `stdlib/`, `templates/`, selected docs and
 examples, and `manifest.json`. SDK headers and import libraries are not part of
 the runtime package.
 
-## V8 and handler execution
+## Handler execution runtime
 
 `sloppy build`, `routes`, `capabilities`, `doctor`, `audit`, `openapi`, and
 `package` read metadata and artifacts. `sloppy run` executes handlers, so it
-needs a V8-enabled runtime package or source build.
+needs a runtime with handler execution support.
 
-If `sloppy run` reports that a V8-enabled build is required, the CLI is present
-but that runtime cannot execute handlers.
+Supported npm platform packages include that runtime. If a source-built CLI
+reports that a V8-enabled build is required, the CLI is present but that build
+cannot execute handlers.
 
 The normal Quickstart does not require extra native setup. SQLite is included
-with the runtime package. V8 is part of the V8-enabled runtime package.
+with the runtime package.
 PostgreSQL client support is only needed for apps that use the PostgreSQL
 provider or PostgreSQL migrations. Microsoft ODBC Driver 17 or 18 is only
 needed for apps that use the SQL Server provider or SQL Server migrations.

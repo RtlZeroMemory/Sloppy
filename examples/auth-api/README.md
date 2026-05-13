@@ -15,6 +15,6 @@ sloppy openapi .sloppy --output openapi.json
 local builds. Provide deployment values through environment-specific
 configuration. Do not commit real auth secrets.
 
-Runtime handler execution requires a V8-enabled Sloppy build. `sloppy run
+Runtime handler execution requires a handler-capable Sloppy build. `sloppy run
 --once` is useful for public routes, but it does not provide a convenient
 manual header input path for protected-route testing.

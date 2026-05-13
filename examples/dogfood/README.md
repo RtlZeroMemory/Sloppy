@@ -18,6 +18,6 @@ Feature app targets for HTTP, HTTPS/TLS, SQLite, PostgreSQL, SQL Server, and the
 framework surface are listed with their current blocked or gated status until the required
 runtime support is available.
 
-Default non-V8 runs validate clear diagnostics for V8-required examples.
-Positive execution of the hello handlers and control-plane example requires a
-V8-enabled build.
+Default non-V8 runs validate clear diagnostics for examples that need handler
+execution. Positive execution of the hello handlers and control-plane example
+requires a handler-capable runtime.

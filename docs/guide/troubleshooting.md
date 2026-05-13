@@ -1,8 +1,7 @@
 # Troubleshooting
 
-Common errors and how to read them. The first stop for any unexpected
-failure is `sloppy doctor` — it answers most "is my environment OK"
-questions on its own.
+Common errors and how to read them. `sloppy doctor` is useful after a build
+because it inspects Sloppy artifacts and Plan-visible metadata.
 
 ## Build errors
 
@@ -66,10 +65,11 @@ supported npm target or build from source.
 sloppy run: handler execution requires a V8-enabled build
 ```
 
-Your CLI was built without V8. `sloppy build` still works; `sloppy run`
-needs V8. On a source build, run `tools\windows\resolve-v8-sdk.ps1 -Fetch`
-and reconfigure with `-EnableV8`. With a published archive, use one that
-includes V8.
+Your source-built CLI was built without the handler execution runtime.
+`sloppy build` still works; `sloppy run` needs that runtime. On a source
+build, run `tools\windows\resolve-v8-sdk.ps1 -Fetch` and reconfigure with
+`-EnableV8`. Supported npm platform packages already include the runtime
+needed to execute handlers.
 
 ### Plan schema mismatch
 
@@ -229,7 +229,9 @@ patterns cannot end in `/`, and a request for `/users/` does not match
 
 ## Getting better diagnostics
 
-- `sloppy doctor --plan .sloppy` runs every available check.
+- `sloppy doctor --plan .sloppy\app.plan.json` inspects the generated Plan.
+- `sloppy doctor .sloppy` inspects the artifact directory and related
+  Plan-visible metadata.
 - `sloppy build --environment Development` keeps full source mapping in
   diagnostics.
 - Set `logging:minimumLevel` to `debug` (in `appsettings.Development.json`)

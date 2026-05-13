@@ -1,8 +1,7 @@
 # Stability Reference
 
-Sloppy is public alpha software. It is ready for experiments,
-demos, feedback, and early exploration, but not production deployments yet.
-Contracts and behavior can change between alpha revisions.
+Sloppy is public alpha software. APIs and artifact formats may change between
+alpha releases.
 
 ## Version Fields in Current Artifacts
 
@@ -113,7 +112,7 @@ compiler refuses the input rather than emitting a partial Plan.
 | Native FFI stdlib | n/a | supported static `sloppy/ffi` declarations | `stdlib.ffi`, `native.ffi`, and `native.ffiStructs` emitted | experimental V8/libffi bridge | P/Invoke-style typed C ABI calls, refs, buffers, and pointer-based sequential structs. Unsafe boundary; wrong signatures can crash. No callbacks, variadic functions, C++ ABI, struct-by-value, async FFI, native addons, or raw pointer-call API. |
 | Examples and evidence catalog | supported categories | mixed | mixed | mixed | See `examples/README.md` for coverage classification. |
 | Package/dependency graph | n/a | experimental installed pure-JavaScript package resolver | bundled module graph, `dependencyGraph`, optional `deps.graph.json`, `sloppy deps --explain` | supported with V8 for compatible bundled modules | No registry install, semver solving, native addons, full Node HTTP/socket parity, or unrestricted runtime discovery. Resolver behavior is exercised by the committed `tests/fixtures/npm-compat/` matrix; the matrix is the regression baseline for currently tested package shapes and does not promise behavior for shapes outside it. |
-| Package/install path | n/a | n/a | package layout | experimental | Windows x64, Linux x64 glibc, and macOS npm alpha packages install the launcher, native runtime, stdlib, templates, selected docs/examples, and V8-backed handler execution. |
+| Package/install path | n/a | n/a | package layout | experimental | Windows x64, Linux x64 glibc, and macOS npm alpha packages install the launcher, native runtime, stdlib, templates, selected docs/examples, and handler execution runtime. |
 
 ## Current Limits
 

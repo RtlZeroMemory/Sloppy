@@ -454,7 +454,7 @@ restore console
 cleanup engine/program resources
 ```
 
-Program Mode is V8-gated for execution. Current console output is collected
+Program Mode uses the handler-execution runtime. Current console output is collected
 while the entrypoint runs and written after completion; it is not a streaming
 terminal interface. Program stdlib imports still use the same runtime feature
 metadata and bridge/resource rules as web apps.

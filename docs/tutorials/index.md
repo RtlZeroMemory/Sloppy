@@ -4,7 +4,8 @@ Tutorials are copy-paste runnable paths through the current Sloppy alpha
 surface. They teach the normal app workflow first, then move into richer app
 shape.
 
-Use a V8-enabled `sloppy` build or package before running handler examples.
+Supported npm platform packages can run handler examples. Source builds need
+the handler execution runtime enabled.
 Without V8, `sloppy build`, `routes`, `deps`, `doctor`, `audit`, `openapi`,
 and `package` still work, but `sloppy run` reports that V8 is required.
 

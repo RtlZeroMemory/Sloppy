@@ -1,7 +1,8 @@
 # `sloppy run`
 
 Run a Sloppy app — either as a long-lived HTTP server or as a single
-synthetic request. `run` enters V8, so it requires a V8-enabled build.
+synthetic request. `run` executes handlers, so source builds need the handler
+execution runtime enabled.
 
 ```text
 sloppy run [source | artifacts-dir | package-dir | --artifacts <dir>] [--stdlib <dir>]
@@ -146,9 +147,9 @@ Arguments after `--` are valid only for Program Plans.
 
 Program Plans run a route-free `main`/default export instead of preparing a web
 route table. `--once` is web-only and is rejected for Program Plans. A non-V8
-build can compile and inspect Program Mode artifacts, but `sloppy run` still
-fails before execution with the same V8 required-feature diagnostic used by web
-artifacts.
+source build can compile and inspect Program Mode artifacts, but `sloppy run`
+still fails before execution with the same handler-execution diagnostic used by
+web artifacts.
 
 The current Program runtime calls a named `main` export first, then a default
 function export, then relies on top-level module execution. `main` and default

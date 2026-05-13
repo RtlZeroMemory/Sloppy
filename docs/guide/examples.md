@@ -246,7 +246,7 @@ A bounded worker isolate pool. Niche, but the pattern is canonical.
 | `net-tcp-server` | TCP server API-shape fixture |
 | `os-runtime-api` | OS API-shape fixture |
 | `postgres-basic` | PostgreSQL provider fixture, live-provider gated |
-| `control-plane` | Legacy control-plane coverage fixture |
+| `control-plane` | Larger app-style coverage example for routing, data, diagnostics, and tooling |
 | `request-context` | Curated request context example |
 | `sqlite-basic` | SQLite provider fixture |
 | `sqlserver-basic` | SQL Server provider fixture, live-provider gated |

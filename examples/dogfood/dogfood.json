@@ -51,7 +51,7 @@
       ],
       "requiresV8": true,
       "defaultNonV8Result": "UNAVAILABLE",
-      "evidence": "Source-input compile/diagnostic behavior is validated by the fixture harness; positive handler execution requires a V8-enabled build."
+      "evidence": "Source-input compile/diagnostic behavior is validated by the fixture harness; positive handler execution requires a handler-capable runtime."
     },
     {
       "id": "control-plane",
@@ -70,7 +70,7 @@
       "requiresCompiler": true,
       "requiresV8": true,
       "defaultNonV8Result": "UNAVAILABLE",
-      "evidence": "The app host coverage suite imports the same route modules through Testing.createHost; CMake source-input lanes verify project-mode artifacts, CLI inspection, non-V8 diagnostics, and V8-gated once execution."
+      "evidence": "The app host coverage suite imports the same route modules through Testing.createHost; CMake source-input lanes verify project-mode artifacts, CLI inspection, non-V8 diagnostics, and handler-execution once execution."
     },
     {
       "id": "package-hello-artifact",
@@ -89,7 +89,7 @@
       "status": "v8-gated",
       "lane": "runtime transport",
       "blockedBy": [],
-      "reason": "HTTP/1.1 server behavior is covered by transport and source-input run lanes. Positive app execution still requires a V8-enabled runtime."
+      "reason": "HTTP/1.1 server behavior is covered by transport and source-input run lanes. Positive app execution still requires a handler-capable runtime."
     },
     {
       "id": "https-app",
@@ -97,7 +97,7 @@
       "status": "v8-gated",
       "lane": "experimental TLS transport",
       "blockedBy": [],
-      "reason": "Inbound TLS listener support is experimental and covered by opt-in transport lanes. Positive app execution still requires a V8-enabled runtime."
+      "reason": "Inbound TLS listener support is experimental and covered by opt-in transport lanes. Positive app execution still requires a handler-capable runtime."
     },
     {
       "id": "sqlite-app",
@@ -130,7 +130,7 @@
       "lane": "source-input framework",
       "sourceFixture": "tests/fixtures/source-input/framework-foundation",
       "blockedBy": [],
-      "reason": "Framework source-input extraction covers static middleware, CORS, request IDs, request logging, controllers, services, and app-host test evidence. Positive emitted-app execution still requires a V8-enabled runtime."
+      "reason": "Framework source-input extraction covers static middleware, CORS, request IDs, request logging, controllers, services, and app-host test evidence. Positive emitted-app execution still requires a handler-capable runtime."
     }
   ]
 }

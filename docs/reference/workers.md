@@ -3,7 +3,7 @@
 ## Status
 
 The worker API introduces the public `sloppy/workers` module, feature metadata, diagnostics,
-doctor/audit output, examples, bootstrap tests, and V8-gated worker bridge coverage. The
+doctor/audit output, examples, bootstrap tests, and worker bridge coverage. The
 JavaScript bootstrap API implements deterministic `BackgroundService`, bounded `WorkQueue`,
 and `WorkerPool` admission semantics. In V8 builds, `WorkerPool.run(...)` runs copied work in
 a separate worker-owned V8 isolate and settles its Promise on the owning isolate thread.

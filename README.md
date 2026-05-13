@@ -65,8 +65,9 @@ sloppy run src/main.ts -- Ada
 
 More detail: [Program Mode](docs/guide/program-mode.md).
 
-Sloppy is in public alpha. The current package is useful for experiments,
-demos, and feedback while APIs and artifact formats continue to settle.
+Sloppy is public alpha software. The current package is useful for
+experiments, examples, and feedback while APIs and artifact formats continue
+to settle.
 
 ## Start here
 
@@ -88,6 +89,13 @@ Install the public alpha package:
 
 ```sh
 npm install -g @slopware/sloppy@alpha
+```
+
+For editor IntelliSense in an app workspace, install the same package locally
+as a development dependency:
+
+```sh
+npm install --save-dev @slopware/sloppy@alpha
 ```
 
 Create, build, inspect, and run the recommended API starter:
@@ -192,7 +200,8 @@ For a practical comparison, see
   `main(args, ctx)` receives arguments after `--` and a Program context.
   Console output, numeric exit codes, stdlib imports, compatible installed
   pure-JavaScript packages, and `sloppy run .sloppy/package -- ...` are
-  supported on V8-enabled builds.
+  supported on the alpha npm platform packages and source builds configured
+  with handler execution support.
 - **Stdlib.** App host, routing, results, config, services, logging,
   capabilities, data, schema, filesystem, network, OS, process boundary, time,
   crypto, codec, and workers.
@@ -210,7 +219,7 @@ with it:
 
 Current limits:
 
-- API and artifact formats can change between alpha revisions.
+- API and artifact formats may change between alpha releases.
 - Package/dependency support consumes existing
   installed pure-JavaScript packages when they can be resolved, transformed,
   bundled, and executed inside Sloppy's runtime boundary. It does not install

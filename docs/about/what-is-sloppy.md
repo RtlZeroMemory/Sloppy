@@ -41,9 +41,8 @@ which provider implementations to wire up.
   existing Node apps unchanged. It runs Sloppy applications.
 - **Not a library you bolt onto an existing app.** It's a runtime; you
   invoke `sloppy run`, not `node`.
-- **Public alpha.** Sloppy is ready for experiments, demos, and
-  feedback, but not production deployments yet. APIs and artifact formats can
-  change between alpha revisions.
+- **Public alpha.** Sloppy is useful for experiments, examples, and feedback.
+  APIs and artifact formats may change between alpha releases.
 
 ## What it inspires from
 

@@ -21,7 +21,7 @@ imports from the project root.
 ## Current coverage
 
 Default non-V8 lanes compile the project and verify that `sloppy run` emits
-artifacts before reporting the required V8 diagnostic. The V8-gated lane runs:
+artifacts before reporting the required handler-execution diagnostic. The handler-execution lane runs:
 
 ```powershell
 sloppy run --once GET /projects?owner=runtime

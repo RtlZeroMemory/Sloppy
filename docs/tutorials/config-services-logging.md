@@ -67,5 +67,5 @@ sloppy doctor .sloppy
 sloppy run .sloppy --once GET /message/Ada
 ```
 
-Expected result: `doctor` reports Plan health, and a V8-enabled runtime returns
+Expected result: `doctor` reports Plan metadata, and a handler-capable runtime returns
 a JSON response for `/message/Ada`.

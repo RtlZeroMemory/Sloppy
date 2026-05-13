@@ -74,7 +74,7 @@ export default defineConfig({
         items: [
           { text: "App", link: "/api/app" },
           { text: "Routing", link: "/api/routing" },
-          { text: "Static files (experimental)", link: "/api/static-files" },
+          { text: "Static files", link: "/api/static-files" },
           { text: "Middleware", link: "/api/middleware" },
           { text: "CORS", link: "/api/cors" },
           { text: "Auth", link: "/api/auth" },
@@ -87,7 +87,7 @@ export default defineConfig({
           { text: "Request logging", link: "/api/request-logging" },
           { text: "Request context", link: "/api/request-context" },
           { text: "Results", link: "/api/results" },
-          { text: "Realtime (experimental)", link: "/api/realtime" },
+          { text: "Realtime", link: "/api/realtime" },
           { text: "WebSockets", link: "/api/websockets" },
           { text: "Services", link: "/api/services" },
           { text: "Config", link: "/api/config" },

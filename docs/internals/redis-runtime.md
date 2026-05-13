@@ -33,7 +33,7 @@ Package directories carry the generated artifacts, not a Redis transport by
 themselves. Redis package-runtime support is therefore limited to V8-enabled
 runtime lanes where `__sloppy.net.connect` is active and a live Redis service is
 provided. The default non-V8 package lane remains an unsupported Redis runtime
-lane and should report the V8-required diagnostic rather than a fake cache or
+lane and should report the handler-execution diagnostic rather than a fake cache or
 memory fallback.
 
 ## Protocol Boundary

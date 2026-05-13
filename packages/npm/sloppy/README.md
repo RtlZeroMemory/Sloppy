@@ -15,6 +15,10 @@ surface (`sloppy`, `sloppy/data`, `sloppy/fs`, `sloppy/os`, and
 `sloppy/providers/sqlite`) so app workspaces can install it as a local dev
 dependency for editor IntelliSense.
 
+Supported platform packages include the runtime needed to execute handlers.
+Users do not need to build or download V8 separately when installing a
+supported package from npm.
+
 npm is only a distribution channel for Sloppy itself. Sloppy apps can bundle
 compatible already-installed pure-JavaScript packages when their imports fit
 Sloppy's resolver, module loader, and runtime boundary. Sloppy does not install

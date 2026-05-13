@@ -21,7 +21,7 @@ The command emits:
 - `.sloppy/app.js`;
 - `.sloppy/app.js.map`.
 
-With a V8-enabled Sloppy build, run the artifacts through the bounded development runtime:
+With a handler-capable Sloppy build, run the artifacts through the bounded development runtime:
 
 From repository root:
 
@@ -66,6 +66,6 @@ directory or debugging generated files.
 
 ## Limitations
 
-This run path is development-only and requires V8. It currently focuses on compile +
-bounded run flow; broader TypeScript checking, bundling, HTTPS, request-body parsing,
-streaming, middleware, and hot reload are planned separately.
+This run path requires handler execution support and focuses on compile plus
+bounded run flow. Broader TypeScript checking, bundling, HTTPS, request-body
+parsing, streaming, middleware, and hot reload are separate work.

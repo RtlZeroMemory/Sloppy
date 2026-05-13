@@ -12,6 +12,40 @@ extraction rules lives in
 the canonical acceptance source is the fixture suite under
 `compiler/tests/fixtures/`.
 
+## Editor IntelliSense
+
+`@slopware/sloppy` ships TypeScript declaration files. The root `sloppy`
+import has types, and supported public subpath imports such as `sloppy/data`,
+`sloppy/fs`, `sloppy/os`, and `sloppy/providers/sqlite` have types.
+
+Install the package inside each app workspace when you want local editor
+IntelliSense:
+
+```sh
+npm install --save-dev @slopware/sloppy@alpha
+```
+
+Templates include editor-friendly TypeScript config where applicable. After
+the dependency is installed, IntelliSense comes from the normal TypeScript
+language service used by your editor.
+
+```ts
+import { Sloppy, Results, schema } from "sloppy";
+
+const app = Sloppy.create();
+
+app.get("/health", () => Results.text("ok"));
+```
+
+Sloppy compiler diagnostics are separate from TypeScript editor diagnostics.
+`sloppyc` extracts Sloppy app metadata and transforms supported source; it is
+not a full TypeScript type checker. A Sloppy language server is not implemented
+today.
+
+The current declarations provide the public alpha typing surface. Some APIs
+have basic declarations that will deepen over alpha releases as the public
+contracts settle.
+
 ## Inputs
 
 - File extensions: `.js`, `.mjs`, `.ts`.

@@ -5,7 +5,7 @@ parameterized JSON route using the current framework subset.
 
 ## Requirements
 
-- A V8-enabled Sloppy build or package for handler execution.
+- A handler-capable Sloppy build or package.
 - PowerShell examples below assume Windows paths.
 
 ## Run
@@ -47,5 +47,5 @@ After building artifacts, inspect the generated app with:
 
 ## Current Limits
 
-This example requires V8 for handler execution and covers only the two routes
+This example requires handler execution support and covers only the two routes
 shown above.

@@ -23,7 +23,7 @@ sloppy --version
 | [`sloppy routes`](routes.md) | List route metadata from a Plan                          |
 | [`sloppy deps`](deps.md)     | Inspect bundled package, module, asset, and Node shim metadata |
 | [`sloppy capabilities`](capabilities.md) | List declared capabilities                   |
-| [`sloppy doctor`](doctor.md) | Validate the local environment and a Plan                |
+| [`sloppy doctor`](doctor.md) | Inspect Sloppy artifacts and Plan-visible metadata       |
 | [`sloppy db`](db.md)         | Inspect and apply configured database migrations         |
 | [`sloppy orm`](orm.md)       | Generate, inspect, and apply ORM migrations               |
 | [`sloppy audit`](audit.md)   | Run security/compliance checks against a Plan            |

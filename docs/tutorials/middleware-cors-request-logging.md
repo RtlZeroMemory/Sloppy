@@ -57,6 +57,6 @@ sloppy build
 sloppy run .sloppy --once GET /health
 ```
 
-Expected result: a V8-enabled runtime returns `ok`. If the source shape is
+Expected result: a handler-capable runtime returns `ok`. If the source shape is
 outside the compiler subset, `sloppy build` reports the unsupported construct
 with a stable diagnostic.

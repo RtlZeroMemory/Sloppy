@@ -57,7 +57,7 @@ foreach(required_pattern IN ITEMS
         "`sloppyc` compilation and `app.plan.json` emission"
         "Executable SQLite runtime coverage currently lives"
         "PostgreSQL and SQL Server providers are covered"
-        "PostgreSQL has its own V8-gated true-async bridge"
+        "PostgreSQL has its own true-async bridge"
         "ORM, migrations, expanded pooling")
     require_substring(
         "${example_readme_md}" "${required_pattern}"

@@ -21,6 +21,9 @@ own status.
 
 ## V8 SDK and Runtime
 
+- Supported npm platform packages include the runtime needed to execute
+  handlers. Package users do not build or download V8 separately when
+  installing a supported package from npm.
 - Windows x64 contributors can provision the pinned SDK with
   `tools/windows/fetch-v8.ps1` or `tools/windows/resolve-v8-sdk.ps1 -Fetch`.
 - Release packaging consumes existing GitHub V8 SDK cache assets or restored
@@ -29,8 +32,8 @@ own status.
   separate V8 SDK producer workflow or local maintainer tooling.
 - Default package smoke checks layout and basic CLI behavior.
 - V8 SDK headers and import libraries are not bundled in default packages.
-- V8 runtime support is included only when the package was explicitly built
-  with a matching Sloppy-owned SDK and a V8-enabled smoke lane records evidence.
+- Source-built runtime support is included only when the build restored or used
+  a matching Sloppy-owned SDK and handler execution smoke records evidence.
 
 ## Package and Release Limits
 

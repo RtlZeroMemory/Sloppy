@@ -164,7 +164,7 @@ the repository profile). We acknowledge and coordinate disclosure.
 - **V8 bridge boundary tests** verify that native pointers don't escape
   and that resource generation checks work.
 - **TLS transport** lanes cover certificate path validation and handshake
-  behavior. V8-gated run lanes cover compiled handler execution separately.
+  behavior. Handler-execution run lanes cover compiled handler execution separately.
 
 ## See also
 

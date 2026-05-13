@@ -7,7 +7,7 @@ example writes a small file, reads it back, and runs `git --version` through
 Prerequisite: `git` must be installed and available on `PATH` for the
 `Process.run("git", ["--version"])` call.
 
-Run from this directory with a V8-enabled build:
+Run from this directory with a handler-capable build:
 
 ```powershell
 sloppy run -- report
