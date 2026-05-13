@@ -958,10 +958,16 @@ export function main() {
     let app_js = fs::read_to_string(out_dir.join("app.js")).expect("bundle should exist");
     assert!(app_js.contains("__sloppy_program_modules[\"sloppy/jobs\"]"));
     assert!(app_js.contains("__sloppy_program_require(\"sloppy/jobs\")"));
+    assert!(
+        app_js.contains("const { CancellationController, Random } = globalThis.__sloppy_runtime;")
+    );
     assert!(app_js.contains("module.exports = { Jobs, SloppyJobsError, default: Jobs };"));
     let plan_text = fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should exist");
     let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
-    assert_eq!(plan["requiredFeatures"], serde_json::json!(["stdlib.jobs"]));
+    assert_eq!(
+        plan["requiredFeatures"],
+        serde_json::json!(["stdlib.crypto", "stdlib.jobs", "stdlib.time"])
+    );
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -6169,6 +6175,8 @@ export default app;
     let app = extract(std::path::Path::new("app.js"), source)
         .expect("sloppy/jobs import should be recognized");
     assert!(app.uses_jobs_runtime);
+    assert!(app.uses_time_runtime);
+    assert!(app.uses_crypto_runtime);
 
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("Jobs"));
@@ -6184,7 +6192,7 @@ export default app;
 
     assert_eq!(
         value["requiredFeatures"],
-        serde_json::json!(["stdlib.jobs"])
+        serde_json::json!(["stdlib.crypto", "stdlib.jobs", "stdlib.time"])
     );
     assert_eq!(value["features"]["jobs"], serde_json::json!(true));
     assert_eq!(

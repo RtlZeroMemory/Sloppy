@@ -2818,6 +2818,14 @@ const SLOPPY_JOBS_PROGRAM_MODULE_SOURCE: &str = include_str!("../../stdlib/slopp
 fn sloppy_jobs_program_module() -> String {
     SLOPPY_JOBS_PROGRAM_MODULE_SOURCE
         .replace(
+            "import { Random } from \"./crypto.js\";\r\nimport { CancellationController } from \"./time.js\";\r\n\r\n",
+            "const { CancellationController, Random } = globalThis.__sloppy_runtime;\n\n",
+        )
+        .replace(
+            "import { Random } from \"./crypto.js\";\nimport { CancellationController } from \"./time.js\";\n\n",
+            "const { CancellationController, Random } = globalThis.__sloppy_runtime;\n\n",
+        )
+        .replace(
             "import { CancellationController } from \"./time.js\";\r\n\r\n",
             "const { CancellationController } = globalThis.__sloppy_runtime;\n\n",
         )
@@ -3074,6 +3082,9 @@ fn resolve_program_dependency(
             Ok(Some("sloppy/providers/sqlite".to_string()))
         }
         resolver::ImportKind::SlopJobs => {
+            graph.uses_jobs_runtime = true;
+            graph.uses_time_runtime = true;
+            graph.uses_crypto_runtime = true;
             ensure_sloppy_jobs_module(graph, modules);
             graph.add_dependency_import(&from_id, specifier, "sloppy/jobs", "sloppy-stdlib");
             Ok(Some("sloppy/jobs".to_string()))
@@ -4116,7 +4127,11 @@ fn mark_program_import(
         }
         resolver::ImportKind::SlopOs => graph.uses_os_runtime = true,
         resolver::ImportKind::SlopWorkers => graph.uses_workers_runtime = true,
-        resolver::ImportKind::SlopJobs => graph.uses_jobs_runtime = true,
+        resolver::ImportKind::SlopJobs => {
+            graph.uses_jobs_runtime = true;
+            graph.uses_time_runtime = true;
+            graph.uses_crypto_runtime = true;
+        }
         resolver::ImportKind::SlopFfi => graph.uses_ffi_runtime = true,
         resolver::ImportKind::SlopStdlib => {
             graph.uses_time_runtime = true;
@@ -4454,6 +4469,7 @@ fn extract_entry(
     };
     let uses_realtime_runtime =
         state.realtime_imported || state.routes.iter().any(|route| route.kind != "http");
+    let uses_jobs_runtime = state.jobs_imported || graph.uses_jobs_runtime;
 
     Ok(ExtractedApp {
         kind: ProjectKind::Web,
@@ -4487,10 +4503,11 @@ fn extract_entry(
         configuration: None,
         schemas: state.schemas,
         config_reads: state.config_reads,
-        uses_time_runtime: state.time_imported || graph.uses_time_runtime,
+        uses_time_runtime: state.time_imported || graph.uses_time_runtime || uses_jobs_runtime,
         uses_fs_runtime: state.fs_imported,
         uses_crypto_runtime: state.crypto_imported
             || graph.uses_crypto_runtime
+            || uses_jobs_runtime
             || state.auth.schemes.iter().any(|scheme| {
                 matches!(
                     scheme,
@@ -4517,7 +4534,7 @@ fn extract_entry(
         uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
         uses_realtime_runtime,
         uses_workers_runtime,
-        uses_jobs_runtime: state.jobs_imported || graph.uses_jobs_runtime,
+        uses_jobs_runtime,
         uses_ffi_runtime: state.ffi_imported || graph.uses_ffi_runtime,
         ffi: {
             let mut ffi = graph.ffi_libraries.clone();

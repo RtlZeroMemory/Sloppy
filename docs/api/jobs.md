@@ -45,8 +45,9 @@ await jobs.enqueue("send-email", {
 
 The bootstrap package re-exports jobs from both `"sloppy"` and `"sloppy/jobs"`.
 Compiler source input should import runtime jobs APIs from `"sloppy/jobs"` so
-the Plan records the `stdlib.jobs` required feature and Program Mode binds the
-jobs stdlib module.
+the Plan records the jobs runtime. The Plan includes `stdlib.jobs` plus the
+time and crypto stdlib features required by cancellation and durable ID
+generation, and Program Mode binds the jobs stdlib module.
 
 ## Storage
 
@@ -62,6 +63,20 @@ Jobs.storage.from(db);
 `storage.init()` creates the scheduler schema and records the schema version.
 It is idempotent. A schema version mismatch throws
 `SLOPPY_E_JOBS_SCHEMA_VERSION_MISMATCH`.
+
+## IDs And Clock
+
+Scheduler-generated durable row IDs use Sloppy `Random` entropy and keep a
+readable prefix such as `job_`, `attempt_`, `event_`, `worker_`, or
+`recurring_`. They do not derive uniqueness from `Date.now()` or a
+process-local counter.
+
+Storage timestamps use the provider database clock by default. SQLite uses
+`strftime(..., 'now')`, PostgreSQL uses `clock_timestamp()`, and SQL Server
+uses `sysutcdatetime()`. Delayed enqueue computes `runAt` from that database
+clock, and recurring registration computes the initial `nextRunAt` from that
+database clock. Explicit `runAt` values use the timestamp supplied by the
+caller.
 
 ## Job Definitions
 

@@ -1,3 +1,4 @@
+import { Random } from "./crypto.js";
 import { CancellationController } from "./time.js";
 
 const JOB_STATUSES = Object.freeze({
@@ -46,7 +47,6 @@ const REDACT_KEYS = Object.freeze([
     "key",
 ]);
 
-let stableIdCounter = 0;
 let jitterCounter = 0;
 const PROVIDERS = Object.freeze({
     sqlite: true,
@@ -159,9 +159,54 @@ function toIso(value, subject) {
     return date.toISOString();
 }
 
+function cryptoUnavailable(error) {
+    return String(error?.message ?? error ?? "").includes("SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE");
+}
+
+function webCryptoRandomHex(byteLength) {
+    const cryptoApi = globalThis.crypto;
+    if (cryptoApi === undefined || typeof cryptoApi.getRandomValues !== "function") {
+        throw jobsError(
+            "SLOPPY_E_JOBS_RANDOM_UNAVAILABLE",
+            "durable scheduler IDs require Sloppy Random or Web Crypto randomness",
+        );
+    }
+    const bytes = new Uint8Array(byteLength);
+    cryptoApi.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function randomHex(byteLength) {
+    try {
+        return Random.hex(byteLength);
+    } catch (error) {
+        if (!cryptoUnavailable(error)) {
+            throw error;
+        }
+    }
+    return webCryptoRandomHex(byteLength);
+}
+
 function stableId(prefix = "job") {
-    stableIdCounter = (stableIdCounter + 1) % Number.MAX_SAFE_INTEGER;
-    return `${prefix}_${Date.now().toString(36)}_${stableIdCounter.toString(36)}`;
+    return `${prefix}_${randomHex(16)}`;
+}
+
+function databaseClockSql(provider) {
+    if (provider === "sqlite") {
+        return "select strftime('%Y-%m-%dT%H:%M:%fZ', 'now') as now";
+    }
+    if (provider === "postgres") {
+        return "select to_char(clock_timestamp() at time zone 'utc', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') as now";
+    }
+    return "select convert(varchar(23), sysutcdatetime(), 126) + 'Z' as now";
+}
+
+function databaseTimestamp(row) {
+    const value = rowField(row ?? {}, "now", "NOW");
+    if (value === undefined || value === null) {
+        throw jobsError("SLOPPY_E_JOBS_CLOCK_UNAVAILABLE", "database clock query did not return a timestamp");
+    }
+    return toIso(value, "Sloppy Jobs database clock");
 }
 
 function sleep(ms, signal = undefined) {
@@ -580,14 +625,16 @@ function normalizeEnqueueOptions(definition, options = undefined) {
     const current = options === undefined ? {} : requirePlainObject(options, "Sloppy Jobs enqueue options");
     const runAt = current.runAt !== undefined
         ? toIso(current.runAt, "Sloppy Jobs runAt")
-        : current.delayMs !== undefined
-            ? addMsIso(nowIso(), nonNegativeInteger(current.delayMs, "Sloppy Jobs delayMs"))
-            : nowIso();
+        : undefined;
+    const delayMs = current.delayMs !== undefined
+        ? nonNegativeInteger(current.delayMs, "Sloppy Jobs delayMs")
+        : 0;
     const retry = normalizeRetryPolicy(current.retries ?? current.retry ?? definition?.retries);
     return Object.freeze({
         queue: optionalName(current.queue, "Sloppy Jobs queue", definition?.queue ?? DEFAULT_QUEUE),
         priority: integer(current.priority, "Sloppy Jobs priority", 0),
         runAt,
+        delayMs,
         idempotencyKey: current.idempotencyKey === undefined
             ? undefined
             : requireName(current.idempotencyKey, "Sloppy Jobs idempotencyKey"),
@@ -621,6 +668,13 @@ class SchedulerStorage {
         return placeholders(this.provider, count, start);
     }
 
+    async now(db = this.db) {
+        if (this.clock !== undefined) {
+            return nowIso(this.clock);
+        }
+        return databaseTimestamp(await queryOne(db, databaseClockSql(this.provider)));
+    }
+
     async init() {
         return await inTransaction(this.db, async (tx) => {
             for (const statement of schemaSql(this.provider)) {
@@ -630,7 +684,7 @@ class SchedulerStorage {
             if (row === null || row === undefined) {
                 await execSql(tx, `insert into sloppy_job_schema (version, updated_at) values (${this.p(1)}, ${this.p(2)})`, [
                     SCHEMA_VERSION,
-                    nowIso(this.clock),
+                    await this.now(tx),
                 ]);
             } else if (Number(row.version) !== SCHEMA_VERSION) {
                 throw jobsError("SLOPPY_E_JOBS_SCHEMA_VERSION_MISMATCH", "scheduler schema version is incompatible", {
@@ -849,7 +903,7 @@ class SchedulerStorage {
                     to,
                 });
             }
-            const timestamp = nowIso(this.clock);
+            const timestamp = await this.now(tx);
             await execSql(
                 tx,
                 `update sloppy_jobs set status = ${this.p(1)}, updated_at = ${this.p(2)} where id = ${this.p(3)}`,
@@ -861,7 +915,7 @@ class SchedulerStorage {
     }
 
     async registerWorker(worker) {
-        const timestamp = nowIso(this.clock);
+        const timestamp = await this.now();
         const existing = await queryOne(this.db, `select * from sloppy_job_workers where id = ${this.p(1)}`, [worker.id]);
         if (existing !== null && existing !== undefined) {
             await execSql(
@@ -897,7 +951,7 @@ class SchedulerStorage {
     }
 
     async heartbeat(workerId) {
-        const timestamp = nowIso(this.clock);
+        const timestamp = await this.now();
         if (this.provider === "sqlserver") {
             await execSql(this.db, `if exists (select 1 from sloppy_job_workers where id = ${this.p(1)}) update sloppy_job_workers set last_heartbeat_at = ${this.p(2)}, status = ${this.p(3)} where id = ${this.p(4)}`, [
                 workerId,
@@ -915,7 +969,7 @@ class SchedulerStorage {
     }
 
     async stopWorker(workerId) {
-        const timestamp = nowIso(this.clock);
+        const timestamp = await this.now();
         if (this.provider === "sqlserver") {
             await execSql(this.db, `if exists (select 1 from sloppy_job_workers where id = ${this.p(1)}) update sloppy_job_workers set last_heartbeat_at = ${this.p(2)}, status = ${this.p(3)} where id = ${this.p(4)}`, [
                 workerId,
@@ -948,9 +1002,9 @@ class SchedulerStorage {
         const opts = options === undefined ? {} : options;
         const limit = positiveInteger(opts.limit, "Sloppy Jobs claim limit", worker.concurrency ?? 1);
         const queues = Object.freeze((opts.queues ?? worker.queues ?? [DEFAULT_QUEUE]).map((queue) => requireName(queue, "Sloppy Jobs queue")));
-        const timestamp = nowIso(this.clock);
-        const lockedUntil = addMsIso(timestamp, positiveInteger(opts.leaseMs, "Sloppy Jobs leaseMs", DEFAULT_WORKER.leaseMs));
         return await inTransaction(this.db, async (tx) => {
+            const timestamp = await this.now(tx);
+            const lockedUntil = addMsIso(timestamp, positiveInteger(opts.leaseMs, "Sloppy Jobs leaseMs", DEFAULT_WORKER.leaseMs));
             if (this.provider === "sqlserver") {
                 await execSql(tx, `if exists (select 1 from sloppy_jobs where status = 'processing' and locked_until <= ${this.p(1)}) update sloppy_jobs set status = 'queued', locked_by = null, locked_until = null, updated_at = ${this.p(2)} where status = 'processing' and locked_until <= ${this.p(3)}`, [
                     timestamp,
@@ -1033,7 +1087,7 @@ class SchedulerStorage {
                     lockedBy: job.lockedBy,
                 });
             }
-            const timestamp = nowIso(this.clock);
+            const timestamp = await this.now(tx);
             const policy = retryPolicy ?? jsonParse(job.retryPolicyJson, { maxAttempts: job.maxAttempts, backoff: "none", initialDelayMs: 0, maxDelayMs: 0 });
             const exhausted = job.attemptCount >= job.maxAttempts;
             const next = exhausted ? "dead" : "retrying";
@@ -1077,7 +1131,7 @@ class SchedulerStorage {
                     status: job.status,
                 });
             }
-            const timestamp = nowIso(this.clock);
+            const timestamp = await this.now(tx);
             await execSql(
                 tx,
                 `update sloppy_jobs set status = ${this.p(1)}, locked_by = null, locked_until = null, updated_at = ${this.p(2)} where id = ${this.p(3)} and locked_by = ${this.p(4)} and status = 'processing'`,
@@ -1112,7 +1166,7 @@ class SchedulerStorage {
     }
 
     async extendLease(jobId, workerId, leaseMs) {
-        const timestamp = nowIso(this.clock);
+        const timestamp = await this.now();
         const lockedUntil = addMsIso(timestamp, positiveInteger(leaseMs, "Sloppy Jobs leaseMs"));
         await execSql(
             this.db,
@@ -1139,7 +1193,7 @@ class SchedulerStorage {
                     status: job?.status,
                 });
             }
-            const timestamp = nowIso(this.clock);
+            const timestamp = await this.now(tx);
             await execSql(tx, `update sloppy_jobs set status = 'queued', locked_by = null, locked_until = null, run_at = ${this.p(1)}, updated_at = ${this.p(2)} where id = ${this.p(3)}`, [
                 timestamp,
                 timestamp,
@@ -1181,7 +1235,7 @@ class SchedulerStorage {
     }
 
     async upsertRecurring(config) {
-        const timestamp = nowIso(this.clock);
+        const timestamp = await this.now();
         const existing = await queryOne(this.db, `select * from sloppy_recurring_jobs where name = ${this.p(1)}`, [config.name]);
         if (existing === null || existing === undefined) {
             await execSql(
@@ -1260,7 +1314,7 @@ class SchedulerStorage {
         await execSql(this.db, `update sloppy_recurring_jobs set last_run_at = ${this.p(1)}, next_run_at = ${this.p(2)}, updated_at = ${this.p(3)} where name = ${this.p(4)}`, [
             lastRunAt,
             nextRunAt,
-            nowIso(this.clock),
+            await this.now(),
             name,
         ]);
         return await this.getRecurring(name);
@@ -1269,16 +1323,16 @@ class SchedulerStorage {
     async setRecurringEnabled(name, enabled) {
         await execSql(this.db, `update sloppy_recurring_jobs set enabled = ${this.p(1)}, updated_at = ${this.p(2)} where name = ${this.p(3)}`, [
             enabled ? 1 : 0,
-            nowIso(this.clock),
+            await this.now(),
             name,
         ]);
         return await this.getRecurring(name);
     }
 
     async acquireLock(name, owner, ttlMs = DEFAULT_LOCK_TTL_MS) {
-        const now = nowIso(this.clock);
-        const lockedUntil = addMsIso(now, ttlMs);
         return await inTransaction(this.db, async (tx) => {
+            const now = await this.now(tx);
+            const lockedUntil = addMsIso(now, ttlMs);
             try {
                 if (this.provider === "sqlserver") {
                     await execSql(
@@ -1342,7 +1396,7 @@ class SchedulerStorage {
 
     async extendLock(name, owner, ttlMs = DEFAULT_LOCK_TTL_MS) {
         return await inTransaction(this.db, async (tx) => {
-            const now = nowIso(this.clock);
+            const now = await this.now(tx);
             const lockedUntil = addMsIso(now, ttlMs);
             const sql = this.provider === "sqlserver"
                 ? `if exists (select 1 from sloppy_job_locks where name = ${this.p(1)} and owner = ${this.p(2)}) update sloppy_job_locks set locked_until = ${this.p(3)}, updated_at = ${this.p(4)} where name = ${this.p(5)} and owner = ${this.p(6)}`
@@ -1374,7 +1428,7 @@ class SchedulerStorage {
         const current = options === undefined ? {} : requirePlainObject(options, "Sloppy Jobs cleanup options");
         const batchSize = Math.min(MAX_PAGE_SIZE, positiveInteger(current.batchSize, "Sloppy Jobs cleanup batchSize", DEFAULT_PAGE_SIZE));
         const terminalStatuses = Object.freeze(["succeeded", "dead", "cancelled"]);
-        const now = nowIso(this.clock);
+        const now = await this.now();
         const succeededBefore = addMsIso(now, -nonNegativeInteger(current.keepSucceededMs ?? 86400000, "Sloppy Jobs keepSucceededMs"));
         const deadBefore = addMsIso(now, -nonNegativeInteger(current.keepDeadMs ?? 604800000, "Sloppy Jobs keepDeadMs"));
         const cancelledBefore = addMsIso(now, -nonNegativeInteger(current.keepCancelledMs ?? current.keepSucceededMs ?? 86400000, "Sloppy Jobs keepCancelledMs"));
@@ -1517,7 +1571,7 @@ function nextCronRun(cron, from = new Date()) {
     throw jobsError("SLOPPY_E_JOBS_RECURRING_INVALID_CRON", "cron expression has no run in the next year");
 }
 
-function normalizeRecurringOptions(name, jobName, payload, options = undefined) {
+function normalizeRecurringOptions(name, jobName, payload, options = undefined, now = undefined) {
     const current = options === undefined ? {} : requirePlainObject(options, "Sloppy Jobs recurring options");
     const timezone = current.timezone ?? "UTC";
     if (timezone !== "UTC") {
@@ -1545,7 +1599,7 @@ function normalizeRecurringOptions(name, jobName, payload, options = undefined) 
         payloadJson: jsonStringify(payload, "recurring payload"),
         enabled: current.enabled !== false,
         misfirePolicy,
-        nextRunAt: nextCronRun(cron),
+        nextRunAt: nextCronRun(cron, now === undefined ? undefined : new Date(now)),
         metadata: Object.freeze({
             ...(current.metadata ?? {}),
             ...(catchUpLimit === undefined ? {} : { catchUpLimit }),
@@ -1593,8 +1647,9 @@ class JobsRuntime {
         }
         const enqueue = normalizeEnqueueOptions(definition, options);
         const validatedPayload = validatePayload(definition.input, payload, "enqueue", jobName);
-        const timestamp = nowIso(this.storage.clock);
-        const status = enqueue.runAt > timestamp ? "scheduled" : "queued";
+        const timestamp = await this.storage.now();
+        const runAt = enqueue.runAt ?? addMsIso(timestamp, enqueue.delayMs);
+        const status = runAt > timestamp ? "scheduled" : "queued";
         return await this.storage.enqueue({
             id: stableId("job"),
             name: jobName,
@@ -1603,7 +1658,7 @@ class JobsRuntime {
             payloadJson: jsonStringify(validatedPayload, "job payload"),
             payloadSchema: definition.input?.metadata?.name ?? definition.input?.kind ?? null,
             priority: enqueue.priority,
-            runAt: enqueue.runAt,
+            runAt,
             createdAt: timestamp,
             updatedAt: timestamp,
             retryPolicy: enqueue.retry,
@@ -1627,7 +1682,7 @@ class JobsRuntime {
         if (!this.definitions.has(jobName)) {
             throw jobsError("SLOPPY_E_JOBS_UNKNOWN_JOB", "recurring job definition is not registered", { jobName });
         }
-        const config = normalizeRecurringOptions(name, jobName, payload, options);
+        const config = normalizeRecurringOptions(name, jobName, payload, options, await this.storage.now());
         return await this.storage.upsertRecurring(config);
     }
 
@@ -1638,7 +1693,7 @@ class JobsRuntime {
             return Object.freeze([]);
         }
         try {
-            const now = nowIso(this.storage.clock);
+            const now = await this.storage.now();
             const due = await this.storage.dueRecurring(now, options?.limit ?? DEFAULT_PAGE_SIZE);
             const enqueued = [];
             for (const schedule of due) {

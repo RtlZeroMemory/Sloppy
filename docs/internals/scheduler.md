@@ -20,9 +20,10 @@ Database tables
   sloppy_jobs, attempts, recurring, workers, locks, events
 ```
 
-The compiler recognizes imports from `sloppy/jobs` and emits
-`requiredFeatures: ["stdlib.jobs"]`, `features.jobs: true`, and
-`strongPlan.evidence.jobs: true`.
+The compiler recognizes imports from `sloppy/jobs` and emits `stdlib.jobs` in
+`requiredFeatures`, along with the time and crypto stdlib features used by
+cooperative cancellation and durable random IDs. It also emits
+`features.jobs: true` and `strongPlan.evidence.jobs: true`.
 
 Job definitions are runtime dynamic. The compiler marks the jobs runtime
 feature, but it does not statically extract `Jobs.define(...)` definitions into
@@ -50,6 +51,9 @@ The adapter owns:
 
 All multi-step operations run through `db.transaction(callback)` when the
 provider exposes it. Fake/test providers can use the same callback contract.
+Scheduler timestamps are read from the provider database clock by default, so
+workers on different hosts compare leases and due times against the same
+database time source. Tests can inject a clock through storage options.
 
 ## Worker Runtime
 

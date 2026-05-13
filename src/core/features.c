@@ -32,7 +32,9 @@
      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |                                             \
      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO))
 #define SL_FEATURE_DEPS_WORKERS SL_FEATURE_DEPS_NET
-#define SL_FEATURE_DEPS_JOBS (SL_FEATURE_DEPS_TIME | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME))
+#define SL_FEATURE_DEPS_JOBS                                                                       \
+    (SL_FEATURE_DEPS_CRYPTO | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME) |                     \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO))
 #define SL_FEATURE_DEPS_NODE_COMPAT                                                                \
     (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8))
 #define SL_FEATURE_DEPS_FFI                                                                        \

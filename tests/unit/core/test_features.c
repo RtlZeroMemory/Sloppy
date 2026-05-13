@@ -227,7 +227,9 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         !sl_str_equal(jobs->stdlib_import, sl_str_from_cstr("sloppy/jobs")) ||
         !sl_str_is_empty(jobs->v8_intrinsic_namespace) || jobs->requires_v8_intrinsics ||
         (jobs->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_V8)) == 0U ||
-        (jobs->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U)
+        (jobs->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U ||
+        (jobs->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CRYPTO)) == 0U ||
+        (jobs->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CODEC)) == 0U)
     {
         return 80;
     }
@@ -887,7 +889,7 @@ static int test_codec_dependents_fail_closed_when_codec_unavailable(void)
     return 0;
 }
 
-static int test_jobs_required_feature_activates_time_dependency(void)
+static int test_jobs_required_feature_activates_time_and_crypto_dependencies(void)
 {
     unsigned char diag_storage[2048];
     SlArena diag_arena = {0};
@@ -910,6 +912,8 @@ static int test_jobs_required_feature_activates_time_dependency(void)
     if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_CORE) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_TIME) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CRYPTO) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CODEC) ||
         !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_JOBS))
     {
         return 2;
@@ -1492,7 +1496,7 @@ int main(void)
         test_explicit_codec_required_feature_activates_when_available,
         test_codec_required_feature_fails_when_runtime_unavailable,
         test_codec_dependents_fail_closed_when_codec_unavailable,
-        test_jobs_required_feature_activates_time_dependency,
+        test_jobs_required_feature_activates_time_and_crypto_dependencies,
         test_explicit_net_required_feature_activates_when_available,
         test_net_required_feature_activates_by_default_after_tcp_client_backend,
         test_explicit_os_required_feature_activates_when_available,

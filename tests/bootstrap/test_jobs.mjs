@@ -35,6 +35,9 @@ class FakeJobsDb {
     async query(sql, params = [], options = undefined) {
         this.queries.push({ kind: "query", sql, params, options });
         const text = sql.toLowerCase();
+        if (text.includes("strftime(") || text.includes("clock_timestamp") || text.includes("sysutcdatetime")) {
+            return [{ now: new Date().toISOString() }];
+        }
         if (text.startsWith("create ") || text.startsWith("if ")) {
             return [];
         }
@@ -46,6 +49,11 @@ class FakeJobsDb {
             return [];
         }
         if (text.startsWith("insert into sloppy_jobs") || text.startsWith("insert or ignore into sloppy_jobs")) {
+            if (this.jobs.some((job) => job.id === params[0])) {
+                const error = new Error("unique constraint failed: sloppy_jobs.id");
+                error.code = "SQLITE_CONSTRAINT";
+                throw error;
+            }
             if (
                 (text.startsWith("insert or ignore") || text.includes("on conflict")) &&
                 params[20] !== null &&
@@ -82,6 +90,11 @@ class FakeJobsDb {
             return [];
         }
         if (text.startsWith("insert into sloppy_job_events")) {
+            if (this.events.some((event) => event.id === params[0])) {
+                const error = new Error("unique constraint failed: sloppy_job_events.id");
+                error.code = "SQLITE_CONSTRAINT";
+                throw error;
+            }
             this.events.push({
                 id: params[0],
                 job_id: params[1],
@@ -96,6 +109,11 @@ class FakeJobsDb {
             return [];
         }
         if (text.startsWith("insert into sloppy_job_attempts")) {
+            if (this.attempts.some((attempt) => attempt.id === params[0])) {
+                const error = new Error("unique constraint failed: sloppy_job_attempts.id");
+                error.code = "SQLITE_CONSTRAINT";
+                throw error;
+            }
             this.attempts.push({
                 id: params[0],
                 job_id: params[1],
@@ -430,6 +448,41 @@ assert.throws(
     () => runtime.define("send-email", {}, async () => {}),
     (error) => assertJobsError(error, "SLOPPY_E_JOBS_DUPLICATE_JOB"),
 );
+
+const fixedNow = Date.now;
+Date.now = () => 1800000000000;
+try {
+    const randomIdDb = new FakeJobsDb("sqlite");
+    const randomIdStorage = Jobs.storage.sqlite(randomIdDb);
+    await randomIdStorage.init();
+    const randomIdRuntime = Jobs.create({ storage: randomIdStorage });
+    randomIdRuntime.define("random-id", {}, async () => {});
+    const randomJobs = await Promise.all(Array.from({ length: 512 }, async (_, index) =>
+        randomIdRuntime.enqueue("random-id", { index }, { idempotencyKey: `random-id:${index}` })));
+    assert.equal(new Set(randomJobs.map((job) => job.id)).size, randomJobs.length);
+    assert.equal(new Set(randomIdDb.events.map((event) => event.id)).size, randomIdDb.events.length);
+
+    const jobsModuleUrl = new URL("../../stdlib/sloppy/jobs.js", import.meta.url).href;
+    const [{ Jobs: FreshJobsA }, { Jobs: FreshJobsB }] = await Promise.all([
+        import(`${jobsModuleUrl}?fresh=random-a`),
+        import(`${jobsModuleUrl}?fresh=random-b`),
+    ]);
+    const freshDbA = new FakeJobsDb("sqlite");
+    const freshDbB = new FakeJobsDb("sqlite");
+    const freshRuntimeA = FreshJobsA.create({ storage: FreshJobsA.storage.sqlite(freshDbA) });
+    const freshRuntimeB = FreshJobsB.create({ storage: FreshJobsB.storage.sqlite(freshDbB) });
+    await freshRuntimeA.storage.init();
+    await freshRuntimeB.storage.init();
+    freshRuntimeA.define("fresh-id", {}, async () => {});
+    freshRuntimeB.define("fresh-id", {}, async () => {});
+    const [freshA, freshB] = await Promise.all([
+        freshRuntimeA.enqueue("fresh-id", {}),
+        freshRuntimeB.enqueue("fresh-id", {}),
+    ]);
+    assert.notEqual(freshA.id, freshB.id);
+} finally {
+    Date.now = fixedNow;
+}
 
 await assert.rejects(
     runtime.enqueue("send-email", { to: "bad", token: "secret" }),

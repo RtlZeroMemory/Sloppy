@@ -41,6 +41,10 @@ Required columns:
 | `timeout_ms` | Handler timeout |
 | `metadata_json` | Operational metadata |
 
+Scheduler-created IDs are random durable IDs with stable prefixes. Timestamps
+stored by scheduler operations come from the provider database clock unless a
+test clock is explicitly injected into the storage adapter.
+
 ## Provider Claim Strategy
 
 Workers first move expired `processing` leases back to `queued`, then move due
