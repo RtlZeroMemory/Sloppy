@@ -37,7 +37,7 @@ Use `PASS`, `FAIL`, `SKIPPED with reason`, `UNAVAILABLE with reason`, or
 ## Deferred
 
 - GitHub release publishing.
-- Hosted V8 SDK artifact publication for every supported platform.
+- V8 SDK cache rebuilds; release packaging consumes existing SDK artifacts.
 - Signing, notarization, installers, and package-manager wrappers.
 - npm publish and registry metadata.
 - Final product documentation.

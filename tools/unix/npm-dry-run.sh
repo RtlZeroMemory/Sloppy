@@ -34,7 +34,7 @@ while [[ $# -gt 0 ]]; do
       cat <<'USAGE'
 Usage: tools/unix/npm-dry-run.sh --package-path PATH [--output-dir DIR] [--skip-install-smoke] [--require-v8-runtime]
 
-Stages @rtlzeromemory/sloppy plus the matching platform package from a tested
+Stages @slopware/sloppy plus the matching platform package from a tested
 release archive, runs npm pack --dry-run, creates local tarballs, and optionally
 installs those tarballs into a temp prefix for launcher/create/build smoke.
 USAGE
@@ -151,7 +151,7 @@ if [[ "$skip_install_smoke" -eq 0 ]]; then
   install_root="$temp_root/install"
   mkdir -p "$install_root"
   npm install --prefix "$install_root" "$runtime_tarball" "$platform_tarball" >/dev/null
-  launcher="$install_root/node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
+  launcher="$install_root/node_modules/@slopware/sloppy/bin/sloppy.js"
   node "$launcher" --version
   node "$launcher" doctor
 
@@ -185,7 +185,7 @@ if [[ "$skip_install_smoke" -eq 0 ]]; then
   missing_root="$temp_root/missing-platform"
   mkdir -p "$missing_root"
   npm install --prefix "$missing_root" --omit=optional "$runtime_tarball" >/dev/null
-  missing_launcher="$missing_root/node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
+  missing_launcher="$missing_root/node_modules/@slopware/sloppy/bin/sloppy.js"
   if node "$missing_launcher" --version >/dev/null 2>&1; then
     echo "missing-platform launcher unexpectedly succeeded." >&2
     exit 1
@@ -199,7 +199,7 @@ const summaryPath = process.argv[1];
 const summary = {
   kind: "sloppy-npm-dry-run",
   packageArchive: process.argv[2],
-  rootPackage: "@rtlzeromemory/sloppy",
+  rootPackage: "@slopware/sloppy",
   platformPackage: process.argv[3],
   publishTag: "alpha",
   nativeInstallScripts: false,
@@ -211,7 +211,7 @@ const summary = {
   requireV8Runtime: process.argv[6] === "true"
 };
 fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2) + "\n");
-' "$output_root/summary.json" "$package_path" "@rtlzeromemory/$platform_package_dir" "$tarball_root" "$([[ "$skip_install_smoke" -eq 0 ]] && echo true || echo false)" "$([[ "$require_v8_runtime" -eq 1 ]] && echo true || echo false)"
+' "$output_root/summary.json" "$package_path" "@slopware/$platform_package_dir" "$tarball_root" "$([[ "$skip_install_smoke" -eq 0 ]] && echo true || echo false)" "$([[ "$require_v8_runtime" -eq 1 ]] && echo true || echo false)"
 
 echo "npm dry-run completed without publishing packages."
 echo "npm tarballs: $tarball_root"

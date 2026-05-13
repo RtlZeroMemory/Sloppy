@@ -72,7 +72,10 @@ build/dependency directories, packaged `sloppyc build` from the extracted layout
 `SHA256SUMS.txt` when present. Default non-V8 packages report packaged
 `sloppy run --artifacts` as skipped/not configured because V8 is unavailable.
 
-Linux x64 V8 package evidence uses the pinned Sloppy-owned SDK:
+Linux x64 V8 package evidence uses the pinned Sloppy-owned SDK. The SDK is built
+only by the dedicated V8 SDK producer workflow or by local maintainer tooling;
+release packaging consumes an existing extracted SDK or GitHub release cache
+asset:
 
 ```sh
 tools/unix/dev.sh build-v8
@@ -113,9 +116,9 @@ TAR archive is supplied. Positive source-input and pre-alpha control-plane execu
 V8-gated and must be reported separately from this static Unix lane.
 
 `tools/unix/dev.sh npm-dry-run --package-path artifacts/packages/sloppy-linux-x64.tar.gz`
-stages `@rtlzeromemory/sloppy` plus the matching Linux x64 GNU platform package from a tested archive.
-It runs `npm pack --dry-run`, creates local tarballs, and can run the launcher smoke path
-without publishing packages. macOS npm packages are not staged in this alpha.
+stages `@slopware/sloppy` plus the matching platform package from a tested
+archive. It runs `npm pack --dry-run`, creates local tarballs, and can run the
+launcher smoke path without publishing packages.
 `tools/unix/dev.sh test-install --package-path ...` verifies
 `sloppy create`, `sloppy build`, `sloppy package`, and `sloppy run --once` from an
 extracted archive.

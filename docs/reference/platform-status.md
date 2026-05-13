@@ -7,15 +7,15 @@ package set covers Windows x64, Linux x64 glibc, and macOS.
 
 | Platform | Current alpha status |
 | --- | --- |
-| Windows x64 | Published alpha npm platform package: `@rtlzeromemory/sloppy-win32-x64`. |
-| Linux x64 glibc | Published alpha npm platform package: `@rtlzeromemory/sloppy-linux-x64`. Release binaries are built on a glibc 2.31 baseline and validated across Debian-family and Fedora-family glibc images. |
+| Windows x64 | First alpha npm platform package target: `@slopware/sloppy-win32-x64`. |
+| Linux x64 glibc | First alpha npm platform package target: `@slopware/sloppy-linux-x64`. Release binaries are built on a glibc 2.31 baseline and validated across Debian-family and Fedora-family glibc images. |
 | Linux x64 musl / Alpine | No alpha npm platform package. Requires a future separate musl build/package lane. |
-| macOS arm64 | Supported macOS alpha platform lane: `@rtlzeromemory/sloppy-darwin-arm64`. |
-| macOS x64 | Supported macOS alpha platform lane: `@rtlzeromemory/sloppy-darwin-x64`. |
+| macOS arm64 | Supported macOS alpha platform lane: `@slopware/sloppy-darwin-arm64`. |
+| macOS x64 | Supported macOS alpha platform lane: `@slopware/sloppy-darwin-x64`. |
 | Linux arm64 | No alpha npm platform package. Use a source build. |
 | Windows arm64 | No alpha npm platform package. Use a source build. |
 
-The root `@rtlzeromemory/sloppy` launcher selects the matching platform package
+The root `@slopware/sloppy` launcher selects the matching platform package
 for supported alpha package lanes. Linux arm64, Linux x64 musl/Alpine, and
 Windows arm64 remain source build lanes.
 

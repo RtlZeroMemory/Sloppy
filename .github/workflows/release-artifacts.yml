@@ -150,6 +150,12 @@ jobs:
             "VCPKG_BINARY_SOURCES=default,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
+      - name: Restore Windows V8 SDK asset
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: .\tools\windows\fetch-v8.ps1 -Platform windows-x64
+
       - name: Release artifact dry-run
         shell: pwsh
         env:

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "target": "ES2022",
+    "types": [
+      "@slopware/sloppy"
+    ]
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}

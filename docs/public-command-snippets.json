@@ -7,7 +7,7 @@
       "id": "install-smoke",
       "source": "docs/install.md",
       "commands": [
-        "npm install -g @rtlzeromemory/sloppy@alpha",
+        "npm install -g @slopware/sloppy@alpha",
         "sloppy --version",
         "sloppy --help"
       ],

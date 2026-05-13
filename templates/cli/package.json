@@ -6,5 +6,8 @@
     "build": "sloppy build",
     "run": "sloppy run .sloppy -- --help",
     "package": "sloppy package"
+  },
+  "devDependencies": {
+    "@slopware/sloppy": "0.1.0-alpha.0"
   }
 }

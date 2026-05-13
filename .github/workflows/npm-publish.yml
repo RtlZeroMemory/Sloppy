@@ -96,11 +96,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t root_candidates < <(find artifacts/npm-publish/linux -type f -name 'rtlzeromemory-sloppy-[0-9]*.tgz' | sort)
-          mapfile -t linux_candidates < <(find artifacts/npm-publish/linux -type f -name 'rtlzeromemory-sloppy-linux-x64-*.tgz' | sort)
-          mapfile -t windows_candidates < <(find artifacts/npm-publish/windows -type f -name 'rtlzeromemory-sloppy-win32-x64-*.tgz' | sort)
-          mapfile -t macos_arm64_candidates < <(find artifacts/npm-publish/macos-arm64 -type f -name 'rtlzeromemory-sloppy-darwin-arm64-*.tgz' | sort)
-          mapfile -t macos_x64_candidates < <(find artifacts/npm-publish/macos-x64 -type f -name 'rtlzeromemory-sloppy-darwin-x64-*.tgz' | sort)
+          mapfile -t root_candidates < <(find artifacts/npm-publish/linux -type f -name 'slopware-sloppy-[0-9]*.tgz' | sort)
+          mapfile -t linux_candidates < <(find artifacts/npm-publish/linux -type f -name 'slopware-sloppy-linux-x64-*.tgz' | sort)
+          mapfile -t windows_candidates < <(find artifacts/npm-publish/windows -type f -name 'slopware-sloppy-win32-x64-*.tgz' | sort)
+          mapfile -t macos_arm64_candidates < <(find artifacts/npm-publish/macos-arm64 -type f -name 'slopware-sloppy-darwin-arm64-*.tgz' | sort)
+          mapfile -t macos_x64_candidates < <(find artifacts/npm-publish/macos-x64 -type f -name 'slopware-sloppy-darwin-x64-*.tgz' | sort)
           if [[ "${#root_candidates[@]}" -ne 1 || "${#linux_candidates[@]}" -ne 1 || "${#windows_candidates[@]}" -ne 1 || "${#macos_arm64_candidates[@]}" -ne 1 || "${#macos_x64_candidates[@]}" -ne 1 ]]; then
             echo "Expected one root, one Linux, one Windows, one macOS arm64, and one macOS x64 npm tarball from release-artifacts." >&2
             find artifacts/npm-publish -name '*.tgz' -print >&2
@@ -123,7 +123,7 @@ jobs:
           npm install --prefix "$temp_root/install" \
             "${{ steps.tarballs.outputs.root }}" \
             "${{ steps.tarballs.outputs.linux }}"
-          launcher="$temp_root/install/node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
+          launcher="$temp_root/install/node_modules/@slopware/sloppy/bin/sloppy.js"
           node "$launcher" --version
           node "$launcher" doctor
           mkdir -p "$temp_root/work"

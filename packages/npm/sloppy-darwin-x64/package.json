@@ -1,15 +1,29 @@
 {
-  "name": "@rtlzeromemory/sloppy-darwin-x64",
-  "version": "0.1.1-alpha.1",
+  "name": "@slopware/sloppy-darwin-x64",
+  "version": "0.1.0-alpha.0",
   "description": "macOS x64 Sloppy runtime platform package generated from a tested release archive.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RtlZeroMemory/Slop.git"
   },
-  "os": ["darwin"],
-  "cpu": ["x64"],
-  "files": ["bin/", "stdlib/", "templates/", "examples/", "docs/", "manifest.json", "LICENSE", "README.md", "package.json"],
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/",
+    "stdlib/",
+    "templates/",
+    "examples/",
+    "docs/",
+    "manifest.json",
+    "LICENSE",
+    "README.md",
+    "package.json"
+  ],
   "publishConfig": {
     "tag": "alpha",
     "access": "public"

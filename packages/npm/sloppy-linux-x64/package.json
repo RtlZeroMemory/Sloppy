@@ -1,16 +1,32 @@
 {
-  "name": "@rtlzeromemory/sloppy-linux-x64",
-  "version": "0.1.1-alpha.1",
+  "name": "@slopware/sloppy-linux-x64",
+  "version": "0.1.0-alpha.0",
   "description": "Linux x64 GNU Sloppy runtime package generated from a tested release archive.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/RtlZeroMemory/Slop.git"
   },
-  "os": ["linux"],
-  "cpu": ["x64"],
-  "libc": ["glibc"],
-  "files": ["bin/", "stdlib/", "templates/", "examples/", "docs/", "manifest.json", "LICENSE", "README.md", "package.json"],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "libc": [
+    "glibc"
+  ],
+  "files": [
+    "bin/",
+    "stdlib/",
+    "templates/",
+    "examples/",
+    "docs/",
+    "manifest.json",
+    "LICENSE",
+    "README.md",
+    "package.json"
+  ],
   "publishConfig": {
     "tag": "alpha",
     "access": "public"

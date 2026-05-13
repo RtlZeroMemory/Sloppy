@@ -129,6 +129,17 @@ function Assert-NoNativeInstallScripts {
     if ($json.publishConfig.tag -ne "alpha") {
         throw "$PackageJsonPath must publish with alpha dist-tag for dry-run policy."
     }
+    if ($json.name -eq "@slopware/sloppy") {
+        if ($json.version -ne "0.1.0-alpha.0") {
+            throw "$PackageJsonPath must use first alpha version 0.1.0-alpha.0."
+        }
+        if ($json.types -ne "types/index.d.ts") {
+            throw "$PackageJsonPath must expose TypeScript declarations."
+        }
+        if (-not (@($json.files) -contains "types/")) {
+            throw "$PackageJsonPath must include types/ in npm files."
+        }
+    }
 }
 
 $npm = Get-Command npm -ErrorAction SilentlyContinue
@@ -221,7 +232,7 @@ try {
         $installRoot = Join-Path $tempRoot "install"
         New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
         Invoke-Native $npm.Source @("install", "--prefix", $installRoot, $runtimeTarball[0].FullName, $platformTarball[0].FullName)
-        $launcher = Join-Path $installRoot "node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
+        $launcher = Join-Path $installRoot "node_modules/@slopware/sloppy/bin/sloppy.js"
         Invoke-Native $node.Source @($launcher, "--version") -WorkingDirectory $installRoot
         Invoke-Native $node.Source @($launcher, "doctor") -WorkingDirectory $installRoot
 
@@ -256,7 +267,7 @@ try {
         $missingRoot = Join-Path $tempRoot "missing-platform"
         New-Item -ItemType Directory -Force -Path $missingRoot | Out-Null
         Invoke-Native $npm.Source @("install", "--prefix", $missingRoot, "--omit=optional", $runtimeTarball[0].FullName)
-        $missingLauncher = Join-Path $missingRoot "node_modules/@rtlzeromemory/sloppy/bin/sloppy.js"
+        $missingLauncher = Join-Path $missingRoot "node_modules/@slopware/sloppy/bin/sloppy.js"
         Invoke-Native $node.Source @($missingLauncher, "--version") -WorkingDirectory $missingRoot -AllowedExitCodes @(1)
         $oldPlatform = $env:SLOPPY_RUNTIME_PLATFORM
         try {
@@ -270,7 +281,7 @@ try {
     [ordered]@{
         kind = "sloppy-npm-dry-run"
         packageArchive = $archivePath
-        rootPackage = "@rtlzeromemory/sloppy"
+        rootPackage = "@slopware/sloppy"
         platformPackage = [string]$platformPackageJson.name
         publishTag = $PublishTag
         nativeInstallScripts = $false

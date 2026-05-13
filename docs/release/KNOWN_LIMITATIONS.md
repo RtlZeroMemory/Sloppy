@@ -6,27 +6,27 @@ own status.
 
 ## Platform Status
 
-- Windows x64: public alpha npm platform package
-  `@rtlzeromemory/sloppy-win32-x64`.
-- Linux x64 glibc: public alpha npm platform package
-  `@rtlzeromemory/sloppy-linux-x64`; release artifacts are built on a glibc
+- Windows x64: first alpha npm platform package target
+  `@slopware/sloppy-win32-x64`.
+- Linux x64 glibc: first alpha npm platform package target
+  `@slopware/sloppy-linux-x64`; release artifacts are built on a glibc
   2.31 baseline and validated across Debian-family and Fedora-family glibc
   images.
 - Linux x64 musl/Alpine: no alpha npm platform package; this requires a
   separate musl build and package lane.
-- macOS arm64 and macOS x64: supported macOS alpha platform packages
-  `@rtlzeromemory/sloppy-darwin-arm64` and
-  `@rtlzeromemory/sloppy-darwin-x64`.
+- macOS arm64 and macOS x64: first alpha macOS package targets
+  `@slopware/sloppy-darwin-arm64` and
+  `@slopware/sloppy-darwin-x64`.
 - Linux arm64 and Windows arm64: no alpha npm platform package.
 
 ## V8 SDK and Runtime
 
 - Windows x64 contributors can provision the pinned SDK with
   `tools/windows/fetch-v8.ps1` or `tools/windows/resolve-v8-sdk.ps1 -Fetch`.
-- Linux x64 contributors can build the pinned Sloppy-owned SDK with
-  `tools/unix/build-v8.sh`; hosted Linux SDK artifact URL, checksum, and
-  retention remain separate release evidence.
-- macOS V8 SDK artifacts are tracked separately from the default package lane.
+- Release packaging consumes existing GitHub V8 SDK cache assets or restored
+  SDK caches. It does not rebuild V8 inside the release-artifacts workflow.
+- Linux and macOS maintainers can rebuild SDK cache assets only through the
+  separate V8 SDK producer workflow or local maintainer tooling.
 - Default package smoke checks layout and basic CLI behavior.
 - V8 SDK headers and import libraries are not bundled in default packages.
 - V8 runtime support is included only when the package was explicitly built
@@ -45,8 +45,7 @@ own status.
 
 ## Deferred Release Work
 
-- Hosted V8 SDK artifact upload/checksum/retention policy for non-Windows
-  platforms.
+- More formal V8 SDK cache retention policy.
 - Signing, notarization, installers, and package-manager distribution.
 - Final hosted release notes after the readiness gate accepts the validation report.
 - Final production-readiness verification.

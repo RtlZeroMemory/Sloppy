@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/RtlZeroMemory/Slop/actions/workflows/codeql.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/codeql.yml)
-[![npm alpha](https://img.shields.io/npm/v/@rtlzeromemory/sloppy/alpha?label=npm%20alpha)](https://www.npmjs.com/package/@rtlzeromemory/sloppy)
+[![npm alpha](https://img.shields.io/npm/v/@slopware/sloppy/alpha?label=npm%20alpha)](https://www.npmjs.com/package/@slopware/sloppy)
 ![public alpha, pre-production](https://img.shields.io/badge/status-public%20alpha%2C%20pre--production-yellow)
 ![license](https://img.shields.io/badge/license-see%20LICENSE-blue)
 
@@ -19,9 +19,9 @@ shape through an isolated V8 bridge.
 
 Sloppy has two current execution shapes:
 
-- **Web apps** — routes, middleware, Results, OpenAPI, HTTP runtime, and app
+- **Web apps** ? routes, middleware, Results, OpenAPI, HTTP runtime, and app
   metadata.
-- **Program Mode** — route-free console-style tools with `main(args, ctx)`,
+- **Program Mode** ? route-free console-style tools with `main(args, ctx)`,
   stdlib imports, packaging, and artifact execution.
 
 The Plan contains the parts a backend runtime usually has to discover while the
@@ -89,7 +89,7 @@ available under [`docs/`](docs/README.md).
 The public alpha, pre-production package is:
 
 ```sh
-npm install -g @rtlzeromemory/sloppy@alpha
+npm install -g @slopware/sloppy@alpha
 ```
 
 Create, build, inspect, and run the recommended API starter:

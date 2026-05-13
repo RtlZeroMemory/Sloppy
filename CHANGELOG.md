@@ -20,10 +20,11 @@ evidence and a completed readiness gate.
 - Added RELEASE-DIST dry-run contracts, canonical archive naming, runtime dependency audit
   scaffolding, npm launcher/platform package skeletons, and post-merge verifier handoff.
 
-## 0.1.1-alpha.1
+## 0.1.0-alpha.0
 
-- Moves the next alpha package line to `0.1.1-alpha.1`; previously published
-  `0.1.0-alpha.*` versions remain immutable npm records and are not reused.
+- Starts the first `@slopware/sloppy` alpha package line at `0.1.0-alpha.0`.
+- Stamps npm package metadata, generated archive manifests, and the runtime
+  `sloppy --version` output from the same release version.
 - Pins Linux release packaging to a `node:22-bullseye` glibc 2.31 build
   baseline and requires matching Linux V8 SDK metadata before package dry-run.
 - Adds a manual Linux Docker published-package validation script for multiple
@@ -31,17 +32,3 @@ evidence and a completed readiness gate.
   package lane exists.
 - Documents the Linux package as a glibc package rather than a universal Linux
   binary. This remains a public alpha, not production-ready.
-
-## 0.1.0-alpha.3
-
-- Propagated the Linux V8 SDK libc++ link contract through `sloppy_core` so V8-enabled
-  C++ test/package targets use one standard library mode.
-- Fixed V8 SDK validation for truthful macOS arm64 SDK metadata.
-- Enabled macOS npm platform package staging/publish flow for the alpha package set.
-- Uses the `alpha` npm dist-tag only. This remains a public alpha, not production-ready.
-
-## 0.1.0-alpha.0
-
-- Early alpha npm package records were published, but they did not prove
-  V8-backed handler execution. Treat this version as incomplete for the public
-  runtime install path.

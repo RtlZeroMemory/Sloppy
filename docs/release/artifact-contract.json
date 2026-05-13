@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "contract": "sloppy.release-artifact",
   "contractVersion": "1.0.0",
-  "releaseVersionPolicy": "0.1.0-alpha.N until the release gate chooses a concrete N",
+  "releaseVersionPolicy": "0.1.0-alpha.0 is the first alpha version for the @slopware package scope",
   "dryRunDefault": true,
   "canonicalDistribution": "github-release-archives",
   "npmDistributionRole": "convenience launcher for installing Sloppy itself only",
@@ -107,18 +107,21 @@
   ],
   "checksumFile": "SHA256SUMS.txt",
   "npmPackages": {
-    "root": "@rtlzeromemory/sloppy",
+    "root": "@slopware/sloppy",
     "platformPackages": [
-      "@rtlzeromemory/sloppy-win32-x64",
-      "@rtlzeromemory/sloppy-linux-x64",
-      "@rtlzeromemory/sloppy-darwin-arm64",
-      "@rtlzeromemory/sloppy-darwin-x64"
+      "@slopware/sloppy-win32-x64",
+      "@slopware/sloppy-linux-x64",
+      "@slopware/sloppy-darwin-arm64",
+      "@slopware/sloppy-darwin-x64"
     ],
     "deferredPlatformPackages": [],
     "publishTag": "alpha",
     "publishWorkflow": ".github/workflows/npm-publish.yml",
     "publishTrigger": "manual workflow_dispatch",
-    "publishAuth": "npm Trusted Publishing/OIDC with provenance",
+    "publishAuth": "first alpha manual browser auth; future npm Trusted Publishing/OIDC with provenance",
+    "manualPublishAuth": "npm login --auth-type=web",
+    "trustedPublishingAuth": "npm Trusted Publishing/OIDC with provenance",
+    "types": "types/index.d.ts",
     "publishOrder": [
       "platform packages",
       "root launcher package"

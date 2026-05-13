@@ -10,6 +10,6 @@
 #define SL_VERSION_MAJOR 0
 #define SL_VERSION_MINOR 0
 #define SL_VERSION_PATCH 0
-#define SL_VERSION_STRING "0.0.0-foundation"
+#define SL_VERSION_STRING "0.1.0-alpha.0"
 
 #endif

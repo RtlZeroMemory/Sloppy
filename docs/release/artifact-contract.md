@@ -58,21 +58,24 @@ The supported status vocabulary is `supported`, `experimental`, `source-build on
 
 ## npm
 
-The npm root package is `@rtlzeromemory/sloppy`. It exposes only the `sloppy` launcher and
+The npm root package is `@slopware/sloppy`. It exposes only the `sloppy` launcher and
 selects an installed platform package:
 
-- `@rtlzeromemory/sloppy-win32-x64`
-- `@rtlzeromemory/sloppy-linux-x64`
-- `@rtlzeromemory/sloppy-darwin-arm64`
-- `@rtlzeromemory/sloppy-darwin-x64`
+- `@slopware/sloppy-win32-x64`
+- `@slopware/sloppy-linux-x64`
+- `@slopware/sloppy-darwin-arm64`
+- `@slopware/sloppy-darwin-x64`
 
 npm package dry-runs must use `--tag alpha`, never `latest`. Platform package
 contents are generated from already-built archive contents; npm install must
 not compile native code, run `node-gyp`, build V8, or download V8 in
 `postinstall`.
 
-The main package must stay lean. It must not require PostgreSQL or SQL Server
-native drivers for normal installs. SQLite is embedded in the runtime package.
+The main package must stay lean. It must include TypeScript declarations for
+the public starter/template import surface so editors can provide IntelliSense
+when apps install `@slopware/sloppy` as a local dev dependency. It must not
+require PostgreSQL or SQL Server native drivers for normal installs. SQLite is
+embedded in the runtime package.
 PostgreSQL provider-package binaries are not part of this alpha package unless
 a separately listed provider package includes verified binaries, license
 notices, and package-content evidence. SQL Server uses Microsoft's platform
@@ -80,8 +83,19 @@ ODBC driver or an organization-managed deployment; Sloppy must not bundle
 Microsoft ODBC binaries without explicit licensing, platform registration, and
 packaging verification.
 
-Publishing is manual and alpha-gated through the npm publish workflow. It uses
-Node 22.14.0 or newer, npm 11.5.1 or newer, `id-token: write`, and
+The first alpha version for the `@slopware` scope is `0.1.0-alpha.0`. Generated
+release archives, npm package metadata, and `sloppy --version` must report that
+same version for this release line.
+
+The first alpha publish path is manual browser auth. A maintainer signs in with
+`npm login --auth-type=web`, verifies the target package names are unpublished,
+runs `npm publish --dry-run --access public --tag alpha` for every generated
+tarball, then publishes platform packages before the root launcher package with
+`--access public --tag alpha`. Do not use `latest` for alpha packages.
+
+The future CI publish path is the manual `npm-publish` workflow. It consumes
+tarballs uploaded by `release-artifacts`, uses Node 22.14.0 or newer and npm
+11.5.1 or newer, requires `id-token: write`, and publishes with
 `npm publish --provenance` so npm Trusted Publishing can issue a short-lived
 OIDC publish credential and attach package provenance. If Trusted Publishing is
 not configured on npmjs.com for these packages, the publish step must fail; do

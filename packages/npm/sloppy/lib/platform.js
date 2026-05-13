@@ -34,16 +34,16 @@ function resolvePlatformPackage(env, processPlatform, processArch) {
   const libc = effectiveLibc(env, platform);
 
   if (platform === "win32" && arch === "x64") {
-    return { supported: true, packageName: "@rtlzeromemory/sloppy-win32-x64" };
+    return { supported: true, packageName: "@slopware/sloppy-win32-x64" };
   }
   if (platform === "linux" && arch === "x64" && libc === "gnu") {
-    return { supported: true, packageName: "@rtlzeromemory/sloppy-linux-x64" };
+    return { supported: true, packageName: "@slopware/sloppy-linux-x64" };
   }
   if (platform === "darwin" && arch === "arm64") {
-    return { supported: true, packageName: "@rtlzeromemory/sloppy-darwin-arm64" };
+    return { supported: true, packageName: "@slopware/sloppy-darwin-arm64" };
   }
   if (platform === "darwin" && arch === "x64") {
-    return { supported: true, packageName: "@rtlzeromemory/sloppy-darwin-x64" };
+    return { supported: true, packageName: "@slopware/sloppy-darwin-x64" };
   }
 
   return {
