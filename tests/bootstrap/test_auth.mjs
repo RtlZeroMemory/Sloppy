@@ -404,6 +404,32 @@ try {
 }
 
 {
+    const store = Auth.sessionStore.memory();
+    const first = Sloppy.create();
+    first.use(Auth.cookieSession({
+        secret: "isolated-memory-secret",
+        store,
+    }));
+    first.post("/login", (ctx) => Auth.signIn(ctx, { sub: "first-user" }));
+    const second = Sloppy.create();
+    second.use(Auth.cookieSession({
+        secret: "isolated-memory-secret",
+        store,
+    }));
+    second.get("/me", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
+
+    const firstHost = Testing.createHost(first);
+    const secondHost = Testing.createHost(second);
+    const login = await firstHost.post("/login");
+    const session = cookieValue(login.headers.get("set-cookie"));
+    assert.equal((await requestJson(secondHost, "GET", "/me", {
+        headers: { cookie: `sloppy.session=${session}` },
+    })).response.status, 401);
+    await firstHost.close();
+    await secondHost.close();
+}
+
+{
     const app = Sloppy.create();
     app.use(Auth.cookieSession({
         secret: "rotate-session-secret",
@@ -429,6 +455,35 @@ try {
     assert.equal((await requestJson(host, "GET", "/me", {
         headers: { cookie: `sloppy.session=${rotated}` },
     })).response.status, 200);
+    await host.close();
+}
+
+{
+    let createSql;
+    const db = {
+        __debug() {
+            return { kind: "sqlserver-connection" };
+        },
+        async exec(sql) {
+            if (createSql === undefined) {
+                createSql = sql;
+            }
+        },
+        async queryOne() {
+            return undefined;
+        },
+    };
+    const app = Sloppy.create();
+    app.use(Auth.cookieSession({
+        secret: "sqlserver-session-secret",
+        store: Auth.sessionStore.dataProvider({ db }),
+        clock: () => 1_700_000_000_000,
+    }));
+    app.post("/login", (ctx) => Auth.signIn(ctx, { sub: "sqlserver-user" }));
+
+    const host = Testing.createHost(app);
+    assert.equal((await requestJson(host, "POST", "/login")).response.status, 200);
+    assert.match(createSql, /^IF OBJECT_ID\(N'dbo\.sloppy_auth_sessions', N'U'\) IS NULL/u);
     await host.close();
 }
 

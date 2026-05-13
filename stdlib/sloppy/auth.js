@@ -1307,7 +1307,24 @@ function createDataProviderSessionStore(options) {
         if (ensured) {
             return;
         }
-        await db.exec(`CREATE TABLE IF NOT EXISTS sloppy_auth_sessions (
+        if (kind === "sqlserver") {
+            await db.exec(`IF OBJECT_ID(N'dbo.sloppy_auth_sessions', N'U') IS NULL
+BEGIN
+CREATE TABLE sloppy_auth_sessions (
+id NVARCHAR(255) NOT NULL PRIMARY KEY,
+subject NVARCHAR(255) NOT NULL,
+claims_json NVARCHAR(MAX) NOT NULL,
+created_at_ms BIGINT NOT NULL,
+last_seen_at_ms BIGINT NOT NULL,
+expires_at_ms BIGINT NULL,
+idle_expires_at_ms BIGINT NULL,
+revoked_at_ms BIGINT NULL,
+csrf NVARCHAR(255) NULL,
+metadata_json NVARCHAR(MAX) NULL
+)
+END`, []);
+        } else {
+            await db.exec(`CREATE TABLE IF NOT EXISTS sloppy_auth_sessions (
 id TEXT PRIMARY KEY,
 subject TEXT NOT NULL,
 claims_json TEXT NOT NULL,
@@ -1319,6 +1336,7 @@ revoked_at_ms INTEGER NULL,
 csrf TEXT NULL,
 metadata_json TEXT NULL
 )`, []);
+        }
         ensured = true;
     }
     const store = Object.freeze({
@@ -1382,7 +1400,7 @@ function materializeSessionStore(descriptor) {
         return undefined;
     }
     if (descriptor.kind === "memory") {
-        return descriptor.store;
+        return createMemorySessionStore(descriptor.options);
     }
     if (descriptor.kind === "dataProvider") {
         return createDataProviderSessionStore(descriptor.options);
@@ -1652,10 +1670,13 @@ const password = Object.freeze({
 
 const sessionStore = Object.freeze({
     memory(options = undefined) {
+        if (options !== undefined && !isPlainObject(options)) {
+            throw new TypeError("Sloppy Auth.sessionStore.memory options must be a plain object.");
+        }
         return Object.freeze({
             __sloppySessionStore: true,
             kind: "memory",
-            store: createMemorySessionStore(options),
+            options: options === undefined ? undefined : Object.freeze({ ...options }),
         });
     },
     dataProvider(options) {
