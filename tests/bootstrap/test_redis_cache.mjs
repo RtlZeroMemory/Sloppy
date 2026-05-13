@@ -35,7 +35,7 @@ function bridgeWithStore() {
     const handles = new Map();
     const values = new Map();
     const sets = new Map();
-    let loadedScript = "";
+    const scripts = new Map();
     function sadd(key, value) {
         if (!sets.has(key)) {
             sets.set(key, new Set());
@@ -79,26 +79,57 @@ function bridgeWithStore() {
             }
             case "PEXPIRE":
                 return ":1\r\n";
-            case "SCRIPT":
-                loadedScript = command[2];
-                return bulk("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+            case "SCRIPT": {
+                const sha = String(scripts.size + 1).padStart(40, "0");
+                scripts.set(sha, command[2]);
+                return bulk(sha);
+            }
             case "EVALSHA": {
+                const loadedScript = scripts.get(command[1]) ?? "";
                 const numKeys = Number(command[2]);
                 const keys = command.slice(3, 3 + numKeys);
                 const args = command.slice(3 + numKeys);
-                if (loadedScript.includes("SMEMBERS")) {
+                if (loadedScript.includes("reverseKey = key .. ARGV[1]")) {
                     const entries = [...(sets.get(keys[0]) ?? new Set())];
                     for (const key of entries) {
+                        const reverseKey = `${key}${args[0]}`;
+                        for (const tagKey of sets.get(reverseKey) ?? []) {
+                            sets.get(tagKey)?.delete(key);
+                        }
+                        sets.delete(reverseKey);
                         values.delete(key);
                         sets.get(keys[1])?.delete(key);
+                        sets.get(keys[1])?.delete(reverseKey);
                     }
                     sets.delete(keys[0]);
+                    sets.get(keys[1])?.delete(keys[0]);
                     return `:${entries.length}\r\n`;
                 }
+                if (loadedScript.includes("return redis.call(\"DEL\", KEYS[1])")) {
+                    for (const tagKey of sets.get(keys[2]) ?? []) {
+                        sets.get(tagKey)?.delete(keys[0]);
+                    }
+                    sets.delete(keys[2]);
+                    sets.get(keys[1])?.delete(keys[0]);
+                    sets.get(keys[1])?.delete(keys[2]);
+                    return `:${values.delete(keys[0]) ? 1 : 0}\r\n`;
+                }
+                if (loadedScript.includes("redis.call(\"PEXPIRE\", KEYS[1], ARGV[1])")) {
+                    return `:${values.has(keys[0]) ? 1 : 0}\r\n`;
+                }
+                for (const tagKey of sets.get(keys[2]) ?? []) {
+                    sets.get(tagKey)?.delete(keys[0]);
+                }
+                sets.delete(keys[2]);
                 values.set(keys[0], args[0]);
                 sadd(keys[1], keys[0]);
-                for (const tagKey of args.slice(3)) {
+                if (keys.length > 3) {
+                    sadd(keys[1], keys[2]);
+                }
+                for (const tagKey of keys.slice(3)) {
                     sadd(tagKey, keys[0]);
+                    sadd(keys[2], tagKey);
+                    sadd(keys[1], tagKey);
                 }
                 return ":1\r\n";
             }
@@ -160,6 +191,20 @@ try {
     assert.equal(await cache.remove("hello"), true);
     assert.equal(await cache.get("hello"), undefined);
 
+    await cache.set("plain-string", "value");
+    await cache.set("plain-object", { value: true });
+    await cache.set("plain-null", null);
+    await cache.set("tagged-object", { tagged: true }, { tags: ["format"] });
+    assert.deepEqual(await cache.get("plain-string"), "value");
+    assert.deepEqual(await cache.get("plain-object"), { value: true });
+    assert.equal(await cache.get("plain-null"), null);
+    assert.deepEqual(await cache.get("tagged-object"), { tagged: true });
+    assert.equal([...bridge.values.values()].every((value) => value.startsWith("J:")), true);
+    await assert.rejects(
+        () => Cache.redis("small", { client: redis, prefix: "tests:small:", maxValueBytes: 2 }).set("too-large", { value: true }),
+        /SLOPPY_E_REDIS_VALUE_TOO_LARGE/u,
+    );
+
     assert.deepEqual(await cache.getOrCreate("coalesced", { ttlMs: 1000 }, async () => ({ value: 1 })), { value: 1 });
     assert.deepEqual(await cache.getOrCreate("coalesced", { ttlMs: 1000 }, async () => ({ value: 2 })), { value: 1 });
     assert.deepEqual(await cache.getOrCreate("natural", async () => ({ value: 3 }), { ttlMs: 1000 }), { value: 3 });
@@ -168,6 +213,15 @@ try {
     assert.deepEqual(await cache.get("tagged"), { tagged: true });
     assert.equal(await cache.invalidateTag("user:1"), 1);
     assert.equal(await cache.get("tagged"), undefined);
+
+    await cache.set("multi", { tagged: true }, { tags: ["a", "b"] });
+    assert.equal(await cache.invalidateTag("a"), 1);
+    assert.equal(await cache.invalidateTag("b"), 0);
+
+    await cache.set("removed", { tagged: true }, { tags: ["remove-a", "remove-b"] });
+    assert.equal(await cache.remove("removed"), true);
+    assert.equal(await cache.invalidateTag("remove-a"), 0);
+    assert.equal(await cache.invalidateTag("remove-b"), 0);
 
     await cache.set("a", 1);
     await cache.set("b", 2);

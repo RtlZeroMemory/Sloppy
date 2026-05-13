@@ -10,16 +10,28 @@ Requirements:
 - Sloppy outbound network bridge
 - opt-in test gate, for example `SLOPPY_TESTSERVICES=1`
 
-The test harness or CI job should perform skip/exit behavior when the opt-in
-gate, Docker probe, or network bridge is unavailable. Keep the application
-snippet runtime neutral.
+The test harness or CI job should skip when the opt-in gate, Docker probe, or
+network bridge is unavailable. Keep the application snippet runtime neutral.
 
 ```ts
 import { Cache, Results, Sloppy, TestHost, TestServices } from "sloppy";
 
+function skip(reason) {
+    console.log(`SKIPPED: ${reason}`);
+    process.exit(0);
+}
+
+if (process.env.SLOPPY_TESTSERVICES !== "1") {
+    skip("set SLOPPY_TESTSERVICES=1 to run TestServices Redis coverage");
+}
+
+if (globalThis.__sloppy?.net === undefined) {
+    skip("Sloppy outbound network bridge is unavailable");
+}
+
 const docker = await TestServices.docker.available();
 if (!docker.ok) {
-    throw new Error(`Docker unavailable for TestServices: ${docker.reason}`);
+    skip(`Docker unavailable for TestServices: ${docker.reason}`);
 }
 
 await using redis = await TestServices.redis();

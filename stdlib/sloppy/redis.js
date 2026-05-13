@@ -138,11 +138,12 @@ function normalizePool(options = undefined) {
     if (!isPlainObject(options)) {
         throw redisError("SLOPPY_E_REDIS_INVALID_OPTIONS", "Redis pool options must be a plain object.");
     }
+    const pendingQueueTimeoutMs = options.pendingQueueTimeoutMs ?? options.acquireTimeoutMs;
     return Object.freeze({
         maxConnections: normalizeInteger(options.maxConnections, DEFAULT_POOL_MAX_CONNECTIONS, "pool.maxConnections", 1, 1024),
         idleTimeoutMs: normalizeTimeout(options.idleTimeoutMs, DEFAULT_POOL_IDLE_TIMEOUT_MS, "pool.idleTimeoutMs"),
         pendingQueueLimit: normalizeInteger(options.pendingQueueLimit, DEFAULT_POOL_PENDING_LIMIT, "pool.pendingQueueLimit", 0, 100000),
-        pendingQueueTimeoutMs: normalizeTimeout(options.pendingQueueTimeoutMs, DEFAULT_POOL_PENDING_TIMEOUT_MS, "pool.pendingQueueTimeoutMs"),
+        pendingQueueTimeoutMs: normalizeTimeout(pendingQueueTimeoutMs, DEFAULT_POOL_PENDING_TIMEOUT_MS, "pool.acquireTimeoutMs"),
     });
 }
 
@@ -188,6 +189,7 @@ function normalizeClientOptions(name, options = {}) {
         throw redisError("SLOPPY_E_REDIS_INVALID_OPTIONS", "Redis client options must be a plain object.");
     }
     const endpoint = parseRedisUrl(options.url, options);
+    const validateOnConnect = options.validateOnConnect ?? options.pingOnConnect;
     return Object.freeze({
         name,
         endpoint,
@@ -198,17 +200,19 @@ function normalizeClientOptions(name, options = {}) {
         maxArrayItems: normalizeInteger(options.maxArrayItems, DEFAULT_MAX_ARRAY_ITEMS, "maxArrayItems", 1, Number.MAX_SAFE_INTEGER),
         maxArrayDepth: normalizeInteger(options.maxArrayDepth, DEFAULT_MAX_ARRAY_DEPTH, "maxArrayDepth", 1, 256),
         pool: normalizePool(options.pool),
-        validateOnConnect: options.validateOnConnect !== false,
+        validateOnConnect: validateOnConnect !== false,
     });
 }
 
 function redactRedisUrl(value) {
     try {
         const parsed = new URL(String(value));
-        if (parsed.password.length > 0) {
+        const hasUsername = parsed.username.length > 0;
+        const hasPassword = parsed.password.length > 0;
+        if (hasPassword) {
             parsed.password = SECRET_REDACTION;
         }
-        if (parsed.username.length > 0 && parsed.password.length > 0) {
+        if (hasUsername && hasPassword) {
             parsed.username = SECRET_REDACTION;
         }
         return parsed.toString();
@@ -600,15 +604,19 @@ class RedisConnectionPool {
     async _create() {
         this.active += 1;
         this.metrics.connectionsCreated += 1;
-        const connection = new RedisConnection(await openConnection(this.options), this.options, this.metrics);
+        let connection;
         try {
+            connection = new RedisConnection(await openConnection(this.options), this.options, this.metrics);
             await connection.initialize();
+            return connection;
         } catch (error) {
             this.active -= 1;
-            await connection.abort().catch(() => {});
+            if (connection !== undefined) {
+                await connection.abort().catch(() => {});
+            }
+            this._drainQueue();
             throw error;
         }
-        return connection;
     }
 
     async acquire() {
@@ -735,7 +743,11 @@ function decodeValue(bytes, schemaOrOptions = undefined) {
         return Text.utf8.decode(payload);
     }
     if (kind === "B") {
-        return Base64.decode(Text.utf8.decode(payload));
+        try {
+            return Base64.decode(Text.utf8.decode(payload));
+        } catch (error) {
+            throw redisError("SLOPPY_E_REDIS_RESPONSE_VALIDATION_FAILED", "Redis Base64 value could not be decoded.", { cause: error });
+        }
     }
     if (kind !== "J") {
         return bytes;
@@ -851,16 +863,14 @@ function tokenDisplay(tokenValue) {
 function randomOwnerToken() {
     try {
         return Random.hex(16);
-    } catch {
+    } catch (error) {
         const bytes = new Uint8Array(16);
-        if (globalThis.crypto?.getRandomValues !== undefined) {
-            globalThis.crypto.getRandomValues(bytes);
-        } else {
-            for (let index = 0; index < bytes.length; index += 1) {
-                bytes[index] = Math.floor(Math.random() * 256);
-            }
+        const crypto = globalThis.crypto;
+        if (crypto?.getRandomValues !== undefined) {
+            crypto.getRandomValues(bytes);
+            return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
         }
-        return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        throw redisError("SLOPPY_E_REDIS_SECURE_RANDOM_UNAVAILABLE", "Redis lock owner tokens require secure randomness.", { cause: error });
     }
 }
 
@@ -1123,10 +1133,14 @@ function createRedisClient(name, rawOptions) {
                 await client.ping();
                 return { status: "healthy", data: { name } };
             } catch (error) {
+                const rawMessage = String(error?.message ?? error);
+                const message = options.endpoint.password === undefined || options.endpoint.password.length === 0
+                    ? rawMessage
+                    : rawMessage.replaceAll(options.endpoint.password, SECRET_REDACTION);
                 return {
                     status: "unhealthy",
                     errorCode: error?.code ?? "SLOPPY_E_REDIS_COMMAND_FAILED",
-                    message: String(error?.message ?? error).replace(options.endpoint.password ?? "", SECRET_REDACTION),
+                    message,
                     data: { name, url: options.endpoint.redactedUrl },
                 };
             }
@@ -1200,7 +1214,11 @@ function createLocks(client, rawOptions = {}) {
                     key,
                     owner: "[redacted]",
                     async extend(nextTtlMs) {
-                        const result = await client.script(LOCK_EXTEND_SCRIPT, [key], [owner, pxFromTtl(nextTtlMs)]);
+                        const ttlMs = pxFromTtl(nextTtlMs, "lock.extend ttlMs");
+                        if (ttlMs === undefined) {
+                            throw redisError("SLOPPY_E_REDIS_INVALID_OPTIONS", "Redis lock extend ttlMs is required.");
+                        }
+                        const result = await client.script(LOCK_EXTEND_SCRIPT, [key], [owner, ttlMs]);
                         if (result !== 1) {
                             throw redisError("SLOPPY_E_REDIS_LOCK_LOST", "Redis lock lease is no longer owned by this client.");
                         }

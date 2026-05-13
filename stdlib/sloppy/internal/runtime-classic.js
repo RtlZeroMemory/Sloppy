@@ -12499,6 +12499,7 @@ Reason:
     const REALTIME_EVENT = Symbol.for("sloppy.realtime.event");
     const REALTIME_RESERVED_EVENTS = new Set(["connect", "disconnect", "error", "ping", "pong", "join", "leave", "system"]);
     const REALTIME_PROTOCOL_UNSAFE_PATTERN = /[^!#$%&'*+\-.^_`|~0-9A-Za-z]/gu;
+    let __sloppyRealtimeConnectionIdCounter = 0;
     const __sloppyRealtimeSchemaRuntime = createSloppySchemaRuntime();
     const __sloppyRealtimeSchema = __sloppyRealtimeSchemaRuntime.Schema;
     const __sloppyRealtimeIsSchema = __sloppyRealtimeSchemaRuntime.isSchema;
@@ -13027,7 +13028,7 @@ Reason:
         });
         return __sloppyRealtimeWebSocket(async (ctx, socket) => {
             const eventHandlers = new Map();
-            const connectionId = socket.id ?? `${channel.name}:${Date.now()}:${Math.random()}`;
+            const connectionId = socket.id ?? `${channel.name}:${Date.now()}:${++__sloppyRealtimeConnectionIdCounter}`;
             const routePattern = ctx.routePattern ?? ctx.request?.path ?? "";
             const routeGroup = `route:${channel.name}:${routePattern}`;
             let accepted = false;
@@ -17086,6 +17087,8 @@ Reason:
             exponential: __sloppyWebhookRetryExponential,
         }),
     });
+    const __sloppySchema = createSloppySchemaRuntime();
+    const Schema = __sloppySchema.Schema;
     const __sloppyRedis = (() => {
 
 const ASYNC_DISPOSE = Symbol.asyncDispose;
@@ -17222,11 +17225,12 @@ function normalizePool(options = undefined) {
     if (!isPlainObject(options)) {
         throw redisError("SLOPPY_E_REDIS_INVALID_OPTIONS", "Redis pool options must be a plain object.");
     }
+    const pendingQueueTimeoutMs = options.pendingQueueTimeoutMs ?? options.acquireTimeoutMs;
     return Object.freeze({
         maxConnections: normalizeInteger(options.maxConnections, DEFAULT_POOL_MAX_CONNECTIONS, "pool.maxConnections", 1, 1024),
         idleTimeoutMs: normalizeTimeout(options.idleTimeoutMs, DEFAULT_POOL_IDLE_TIMEOUT_MS, "pool.idleTimeoutMs"),
         pendingQueueLimit: normalizeInteger(options.pendingQueueLimit, DEFAULT_POOL_PENDING_LIMIT, "pool.pendingQueueLimit", 0, 100000),
-        pendingQueueTimeoutMs: normalizeTimeout(options.pendingQueueTimeoutMs, DEFAULT_POOL_PENDING_TIMEOUT_MS, "pool.pendingQueueTimeoutMs"),
+        pendingQueueTimeoutMs: normalizeTimeout(pendingQueueTimeoutMs, DEFAULT_POOL_PENDING_TIMEOUT_MS, "pool.acquireTimeoutMs"),
     });
 }
 
@@ -17272,6 +17276,7 @@ function normalizeClientOptions(name, options = {}) {
         throw redisError("SLOPPY_E_REDIS_INVALID_OPTIONS", "Redis client options must be a plain object.");
     }
     const endpoint = parseRedisUrl(options.url, options);
+    const validateOnConnect = options.validateOnConnect ?? options.pingOnConnect;
     return Object.freeze({
         name,
         endpoint,
@@ -17282,17 +17287,19 @@ function normalizeClientOptions(name, options = {}) {
         maxArrayItems: normalizeInteger(options.maxArrayItems, DEFAULT_MAX_ARRAY_ITEMS, "maxArrayItems", 1, Number.MAX_SAFE_INTEGER),
         maxArrayDepth: normalizeInteger(options.maxArrayDepth, DEFAULT_MAX_ARRAY_DEPTH, "maxArrayDepth", 1, 256),
         pool: normalizePool(options.pool),
-        validateOnConnect: options.validateOnConnect !== false,
+        validateOnConnect: validateOnConnect !== false,
     });
 }
 
 function redactRedisUrl(value) {
     try {
         const parsed = new URL(String(value));
-        if (parsed.password.length > 0) {
+        const hasUsername = parsed.username.length > 0;
+        const hasPassword = parsed.password.length > 0;
+        if (hasPassword) {
             parsed.password = SECRET_REDACTION;
         }
-        if (parsed.username.length > 0 && parsed.password.length > 0) {
+        if (hasUsername && hasPassword) {
             parsed.username = SECRET_REDACTION;
         }
         return parsed.toString();
@@ -17684,15 +17691,19 @@ class RedisConnectionPool {
     async _create() {
         this.active += 1;
         this.metrics.connectionsCreated += 1;
-        const connection = new RedisConnection(await openConnection(this.options), this.options, this.metrics);
+        let connection;
         try {
+            connection = new RedisConnection(await openConnection(this.options), this.options, this.metrics);
             await connection.initialize();
+            return connection;
         } catch (error) {
             this.active -= 1;
-            await connection.abort().catch(() => {});
+            if (connection !== undefined) {
+                await connection.abort().catch(() => {});
+            }
+            this._drainQueue();
             throw error;
         }
-        return connection;
     }
 
     async acquire() {
@@ -17819,7 +17830,11 @@ function decodeValue(bytes, schemaOrOptions = undefined) {
         return Text.utf8.decode(payload);
     }
     if (kind === "B") {
-        return Base64.decode(Text.utf8.decode(payload));
+        try {
+            return Base64.decode(Text.utf8.decode(payload));
+        } catch (error) {
+            throw redisError("SLOPPY_E_REDIS_RESPONSE_VALIDATION_FAILED", "Redis Base64 value could not be decoded.", { cause: error });
+        }
     }
     if (kind !== "J") {
         return bytes;
@@ -17935,16 +17950,14 @@ function tokenDisplay(tokenValue) {
 function randomOwnerToken() {
     try {
         return Random.hex(16);
-    } catch {
+    } catch (error) {
         const bytes = new Uint8Array(16);
-        if (globalThis.crypto?.getRandomValues !== undefined) {
-            globalThis.crypto.getRandomValues(bytes);
-        } else {
-            for (let index = 0; index < bytes.length; index += 1) {
-                bytes[index] = Math.floor(Math.random() * 256);
-            }
+        const crypto = globalThis.crypto;
+        if (crypto?.getRandomValues !== undefined) {
+            crypto.getRandomValues(bytes);
+            return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
         }
-        return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        throw redisError("SLOPPY_E_REDIS_SECURE_RANDOM_UNAVAILABLE", "Redis lock owner tokens require secure randomness.", { cause: error });
     }
 }
 
@@ -18207,10 +18220,14 @@ function createRedisClient(name, rawOptions) {
                 await client.ping();
                 return { status: "healthy", data: { name } };
             } catch (error) {
+                const rawMessage = String(error?.message ?? error);
+                const message = options.endpoint.password === undefined || options.endpoint.password.length === 0
+                    ? rawMessage
+                    : rawMessage.replaceAll(options.endpoint.password, SECRET_REDACTION);
                 return {
                     status: "unhealthy",
                     errorCode: error?.code ?? "SLOPPY_E_REDIS_COMMAND_FAILED",
-                    message: String(error?.message ?? error).replace(options.endpoint.password ?? "", SECRET_REDACTION),
+                    message,
                     data: { name, url: options.endpoint.redactedUrl },
                 };
             }
@@ -18284,7 +18301,11 @@ function createLocks(client, rawOptions = {}) {
                     key,
                     owner: "[redacted]",
                     async extend(nextTtlMs) {
-                        const result = await client.script(LOCK_EXTEND_SCRIPT, [key], [owner, pxFromTtl(nextTtlMs)]);
+                        const ttlMs = pxFromTtl(nextTtlMs, "lock.extend ttlMs");
+                        if (ttlMs === undefined) {
+                            throw redisError("SLOPPY_E_REDIS_INVALID_OPTIONS", "Redis lock extend ttlMs is required.");
+                        }
+                        const result = await client.script(LOCK_EXTEND_SCRIPT, [key], [owner, ttlMs]);
                         if (result !== 1) {
                             throw redisError("SLOPPY_E_REDIS_LOCK_LOST", "Redis lock lease is no longer owned by this client.");
                         }
@@ -18339,29 +18360,71 @@ const Redis = Object.freeze({
     const SloppyRedisError = __sloppyRedis.SloppyRedisError;
     const __decodeRedisValue = __sloppyRedis.__decodeRedisValue;
     const __normalizeRedisKey = __sloppyRedis.__normalizeRedisKey;
-    const __sloppyCache = (() => {
 
 const ASYNC_DISPOSE = Symbol.asyncDispose;
 const DEFAULT_PREFIX = "sloppy:cache:";
 const DEFAULT_TTL_MS = 60000;
 const DEFAULT_MAX_VALUE_BYTES = 1024 * 1024;
-const SET_WITH_TAGS_SCRIPT = `
+const REVERSE_TAG_SUFFIX = ":tags";
+const SET_CACHE_SCRIPT = `
+local existing = redis.call("SMEMBERS", KEYS[3])
+for _, tagKey in ipairs(existing) do
+  redis.call("SREM", tagKey, KEYS[1])
+end
+redis.call("DEL", KEYS[3])
 redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[2])
 redis.call("SADD", KEYS[2], KEYS[1])
 redis.call("PEXPIRE", KEYS[2], ARGV[3])
-for index = 4, #ARGV do
-  redis.call("SADD", ARGV[index], KEYS[1])
-  redis.call("PEXPIRE", ARGV[index], ARGV[3])
+if #KEYS > 3 then
+  redis.call("SADD", KEYS[2], KEYS[3])
+  redis.call("PEXPIRE", KEYS[3], ARGV[3])
+end
+for index = 4, #KEYS do
+  redis.call("SADD", KEYS[index], KEYS[1])
+  redis.call("SADD", KEYS[3], KEYS[index])
+  redis.call("SADD", KEYS[2], KEYS[index])
+  redis.call("PEXPIRE", KEYS[index], ARGV[3])
 end
 return 1`;
+const REMOVE_CACHE_SCRIPT = `
+local tags = redis.call("SMEMBERS", KEYS[3])
+for _, tagKey in ipairs(tags) do
+  redis.call("SREM", tagKey, KEYS[1])
+end
+redis.call("DEL", KEYS[3])
+redis.call("SREM", KEYS[2], KEYS[1])
+redis.call("SREM", KEYS[2], KEYS[3])
+return redis.call("DEL", KEYS[1])`;
 const INVALIDATE_TAG_SCRIPT = `
 local entries = redis.call("SMEMBERS", KEYS[1])
 for _, key in ipairs(entries) do
+  local reverseKey = key .. ARGV[1]
+  local tags = redis.call("SMEMBERS", reverseKey)
+  for _, tagKey in ipairs(tags) do
+    redis.call("SREM", tagKey, key)
+  end
+  redis.call("DEL", reverseKey)
   redis.call("DEL", key)
   redis.call("SREM", KEYS[2], key)
+  redis.call("SREM", KEYS[2], reverseKey)
 end
 redis.call("DEL", KEYS[1])
+redis.call("SREM", KEYS[2], KEYS[1])
 return #entries`;
+const TOUCH_CACHE_SCRIPT = `
+if redis.call("EXISTS", KEYS[1]) == 0 then
+  return 0
+end
+redis.call("PEXPIRE", KEYS[1], ARGV[1])
+redis.call("PEXPIRE", KEYS[2], ARGV[2])
+local tags = redis.call("SMEMBERS", KEYS[3])
+if #tags > 0 then
+  redis.call("PEXPIRE", KEYS[3], ARGV[2])
+end
+for _, tagKey in ipairs(tags) do
+  redis.call("PEXPIRE", tagKey, ARGV[2])
+end
+return 1`;
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -18462,6 +18525,7 @@ function cacheKeys(options, key) {
     return Object.freeze({
         hash,
         entry: `${options.prefix}${options.name}:entry:${hash}`,
+        tags: `${options.prefix}${options.name}:entry:${hash}${REVERSE_TAG_SUFFIX}`,
         keys: `${options.prefix}${options.name}:keys`,
     });
 }
@@ -18525,14 +18589,15 @@ function createRedisCache(nameOrRedis, maybeOptions = undefined) {
     async function get(key, readOptions = undefined) {
         assertOpen();
         const keys = cacheKeys(options, normalizeCacheKey(key));
-        const value = await options.client.get(keys.entry, readOptions);
-        if (value === undefined) {
+        const value = await options.client.command("GET", [keys.entry]);
+        if (value === null) {
             misses += 1;
             return undefined;
         }
         hits += 1;
         if (readOptions?.slidingExpirationMs !== undefined) {
-            await options.client.expire(keys.entry, positiveInteger(readOptions.slidingExpirationMs, undefined, "slidingExpirationMs"));
+            const ttlMs = positiveInteger(readOptions.slidingExpirationMs, undefined, "slidingExpirationMs");
+            await options.client.script(TOUCH_CACHE_SCRIPT, [keys.entry, keys.keys, keys.tags], [ttlMs, Math.max(ttlMs, options.ttlMs)]);
         }
         return decodeCacheValue(value, readOptions);
     }
@@ -18545,18 +18610,11 @@ function createRedisCache(nameOrRedis, maybeOptions = undefined) {
         const ttlMs = ttlFor(options, writeOptions);
         const encoded = encodeCacheValue(value, options.maxValueBytes);
         const tagKeys = tags.map((tag) => tagKey(options, tag));
-        if (tagKeys.length === 0) {
-            await options.client.set(keys.entry, value, { ttlMs });
-            await options.client.command("SADD", [keys.keys, keys.entry]);
-            await options.client.expire(keys.keys, ttlMs);
-        } else {
-            await options.client.script(SET_WITH_TAGS_SCRIPT, [keys.entry, keys.keys], [
-                encoded,
-                ttlMs,
-                Math.max(ttlMs, options.ttlMs),
-                ...tagKeys,
-            ]);
-        }
+        await options.client.script(SET_CACHE_SCRIPT, [keys.entry, keys.keys, keys.tags, ...tagKeys], [
+            encoded,
+            ttlMs,
+            Math.max(ttlMs, options.ttlMs),
+        ]);
         sets += 1;
         return true;
     }
@@ -18564,8 +18622,7 @@ function createRedisCache(nameOrRedis, maybeOptions = undefined) {
     async function remove(key) {
         assertOpen();
         const keys = cacheKeys(options, normalizeCacheKey(key));
-        const count = await options.client.delete(keys.entry);
-        await options.client.command("SREM", [keys.keys, keys.entry]).catch(() => {});
+        const count = await options.client.script(REMOVE_CACHE_SCRIPT, [keys.entry, keys.keys, keys.tags], []);
         deletes += count;
         return count > 0;
     }
@@ -18604,7 +18661,7 @@ function createRedisCache(nameOrRedis, maybeOptions = undefined) {
 
     async function invalidateTag(tag) {
         assertOpen();
-        const deleted = await options.client.script(INVALIDATE_TAG_SCRIPT, [tagKey(options, normalizeCacheKey(tag)), `${options.prefix}${options.name}:keys`], []);
+        const deleted = await options.client.script(INVALIDATE_TAG_SCRIPT, [tagKey(options, normalizeCacheKey(tag)), `${options.prefix}${options.name}:keys`], [REVERSE_TAG_SUFFIX]);
         tagInvalidations += 1;
         deletes += Number(deleted) || 0;
         return deleted;
@@ -18681,6 +18738,8 @@ function createRedisCache(nameOrRedis, maybeOptions = undefined) {
     if (ASYNC_DISPOSE !== undefined) {
         cache[ASYNC_DISPOSE] = cache.dispose;
     }
+    Object.defineProperty(cache, CACHE_MARKER, { value: true });
+    Object.defineProperty(cache, "__sloppyCache", { value: true, enumerable: true });
     Object.defineProperty(cache, "__sloppyCacheRegistration", {
         value: Object.freeze({
             kind: "redis",
@@ -18693,9 +18752,11 @@ function createRedisCache(nameOrRedis, maybeOptions = undefined) {
     return Object.freeze(cache);
 }
 
-        return Object.freeze({ createRedisCache });
-    })();
-    Cache = Object.freeze({ ...Cache, redis: __sloppyCache.createRedisCache });
+    Cache = Object.freeze({
+        ...Cache,
+        redis: createRedisCache,
+        __testing: Object.freeze({ ...Cache.__testing, createRedisCache }),
+    });
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
         Cache,

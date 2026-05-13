@@ -27,18 +27,17 @@ function installNodeBridge() {
                     noDelay: options.noDelay === true,
                 });
                 socket.setMaxListeners(0);
-                const chunks = [];
-                let ended = false;
-                socket.on("data", (chunk) => chunks.push(new Uint8Array(chunk)));
+                const state = { socket, chunks: [], ended: false };
+                socket.on("data", (chunk) => state.chunks.push(new Uint8Array(chunk)));
                 socket.on("end", () => {
-                    ended = true;
+                    state.ended = true;
                 });
                 socket.on("close", () => {
-                    ended = true;
+                    state.ended = true;
                 });
                 await once(socket, "connect");
                 const id = nextId++;
-                handles.set(id, { socket, chunks, ended });
+                handles.set(id, state);
                 return id;
             },
             async write(id, bytes) {

@@ -13,11 +13,35 @@ async function runExclusive(locks, name, operation) {
         waitTimeoutMs: 5000,
         retryDelayMs: 50,
     });
+    let finished = false;
+    let timer;
+    let resolveExtender;
+    const extender = new Promise((resolve) => {
+        resolveExtender = resolve;
+        const tick = async () => {
+            if (finished) {
+                resolve();
+                return;
+            }
+            try {
+                await lease.extend(30_000);
+            } finally {
+                if (finished) {
+                    resolve();
+                } else {
+                    timer = setTimeout(tick, 15_000);
+                }
+            }
+        };
+        timer = setTimeout(tick, 15_000);
+    });
     try {
-        const result = await operation();
-        await lease.extend(30_000);
-        return result;
+        return await operation();
     } finally {
+        finished = true;
+        clearTimeout(timer);
+        resolveExtender();
+        await extender.catch(() => {});
         await lease.dispose();
     }
 }

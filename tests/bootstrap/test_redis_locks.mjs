@@ -94,14 +94,20 @@ try {
     const locks = Redis.locks(redis, { prefix: "tests:locks:" });
     const lease = await locks.acquire("jobs:leader", { ttlMs: 1000 });
     assert.equal(bridge.values.has("tests:locks:jobs:leader"), true);
+    await assert.rejects(() => lease.extend(), /SLOPPY_E_REDIS_INVALID_OPTIONS/u);
+    await assert.rejects(() => lease.extend(0), /SLOPPY_E_REDIS_INVALID_OPTIONS/u);
     assert.equal(await lease.extend(2000), true);
     await assert.rejects(
         () => locks.acquire("jobs:leader", { ttlMs: 1000, waitTimeoutMs: 1, retryDelayMs: 1 }),
         /SLOPPY_E_REDIS_LOCK_TIMEOUT/u,
     );
-    assert.equal(await lease.release(), true);
+    bridge.values.set("tests:locks:jobs:leader", "other-owner");
+    await assert.rejects(() => lease.extend(2000), /SLOPPY_E_REDIS_LOCK_LOST/u);
+    await assert.rejects(() => lease.release(), /SLOPPY_E_REDIS_LOCK_RELEASE_FAILED/u);
     await lease.dispose();
+    bridge.values.delete("tests:locks:jobs:leader");
     const second = await locks.acquire("jobs:leader", { ttlMs: 1000 });
+    assert.equal(await second.release(), true);
     await second.dispose();
     await redis.dispose();
 } finally {

@@ -2287,6 +2287,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         orm_extraction_partial: false,
         uses_migrations_runtime: false,
         uses_provider_health_runtime: false,
+        uses_redis_runtime: false,
         source_files: Vec::new(),
         routes: Vec::new(),
         dynamic_routes: Vec::new(),

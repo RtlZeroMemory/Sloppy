@@ -19,6 +19,7 @@ const DEFAULT_STOP_TIMEOUT_MS = 10000;
 const DEFAULT_LOG_TAIL = 120;
 const SECRET_REDACTION = "[REDACTED]";
 const ASYNC_DISPOSE = Symbol.asyncDispose;
+let nonSecurityNameCounter = 0;
 
 function isPlainObject(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -92,21 +93,24 @@ function normalizeNonEmptyString(value, fallback, subject) {
 function randomHex(length) {
     try {
         return Array.from(Random.bytes(length), (byte) => byte.toString(16).padStart(2, "0")).join("");
-    } catch {
+    } catch (error) {
         const bytes = new Uint8Array(length);
-        if (globalThis.crypto?.getRandomValues !== undefined) {
-            globalThis.crypto.getRandomValues(bytes);
-        } else {
-            for (let index = 0; index < bytes.length; index += 1) {
-                bytes[index] = Math.floor(Math.random() * 256);
-            }
+        const crypto = globalThis.crypto;
+        if (crypto?.getRandomValues !== undefined) {
+            crypto.getRandomValues(bytes);
+            return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
         }
-        return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        throw new Error(`SLOPPY_E_TESTSERVICES_SECURE_RANDOM_UNAVAILABLE: ${error?.message ?? error}`);
     }
 }
 
+function nonSecuritySuffix() {
+    nonSecurityNameCounter += 1;
+    return `${Date.now().toString(16)}-${nonSecurityNameCounter.toString(16)}`;
+}
+
 function randomContainerName(kind) {
-    return `sloppy-testservices-${kind}-${randomHex(6)}`;
+    return `sloppy-testservices-${kind}-${nonSecuritySuffix()}`;
 }
 
 function generatedSqlServerPassword() {
@@ -1085,15 +1089,18 @@ function createRedisService(options, backend, state, url, port) {
             await service.flush();
         },
         env(prefix = undefined) {
-            return envWithPrefix({
+            const values = {
                 REDIS_HOST: LOCALHOST,
                 REDIS_PORT: String(port),
                 REDIS_DATABASE: String(options.database),
-                REDIS_PASSWORD: options.password,
                 REDIS_URL: url,
                 "Redis:Url": url,
                 "Sloppy__Redis__main__url": url,
-            }, prefix);
+            };
+            if (options.password !== undefined) {
+                values.REDIS_PASSWORD = options.password;
+            }
+            return envWithPrefix(values, prefix);
         },
         async logs(logOptions = {}) {
             const tail = normalizePort(logOptions.tail, DEFAULT_LOG_TAIL, "logs tail");

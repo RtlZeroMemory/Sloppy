@@ -270,6 +270,17 @@ function finishWithCleanup(result, cleanup) {
 }
 
 function createServiceProvider(registrations, capabilities, config = undefined) {
+    const normalizedRegistrations = new Map();
+    const originalTokens = new Map();
+    for (const [token, registration] of registrations.entries()) {
+        const normalizedToken = normalizeServiceToken(token);
+        if (normalizedRegistrations.has(normalizedToken)) {
+            throw new Error(`Sloppy service '${serviceTokenDisplay(normalizedToken)}' is already registered; '${serviceTokenDisplay(token)}' conflicts with '${serviceTokenDisplay(originalTokens.get(normalizedToken))}'.`);
+        }
+        normalizedRegistrations.set(normalizedToken, registration);
+        originalTokens.set(normalizedToken, token);
+    }
+    registrations = normalizedRegistrations;
     const singletonDisposables = [];
     let providerDisposed = false;
 
@@ -404,7 +415,7 @@ function createServiceProvider(registrations, capabilities, config = undefined) 
             registration.lifetime === "scoped" &&
             scope.__resolvingLifetimes().includes("singleton")
         ) {
-            throw new Error(`Sloppy singleton service cannot depend on scoped service '${serviceTokenDisplay(token)}'.`);
+            throw new Error(`Sloppy singleton service cannot depend on scoped service '${serviceTokenDisplay(normalizedToken)}'.`);
         }
 
         if (registration.lifetime === "singleton") {

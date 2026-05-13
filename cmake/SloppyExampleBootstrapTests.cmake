@@ -227,6 +227,9 @@
             NAME bootstrap.stdlib.redis_locks
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_redis_locks.mjs")
         add_test(
+            NAME bootstrap.stdlib.redis_runtime_classic
+            COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_redis_runtime_classic.mjs")
+        add_test(
             NAME bootstrap.stdlib.testservices_redis
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_testservices_redis.mjs")
         add_test(
@@ -261,6 +264,7 @@
             bootstrap.stdlib.http_client bootstrap.stdlib.webhooks bootstrap.stdlib.webhooks_runtime_classic
             bootstrap.stdlib.redis bootstrap.stdlib.redis_cache
             bootstrap.stdlib.redis_locks bootstrap.stdlib.testservices_redis
+            bootstrap.stdlib.redis_runtime_classic
             bootstrap.stdlib.redis_live bootstrap.stdlib.workers bootstrap.stdlib.ffi
             bootstrap.stdlib.codec_properties
             bootstrap.stdlib.core_integration PROPERTIES

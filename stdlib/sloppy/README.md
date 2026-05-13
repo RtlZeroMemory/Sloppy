@@ -167,6 +167,8 @@ lib/sloppy/bootstrap/sloppy/
 - `docs/api/time.md` — `sloppy/time`
 - `docs/api/crypto.md` — `sloppy/crypto`
 - `docs/api/codec.md` — `sloppy/codec`
+- `docs/api/redis.md` — `Redis`
+- `docs/api/cache.md` — `Cache.redis`
 - `docs/api/workers.md` — `sloppy/workers`
 - `docs/contributor/js-ts-standards.md`
 - `docs/reference/supported-syntax.md`

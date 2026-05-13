@@ -29,6 +29,19 @@ Redis calls require:
 
 If the bridge is missing, client operations fail. Sloppy does not fall back to
 memory storage and does not start Redis implicitly outside `TestServices.redis`.
+Directory packages do not add a Redis bridge by themselves. Package/runtime
+Redis support is only claimed for a V8-enabled runtime lane with the outbound
+network bridge active; the default non-V8 package lane reports the existing
+V8-required runtime diagnostic instead of running Redis routes:
+
+```text
+sloppy run: runtime feature activation failed: error SLOPPY_E_UNAVAILABLE_RUNTIME_FEATURE: runtime feature is unavailable
+  related:
+    <unknown>: v8
+    <unknown>: target.engine
+  help:
+    requires V8-enabled build; configure the V8 runtime lane or remove the Plan feature
+```
 
 ## Client Options
 
@@ -58,11 +71,11 @@ const redis = Redis.client("main", {
 | `connectTimeoutMs` | `1000` | Bounds TCP/TLS connect. |
 | `commandTimeoutMs` | `5000` | Bounds one command or pipeline. |
 | `maxValueBytes` | `1048576` | Applies to encoded values and parser bulk limits. |
-| `pingOnConnect` | `true` | Sends `PING` during connection setup. |
+| `pingOnConnect` | `true` | Sends `PING` during connection setup. `validateOnConnect` is accepted as a compatibility alias. |
 | `pool.maxConnections` | `4` | Bounded connection pool. |
 | `pool.idleTimeoutMs` | `30000` | Idle pooled connection pruning. |
 | `pool.pendingQueueLimit` | `64` | Fails when all connections are busy and the wait queue is full. |
-| `pool.acquireTimeoutMs` | `1000` | Bounds pool wait time. |
+| `pool.acquireTimeoutMs` | `1000` | Bounds pool wait time. `pool.pendingQueueTimeoutMs` is accepted as a compatibility alias. |
 
 ## Values
 

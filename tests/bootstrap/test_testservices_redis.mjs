@@ -41,8 +41,9 @@ function installBridge(bridge) {
 }
 
 class FakeDockerBackend {
-    constructor() {
+    constructor(expectPassword = true) {
         this.commands = [];
+        this.expectPassword = expectPassword;
     }
 
     async run(args) {
@@ -55,8 +56,12 @@ class FakeDockerBackend {
         }
         if (args[0] === "create") {
             assert(args.includes("redis:7-alpine"));
-            assert(args.includes("--requirepass"));
-            assert(args.includes("secret"));
+            if (this.expectPassword) {
+                assert(args.includes("--requirepass"));
+                assert(args.includes("secret"));
+            } else {
+                assert.equal(args.includes("--requirepass"), false);
+            }
             return { exitCode: 0, stdout: "redis-container\n", stderr: "", timedOut: false };
         }
         if (args[0] === "start") {
@@ -99,6 +104,7 @@ try {
     assert.equal(redis.url, "redis://:secret@127.0.0.1:49199/0");
     assert.equal(redis.env()["Redis:Url"], redis.url);
     assert.equal(redis.env().REDIS_URL, redis.url);
+    assert.equal(redis.env().REDIS_PASSWORD, "secret");
     assert.equal(await redis.client("from-service").ping(), "PONG");
     assert.equal(JSON.stringify(redis.diagnostics()).includes("secret"), false);
     await redis.flush();
@@ -109,3 +115,21 @@ try {
 }
 
 assert(dockerBackend.commands.some((args) => args[0] === "rm"));
+
+{
+    const noPasswordBackend = new FakeDockerBackend(false);
+    const noPasswordRestore = installBridge(redisBridge());
+    let noPasswordRedis;
+    try {
+        noPasswordRedis = await TestServices.redis({
+            dockerBackend: noPasswordBackend,
+            startupTimeoutMs: 100,
+            readinessTimeoutMs: 100,
+        });
+        assert.equal(noPasswordRedis.url, "redis://127.0.0.1:49199/0");
+        assert.equal(Object.hasOwn(noPasswordRedis.env(), "REDIS_PASSWORD"), false);
+    } finally {
+        await noPasswordRedis?.dispose();
+        noPasswordRestore();
+    }
+}

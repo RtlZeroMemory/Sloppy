@@ -4881,10 +4881,6 @@ fn sloppy_ffi_import_name_supported(name: &str) -> bool {
     matches!(name, "unsafeFfi" | "t")
 }
 
-fn sloppy_cache_import_name_supported(name: &str) -> bool {
-    matches!(name, "Cache")
-}
-
 fn sloppy_redis_import_name_supported(name: &str) -> bool {
     matches!(name, "Redis" | "SloppyRedisError")
 }
@@ -5083,7 +5079,6 @@ fn mark_sloppy_root_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclar
                 graph.uses_data_runtime = true;
                 graph.uses_sql_runtime = true;
             }
-            "Cache" => graph.uses_cache_runtime = true,
             "Redis" | "SloppyRedisError" => {
                 graph.uses_redis_runtime = true;
                 graph.uses_net_runtime = true;

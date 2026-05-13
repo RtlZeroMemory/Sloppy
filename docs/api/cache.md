@@ -104,6 +104,19 @@ await cache.set("user:1", { id: 1, name: "Ada" }, { tags: ["users"] });
 const value = await cache.get("user:1");
 ```
 
+The provider owns its Redis payload format and stores JSON values as bounded
+Sloppy value payloads. It does not provide an in-memory fallback.
+
+## Creation
+
+```ts
+const cache = Cache.redis("default", {
+    url: "redis://127.0.0.1:6379/0",
+    ttlMs: 60_000,
+    maxValueBytes: 1024 * 1024,
+});
+```
+
 `Cache.redis(name, options)` creates and owns a Redis client. `Cache.redis(redis,
 options)` uses an existing client and does not dispose it unless `disposeClient`
 or `ownsClient` is set.

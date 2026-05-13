@@ -182,6 +182,7 @@ assert.equal(RootHttpClientFactory, HttpClientFactory);
 assert.equal(RootHttpError, HttpError);
 assert.equal(RootSloppyHttpClientError, SloppyHttpClientError);
 assert.equal(RootTestHttp, TestHttp);
+
 assert.equal(typeof Auth.jwtBearer, "function");
 assert.equal(typeof Auth.apiKey, "function");
 assert.equal(typeof Auth.cookieSession, "function");

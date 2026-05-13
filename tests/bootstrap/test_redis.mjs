@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
-import { Base64, Redis, Schema, SloppyRedisError, Text } from "../../stdlib/sloppy/index.js";
+import { Base64, Redis, Results, Schema, Sloppy, SloppyRedisError, TestHost, Text } from "../../stdlib/sloppy/index.js";
+import { createServiceProvider } from "../../stdlib/sloppy/internal/services.js";
 import { RedisErrorReply, RespParser, encodeCommand } from "../../stdlib/sloppy/redis.js";
 
 function decodeCommand(bytes) {
@@ -57,6 +58,36 @@ function fakeBridge(handler) {
             handles.get(handle).closed = true;
         },
         handles,
+    };
+}
+
+function delayedFailBridge() {
+    let nextHandle = 1;
+    let connectCalls = 0;
+    const handles = new Map();
+    return {
+        connect() {
+            connectCalls += 1;
+            handles.set(nextHandle, { reads: [] });
+            return Promise.resolve(nextHandle++);
+        },
+        async write(handle) {
+            setTimeout(() => {
+                handles.get(handle)?.reads.push(Text.utf8.encode("-ERR initialize failed\r\n"));
+            }, 10);
+        },
+        async read(handle) {
+            const state = handles.get(handle);
+            while (state.reads.length === 0) {
+                await new Promise((resolve) => setTimeout(resolve, 1));
+            }
+            return state.reads.shift();
+        },
+        async close() {},
+        async abort() {},
+        connectCalls() {
+            return connectCalls;
+        },
     };
 }
 
@@ -128,6 +159,9 @@ assert.equal(errorReply.code, "ERR");
             case "SET":
                 return "+OK\r\n";
             case "GET":
+                if (command[1] === "bad-b64") {
+                    return bulk("B:not base64 !!!");
+                }
                 return bulk("J:{\"ok\":true}");
             case "MGET":
                 return array([bulk("J:1"), "$-1\r\n"]);
@@ -150,6 +184,7 @@ assert.equal(errorReply.code, "ERR");
         assert.equal(await client.ping(), "PONG");
         assert.equal(await client.set("hello", { ok: true }, { ttlMs: 1000 }), true);
         assert.deepEqual(await client.get("hello", Schema.object({ ok: Schema.boolean() })), { ok: true });
+        await assert.rejects(() => client.get("bad-b64"), /SLOPPY_E_REDIS_RESPONSE_VALIDATION_FAILED/u);
         assert.deepEqual(await client.mget(["one", "two"]), [1, undefined]);
         assert.equal(await client.script("return 1", [], []), 1);
         assert.equal(client.diagnostics().url.includes("secret"), false);
@@ -170,15 +205,94 @@ assert.equal(errorReply.code, "ERR");
 {
     const bridge = fakeBridge(() => "-ERR invalid password\r\n");
     const restore = installBridge(bridge);
+    let client;
     try {
-        const client = Redis.client("authfail", {
+        client = Redis.client("authfail", {
             url: "redis://:secret@localhost/0",
             connectTimeoutMs: 100,
             commandTimeoutMs: 100,
             pool: { maxConnections: 1 },
         });
         await assert.rejects(() => client.ping(), /SLOPPY_E_REDIS_AUTH_FAILED/u);
+        assert.equal(client.metrics().activeConnections, 0);
     } finally {
+        await client?.dispose();
+        restore();
+    }
+}
+
+{
+    const bridge = fakeBridge((command) => {
+        if (command[0] === "SELECT") {
+            return "-ERR invalid DB index\r\n";
+        }
+        return "+OK\r\n";
+    });
+    const restore = installBridge(bridge);
+    let client;
+    try {
+        client = Redis.client("selectfail", {
+            url: "redis://localhost/2",
+            connectTimeoutMs: 100,
+            commandTimeoutMs: 100,
+            pool: { maxConnections: 1 },
+        });
+        await assert.rejects(() => client.ping(), /SLOPPY_E_REDIS_COMMAND_FAILED/u);
+        assert.equal(client.metrics().activeConnections, 0);
+    } finally {
+        await client?.dispose();
+        restore();
+    }
+}
+
+{
+    let connectCalls = 0;
+    const bridge = {
+        connect() {
+            connectCalls += 1;
+            return Promise.reject(new Error("dial failed"));
+        },
+    };
+    const restore = installBridge(bridge);
+    let client;
+    try {
+        client = Redis.client("connectfail", {
+            url: "redis://localhost/0",
+            connectTimeoutMs: 100,
+            commandTimeoutMs: 100,
+            pool: { maxConnections: 1 },
+        });
+        await assert.rejects(() => client.ping(), /SLOPPY_E_REDIS_CONNECT_FAILED/u);
+        assert.equal(client.metrics().activeConnections, 0);
+        await assert.rejects(() => client.ping(), /SLOPPY_E_REDIS_CONNECT_FAILED/u);
+        assert.equal(connectCalls, 2);
+        assert.equal(client.metrics().activeConnections, 0);
+    } finally {
+        await client?.dispose();
+        restore();
+    }
+}
+
+{
+    const bridge = delayedFailBridge();
+    const restore = installBridge(bridge);
+    let client;
+    try {
+        client = Redis.client("queuedfail", {
+            url: "redis://localhost/0",
+            connectTimeoutMs: 100,
+            commandTimeoutMs: 100,
+            pool: { maxConnections: 1, pendingQueueLimit: 2, acquireTimeoutMs: 1000 },
+        });
+        await Promise.all([
+            assert.rejects(() => client.ping(), /SLOPPY_E_REDIS_COMMAND_FAILED/u),
+            assert.rejects(() => client.ping(), /SLOPPY_E_REDIS_COMMAND_FAILED/u),
+        ]);
+        assert.equal(bridge.connectCalls(), 2);
+        assert.equal(client.metrics().activeConnections, 0);
+        assert.equal(client.metrics().queuedRequests, 0);
+    } finally {
+        await client?.dispose();
         restore();
     }
 }
@@ -190,6 +304,120 @@ assert.equal(errorReply.code, "ERR");
     });
     assert.equal(JSON.stringify(client.diagnostics()).includes("topsecret"), false);
     await client.dispose();
+}
+
+{
+    const client = Redis.client("aliases", {
+        url: "redis://localhost/0",
+        pool: { acquireTimeoutMs: 7 },
+        pingOnConnect: false,
+    });
+    assert.equal(client.__sloppyRedisRegistration.options.pool.pendingQueueTimeoutMs, 7);
+    await client.dispose();
+}
+
+{
+    const bridge = fakeBridge((command) => {
+        if (command[0] === "PING") {
+            return "-ERR no password configured\r\n";
+        }
+        return "+OK\r\n";
+    });
+    const restore = installBridge(bridge);
+    let client;
+    try {
+        client = Redis.client("health-empty-password", {
+            url: "redis://localhost/0",
+            commandTimeoutMs: 100,
+            pingOnConnect: false,
+        });
+        const health = await client.health();
+        assert.equal(health.status, "unhealthy");
+        assert.equal(health.message.startsWith("[REDACTED]"), false);
+    } finally {
+        await client?.dispose();
+        restore();
+    }
+}
+
+{
+    const bridge = fakeBridge((command) => {
+        if (command[0] === "AUTH") {
+            return "+OK\r\n";
+        }
+        if (command[0] === "PING") {
+            return "-ERR secret failed\r\n";
+        }
+        return "+OK\r\n";
+    });
+    const restore = installBridge(bridge);
+    let client;
+    try {
+        client = Redis.client("health-password", {
+            url: "redis://:secret@localhost/0",
+            commandTimeoutMs: 100,
+            pingOnConnect: false,
+        });
+        const health = await client.health();
+        assert.equal(health.status, "unhealthy");
+        assert.equal(health.message.includes("secret"), false);
+        assert.equal(health.message.includes("[REDACTED]"), true);
+    } finally {
+        await client?.dispose();
+        restore();
+    }
+}
+
+{
+    assert.equal(Redis._redactUrl("redis://user:pass@localhost/0").includes("user"), false);
+    assert.equal(Redis._redactUrl("redis://user:pass@localhost/0").includes("pass"), false);
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    const client = Redis.client("main", { url: "redis://localhost/0" });
+    builder.services.addRedis(client);
+    const app = builder.build();
+    const rootToken = Redis.token("main");
+    assert.equal(app.services.get(rootToken), client);
+    assert.equal(app.services.tryGet(Redis.token("main")), client);
+    const scope = app.services.createScope();
+    try {
+        assert.equal(scope.get(Redis.token("main")), client);
+        assert.equal(scope.tryGet(Redis.token("main")), client);
+    } finally {
+        await scope.dispose();
+        await app.services.dispose();
+    }
+}
+
+{
+    const builder = Sloppy.createBuilder();
+    builder.services.addRedis("main", { url: "redis://localhost/0" });
+    assert.throws(() => builder.services.addRedis("main", { url: "redis://localhost/0" }), /already registered/u);
+}
+
+{
+    const registrations = new Map([
+        [Redis.token("main"), { lifetime: "singleton", initialized: true, value: { id: "typed" } }],
+        ["redis.main", { lifetime: "singleton", initialized: true, value: { id: "string" } }],
+    ]);
+    assert.throws(() => createServiceProvider(registrations, {}), /already registered/u);
+}
+
+{
+    const app = Sloppy.create();
+    const override = { name: "override" };
+    app.get("/redis", (ctx) => Results.json({
+        ok: ctx.services.get(Redis.token("main")) === override,
+        tryOk: ctx.services.tryGet(Redis.token("main")) === override,
+    }));
+    const host = await TestHost.create(app, { redis: { main: override } });
+    try {
+        await host.get("/redis").expectJson({ ok: true, tryOk: true });
+    } finally {
+        await host.dispose();
+    }
 }
 
 assert.equal(Base64.encode(Text.utf8.encode("redis")), "cmVkaXM=");

@@ -121,6 +121,12 @@ cache is disposed. Memory caches do not probe another process. Distributed and
 hybrid caches report the registered cache state through the cache API rather
 than exposing provider secrets.
 
+`Health.redis(redis)` calls a Redis client's `health()` method and reports
+healthy only when the client can complete its bounded Redis probe.
+`Health.redis(undefined)` reports `degraded` with `data.configured: false`
+instead of throwing, which lets optional Redis dependencies appear in readiness
+output before they are configured.
+
 ## Compiler Visibility
 
 The bootstrap app host supports every built-in listed above.

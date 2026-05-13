@@ -124,17 +124,19 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "function createRedisCache(nameOrRedis, maybeOptions = undefined)"
-        "const SET_WITH_TAGS_SCRIPT"
-        "const INVALIDATE_TAG_SCRIPT"
-        "getOrCreate(key, factoryOrOptions, maybeFactory = undefined)"
+        "SET_CACHE_SCRIPT"
+        "REMOVE_CACHE_SCRIPT"
+        "INVALIDATE_TAG_SCRIPT"
+        "TOUCH_CACHE_SCRIPT"
+        "getOrCreate(key,"
         "invalidateTag(tag)"
         "stats()"
         "health()"
-        "const Cache = Object.freeze")
+        "Cache = Object.freeze")
     require_substring("${cache_js}" "${required_pattern}" "cache.js is missing expected Redis cache API pattern")
     require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected Redis cache runtime pattern")
 endforeach()
-require_substring("${cache_js}" "export { Cache, createRedisCache }" "cache.js is missing expected Redis cache export pattern")
+require_substring("${cache_js}" "createRedisCache," "cache.js is missing expected Redis cache export pattern")
 
 foreach(required_pattern IN ITEMS
         "function sql(strings, ...values)"
@@ -542,7 +544,7 @@ endforeach()
 foreach(required_pattern IN ITEMS
         "addSingleton(token, factoryOrValue)"
         "addRedis(clientOrName, options = undefined)"
-        "addCache(cacheOrName, options = undefined)"
+        "addCache(cacheOrName, nameOrOptions = undefined)"
         "addTransient(token, factory)"
         "addScoped(token, factory)"
         "createScope()"
@@ -601,7 +603,7 @@ endforeach()
 
 foreach(required_pattern IN ITEMS
         "class SloppyCacheError"
-        "const Cache = Object.freeze"
+        "Cache = Object.freeze"
         "Cache,"
         "SloppyCacheError,")
     require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected cache runtime export pattern")

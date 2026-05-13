@@ -2,14 +2,30 @@ import { performance } from "node:perf_hooks";
 import { Cache } from "../../stdlib/sloppy/cache.js";
 import { Redis, RespParser, encodeCommand } from "../../stdlib/sloppy/redis.js";
 
+const DEFAULT_ITERATIONS = 5000;
+
+function normalizeIterations(value) {
+    const parsed = Number(value ?? DEFAULT_ITERATIONS);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        return DEFAULT_ITERATIONS;
+    }
+    return parsed;
+}
+
+function opsPerSecond(iterations, elapsedMs) {
+    if (iterations <= 0 || elapsedMs <= 0) {
+        return 0;
+    }
+    return Math.round((iterations / elapsedMs) * 1000);
+}
+
 function bench(name, iterations, fn) {
     const started = performance.now();
     for (let index = 0; index < iterations; index += 1) {
         fn(index);
     }
     const elapsedMs = performance.now() - started;
-    const opsPerSecond = Math.round((iterations / elapsedMs) * 1000);
-    return { name, iterations, elapsedMs: Number(elapsedMs.toFixed(3)), opsPerSecond };
+    return { name, iterations, elapsedMs: Number(elapsedMs.toFixed(3)), opsPerSecond: opsPerSecond(iterations, elapsedMs) };
 }
 
 function parserBench(iterations) {
@@ -65,7 +81,8 @@ async function cacheBench(iterations) {
             commands.push(...items);
             return items.map(() => 1);
         },
-        async script() {
+        async script(script, keys, args) {
+            commands.push(["SCRIPT", keys.length, args.length]);
             return 1;
         },
         async health() {
@@ -82,12 +99,12 @@ async function cacheBench(iterations) {
         name: "cache.redis.set-bookkeeping",
         iterations,
         elapsedMs: Number(elapsedMs.toFixed(3)),
-        opsPerSecond: Math.round((iterations / elapsedMs) * 1000),
+        opsPerSecond: opsPerSecond(iterations, elapsedMs),
         commands: commands.length,
     };
 }
 
-const iterations = Number(process.env.SLOPPY_REDIS_BENCH_ITERATIONS ?? 5000);
+const iterations = normalizeIterations(process.env.SLOPPY_REDIS_BENCH_ITERATIONS);
 const results = [
     encoderBench(iterations),
     parserBench(iterations),

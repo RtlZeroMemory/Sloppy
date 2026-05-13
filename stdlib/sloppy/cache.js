@@ -1268,6 +1268,13 @@ class RedisCache extends BaseCache {
         return await this.client.exists(keys.entry);
     }
 
+    async getOrCreate(key, optionsOrFactory, maybeFactory = undefined) {
+        if (typeof optionsOrFactory === "function") {
+            return super.getOrCreate(key, maybeFactory ?? {}, optionsOrFactory);
+        }
+        return super.getOrCreate(key, optionsOrFactory, maybeFactory);
+    }
+
     async set(key, value, options = {}) {
         this._assertOpen("set");
         const normalizedKey = this._redisKey(key);
@@ -1284,7 +1291,7 @@ class RedisCache extends BaseCache {
             Math.max(ttlMs, this.defaultTtlMs),
         ]);
         this._record("sets");
-        return this;
+        return true;
     }
 
     async remove(key) {
