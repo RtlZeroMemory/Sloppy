@@ -127,7 +127,7 @@ jobs:
           node "$launcher" --version
           node "$launcher" doctor
           mkdir -p "$temp_root/work"
-          for template in minimal-api full-api dogfood; do
+          for template in minimal-api api package-api; do
             app="${template}-app"
             (cd "$temp_root/work" && node "$launcher" create "$app" --template "$template")
             test -f "$temp_root/work/$app/.gitignore"

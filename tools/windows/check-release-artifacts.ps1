@@ -96,6 +96,8 @@ function Test-ReleaseTemplates {
     }
     Assert-TextContains -Text $npmPublishWorkflow -Needle "slopware-sloppy-[0-9]*.tgz" -Message "npm publish workflow must consume @slopware root tarballs."
     Assert-TextContains -Text $npmPublishWorkflow -Needle "slopware-sloppy-linux-x64-*.tgz" -Message "npm publish workflow must consume @slopware platform tarballs."
+    Assert-TextContains -Text $npmPublishWorkflow -Needle "for template in minimal-api api package-api; do" -Message "npm publish workflow must smoke current API templates."
+    Assert-True (-not $npmPublishWorkflow.Contains("for template in minimal-api full-api dogfood; do")) "npm publish workflow must not smoke removed template names."
     Assert-True (-not $npmPublishWorkflow.Contains("registry-url:")) "npm publish workflow must not configure setup-node token auth."
     Assert-True (-not $npmPublishWorkflow.Contains("NODE_AUTH_TOKEN")) "npm publish workflow must not use token auth."
     Assert-TextContains -Text $contractText -Needle "npm login --auth-type=web" -Message "Artifact contract must document manual browser-auth publish path."
