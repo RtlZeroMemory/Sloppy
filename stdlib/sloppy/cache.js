@@ -182,6 +182,16 @@ function normalizeTtlMs(value, subject = "ttlMs") {
     return value;
 }
 
+function normalizeMaxValueBytes(value) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (!Number.isInteger(value) || value < 1 || value > Number.MAX_SAFE_INTEGER) {
+        throw new TypeError("Sloppy cache maxValueBytes must be a positive integer.");
+    }
+    return value;
+}
+
 function normalizeAbsoluteExpiration(value) {
     if (value === undefined) {
         return undefined;
@@ -217,6 +227,7 @@ function normalizeEntryOptions(options = {}) {
         slidingExpirationMs: normalizeTtlMs(options.slidingExpirationMs, "slidingExpirationMs"),
         tags: normalizeTags(options.tags, options),
         schema: normalizeSchema(options.schema),
+        maxValueBytes: normalizeMaxValueBytes(options.maxValueBytes),
         staleWhileRevalidateMs: normalizeTtlMs(options.staleWhileRevalidateMs, "staleWhileRevalidateMs"),
         stampedeProtection: options.stampedeProtection !== false,
         namespace: options.namespace === undefined ? undefined : normalizeName(options.namespace, "cache namespace"),

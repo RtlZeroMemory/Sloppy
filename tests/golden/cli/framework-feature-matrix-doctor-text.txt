@@ -1,0 +1,35 @@
+Sloppy Doctor
+
+[ok] bootstrap.assets: bootstrap runtime asset found
+[warn] engine.v8: V8 bridge disabled in this build; V8 runtime tests not run
+[warn] providers.live: live provider checks are not configured by default and no live DB was contacted
+[warn] package.runtime: package release status requires package smoke
+[ok] app.plan.parse: app plan parsed by native Plan v1 parser
+[ok] app.plan.routes: route metadata present
+[ok] app.plan.providers: provider metadata present
+[warn] app.plan.capabilities: capability metadata not present
+[ok] app.plan.static-assets: static asset route metadata present
+[ok] app.rate-limit.routes: rate-limit metadata present on Plan routes
+[warn] app.realtime.framework: Realtime framework metadata is present; WebSocket runtime support remains alpha
+[ok] stdlib.httpclient.required: HttpClient feature metadata is Plan-visible
+[ok] stdlib.httpclient.clients: HTTP client named-client metadata is visible
+[ok] stdlib.httpclient.static-targets: static outbound HTTP targets are visible without secret values
+[warn] stdlib.httpclient.dynamic-targets: dynamic outbound HTTP targets are marked partial, not guessed
+[ok] stdlib.httpclient.strict-network: strict HTTP network policy metadata is present
+[ok] stdlib.workers.required: Workers feature metadata is Plan-visible
+[ok] stdlib.workers.lifecycle: workers are runtime resources with explicit bounded lifecycle policy metadata
+[ok] stdlib.workers.redaction: worker doctor metadata omits payload and secret values
+[ok] stdlib.cache.required: Cache feature metadata is Plan-visible
+[ok] route.output-cache.metadata: OutputCache route metadata is visible without raw cache keys
+[ok] route.cache-headers.metadata: cache header route metadata is visible
+[ok] app.auth.schemes: auth scheme metadata is Plan-visible without secret values
+[ok] app.auth.policies: auth policy names are Plan-visible
+[ok] app.auth.protected-routes: protected route auth metadata is Plan-visible
+[ok] app.auth.anonymous-routes: anonymous route auth metadata is Plan-visible
+[ok] sqlite.provider: SQLite is embedded; SQLite providers do not require PostgreSQL, SQL Server, libpq, or ODBC
+[warn] route.completeness: route has partial/runtime-only/invalid Plan metadata
+[ok] optimization.native-json-candidate: route has response metadata for future native JSON analysis
+[ok] framework.matrix.redis: Redis-backed rate limit metadata is visible without Redis URL or password values
+[ok] framework.matrix.webhooks: Webhooks routes and delivery client metadata are visible without signing secrets or payload values
+[ok] framework.matrix.realtime: Realtime websocket route metadata is visible with channel and auth boundaries
+[ok] framework.matrix.static-files: Static file route metadata is visible without absolute local filesystem paths

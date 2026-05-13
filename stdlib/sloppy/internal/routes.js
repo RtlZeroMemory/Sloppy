@@ -1516,6 +1516,12 @@ function createEndpointBuilder(route, assertAppMutable) {
         },
         requiresScope(...scopes) {
             assertAppMutable();
+            if (scopes.length === 0) {
+                throw new TypeError("Sloppy endpoint authorization scope must be a non-empty string.");
+            }
+            for (const scope of scopes) {
+                validateMetadataText(scope, "authorization scope");
+            }
             mergeAuthRequirement({ scopes: Object.freeze(scopes) });
             return endpoint;
         },
@@ -1526,21 +1532,6 @@ function createEndpointBuilder(route, assertAppMutable) {
         },
         security(options = undefined) {
             return endpoint.requireAuth(options);
-        },
-        requiresScope(scope) {
-            assertAppMutable();
-            validateMetadataText(scope, "authorization scope");
-            const existing = route.metadata.auth ?? { required: true };
-            const requirement = Object.freeze({
-                ...existing,
-                required: true,
-                scopes: Object.freeze([...new Set([...(existing.scopes ?? []), scope])]),
-            });
-            route.metadata.auth = requirement;
-            if (route.routeInfo !== undefined) {
-                route.routeInfo.auth = requirement;
-            }
-            return endpoint;
         },
         allowedOrigins(origins) {
             assertAppMutable();

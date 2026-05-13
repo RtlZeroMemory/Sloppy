@@ -1343,6 +1343,7 @@ async function tryStaticFileResponse(entry, relative, headers, isFallback) {
     const root = path.resolve(cwd, entry.root);
     const rootReal = await fs.realpath(root);
     let filePath = path.resolve(rootReal, ...segments);
+    let servedRelative = relative;
     let stat;
     try {
         stat = await fs.stat(filePath);
@@ -1350,7 +1351,9 @@ async function tryStaticFileResponse(entry, relative, headers, isFallback) {
             if (entry.index === false) {
                 return responseFromText(404, "Not Found\n");
             }
-            filePath = path.join(filePath, entry.index ?? "index.html");
+            const index = entry.index ?? "index.html";
+            filePath = path.join(filePath, index);
+            servedRelative = relative.length === 0 ? index : `${relative.replace(/[\\/]$/u, "")}/${index}`;
             stat = await fs.stat(filePath);
         }
     } catch {
@@ -1375,9 +1378,9 @@ async function tryStaticFileResponse(entry, relative, headers, isFallback) {
         return responseFromText(413, "Payload Too Large\n");
     }
     const bytes = new Uint8Array(await fs.readFile(selectedPath));
-    const cacheControl = staticCacheControl(entry, relative, path, isFallback);
+    const cacheControl = staticCacheControl(entry, servedRelative, path, isFallback);
     return staticResponseFromFile(bytes, {
-        contentType: staticContentType(path, relative, entry.contentType),
+        contentType: staticContentType(path, servedRelative, entry.contentType),
         contentEncoding: variant?.contentEncoding,
         cacheControl,
         etag: staticEtag(bytes, variant?.contentEncoding),
@@ -1487,7 +1490,10 @@ function createHealthHelpers(host) {
         },
         async check(name, path = "/health") {
             const body = await this.snapshot(path);
-            return body.checks?.find((entry) => entry.name === name);
+            if (Array.isArray(body.checks)) {
+                return body.checks.find((entry) => entry.name === name);
+            }
+            return body.checks?.[name];
         },
         async expect(name, status, path = "/health") {
             const check = await this.check(name, path);

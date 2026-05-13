@@ -202,6 +202,10 @@ async function withCacheBridge(callback) {
         () => cache.get("typed", Schema.object({ id: Schema.string() })),
         /schema validation/,
     );
+    await assertRejectsMessage(
+        () => cache.set("too-large", { value: "abcdef" }, { maxValueBytes: 2 }),
+        /SLOPPY_E_CACHE_VALUE_TOO_LARGE|maxValueBytes/,
+    );
     const ttlCache = Cache.memory({ maxEntries: 10, ttlMs: 20 });
     await ttlCache.set("short", "lived");
     await new Promise((resolve) => setTimeout(resolve, 25));

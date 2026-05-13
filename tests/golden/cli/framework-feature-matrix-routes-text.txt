@@ -1,0 +1,6 @@
+ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  JSON  AUTH  RATE_LIMIT  NAME  SUMMARY
+0      GET     http         /assets/{path}       1        complete  assets    -  200/bytes/Results.bytes  req:none/none resp:none/none  anonymous  -  Assets.Get
+1      GET     http         /orders/{id:int}     2        complete  orders    route:id(OrderParams),query:include(OrderQuery)  200/json/Results.ok  req:none/none resp:none/none  auth:policy:Orders.Read  slidingWindow/redis/user  Orders.Get
+3      GET     websocket    /realtime/orders     4        partial   realtime    -  101/text/Results.status  req:none/none resp:none/none  auth:scope:orders:read  concurrency/memory/user  Orders.Realtime
+4      POST    http         /jobs/deliver-webhooks  5        complete  jobs      -  200/json/Results.ok  req:none/none resp:none/none  auth:policy:Ops.Run  -  Jobs.DeliverWebhooks
+2      POST    http         /webhooks/orders     3        complete  webhooks    -  202/json/Results.accepted  req:none/none resp:none/none  anonymous  fixedWindow/default/ip  Orders.Webhook

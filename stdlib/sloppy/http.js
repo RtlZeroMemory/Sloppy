@@ -57,6 +57,10 @@ function httpServiceToken(name) {
     return `${HTTP_CLIENT_TOKEN_PREFIX}${validateClientName(name, "Http client token")}`;
 }
 
+function typedHttpServiceToken(name) {
+    return `${httpServiceToken(name)}.typed`;
+}
+
 function validateAbsoluteBaseUrl(value, subject) {
     if (isConfigReference(value)) {
         return value;
@@ -1107,7 +1111,7 @@ function createTypedClient(name, options = {}, transport = undefined) {
         }),
     });
     Object.defineProperty(methods, "__sloppyHttpClientToken", {
-        value: httpServiceToken(name),
+        value: typedHttpServiceToken(name),
     });
     return Object.freeze(methods);
 }
