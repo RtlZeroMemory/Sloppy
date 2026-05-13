@@ -21,6 +21,7 @@
 #include "sloppy/breadcrumbs.h"
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
+#include "sloppy/json_profile.h"
 
 #include <stdbool.h>
 
@@ -533,7 +534,10 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
     bool no_body_status = false;
     bool suppress_body = false;
     size_t stream_body_length = 0U;
+    uint64_t header_start = 0U;
+    uint64_t body_start = 0U;
     SlHttpResponseConnectionPolicy connection_policy = SL_HTTP_RESPONSE_CONNECTION_CLOSE;
+    bool profile_enabled = sl_json_profile_enabled();
     SlStatus status;
 
     if (response == NULL || buffer == NULL || out_bytes == NULL || capacity == 0U) {
@@ -582,17 +586,37 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
         return status;
     }
 
+    header_start =
+        profile_enabled
+            ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_HTTP_RESPONSE_HEADER_WRITE)
+            : 0U;
     status = sl_http_response_append_head(&builder, response, reason, connection_policy,
                                           has_content_type,
                                           is_stream_response ? stream_body_length : body.length);
+    if (profile_enabled) {
+        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_HTTP_RESPONSE_HEADER_WRITE, header_start);
+    }
     if (!sl_status_is_ok(status)) {
+        if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+            if (profile_enabled) {
+                uint64_t failure_start =
+                    sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_CAPACITY_FAILURE);
+                sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_CAPACITY_FAILURE, failure_start);
+            }
+        }
         return status;
     }
+    body_start = profile_enabled
+                     ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_LITERAL_FRAGMENT_WRITE)
+                     : 0U;
     if (is_stream_response && !suppress_body && !no_body_status) {
         status = sl_http_response_append_stream_body(&builder, response);
     }
     else {
         status = sl_byte_builder_append_bytes(&builder, wire_body);
+    }
+    if (profile_enabled) {
+        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_LITERAL_FRAGMENT_WRITE, body_start);
     }
     if (!sl_status_is_ok(status)) {
         if (is_stream_response && sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
@@ -601,9 +625,23 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
                                         SL_STATUS_CAPACITY_EXCEEDED, 0U, 0U, 0U, 0U,
                                         sl_str_from_cstr("response buffer capacity exceeded"));
         }
+        if (sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED) {
+            if (profile_enabled) {
+                uint64_t failure_start =
+                    sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_CAPACITY_FAILURE);
+                sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_CAPACITY_FAILURE, failure_start);
+            }
+        }
         return status;
     }
 
+    if (profile_enabled) {
+        SlByteBuilderStats stats = sl_byte_builder_stats(&builder);
+        sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_BUILDER_GROWS,
+                                    (uint64_t)stats.grow_count);
+        sl_json_profile_counter_add(SL_JSON_PROFILE_COUNTER_BUFFER_COPIES,
+                                    (uint64_t)stats.copied_bytes);
+    }
     *out_bytes = sl_byte_builder_view(&builder);
     return sl_status_ok();
 }
