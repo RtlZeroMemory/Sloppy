@@ -132,6 +132,37 @@ Artifact and package hosts do not connect their WebSocket helper to native
 records `SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` unless a supplied runtime
 host implements `websocketConnect`.
 
+## Realtime
+
+`TestHost.create(app)` also supports high-level realtime routes:
+
+```ts
+await using host = await TestHost.create(app);
+
+const client = await host.realtime("/rooms/r1", Chat)
+    .asUser({ sub: "alice", scopes: ["chat"] })
+    .origin("https://app.example.com")
+    .connect();
+
+await client.send("sendMessage", {
+    roomId: "r1",
+    text: "hello",
+});
+
+await client.expect("messageCreated", {
+    roomId: "r1",
+    text: "hello",
+});
+```
+
+The realtime builder supports the same auth, header, origin, JWT, and timeout
+helpers as the WebSocket builder. It automatically requests the channel
+protocol. `send(...)` validates client events before sending, `expect(...)`
+validates server events after receiving, and `expectError(code)` asserts a
+bounded realtime error envelope.
+
+Artifact/package/loopback support follows the raw WebSocket boundary above.
+
 ## Responses
 
 Responses expose status, case-insensitive headers, and body readers:

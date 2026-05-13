@@ -57,6 +57,9 @@ typedef struct SlCliRoute
     SlCliSpan response_kind;
     SlCliSpan response_helper;
     SlCliSpan health_kind;
+    SlCliSpan realtime_kind;
+    SlCliSpan realtime_transport;
+    SlCliSpan realtime_channel;
     SlCliSpan health_checks[SL_CLI_MAX_ROUTE_HEALTH_CHECKS];
     size_t health_check_count;
     SlCliSpan json_request_mode;

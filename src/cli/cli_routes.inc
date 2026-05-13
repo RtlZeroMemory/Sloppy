@@ -168,6 +168,22 @@ static void sl_cli_routes_emit_json_route(const SlCliRoute* route, size_t index)
         }
         printf("]");
     }
+    if (!sl_cli_span_empty(route->realtime_kind)) {
+        printf(", \"realtime\": { \"kind\": ");
+        sl_cli_json_escape(stdout, route->realtime_kind);
+        if (!sl_cli_span_empty(route->realtime_transport)) {
+            printf(", \"transport\": ");
+            sl_cli_json_escape(stdout, route->realtime_transport);
+        }
+        if (!sl_cli_span_empty(route->realtime_channel)) {
+            printf(", \"channelExpression\": ");
+            sl_cli_json_escape(stdout, route->realtime_channel);
+        }
+        printf(", \"metadataStatus\": \"partial\", \"partialReason\": ");
+        sl_cli_json_escape(stdout,
+                           sl_cli_span_cstr("channel and option expressions are preserved; static event and schema extraction is not complete in this alpha"));
+        printf(" }");
+    }
     if (route->deprecated) {
         printf(", \"deprecated\": true");
         if (!sl_cli_span_empty(route->deprecated_reason)) {

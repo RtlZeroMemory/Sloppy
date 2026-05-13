@@ -36,7 +36,7 @@ import { Health, createHealthHandler as createOpsHealthHandler } from "./health.
 import { isCache } from "./cache.js";
 import { Metrics } from "./metrics.js";
 import { normalizeJsonOptions, Results } from "./results.js";
-import { createSseRouteHandler, createWebSocketRouteHandler } from "./realtime.js";
+import { createSseRouteHandler, createRealtimeRouteHandler, createWebSocketRouteHandler } from "./realtime.js";
 import { isValidationError, validationProblem } from "./schema.js";
 
 const DEFAULT_HEALTH_PATH = "/health";
@@ -809,6 +809,14 @@ function docsOperation(route) {
                 }),
             },
         ])),
+        ...(metadata.realtime === undefined ? {} : {
+            "x-slop-realtime": {
+                kind: metadata.realtime.kind,
+                channel: metadata.realtime.channel?.name,
+                transport: "websocket",
+            },
+            "x-slop-transport": "websocket",
+        }),
         "x-slop-completeness": missing.length === 0 ? "complete" : "partial",
         ...(missing.length === 0 ? {} : { "x-slop-missing": missing }),
     };
@@ -1625,6 +1633,24 @@ function createApp(host) {
 
         websocket(pattern, handler, options = undefined) {
             return app.ws(pattern, handler, options);
+        },
+
+        realtime(pattern, channel, handler, options = undefined) {
+            const routeHandler = createRealtimeRouteHandler(channel, handler, options);
+            return registerRoute(
+                routes,
+                routeHost,
+                assertAppMutable,
+                currentModule,
+                "GET",
+                pattern,
+                routeHandler,
+                undefined,
+                undefined,
+                middleware,
+                corsPolicy,
+                "websocket",
+            );
         },
 
         mapGroup(prefix) {

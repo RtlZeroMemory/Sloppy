@@ -11093,11 +11093,15 @@ Reason:
         };
     }
 
-    function __sloppyRealtimeWebSocket(handler) {
+    const WEBSOCKET_ROUTE_HANDLER = Symbol.for("sloppy.websocket.routeHandler");
+    const WEBSOCKET_ROUTE_OPTIONS = Symbol.for("sloppy.websocket.routeOptions");
+
+    function __sloppyRealtimeWebSocket(handler, options = undefined) {
         if (typeof handler !== "function") {
             throw new TypeError("Sloppy WebSocket route handler must be a function.");
         }
-        return function sloppyWebSocketRoute(ctx) {
+        const routeOptions = __sloppyRealtimeDeepFreeze(options === undefined ? {} : { ...options });
+        function sloppyWebSocketRoute(ctx) {
             if (ctx?.__sloppyWebSocketHandshake === true && ctx.__sloppyWebSocket !== undefined) {
                 ctx.__sloppyWebSocket.__setContext?.(ctx);
                 if (handler.length >= 2) {
@@ -11115,7 +11119,16 @@ Reason:
                     "X-Slop-Realtime": "websocket",
                 },
             });
-        };
+        }
+        Object.defineProperties(sloppyWebSocketRoute, {
+            [WEBSOCKET_ROUTE_HANDLER]: {
+                value: handler,
+            },
+            [WEBSOCKET_ROUTE_OPTIONS]: {
+                value: routeOptions,
+            },
+        });
+        return sloppyWebSocketRoute;
     }
 
     function __sloppyRealtimeHub(name) {
@@ -12482,10 +12495,715 @@ Reason:
             normalizeEntryOptions,
         }),
     });
+    const REALTIME_CHANNEL = Symbol.for("sloppy.realtime.channel");
+    const REALTIME_EVENT = Symbol.for("sloppy.realtime.event");
+    const REALTIME_RESERVED_EVENTS = new Set(["connect", "disconnect", "error", "ping", "pong", "join", "leave", "system"]);
+    const REALTIME_PROTOCOL_UNSAFE_PATTERN = /[^!#$%&'*+\-.^_`|~0-9A-Za-z]/gu;
+    const __sloppyRealtimeSchemaRuntime = createSloppySchemaRuntime();
+    const __sloppyRealtimeSchema = __sloppyRealtimeSchemaRuntime.Schema;
+    const __sloppyRealtimeIsSchema = __sloppyRealtimeSchemaRuntime.isSchema;
+    const __sloppyRealtimeIsValidationError = __sloppyRealtimeSchemaRuntime.isValidationError;
+
+    class SloppyRealtimeError extends Error {
+        constructor(code, message, options = undefined) {
+            super(message);
+            this.name = "SloppyRealtimeError";
+            this.code = String(code);
+            this.event = options?.event;
+            this.closeCode = options?.closeCode;
+            this.issues = Array.isArray(options?.issues) ? options.issues.slice(0, 32) : [];
+            this.__sloppyRealtimeError = true;
+        }
+    }
+
+    function __sloppyRealtimeDeepFreeze(value) {
+        if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
+            return value;
+        }
+        for (const child of Object.values(value)) {
+            __sloppyRealtimeDeepFreeze(child);
+        }
+        return Object.freeze(value);
+    }
+
+    function __sloppyRealtimeSnapshot(value) {
+        if (value === undefined) {
+            return undefined;
+        }
+        return __sloppyRealtimeDeepFreeze(JSON.parse(JSON.stringify(value)));
+    }
+
+    function __sloppyRealtimeIdentifier(value, subject) {
+        if (typeof value !== "string" || !/^[A-Za-z_][A-Za-z0-9_.:-]{0,127}$/u.test(value)) {
+            throw new TypeError(`Sloppy Realtime ${subject} must be a stable identifier.`);
+        }
+    }
+
+    function __sloppyRealtimeEventName(value) {
+        __sloppyRealtimeIdentifier(value, "event name");
+        if (REALTIME_RESERVED_EVENTS.has(value)) {
+            throw new TypeError(`Sloppy Realtime event name '${value}' is reserved.`);
+        }
+    }
+
+    function __sloppyRealtimeDefaultProtocol(name) {
+        return `sloppy.realtime.${name.replace(REALTIME_PROTOCOL_UNSAFE_PATTERN, "-")}.v1`;
+    }
+
+    function __sloppyRealtimeAuthList(value) {
+        if (value === undefined) {
+            return Object.freeze([]);
+        }
+        return Object.freeze((Array.isArray(value) ? value : [value]).map(String));
+    }
+
+    function __sloppyRealtimeAuth(auth = undefined) {
+        if (auth === undefined || auth === null) {
+            return undefined;
+        }
+        if (!isPlainObject(auth)) {
+            throw new TypeError("Sloppy Realtime event auth must be a plain object.");
+        }
+        return Object.freeze({
+            required: auth.required === true,
+            scopes: __sloppyRealtimeAuthList(auth.scopes),
+            roles: __sloppyRealtimeAuthList(auth.roles),
+            policy: auth.policy === undefined ? undefined : String(auth.policy),
+        });
+    }
+
+    function __sloppyRealtimeEvent(schemaValue, auth = undefined) {
+        if (!__sloppyRealtimeIsSchema(schemaValue)) {
+            throw new TypeError("Sloppy Realtime event schema must be a Sloppy schema.");
+        }
+        const eventAuth = __sloppyRealtimeAuth(auth);
+        const event = {
+            [REALTIME_EVENT]: true,
+            schema: schemaValue,
+            metadata: Object.freeze({
+                schema: schemaValue.metadata,
+                ...(eventAuth === undefined ? {} : { auth: eventAuth }),
+            }),
+            requiresAuth() {
+                return __sloppyRealtimeEvent(schemaValue, { ...(eventAuth ?? {}), required: true });
+            },
+            requiresScope(...scopes) {
+                for (const scope of scopes) {
+                    __sloppyRealtimeIdentifier(scope, "event authorization scope");
+                }
+                return __sloppyRealtimeEvent(schemaValue, {
+                    ...(eventAuth ?? {}),
+                    required: true,
+                    scopes: [...new Set([...(eventAuth?.scopes ?? []), ...scopes])],
+                });
+            },
+            requiresRole(...roles) {
+                for (const role of roles) {
+                    __sloppyRealtimeIdentifier(role, "event authorization role");
+                }
+                return __sloppyRealtimeEvent(schemaValue, {
+                    ...(eventAuth ?? {}),
+                    required: true,
+                    roles: [...new Set([...(eventAuth?.roles ?? []), ...roles])],
+                });
+            },
+            authorize(policy) {
+                __sloppyRealtimeIdentifier(policy, "event authorization policy");
+                return __sloppyRealtimeEvent(schemaValue, { ...(eventAuth ?? {}), required: true, policy });
+            },
+        };
+        return Object.freeze(event);
+    }
+
+    function __sloppyRealtimeIsEvent(value) {
+        return value !== null && typeof value === "object" && value[REALTIME_EVENT] === true;
+    }
+
+    function __sloppyRealtimeNormalizeEvent(value, subject) {
+        if (__sloppyRealtimeIsEvent(value)) {
+            return value;
+        }
+        if (__sloppyRealtimeIsSchema(value)) {
+            return __sloppyRealtimeEvent(value);
+        }
+        throw new TypeError(`Sloppy Realtime ${subject} must be a Sloppy schema or Realtime.event(...).`);
+    }
+
+    function __sloppyRealtimeEvents(events, subject) {
+        if (!isPlainObject(events)) {
+            throw new TypeError(`Sloppy Realtime ${subject} events must be a plain object.`);
+        }
+        const entries = {};
+        for (const [name, value] of Object.entries(events)) {
+            __sloppyRealtimeEventName(name);
+            entries[name] = __sloppyRealtimeNormalizeEvent(value, `${subject}.${name}`);
+        }
+        return Object.freeze(entries);
+    }
+
+    function __sloppyRealtimeValidateEnvelope(value, direction) {
+        if (!isPlainObject(value) ||
+            typeof value.type !== "string" ||
+            value.type.length === 0 ||
+            !Object.prototype.hasOwnProperty.call(value, "data") ||
+            (value.id !== undefined && typeof value.id !== "string"))
+        {
+            throw new SloppyRealtimeError(
+                "SLOPPY_E_REALTIME_MALFORMED_ENVELOPE",
+                `Realtime ${direction} message envelope is invalid.`,
+                { closeCode: 1003 },
+            );
+        }
+    }
+
+    function __sloppyRealtimeValidateEvent(events, eventName, data, direction) {
+        const event = events[eventName];
+        if (event === undefined) {
+            throw new SloppyRealtimeError(
+                "SLOPPY_E_REALTIME_UNKNOWN_EVENT",
+                `Realtime ${direction} event is not registered.`,
+                { event: eventName, closeCode: 1008 },
+            );
+        }
+        try {
+            return __sloppyRealtimeSchema.validate(data, event.schema);
+        } catch (error) {
+            throw new SloppyRealtimeError(
+                "SLOPPY_E_REALTIME_VALIDATION_FAILED",
+                "Realtime message validation failed.",
+                { event: eventName, issues: __sloppyRealtimeIsValidationError(error) ? error.issues : [] },
+            );
+        }
+    }
+
+    function __sloppyRealtimeErrorEnvelope(error, event = undefined) {
+        const code = error instanceof SloppyRealtimeError ? error.code : "SLOPPY_E_REALTIME_HANDLER_ERROR";
+        return __sloppyRealtimeDeepFreeze({
+            type: "error",
+            error: {
+                code,
+                message: error instanceof SloppyRealtimeError ? error.message : "Realtime message handling failed.",
+                ...(event === undefined ? {} : { event }),
+                ...((error instanceof SloppyRealtimeError && error.issues.length !== 0) ? { issues: error.issues.slice(0, 32) } : {}),
+            },
+        });
+    }
+
+    function __sloppyRealtimeChannel(name, definition) {
+        __sloppyRealtimeIdentifier(name, "channel name");
+        if (!isPlainObject(definition)) {
+            throw new TypeError("Sloppy Realtime channel definition must be a plain object.");
+        }
+        const client = __sloppyRealtimeEvents(definition.client ?? {}, "client");
+        const server = __sloppyRealtimeEvents(definition.server ?? {}, "server");
+        for (const eventName of Object.keys(client)) {
+            if (Object.prototype.hasOwnProperty.call(server, eventName)) {
+                throw new TypeError(`Sloppy Realtime event '${eventName}' cannot be both a client and server event.`);
+            }
+        }
+        const metadata = __sloppyRealtimeDeepFreeze({
+            name,
+            protocol: definition.protocol ?? __sloppyRealtimeDefaultProtocol(name),
+            client: Object.fromEntries(Object.entries(client).map(([eventName, event]) => [eventName, event.metadata])),
+            server: Object.fromEntries(Object.entries(server).map(([eventName, event]) => [eventName, event.metadata])),
+        });
+        function parseEnvelope(value, direction) {
+            let envelope = value;
+            if (typeof value === "string") {
+                try {
+                    envelope = JSON.parse(value);
+                } catch {
+                    throw new SloppyRealtimeError(
+                        "SLOPPY_E_REALTIME_MALFORMED_JSON",
+                        `Sloppy Realtime ${direction} message must be valid JSON.`,
+                    );
+                }
+            }
+            __sloppyRealtimeValidateEnvelope(envelope, direction);
+            return envelope;
+        }
+        const channel = {
+            [REALTIME_CHANNEL]: true,
+            name,
+            client,
+            server,
+            metadata,
+            parseClientMessage(value) {
+                const envelope = parseEnvelope(value, "client");
+                return Object.freeze({
+                    ...envelope,
+                    data: __sloppyRealtimeValidateEvent(client, envelope.type, envelope.data, "client"),
+                });
+            },
+            parseServerMessage(value) {
+                const envelope = parseEnvelope(value, "server");
+                return Object.freeze({
+                    ...envelope,
+                    data: __sloppyRealtimeValidateEvent(server, envelope.type, envelope.data, "server"),
+                });
+            },
+            serializeClientMessage(eventName, data, options = undefined) {
+                __sloppyRealtimeEventName(eventName);
+                return __sloppyRealtimeDeepFreeze({
+                    ...(options?.id === undefined ? {} : { id: String(options.id) }),
+                    type: eventName,
+                    data: __sloppyRealtimeValidateEvent(client, eventName, data, "client"),
+                });
+            },
+            serializeServerMessage(eventName, data, options = undefined) {
+                __sloppyRealtimeEventName(eventName);
+                return __sloppyRealtimeDeepFreeze({
+                    ...(options?.id === undefined ? {} : { id: String(options.id) }),
+                    type: eventName,
+                    data: __sloppyRealtimeValidateEvent(server, eventName, data, "server"),
+                });
+            },
+            errorEnvelope: __sloppyRealtimeErrorEnvelope,
+        };
+        return Object.freeze(channel);
+    }
+
+    function __sloppyRealtimeIsChannel(value) {
+        return value !== null && typeof value === "object" && value[REALTIME_CHANNEL] === true;
+    }
+
+    function __sloppyRealtimeGroupName(value) {
+        if (typeof value !== "string" || value.length === 0 || value.length > 256 || /[\u0000-\u001f\u007f]/u.test(value)) {
+            throw new TypeError("Sloppy Realtime group names must be non-empty bounded strings without control characters.");
+        }
+        return value;
+    }
+
+    function __sloppyRealtimeMemoryBackplane() {
+        const connections = new Map();
+        const groups = new Map();
+        const presence = new Map();
+        let disposed = false;
+        function ensureOpen() {
+            if (disposed) {
+                throw new SloppyRealtimeError("SLOPPY_E_REALTIME_BACKPLANE_ERROR", "Realtime backplane is disposed.");
+            }
+        }
+        function ensureGroup(name) {
+            __sloppyRealtimeGroupName(name);
+            let group = groups.get(name);
+            if (group === undefined) {
+                group = new Set();
+                groups.set(name, group);
+            }
+            return group;
+        }
+        function pruneGroup(name) {
+            const group = groups.get(name);
+            if (group !== undefined && group.size === 0) {
+                groups.delete(name);
+            }
+        }
+        function removeConnectionState(connectionId) {
+            const connection = connections.get(connectionId);
+            if (connection !== undefined) {
+                for (const groupName of connection.groups) {
+                    groups.get(groupName)?.delete(connectionId);
+                    pruneGroup(groupName);
+                }
+            }
+            connections.delete(connectionId);
+            presence.delete(connectionId);
+            return connection !== undefined;
+        }
+        return Object.freeze({
+            kind: "memory",
+            async connect(connection) {
+                ensureOpen();
+                removeConnectionState(connection.connectionId);
+                connections.set(connection.connectionId, { ...connection, groups: new Set() });
+                return Object.freeze({ ok: true });
+            },
+            async disconnect(connectionId) {
+                if (disposed) {
+                    return Object.freeze({ ok: true });
+                }
+                removeConnectionState(connectionId);
+                return Object.freeze({ ok: true });
+            },
+            async join(connectionId, groupName) {
+                ensureOpen();
+                __sloppyRealtimeGroupName(groupName);
+                const connection = connections.get(connectionId);
+                if (connection === undefined) {
+                    throw new SloppyRealtimeError("SLOPPY_E_REALTIME_CLOSED_CONNECTION", "Realtime connection is closed.");
+                }
+                ensureGroup(groupName).add(connectionId);
+                connection.groups.add(groupName);
+                return Object.freeze({ ok: true });
+            },
+            async leave(connectionId, groupName) {
+                ensureOpen();
+                __sloppyRealtimeGroupName(groupName);
+                groups.get(groupName)?.delete(connectionId);
+                pruneGroup(groupName);
+                connections.get(connectionId)?.groups.delete(groupName);
+                return Object.freeze({ ok: true });
+            },
+            async leaveAll(connectionId) {
+                ensureOpen();
+                const connection = connections.get(connectionId);
+                if (connection === undefined) {
+                    return Object.freeze({ count: 0 });
+                }
+                const count = connection.groups.size;
+                for (const groupName of connection.groups) {
+                    groups.get(groupName)?.delete(connectionId);
+                    pruneGroup(groupName);
+                }
+                connection.groups.clear();
+                return Object.freeze({ count });
+            },
+            async groups(connectionId) {
+                ensureOpen();
+                return Object.freeze([...(connections.get(connectionId)?.groups ?? [])]);
+            },
+            async groupSize(groupName) {
+                ensureOpen();
+                __sloppyRealtimeGroupName(groupName);
+                return groups.get(groupName)?.size ?? 0;
+            },
+            async send(connectionId, envelope) {
+                ensureOpen();
+                const connection = connections.get(connectionId);
+                if (connection === undefined) {
+                    return Object.freeze({ count: 0 });
+                }
+                await connection.send(envelope);
+                return Object.freeze({ count: 1 });
+            },
+            async broadcast(groupName, envelope, options = undefined) {
+                ensureOpen();
+                __sloppyRealtimeGroupName(groupName);
+                const except = new Set(options?.except ?? []);
+                if (options?.exceptSelf === true && typeof options.senderId === "string") {
+                    except.add(options.senderId);
+                }
+                const ids = [...(groups.get(groupName) ?? [])].filter((id) => !except.has(id));
+                let count = 0;
+                for (const id of ids) {
+                    const connection = connections.get(id);
+                    if (connection !== undefined) {
+                        await connection.send(envelope);
+                        count += 1;
+                    } else {
+                        groups.get(groupName)?.delete(id);
+                        pruneGroup(groupName);
+                    }
+                }
+                return Object.freeze({ count });
+            },
+            async presenceSet(connectionId, record) {
+                ensureOpen();
+                const connection = connections.get(connectionId);
+                if (connection === undefined) {
+                    throw new SloppyRealtimeError("SLOPPY_E_REALTIME_CLOSED_CONNECTION", "Realtime connection is closed.");
+                }
+                const metadata = record?.metadata ?? {};
+                const encoded = JSON.stringify(metadata);
+                if (encoded === undefined || Text.utf8.encode(encoded).byteLength > 4096) {
+                    throw new TypeError("Sloppy Realtime presence metadata must be bounded JSON.");
+                }
+                presence.set(connectionId, __sloppyRealtimeSnapshot({
+                    connectionId,
+                    userId: record?.userId ?? connection.userId,
+                    groups: [...connection.groups],
+                    connectedAt: record?.connectedAt ?? connection.connectedAt,
+                    metadata: JSON.parse(encoded),
+                }));
+                return presence.get(connectionId);
+            },
+            async presenceGet(connectionId) {
+                ensureOpen();
+                return presence.get(connectionId);
+            },
+            async presenceInGroup(groupName) {
+                ensureOpen();
+                __sloppyRealtimeGroupName(groupName);
+                return Object.freeze([...(groups.get(groupName) ?? [])].map((id) => presence.get(id)).filter(Boolean));
+            },
+            async dispose() {
+                disposed = true;
+                connections.clear();
+                groups.clear();
+                presence.clear();
+            },
+            health() {
+                return Object.freeze({ status: disposed ? "unavailable" : "ok", kind: "memory" });
+            },
+        });
+    }
+
+    function __sloppyRealtimeHandlerAuth(options = undefined) {
+        if (options === undefined) {
+            return undefined;
+        }
+        if (!isPlainObject(options)) {
+            throw new TypeError("Sloppy Realtime ctx.on options must be a plain object.");
+        }
+        return Object.freeze({
+            required: options.requiresAuth === true || options.required === true,
+            scopes: Object.freeze([
+                ...((typeof options.requiresScope === "string") ? [options.requiresScope] : []),
+                ...((Array.isArray(options.requiresScope)) ? options.requiresScope : []),
+                ...((Array.isArray(options.scopes)) ? options.scopes : []),
+            ]),
+            roles: Object.freeze([
+                ...((typeof options.requiresRole === "string") ? [options.requiresRole] : []),
+                ...((Array.isArray(options.requiresRole)) ? options.requiresRole : []),
+                ...((Array.isArray(options.roles)) ? options.roles : []),
+            ]),
+            policy: options.policy,
+        });
+    }
+
+    function __sloppyRealtimeMergeAuth(eventAuth = undefined, handlerAuth = undefined) {
+        if (eventAuth === undefined && handlerAuth === undefined) {
+            return undefined;
+        }
+        return Object.freeze({
+            required: eventAuth?.required === true || handlerAuth?.required === true,
+            scopes: Object.freeze([...new Set([...(eventAuth?.scopes ?? []), ...(handlerAuth?.scopes ?? [])])]),
+            roles: Object.freeze([...new Set([...(eventAuth?.roles ?? []), ...(handlerAuth?.roles ?? [])])]),
+            policy: eventAuth?.policy ?? handlerAuth?.policy,
+        });
+    }
+
+    async function __sloppyRealtimeAuthorize(ctx, auth, eventName, resource = undefined) {
+        if (auth === undefined) {
+            return;
+        }
+        const user = ctx.user;
+        if (auth.required === true && user?.authenticated !== true) {
+            throw new SloppyRealtimeError("SLOPPY_E_REALTIME_UNAUTHORIZED_EVENT", "Realtime event requires an authenticated user.", { event: eventName, closeCode: 1008 });
+        }
+        const scopes = Array.isArray(user?.scopes) ? user.scopes : String(user?.scope ?? "").split(/\s+/u).filter(Boolean);
+        for (const scope of auth.scopes) {
+            if (!scopes.includes(scope)) {
+                throw new SloppyRealtimeError("SLOPPY_E_REALTIME_UNAUTHORIZED_EVENT", "Realtime event requires a missing scope.", { event: eventName, closeCode: 1008 });
+            }
+        }
+        const roles = Array.isArray(user?.roles) ? user.roles : [];
+        for (const role of auth.roles) {
+            if (!roles.includes(role)) {
+                throw new SloppyRealtimeError("SLOPPY_E_REALTIME_UNAUTHORIZED_EVENT", "Realtime event requires a missing role.", { event: eventName, closeCode: 1008 });
+            }
+        }
+        if (auth.policy !== undefined) {
+            if (typeof ctx.authorize !== "function") {
+                throw new SloppyRealtimeError("SLOPPY_E_REALTIME_UNAUTHORIZED_EVENT", "Realtime event authorization policy is unavailable in this runtime.", { event: eventName, closeCode: 1008 });
+            }
+            if (await ctx.authorize(auth.policy, resource) !== true) {
+                throw new SloppyRealtimeError("SLOPPY_E_REALTIME_UNAUTHORIZED_EVENT", "Realtime event authorization policy denied the message.", { event: eventName, closeCode: 1008 });
+            }
+        }
+    }
+
+    function __sloppyRealtimeRoute(channel, handler, options = undefined) {
+        if (!__sloppyRealtimeIsChannel(channel)) {
+            throw new TypeError("Sloppy app.realtime channel must come from Realtime.channel(...).");
+        }
+        if (typeof handler !== "function") {
+            throw new TypeError("Sloppy app.realtime handler must be a function.");
+        }
+        if (options !== undefined && !isPlainObject(options)) {
+            throw new TypeError("Sloppy Realtime route options must be a plain object.");
+        }
+        const routeOptions = Object.freeze({
+            presence: options?.presence === true,
+            backplane: options?.backplane ?? __sloppyRealtimeMemoryBackplane(),
+            unknownEventPolicy: options?.unknownEventPolicy ?? "error",
+            validationFailurePolicy: options?.validationFailurePolicy ?? "error",
+            handlerErrorPolicy: options?.handlerErrorPolicy ?? "close",
+            websocket: {
+                ...(options?.websocket ?? options ?? {}),
+                protocols: options?.protocols ?? options?.websocket?.protocols ?? [channel.metadata.protocol],
+            },
+        });
+        return __sloppyRealtimeWebSocket(async (ctx, socket) => {
+            const eventHandlers = new Map();
+            const connectionId = socket.id ?? `${channel.name}:${Date.now()}:${Math.random()}`;
+            const routePattern = ctx.routePattern ?? ctx.request?.path ?? "";
+            const routeGroup = `route:${channel.name}:${routePattern}`;
+            let accepted = false;
+            async function sendError(error, eventName = undefined) {
+                await socket.sendJson(channel.errorEnvelope(error, eventName));
+            }
+            async function dispatchError(error, eventName = undefined) {
+                const code = error instanceof SloppyRealtimeError ? error.code : "SLOPPY_E_REALTIME_HANDLER_ERROR";
+                const policy = code === "SLOPPY_E_REALTIME_UNKNOWN_EVENT"
+                    ? routeOptions.unknownEventPolicy
+                    : code === "SLOPPY_E_REALTIME_VALIDATION_FAILED"
+                        ? routeOptions.validationFailurePolicy
+                        : code === "SLOPPY_E_REALTIME_UNAUTHORIZED_EVENT"
+                            ? "error"
+                            : routeOptions.handlerErrorPolicy;
+                if (policy === "error") {
+                    await sendError(error, eventName);
+                } else {
+                    await socket.close(error?.closeCode ?? 1011, code);
+                }
+            }
+            function groupHandle(groupName) {
+                __sloppyRealtimeGroupName(groupName);
+                return Object.freeze({
+                    async sendTo(targetConnectionId, eventName, data, sendOptions = undefined) {
+                        const envelope = channel.serializeServerMessage(eventName, data, sendOptions);
+                        return routeOptions.backplane.send(targetConnectionId, envelope);
+                    },
+                    async broadcast(eventName, data, broadcastOptions = undefined) {
+                        const envelope = channel.serializeServerMessage(eventName, data, broadcastOptions);
+                        return routeOptions.backplane.broadcast(groupName, envelope, { ...(broadcastOptions ?? {}), senderId: connectionId });
+                    },
+                });
+            }
+            const realtimeContext = Object.freeze({
+                socket,
+                channel,
+                params: ctx.params ?? ctx.route ?? Object.freeze({}),
+                query: ctx.query ?? ctx.request?.query,
+                headers: ctx.request?.headers,
+                user: ctx.user,
+                services: ctx.services,
+                requireUser() {
+                    return ctx.requireUser();
+                },
+                async accept() {
+                    if (!accepted) {
+                        await socket.accept();
+                        accepted = true;
+                        await routeOptions.backplane.connect({
+                            connectionId,
+                            userId: ctx.user?.sub,
+                            routePattern,
+                            channel: channel.name,
+                            async send(envelope) {
+                                await socket.sendJson(envelope);
+                            },
+                        });
+                        await routeOptions.backplane.join(connectionId, routeGroup);
+                    }
+                },
+                close(code = 1000, reason = "") {
+                    return socket.close(code, reason);
+                },
+                on(eventName, optionsOrHandler, maybeHandler = undefined) {
+                    __sloppyRealtimeEventName(eventName);
+                    const eventHandler = typeof optionsOrHandler === "function" ? optionsOrHandler : maybeHandler;
+                    if (typeof eventHandler !== "function") {
+                        throw new TypeError("Sloppy Realtime ctx.on handler must be a function.");
+                    }
+                    if (eventHandlers.has(eventName)) {
+                        throw new TypeError(`Sloppy Realtime client event '${eventName}' already has a handler.`);
+                    }
+                    const handlerPolicy = typeof optionsOrHandler === "function"
+                        ? undefined
+                        : __sloppyRealtimeHandlerAuth(optionsOrHandler);
+                    eventHandlers.set(eventName, Object.freeze({
+                        handler: eventHandler,
+                        policy: handlerPolicy,
+                    }));
+                    return realtimeContext;
+                },
+                async send(eventName, data, sendOptions = undefined) {
+                    const envelope = channel.serializeServerMessage(eventName, data, sendOptions);
+                    await socket.sendJson(envelope);
+                    return envelope;
+                },
+                async broadcast(eventName, data, broadcastOptions = undefined) {
+                    const envelope = channel.serializeServerMessage(eventName, data, broadcastOptions);
+                    return routeOptions.backplane.broadcast(routeGroup, envelope, { ...(broadcastOptions ?? {}), senderId: connectionId });
+                },
+                group: groupHandle,
+                groups: Object.freeze({
+                    join(groupName) {
+                        return routeOptions.backplane.join(connectionId, __sloppyRealtimeGroupName(groupName));
+                    },
+                    leave(groupName) {
+                        return routeOptions.backplane.leave(connectionId, __sloppyRealtimeGroupName(groupName));
+                    },
+                    async list() {
+                        return (await routeOptions.backplane.groups(connectionId)).filter((groupName) => groupName !== routeGroup);
+                    },
+                }),
+                presence: Object.freeze({
+                    set(record) {
+                        if (routeOptions.presence !== true) {
+                            throw new SloppyRealtimeError("SLOPPY_E_REALTIME_PRESENCE_DISABLED", "Realtime presence is not enabled for this route.");
+                        }
+                        return routeOptions.backplane.presenceSet(connectionId, { ...(record ?? {}), userId: record?.userId ?? ctx.user?.sub });
+                    },
+                    get(targetConnectionId = connectionId) {
+                        return routeOptions.backplane.presenceGet(targetConnectionId);
+                    },
+                    inGroup(groupName) {
+                        return routeOptions.backplane.presenceInGroup(__sloppyRealtimeGroupName(groupName));
+                    },
+                }),
+                connectionId,
+            });
+            try {
+                try {
+                    await handler(realtimeContext);
+                } catch (error) {
+                    if (!accepted) {
+                        throw error;
+                    }
+                    await dispatchError(error, error?.event);
+                    return undefined;
+                }
+                if (!accepted) {
+                    return undefined;
+                }
+                for await (const message of socket.messages()) {
+                    let envelope;
+                    try {
+                        envelope = channel.parseClientMessage(message.kind === "json" ? message.json() : message.text);
+                        const registration = eventHandlers.get(envelope.type);
+                        if (registration === undefined) {
+                            throw new SloppyRealtimeError("SLOPPY_E_REALTIME_UNKNOWN_EVENT", "Realtime client event has no handler.", { event: envelope.type, closeCode: 1008 });
+                        }
+                        await __sloppyRealtimeAuthorize(ctx, __sloppyRealtimeMergeAuth(
+                            channel.client[envelope.type].metadata.auth,
+                            registration.policy,
+                        ), envelope.type, {
+                            event: envelope.type,
+                            data: envelope.data,
+                            id: envelope.id,
+                            connectionId,
+                            channel: channel.name,
+                        });
+                        await registration.handler(envelope.data, Object.freeze({ id: envelope.id, event: envelope.type }));
+                    } catch (error) {
+                        await dispatchError(error, envelope?.type ?? error?.event);
+                        if (socket.closed) {
+                            break;
+                        }
+                    }
+                }
+                return undefined;
+            } finally {
+                await routeOptions.backplane.disconnect(connectionId);
+            }
+        }, routeOptions.websocket);
+    }
+
     const Realtime = Object.freeze({
         sse: __sloppyRealtimeSse,
         websocket: __sloppyRealtimeWebSocket,
         hub: __sloppyRealtimeHub,
+        channel: __sloppyRealtimeChannel,
+        event: __sloppyRealtimeEvent,
+        isChannel: __sloppyRealtimeIsChannel,
+        backplane: Object.freeze({
+            memory: __sloppyRealtimeMemoryBackplane,
+        }),
+        __route: __sloppyRealtimeRoute,
         textBytes(value) {
             return Text.utf8.encode(String(value));
         },
@@ -16209,6 +16927,9 @@ Reason:
         Cache,
         SloppyCacheError,
         Realtime,
+        SloppyRealtimeError,
+        schema: __sloppyRealtimeSchemaRuntime.schema,
+        Schema: __sloppyRealtimeSchemaRuntime.Schema,
         ProblemDetails,
         Random,
         Hash,

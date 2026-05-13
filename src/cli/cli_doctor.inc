@@ -769,6 +769,7 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
 {
     size_t health_routes = 0U;
     size_t management_routes = 0U;
+    size_t realtime_routes = 0U;
     bool prometheus_metrics = false;
     bool json_metrics = false;
 
@@ -777,6 +778,9 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
 
         if (!sl_cli_span_empty(route->health_kind)) {
             health_routes += 1U;
+        }
+        if (!sl_cli_span_empty(route->realtime_kind)) {
+            realtime_routes += 1U;
         }
         if (sl_cli_doctor_span_starts_with(route->name, "Management.")) {
             management_routes += 1U;
@@ -832,6 +836,13 @@ static void sl_cli_doctor_emit_plan_metadata(const SlCliOptions* options, SlAren
             (prometheus_metrics && json_metrics)
                 ? sl_cli_span_cstr("Prometheus and JSON metrics endpoint metadata present")
                 : sl_cli_span_cstr("Prometheus or JSON metrics endpoint metadata missing"),
+            emitted);
+    }
+    if (realtime_routes > 0U) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("app.realtime.framework"), sl_cli_span_cstr("warn"),
+            sl_cli_span_cstr(
+                "Realtime framework metadata is present; WebSocket runtime support remains alpha"),
             emitted);
     }
     sl_cli_doctor_emit_fs_capabilities(options, arena, metadata, emitted);

@@ -21,7 +21,7 @@ impl RouteMethod {
     pub fn from_property(property: &str) -> Option<Self> {
         match property {
             "mapGet" | "get" => Some(Self::Get),
-            "sse" | "ws" | "websocket" => Some(Self::Get),
+            "sse" | "ws" | "websocket" | "realtime" => Some(Self::Get),
             "mapPost" | "post" => Some(Self::Post),
             "mapPut" | "put" => Some(Self::Put),
             "mapPatch" | "patch" => Some(Self::Patch),
@@ -62,7 +62,7 @@ pub fn route_method_from_property(property: &str) -> Option<&'static str> {
 pub fn route_kind_from_property(property: &str) -> Option<&'static str> {
     match property {
         "sse" => Some("sse"),
-        "ws" | "websocket" => Some("websocket"),
+        "ws" | "websocket" | "realtime" => Some("websocket"),
         _ => RouteMethod::from_property(property).map(|_| "http"),
     }
 }
@@ -159,12 +159,14 @@ mod tests {
         assert_eq!(route_method_from_property("sse"), Some("GET"));
         assert_eq!(route_method_from_property("ws"), Some("GET"));
         assert_eq!(route_method_from_property("websocket"), Some("GET"));
+        assert_eq!(route_method_from_property("realtime"), Some("GET"));
         assert_eq!(route_method_from_property("connect"), None);
 
         assert_eq!(route_kind_from_property("get"), Some("http"));
         assert_eq!(route_kind_from_property("sse"), Some("sse"));
         assert_eq!(route_kind_from_property("ws"), Some("websocket"));
         assert_eq!(route_kind_from_property("websocket"), Some("websocket"));
+        assert_eq!(route_kind_from_property("realtime"), Some("websocket"));
         assert_eq!(route_kind_from_property("connect"), None);
     }
 

@@ -1,197 +1,239 @@
 # Realtime
 
-`Realtime` is the experimental route surface for server-sent events,
-app-host WebSocket primitives, and in-process hub helpers.
+`Realtime` is Sloppy's high-level framework for typed WebSocket application
+events. Use it when an app needs named client/server events, schema validation,
+groups, single-process presence, per-message authorization, and TestHost
+coverage.
+
+Raw WebSocket routes remain available through `app.websocket(...)`. Realtime
+routes build on those primitives and are the recommended application API for
+bidirectional features.
 
 ```ts
-import { Sloppy, Realtime } from "sloppy";
+import { Realtime, Sloppy, schema } from "sloppy";
+
+const Chat = Realtime.channel("chat", {
+    client: {
+        sendMessage: schema.object({
+            roomId: schema.string(),
+            text: schema.string().maxLength(1000),
+        }),
+        typing: Realtime.event(schema.object({
+            roomId: schema.string(),
+        })).requiresScope("chat:write"),
+    },
+    server: {
+        messageCreated: schema.object({
+            id: schema.string(),
+            roomId: schema.string(),
+            text: schema.string(),
+            createdAt: schema.string(),
+        }),
+        userTyping: schema.object({
+            roomId: schema.string(),
+            userId: schema.string(),
+        }),
+    },
+});
 
 const app = Sloppy.create();
 
-app.sse("/events", async (ctx, stream) => {
-    stream.event("ready", { ok: true });
-});
-```
+app.realtime("/rooms/{roomId}", Chat, async (ctx) => {
+    await ctx.accept();
+    await ctx.groups.join(`room:${ctx.params.roomId}`);
 
-## Route Methods
+    ctx.on("sendMessage", async (input) => {
+        await ctx.group(`room:${ctx.params.roomId}`).broadcast("messageCreated", {
+            id: crypto.randomUUID(),
+            roomId: ctx.params.roomId,
+            text: input.text,
+            createdAt: new Date().toISOString(),
+        });
+    });
 
-`app.sse(pattern, handler)` registers a `GET` route with realtime kind `sse`.
-The handler receives the normal request context plus an SSE stream:
-
-```ts
-app.sse("/events", async (ctx, stream) => {
-    stream.comment("connected");
-    stream.event("ready", { path: ctx.request.path });
-    stream.heartbeat();
-});
-```
-
-Route groups expose the same method:
-
-```ts
-const live = app.group("/live").requireAuth();
-live.sse("/events", handler);
-```
-
-`app.websocket(pattern, handler, options?)` and
-`group.websocket(pattern, handler, options?)` register `GET` routes with
-realtime kind `websocket`. `app.ws(...)` and `group.ws(...)` remain aliases.
-
-```ts
-const ClientMessage = schema.object({
-    type: schema.enum(["ping", "echo"]),
-    text: schema.string().optional(),
-});
-
-app.websocket("/ws", async (socket) => {
-    await socket.accept();
-
-    for await (const message of socket.messages()) {
-        if (message.kind === "text") {
-            await socket.sendText(`echo:${message.text}`);
-            continue;
-        }
-
-        if (message.kind === "json") {
-            const input = message.validate(ClientMessage);
-            if (input.type === "ping") {
-                await socket.sendJson({ type: "pong" });
-            }
-        }
-    }
-}, {
-    origins: ["https://app.example.com"],
-    protocols: ["sloppy.realtime"],
-    maxMessageBytes: 64 * 1024,
-    maxSendQueueBytes: 1024 * 1024,
-    heartbeatMs: 15_000,
-    idleTimeoutMs: 30_000,
-});
-```
-
-Options are validated at route registration. `protocols` must be WebSocket
-subprotocol tokens. `origins` must be explicit strings or `"*"`. Message and
-queue limits must be positive integers. Compression is rejected unless it is
-`false`.
-
-Route builders support WebSocket-specific metadata:
-
-```ts
-app.websocket("/secure/ws", async (socket) => {
-    const user = socket.ctx.user;
-    await socket.accept();
-    await socket.sendJson({ type: "hello", sub: user.sub });
+    ctx.on("typing", async (input) => {
+        await ctx.group(`room:${input.roomId}`).broadcast("userTyping", {
+            roomId: input.roomId,
+            userId: ctx.user.sub,
+        }, { exceptSelf: true });
+    });
 })
-    .withName("Realtime.Secure")
     .requiresAuth()
-    .requiresScope("realtime")
+    .requiresScope("chat")
     .allowedOrigins(["https://app.example.com"]);
 ```
 
-## `Realtime.sse(handler, options?)`
+## Channels
 
-Wraps a handler in a `Results.stream(...)` descriptor with:
+`Realtime.channel(name, definition)` creates an immutable channel descriptor.
+Channel names and event names must be stable identifiers. Reserved protocol
+event names such as `connect`, `disconnect`, `error`, `ping`, `pong`, `join`,
+`leave`, and `system` are rejected.
 
-- `Content-Type: text/event-stream`
-- `Cache-Control: no-cache`
-- `X-Slop-Realtime: sse`
+Client events describe messages the browser or test client can send. Server
+events describe messages the app can emit. Schemas must be Sloppy schemas, and
+the same event name cannot appear in both maps.
 
-`options.maxQueuedEvents` bounds buffered SSE frame writes for one handler
-invocation. The default is `64`; writing more frames rejects deterministically
-instead of growing memory without limit. The handler writes bounded chunks into a
-`Results.stream` descriptor before returning. Native HTTP/1.1 serialization
-lowers that descriptor into the Core stream path and emits chunked frames, but
-this is still bounded descriptor streaming, not a production push transport with
-live handler backpressure.
+`Realtime.event(schema)` wraps a schema when the event also needs authorization
+metadata:
 
-## SSE Stream
+```ts
+const Update = Realtime.event(schema.object({ id: schema.string() }))
+    .requiresAuth()
+    .requiresScope("items:write")
+    .requiresRole("operator");
+```
 
-The second handler argument has these methods:
+## Envelopes
 
-| Method | Behavior |
-| --- | --- |
-| `stream.send(data)` | Writes a default SSE `data:` frame. Non-string values are JSON-serialized. |
-| `stream.event(name, data, options?)` | Writes a named event. Event names must be non-empty token strings. |
-| `stream.comment(text)` | Writes an SSE comment frame. CR and LF are rejected. |
-| `stream.heartbeat()` | Writes `: heartbeat`. |
-| `stream.close()` | Closes the stream descriptor. |
+Realtime messages are JSON envelopes:
 
-Event options:
+```json
+{ "type": "sendMessage", "data": { "text": "hello" }, "id": "optional-id" }
+```
+
+Server messages use the same shape. Realtime validates client envelopes before
+calling a handler and validates server envelopes before sending. Unknown events,
+malformed envelopes, invalid payloads, unauthorized events, handler failures,
+and backplane failures produce bounded error envelopes or close the socket
+according to the route policy.
+
+## Route Options
+
+`app.realtime(pattern, channel, handler, options?)` registers a WebSocket route
+with realtime metadata. Route groups expose `group.realtime(...)`.
 
 | Option | Behavior |
 | --- | --- |
-| `id` | Writes an `id:` field. CR and LF are rejected. |
-| `retry` | Writes a non-negative integer retry value. |
-| `comment` | Writes a comment before the event fields. CR and LF are rejected. |
+| `protocols` | WebSocket subprotocols. Defaults to the channel protocol. |
+| `origins` | Allowed origins as strings or `"*"`. |
+| `maxMessageBytes` | Inbound and outbound message limit. |
+| `maxSendQueueBytes` | Per-socket outbound queue limit in TestHost. |
+| `heartbeatMs` | App-host heartbeat ping interval. |
+| `idleTimeoutMs` | App-host idle close timeout. |
+| `closeTimeoutMs` | Close wait budget metadata. |
+| `presence` | Enables the single-process presence API. |
+| `backplane` | Realtime backplane object. Defaults to memory. |
+| `unknownEventPolicy` | `"error"` or `"close"`. Defaults to `"error"`. |
+| `validationFailurePolicy` | `"error"` or `"close"`. Defaults to `"error"`. |
+| `handlerErrorPolicy` | `"error"` or `"close"`. Defaults to `"close"`. |
 
-## WebSocket Socket
+## Context
 
-The handler receives a socket object. New handlers should use
-`async (socket) => { ... }`; legacy two-argument handlers receive
-`(ctx, socket)`.
+Realtime handlers receive `ctx`:
 
 | Member | Behavior |
 | --- | --- |
-| `socket.ctx` | Request context, including auth, services, config, metrics, route, and request metadata. |
-| `socket.accept()` | Accepts the app-host WebSocket connection. Sends before accept fail. |
-| `socket.messages()` | Async iterator of inbound messages. |
-| `socket.sendText(text)` | Sends a text message. |
-| `socket.sendJson(value)` | Sends a JSON message. |
-| `socket.sendBytes(bytes)` | Sends a binary message in app-host tests. |
-| `socket.close(code?, reason?)` | Closes idempotently. |
-| `socket.closed` | `true` after close. |
-| `socket.protocol` | Selected subprotocol, or an empty string. |
-| `socket.id` | Test-host connection ID in app-host tests. |
+| `ctx.accept()` | Accepts the WebSocket and registers the connection. |
+| `ctx.on(event, handler)` | Handles a client event. Duplicate handlers are rejected. |
+| `ctx.on(event, policy, handler)` | Adds per-message scope or role checks. |
+| `ctx.send(event, data)` | Sends a validated server event to this connection. |
+| `ctx.broadcast(event, data)` | Broadcasts to all connections on this realtime route. |
+| `ctx.group(name)` | Returns a group sender. |
+| `ctx.groups.join(name)` | Adds this connection to a group. |
+| `ctx.groups.leave(name)` | Removes this connection from a group. |
+| `ctx.groups.list()` | Lists groups for this connection. |
+| `ctx.presence` | Single-process presence helpers when enabled. |
+| `ctx.params`, `ctx.query`, `ctx.headers` | Handshake request data. |
+| `ctx.user`, `ctx.requireUser()` | Auth principal from the route. |
+| `ctx.services` | Request service scope. |
+| `ctx.connectionId` | Connection identifier. |
 
-Messages have `kind`, plus kind-specific data. Text messages expose `text`;
-binary messages expose `bytes`; JSON messages can be read through `json()` or
-validated with `validate(schema)`.
+Group names are bounded strings without control characters. Leaving an unknown
+group is safe. Broadcast to an empty group succeeds with count `0`.
 
-`Realtime.websocket(handler, options?)` wraps a handler with the same route
-handler marker used by `app.websocket(...)`. Native Upgrade dispatch enters
-the wrapped handler when the V8 request context carries a WebSocket session.
-Direct non-Upgrade HTTP calls to a WebSocket route fail because the route
-requires an Upgrade request.
+## Presence
 
-## `Realtime.hub(name)`
-
-Creates an in-process hub object for deterministic bootstrap tests and app-host
-fixtures:
+Presence is single-process and opt-in:
 
 ```ts
-const hub = Realtime.hub("notifications");
-const client = hub.register("user:1");
+await ctx.presence.set({
+    metadata: { status: "online", displayName: "Alice" },
+});
 
-client.join("admins");
-await hub.group("admins").sendJson({ type: "refresh" });
+const users = await ctx.presence.inGroup(`room:${ctx.params.roomId}`);
 ```
 
-The hub stores connection state in memory. It is not a broker, not shared
-across processes, and not a native WebSocket transport.
+Presence records contain `connectionId`, optional `userId`, current groups,
+`connectedAt`, and bounded JSON metadata. Sloppy does not store tokens or raw
+credentials in presence records.
 
-## Plan, Routes, And OpenAPI
+## Backplane
 
-The compiler records non-HTTP route kinds as `sse` or `websocket` in Plan route
-metadata and marks the Plan with `runtime.realtime`. `sloppy routes` includes a
-`kind` field, and `sloppy openapi` emits `x-slop-realtime` /
-`x-slop-transport` on realtime operations. Standard OpenAPI does not model
-WebSocket message flow; Sloppy does not present WebSocket routes as ordinary
-HTTP response operations.
+`Realtime.backplane.memory()` returns the in-process backplane used by default.
+It owns connection tracking, group membership, group broadcast, direct sends,
+presence records, disposal, and a small health snapshot.
 
-## Current Limits
+Other backplanes can implement the same method shape in separate packages. The
+memory backplane is not a distributed broker and does not guarantee
+multi-process group broadcast or distributed presence.
 
-- SSE uses the bounded `Results.stream` descriptor path and native Core stream
-  serialization; the handler does not stay attached to a live socket after it
-  returns.
-- WebSocket app-host execution is available through `TestHost.create(app)`.
-- Native HTTP/1.1 WebSocket Upgrade execution is available for V8-backed
-  `sloppy run` routes with text and binary frame delivery, server sends, close
-  frames, and ping-to-pong handling.
-- Artifact/package TestHost WebSocket connections report
-  `SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` until a runtime lane supports real
-  upgrade execution.
-- Native protected WebSocket routes fail closed until the auth principal bridge
-  is attached to upgraded connections.
-- There is no browser client helper.
-- Hubs are in-process bootstrap helpers only.
-- No compression, replay buffer, external pub/sub, or cross-node fan-out.
+## TestHost
+
+`TestHost.create(app)` exposes high-level realtime helpers:
+
+```ts
+await using host = await TestHost.create(app);
+
+const alice = await host.realtime("/rooms/r1", Chat)
+    .asUser({ sub: "alice", scopes: ["chat", "chat:write"] })
+    .origin("https://app.example.com")
+    .connect();
+
+await alice.send("sendMessage", { roomId: "r1", text: "hello" });
+await alice.expect("messageCreated", { roomId: "r1", text: "hello" });
+await alice.expectError("SLOPPY_E_REALTIME_VALIDATION_FAILED");
+await alice.close();
+```
+
+The TestHost client validates outgoing client events and validates incoming
+server events against the channel. `expect(...)` accepts a partial expected data
+object so tests can ignore generated fields such as IDs and timestamps.
+
+Artifact, package, and loopback TestHost WebSocket helpers keep the same
+support boundary as raw WebSockets: they report
+`SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` unless the supplied runtime host
+provides a WebSocket connector.
+
+## Metrics
+
+Realtime emits low-cardinality metrics in app-host tests:
+
+- `realtime.connections.total`
+- `realtime.connections.active` as a gauge
+- `realtime.messages.in.total`
+- `realtime.messages.out.total`
+- `realtime.messages.validation_failed.total`
+- `realtime.messages.unauthorized.total`
+- `realtime.groups.join.total`
+- `realtime.groups.leave.total`
+- `realtime.groups.broadcast.total`
+- `realtime.presence.set.total`
+- `realtime.errors.total`
+- `realtime.backplane.errors.total`
+
+Labels use route pattern, channel name, event name, outcome, and error code.
+They do not include raw paths, user IDs, group names, message payloads, tokens,
+or cookies.
+
+`Health.realtime(backplane)` reports the configured backplane health through
+the same health-check shape as the rest of `Health`.
+
+## Plan Metadata
+
+Compiler and CLI metadata for `app.realtime(...)` is intentionally partial in
+this alpha. Plan, `sloppy routes`, and OpenAPI preserve the transport plus the
+static channel/options expression text and mark realtime metadata with
+`metadataStatus: "partial"`. They do not claim complete event-name, per-event
+auth, or schema extraction yet.
+
+## Runtime Boundary
+
+The high-level framework has complete app-host/TestHost coverage and generated
+`runtime-classic` support for public V8-backed routes. Native `sloppy run` uses
+the raw WebSocket backend documented in [`WebSockets`](./websockets.md).
+Protected native WebSocket routes still fail closed until auth principals are
+materialized on upgraded connections.
+
+Do not describe the memory backplane as Redis, pub/sub, distributed presence,
+or cross-process fan-out.

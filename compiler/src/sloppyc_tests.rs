@@ -9153,9 +9153,17 @@ fn success_fixture_expected_outputs_stay_current() {
 #[test]
 fn realtime_routes_emit_kind_metadata_and_runtime_wrappers() {
     let source = r#"
-import { Sloppy, Results } from "sloppy";
+import { Sloppy, Results, Realtime, Schema } from "sloppy";
 
 const app = Sloppy.create();
+const Chat = Realtime.channel("chat", {
+    client: {
+        sendMessage: Schema.object({ text: Schema.string() })
+    },
+    server: {
+        messageCreated: Schema.object({ text: Schema.string() })
+    }
+});
 app.sse("/events", async (ctx, stream) => {
     await stream.event("ready", { ok: true });
 }).requireAuth();
@@ -9166,11 +9174,14 @@ group.websocket("/ws", async (ctx, socket) => {
 app.ws("/option-first", { protocols: ["option.first"], origins: "*", maxMessageBytes: 4096 }, async (socket) => {
     await socket.accept();
 });
+app.realtime("/chat", Chat, async (ctx) => {
+    await ctx.accept();
+}, { presence: true, protocols: ["sloppy.realtime.chat.v1"], maxMessageBytes: 8192 });
 export default app;
 "#;
     let path = std::path::Path::new("realtime.js");
     let app = extract(path, source).expect("realtime app should extract");
-    assert_eq!(app.routes.len(), 3);
+    assert_eq!(app.routes.len(), 4);
     assert_eq!(app.routes[0].method, "GET");
     assert_eq!(app.routes[0].kind, "sse");
     assert!(app.routes[0]
@@ -9201,9 +9212,22 @@ export default app;
         app.routes[2].websocket.as_ref().unwrap().origins,
         Some(WebSocketOriginsMetadata::Any)
     ));
+    assert_eq!(app.routes[3].pattern, "/chat");
+    assert_eq!(app.routes[3].kind, "websocket");
+    assert!(app.routes[3].realtime.is_some());
+    assert!(app.routes[3]
+        .handler
+        .emitted_source
+        .contains("Realtime.__route(Chat,"));
+    assert_eq!(
+        app.routes[3].websocket.as_ref().unwrap().protocols[0],
+        "sloppy.realtime.chat.v1"
+    );
 
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js.source.contains("Results, Realtime"));
+    assert!(emitted_js
+        .source
+        .contains("Results, Realtime, SloppyRealtimeError, schema, Schema"));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,
@@ -9233,12 +9257,96 @@ export default app;
     assert_eq!(value["routes"][1]["websocket"]["compression"], false);
     assert_eq!(value["routes"][1]["websocket"]["slowClientPolicy"], "close");
     assert_eq!(value["routes"][2]["websocket"]["origins"], "*");
+    assert_eq!(value["routes"][3]["realtime"]["kind"], "framework");
+    assert_eq!(value["routes"][3]["realtime"]["metadataStatus"], "partial");
+    assert_eq!(value["routes"][3]["realtime"]["channelExpression"], "Chat");
+    assert_eq!(
+        value["routes"][3]["websocket"]["protocols"][0],
+        "sloppy.realtime.chat.v1"
+    );
+    assert_eq!(value["routes"][3]["websocket"]["maxMessageBytes"], 8192);
     assert_eq!(value["routes"][1]["auth"]["scopes"][0], "realtime");
     assert_eq!(value["features"]["realtime"], true);
     assert!(value["requiredFeatures"]
         .as_array()
         .expect("requiredFeatures should be an array")
         .contains(&serde_json::json!("runtime.realtime")));
+}
+
+#[test]
+fn realtime_routes_without_options_keep_websocket_metadata_omitted() {
+    let source = r#"
+import { Sloppy, Realtime, Schema } from "sloppy";
+
+const app = Sloppy.create();
+const Chat = Realtime.channel("chat", {
+    client: { sendMessage: Schema.object({ text: Schema.string() }) },
+    server: { messageCreated: Schema.object({ text: Schema.string() }) }
+});
+app.realtime("/chat", Chat, async (ctx) => {
+    await ctx.accept();
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("realtime-defaults.js"), source)
+        .expect("realtime route should extract");
+    assert_eq!(app.routes.len(), 1);
+    assert!(app.routes[0].realtime.is_some());
+    assert!(app.routes[0].websocket.is_none());
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("plan should parse");
+    assert_eq!(value["features"]["metadataInference"], true);
+    assert_eq!(value["routes"][0]["realtime"]["kind"], "framework");
+    assert!(value["routes"][0].get("websocket").is_none());
+}
+
+#[test]
+fn invalid_realtime_route_arity_reports_diagnostic() {
+    let source = r#"
+import { Sloppy, Realtime, Schema } from "sloppy";
+
+const app = Sloppy.create();
+const Chat = Realtime.channel("chat", {
+    client: { sendMessage: Schema.object({ text: Schema.string() }) },
+    server: { messageCreated: Schema.object({ text: Schema.string() }) }
+});
+app.realtime("/chat", Chat);
+export default app;
+"#;
+    let diagnostic = extract(std::path::Path::new("bad-realtime.js"), source)
+        .expect_err("invalid realtime arity should fail");
+    assert_eq!(diagnostic.code, "SLOPPYC_E_INVALID_REALTIME_ROUTE_ARGS");
+}
+
+#[test]
+fn wrapped_realtime_descriptors_do_not_emit_schema_metadata() {
+    let source = r#"
+import { Sloppy, Realtime, Schema } from "sloppy";
+
+const app = Sloppy.create();
+const Chat = Object.freeze(Realtime.channel("chat", {
+    client: { sendMessage: Schema.object({ text: Schema.string() }) },
+    server: { messageCreated: Schema.object({ text: Schema.string() }) }
+}));
+const Typing = helper(Realtime.event(Schema.object({ roomId: Schema.string() })));
+app.realtime("/chat", Chat, async (ctx) => {
+    await ctx.accept();
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("wrapped-realtime.js"), source)
+        .expect("wrapped realtime descriptors should extract");
+    assert!(app.schemas.is_empty());
+    assert_eq!(app.routes.len(), 1);
+    assert!(app.routes[0].realtime.is_some());
 }
 
 #[test]

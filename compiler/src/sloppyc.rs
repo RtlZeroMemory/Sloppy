@@ -270,6 +270,8 @@ struct RouteMetadata {
     output_cache: Option<Value>,
     cache_headers: Option<Value>,
     websocket: Option<WebSocketRouteOptionsMetadata>,
+    realtime_channel_source: Option<String>,
+    realtime_options_source: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -6237,6 +6239,7 @@ fn extract_import(
                 ("Results", "Results") => state.results_imported = true,
                 ("Auth", "Auth") => state.auth_imported = true,
                 ("Realtime", "Realtime") => state.realtime_imported = true,
+                ("SloppyRealtimeError", "SloppyRealtimeError") => state.realtime_imported = true,
                 ("Config", "Config") => state.config_imported = true,
                 ("Cache", "Cache") => state.cache_imported = true,
                 ("SloppyCacheError", "SloppyCacheError") => state.cache_imported = true,
@@ -6344,6 +6347,7 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "Cache"
             | "SloppyCacheError"
             | "Realtime"
+            | "SloppyRealtimeError"
             | "ProblemDetails"
             | "RequestId"
             | "RequestLogging"
@@ -6815,7 +6819,7 @@ fn extract_expression_statement(
         .map_err(|diagnostic| diagnostic.with_path(path))?;
 
     let Some((receiver, method, kind, pattern, route_metadata, handler_arg)) =
-        route_call_parts(route_expr, &state.static_strings)
+        route_call_parts(route_expr, source, &state.static_strings)
             .map_err(|diagnostic| diagnostic.with_path(path))?
     else {
         if record_dynamic_route_if_supported(path, source, source_name, route_expr, state)? {
@@ -6916,7 +6920,7 @@ fn extract_expression_statement(
     };
 
     let mut handler = handler;
-    wrap_realtime_handler(&mut handler, kind);
+    wrap_realtime_handler(&mut handler, kind, &route_metadata);
     apply_route_schema_metadata(
         path,
         statement.span,
@@ -6980,6 +6984,7 @@ fn extract_expression_statement(
         method,
         kind,
         websocket: contract_metadata.websocket.clone(),
+        realtime: realtime_route_metadata_from_contract(&contract_metadata),
         framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
         pattern: normalized_pattern,
         name: contract_metadata.name.clone(),
@@ -8887,6 +8892,7 @@ fn static_asset_route(
         method: "GET",
         kind: "http",
         websocket: None,
+        realtime: None,
         framework_path: None,
         pattern: route_path,
         name: None,
@@ -10238,6 +10244,7 @@ fn app_map_controller_call(
             method,
             kind: "http",
             websocket: None,
+            realtime: None,
             framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
             pattern: normalized_pattern,
             name: contract_metadata.name.clone(),
@@ -10614,6 +10621,7 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
             method: "OPTIONS",
             kind: "http",
             websocket: None,
+            realtime: None,
             framework_path: None,
             pattern,
             name: None,
@@ -12097,6 +12105,7 @@ fn ops_route(
         method: "GET",
         kind: "http",
         websocket: None,
+        realtime: None,
         framework_path: (normalized_pattern != framework_path).then(|| framework_path.to_string()),
         pattern: normalized_pattern,
         name: Some(name.to_string()),
@@ -12170,6 +12179,7 @@ fn health_route(
         method: "GET",
         kind: "http",
         websocket: None,
+        realtime: None,
         framework_path: (normalized_pattern != spec.framework_path)
             .then(|| spec.framework_path.to_string()),
         pattern: normalized_pattern,
@@ -12512,6 +12522,7 @@ fn docs_route(input: DocsRouteInput<'_>) -> Result<Route, Diagnostic> {
         method: "GET",
         kind: "http",
         websocket: None,
+        realtime: None,
         framework_path: None,
         pattern: input.framework_path.to_string(),
         name: Some(input.name.to_string()),
@@ -14489,7 +14500,7 @@ fn extract_module_function_routes(
                     .map_err(|diagnostic| diagnostic.with_path(path))?;
                 let static_strings = StaticStringEnv::default();
                 let Some((receiver, method, kind, pattern, route_metadata, handler_arg)) =
-                    route_call_parts(route_expr, &static_strings)
+                    route_call_parts(route_expr, source, &static_strings)
                         .map_err(|diagnostic| diagnostic.with_path(path))?
                 else {
                     return Err(Diagnostic::new(
@@ -14546,7 +14557,7 @@ fn extract_module_function_routes(
                         statement.span,
                     ));
                 };
-                wrap_realtime_handler(&mut handler, kind);
+                wrap_realtime_handler(&mut handler, kind, &route_metadata);
 
                 let referenced_helper_sources =
                     helper_sources_referenced_by_handler(&handler.emitted_source, &helper_sources);
@@ -14598,6 +14609,7 @@ fn extract_module_function_routes(
                     method,
                     kind,
                     websocket: contract_metadata.websocket.clone(),
+                    realtime: realtime_route_metadata_from_contract(&contract_metadata),
                     framework_path: (normalized_pattern != full_pattern).then_some(full_pattern),
                     pattern: normalized_pattern,
                     name: contract_metadata.name.clone(),
@@ -14865,14 +14877,25 @@ fn providers_used_by_effects(
         .collect()
 }
 
-fn wrap_realtime_handler(handler: &mut Handler, kind: &str) {
+fn wrap_realtime_handler(handler: &mut Handler, kind: &str, metadata: &RouteMetadata) {
     match kind {
         "sse" => {
             handler.emitted_source = format!("Realtime.sse({})", handler.emitted_source);
             handler.is_async = true;
         }
         "websocket" => {
-            handler.emitted_source = format!("Realtime.websocket({})", handler.emitted_source);
+            if let Some(channel_source) = &metadata.realtime_channel_source {
+                let options_source = metadata
+                    .realtime_options_source
+                    .as_deref()
+                    .unwrap_or("undefined");
+                handler.emitted_source = format!(
+                    "Realtime.__route({}, {}, {})",
+                    channel_source, handler.emitted_source, options_source
+                );
+            } else {
+                handler.emitted_source = format!("Realtime.websocket({})", handler.emitted_source);
+            }
             handler.is_async = true;
         }
         _ => {}
@@ -14891,7 +14914,7 @@ fn route_call<'a>(
     static_strings: &StaticStringEnv,
 ) -> Result<Option<ExtractedRouteCall<'a>>, Diagnostic> {
     let Some((receiver, method, kind, pattern, _metadata, handler_arg)) =
-        route_call_parts(expression, static_strings)?
+        route_call_parts(expression, source, static_strings)?
     else {
         return Ok(None);
     };
@@ -14913,6 +14936,7 @@ fn route_call<'a>(
 
 fn route_call_parts<'a>(
     expression: &'a Expression<'a>,
+    source: &str,
     static_strings: &StaticStringEnv,
 ) -> Result<Option<RouteCallParts<'a>>, Diagnostic> {
     let Expression::CallExpression(call) = expression else {
@@ -14925,7 +14949,14 @@ fn route_call_parts<'a>(
         return Ok(None);
     };
     let kind = crate::slop_dsl::route_kind_from_property(property).unwrap_or("http");
-    if !matches!(call.arguments.len(), 2 | 3) {
+    if property == "realtime" && !matches!(call.arguments.len(), 3 | 4) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_INVALID_REALTIME_ROUTE_ARGS",
+            "Realtime routes must be declared as realtime(path, channel, handler[, options])",
+        )
+        .with_span(call.span));
+    }
+    if property != "realtime" && !matches!(call.arguments.len(), 2 | 3) {
         return Ok(None);
     }
 
@@ -14936,7 +14967,28 @@ fn route_call_parts<'a>(
     else {
         return Ok(None);
     };
-    let (metadata, handler_arg) = if kind == "websocket" && call.arguments.len() == 3 {
+    let (metadata, handler_arg) = if property == "realtime" {
+        let channel_source =
+            argument_span(&call.arguments[1]).map(|span| span_source(source, span).to_string());
+        let realtime_options_source = if call.arguments.len() == 4 {
+            argument_span(&call.arguments[3]).map(|span| span_source(source, span).to_string())
+        } else {
+            None
+        };
+        let metadata = RouteMetadata {
+            websocket: if call.arguments.len() == 4 {
+                Some(realtime_websocket_options_from_argument(
+                    &call.arguments[3],
+                )?)
+            } else {
+                None
+            },
+            realtime_channel_source: channel_source,
+            realtime_options_source,
+            ..Default::default()
+        };
+        (metadata, &call.arguments[2])
+    } else if kind == "websocket" && call.arguments.len() == 3 {
         if route_handler_argument(&call.arguments[1]) {
             let metadata = RouteMetadata {
                 websocket: Some(websocket_options_from_argument(&call.arguments[2])?),
@@ -15037,6 +15089,204 @@ fn websocket_options_from_argument(
             "WebSocket options must be a static object literal",
         );
         return Err(with_argument_span(diagnostic, argument));
+    };
+    let mut options = default_websocket_options();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS",
+                "WebSocket options must use literal properties",
+            )
+            .with_span(object.span));
+        };
+        if property.computed {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS",
+                "WebSocket option names must be literal",
+            )
+            .with_span(property.span));
+        }
+        let Some(key) = property_key_name(&property.key) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS",
+                "WebSocket option names must be literal",
+            )
+            .with_span(property.span));
+        };
+        match key {
+            "protocols" => {
+                options.protocols = websocket_protocols_from_expression(&property.value)?;
+            }
+            "origins" => {
+                options.origins = Some(websocket_origins_from_expression(&property.value)?);
+            }
+            "maxMessageBytes" => {
+                options.max_message_bytes = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "maxSendQueueBytes" => {
+                options.max_send_queue_bytes =
+                    Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "heartbeatMs" => {
+                options.heartbeat_ms = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "idleTimeoutMs" => {
+                options.idle_timeout_ms = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "closeTimeoutMs" => {
+                options.close_timeout_ms = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "slowClientPolicy" => {
+                let Some(policy) = expression_string_literal(&property.value) else {
+                    return Err(websocket_options_diagnostic(
+                        "WebSocket slowClientPolicy must be 'error' or 'close'",
+                        property.value.span(),
+                    ));
+                };
+                if policy != "error" && policy != "close" {
+                    return Err(websocket_options_diagnostic(
+                        "WebSocket slowClientPolicy must be 'error' or 'close'",
+                        property.value.span(),
+                    ));
+                }
+                options.slow_client_policy = Some(policy.to_string());
+            }
+            "compression" => {
+                if !matches!(&property.value, Expression::BooleanLiteral(value) if !value.value) {
+                    return Err(websocket_options_diagnostic(
+                        "WebSocket compression must be the literal false",
+                        property.value.span(),
+                    ));
+                }
+                options.compression = Some(false);
+            }
+            _ => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS",
+                    format!("unsupported WebSocket option '{key}'"),
+                )
+                .with_span(property.span));
+            }
+        }
+    }
+    Ok(options)
+}
+
+fn realtime_websocket_options_from_argument(
+    argument: &Argument<'_>,
+) -> Result<WebSocketRouteOptionsMetadata, Diagnostic> {
+    let Some(object) = object_argument(argument) else {
+        let diagnostic = Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_REALTIME_OPTIONS",
+            "Realtime route options must be a static object literal",
+        );
+        return Err(with_argument_span(diagnostic, argument));
+    };
+    let mut options = default_websocket_options();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_REALTIME_OPTIONS",
+                "Realtime route options must use literal properties",
+            )
+            .with_span(object.span));
+        };
+        if property.computed {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_REALTIME_OPTIONS",
+                "Realtime route option names must be literal",
+            )
+            .with_span(property.span));
+        }
+        let Some(key) = property_key_name(&property.key) else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_REALTIME_OPTIONS",
+                "Realtime route option names must be literal",
+            )
+            .with_span(property.span));
+        };
+        match key {
+            "websocket" => {
+                let Expression::ObjectExpression(_) = &property.value else {
+                    return Err(websocket_options_diagnostic(
+                        "Realtime websocket option must be a static object literal",
+                        property.value.span(),
+                    ));
+                };
+                let websocket = websocket_options_from_expression_object(&property.value)?;
+                merge_websocket_options(&mut options, websocket);
+            }
+            "protocols" => {
+                options.protocols = websocket_protocols_from_expression(&property.value)?;
+            }
+            "origins" => {
+                options.origins = Some(websocket_origins_from_expression(&property.value)?);
+            }
+            "maxMessageBytes" => {
+                options.max_message_bytes = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "maxSendQueueBytes" => {
+                options.max_send_queue_bytes =
+                    Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "heartbeatMs" => {
+                options.heartbeat_ms = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "idleTimeoutMs" => {
+                options.idle_timeout_ms = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "closeTimeoutMs" => {
+                options.close_timeout_ms = Some(websocket_positive_integer(&property.value, key)?);
+            }
+            "slowClientPolicy" => {
+                let Some(policy) = expression_string_literal(&property.value) else {
+                    return Err(websocket_options_diagnostic(
+                        "WebSocket slowClientPolicy must be 'error' or 'close'",
+                        property.value.span(),
+                    ));
+                };
+                if policy != "error" && policy != "close" {
+                    return Err(websocket_options_diagnostic(
+                        "WebSocket slowClientPolicy must be 'error' or 'close'",
+                        property.value.span(),
+                    ));
+                }
+                options.slow_client_policy = Some(policy.to_string());
+            }
+            "compression" => {
+                if !matches!(&property.value, Expression::BooleanLiteral(value) if !value.value) {
+                    return Err(websocket_options_diagnostic(
+                        "WebSocket compression must be the literal false",
+                        property.value.span(),
+                    ));
+                }
+                options.compression = Some(false);
+            }
+            "presence"
+            | "backplane"
+            | "unknownEventPolicy"
+            | "validationFailurePolicy"
+            | "handlerErrorPolicy" => {}
+            _ => {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_REALTIME_OPTIONS",
+                    format!("unsupported Realtime route option '{key}'"),
+                )
+                .with_span(property.span));
+            }
+        }
+    }
+    Ok(options)
+}
+
+fn websocket_options_from_expression_object(
+    expression: &Expression<'_>,
+) -> Result<WebSocketRouteOptionsMetadata, Diagnostic> {
+    let Expression::ObjectExpression(object) = expression else {
+        return Err(websocket_options_diagnostic(
+            "WebSocket options must be a static object literal",
+            expression.span(),
+        ));
     };
     let mut options = default_websocket_options();
     for property in &object.properties {
@@ -15606,6 +15856,18 @@ fn merged_route_metadata(options: &RouteMetadata, fluent: &RouteMetadata) -> Rou
         merged.websocket = Some(websocket);
     }
     merged
+}
+
+fn realtime_route_metadata_from_contract(
+    metadata: &RouteMetadata,
+) -> Option<RealtimeRouteMetadata> {
+    metadata
+        .realtime_channel_source
+        .as_ref()
+        .map(|channel_source| RealtimeRouteMetadata {
+            channel_source: channel_source.clone(),
+            options_source: metadata.realtime_options_source.clone(),
+        })
 }
 
 fn auth_requirement_from_call(
@@ -21161,6 +21423,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     let mut runtime_exports = vec!["Results"];
     if app.uses_realtime_runtime {
         runtime_exports.push("Realtime");
+        runtime_exports.push("SloppyRealtimeError");
+        runtime_exports.push("schema");
+        runtime_exports.push("Schema");
     }
     if app.problem_details.is_some() {
         runtime_exports.push("ProblemDetails");
@@ -21980,7 +22245,7 @@ fn emit_dynamic_web_app_js(source: &str, app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, Realtime, Environment, data, sql, orm, table, column, relation, SloppyOrmError, SloppyOrmConcurrencyError, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
+    output.push_str("const { Results, Realtime, SloppyRealtimeError, schema, Schema, Environment, data, sql, orm, table, column, relation, SloppyOrmError, SloppyOrmConcurrencyError, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
     output.push_str(
         r#"const __sloppy_framework_services = __createFrameworkServiceProvider();
 const __sloppy_framework_provider_configs = new Map([]);
@@ -22484,6 +22749,16 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
             }
             if let Some(websocket) = &route.websocket {
                 route_json["websocket"] = websocket_options_json(websocket);
+            }
+            if let Some(realtime) = &route.realtime {
+                route_json["realtime"] = json!({
+                    "kind": "framework",
+                    "transport": "websocket",
+                    "metadataStatus": "partial",
+                    "partialReason": "channel and option expressions are preserved; static event and schema extraction is not complete in this alpha",
+                    "channelExpression": realtime.channel_source,
+                    "optionsExpression": realtime.options_source
+                });
             }
             if let Some(framework_path) = &route.framework_path {
                 route_json["frameworkPath"] = json!(framework_path);

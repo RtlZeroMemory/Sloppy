@@ -33,6 +33,7 @@ pub(crate) struct Route {
     pub(crate) kind: &'static str,
     pub(crate) pattern: String,
     pub(crate) websocket: Option<WebSocketRouteOptionsMetadata>,
+    pub(crate) realtime: Option<RealtimeRouteMetadata>,
     pub(crate) framework_path: Option<String>,
     pub(crate) name: Option<String>,
     pub(crate) tags: Vec<String>,
@@ -59,6 +60,12 @@ pub(crate) struct Route {
     pub(crate) source: String,
     pub(crate) module: Option<String>,
     pub(crate) handler: Handler,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RealtimeRouteMetadata {
+    pub(crate) channel_source: String,
+    pub(crate) options_source: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]

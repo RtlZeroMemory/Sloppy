@@ -736,6 +736,7 @@ static void sl_cli_audit_ops(const SlCliOptions* options, const SlCliMetadata* m
 {
     size_t health_routes = 0U;
     size_t management_routes = 0U;
+    size_t realtime_routes = 0U;
     bool prometheus_metrics = false;
     bool json_metrics = false;
 
@@ -744,6 +745,9 @@ static void sl_cli_audit_ops(const SlCliOptions* options, const SlCliMetadata* m
 
         if (!sl_cli_span_empty(route->health_kind)) {
             health_routes += 1U;
+        }
+        if (!sl_cli_span_empty(route->realtime_kind)) {
+            realtime_routes += 1U;
         }
         if (sl_cli_audit_span_starts_with(route->name, "Management.")) {
             management_routes += 1U;
@@ -769,6 +773,11 @@ static void sl_cli_audit_ops(const SlCliOptions* options, const SlCliMetadata* m
         sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_OPS_METRICS_JSON_MISSING",
                           "Prometheus and JSON metrics metadata exposure is inconsistent",
                           "ops.metrics", findings, errors);
+    }
+    if (realtime_routes > 0U) {
+        sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_REALTIME_ALPHA",
+                          "Realtime framework routes depend on alpha WebSocket runtime support",
+                          "app.realtime", findings, errors);
     }
 }
 
