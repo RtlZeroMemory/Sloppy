@@ -427,11 +427,15 @@ static bool sl_cli_audit_span_starts_with(SlCliSpan span, const char* prefix)
 
 static bool sl_cli_audit_span_contains_ascii_ci(SlCliSpan span, const char* needle)
 {
-    size_t needle_length = strlen(needle);
+    size_t needle_length = 0U;
 
-    if (span.ptr == NULL || needle == NULL || needle_length == 0U ||
-        span.length < needle_length)
-    {
+    if (span.ptr == NULL || needle == NULL) {
+        return false;
+    }
+    while (needle[needle_length] != '\0') {
+        needle_length += 1U;
+    }
+    if (needle_length == 0U || span.length < needle_length) {
         return false;
     }
     for (size_t index = 0U; index + needle_length <= span.length; index += 1U) {

@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "kind": "web",
+  "completeness": "complete",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-rate-limit-primary-429-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-rate-limit-primary-429-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Already.RateLimited"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/already-429",
+      "handlerId": 1,
+      "name": "Already.RateLimited",
+      "completeness": {
+        "status": "complete"
+      },
+      "response": {
+        "kind": "text",
+        "helper": "Results.text",
+        "status": 429
+      },
+      "rateLimit": [
+        {
+          "name": "already-429",
+          "algorithm": "fixedWindow",
+          "partition": "ip",
+          "partial": false
+        }
+      ]
+    }
+  ]
+}

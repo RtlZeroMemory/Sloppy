@@ -39,6 +39,17 @@ function stableHash(value) {
     return hash.toString(16).padStart(16, "0");
 }
 
+function stableStringify(value) {
+    if (value === null || typeof value !== "object") {
+        return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
+    }
+    const keys = Object.keys(value).sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+}
+
 function positiveInteger(value, subject, max = Number.MAX_SAFE_INTEGER) {
     if (!Number.isInteger(value) || value <= 0 || value > max) {
         throw new TypeError(`Sloppy RateLimit ${subject} must be a positive integer no greater than ${max}.`);
@@ -107,10 +118,38 @@ function requestHeader(ctx, name) {
     return undefined;
 }
 
-function rawRemoteAddress(ctx) {
-    return ctx?.connection?.remoteAddress ??
-        ctx?.request?.remoteAddress ??
-        requestHeader(ctx, "x-forwarded-for")?.split(",")[0]?.trim() ??
+function firstHeaderValue(value) {
+    if (Array.isArray(value)) {
+        return value.length === 0 ? undefined : firstHeaderValue(value[0]);
+    }
+    if (value === undefined || value === null) {
+        return undefined;
+    }
+    return String(value);
+}
+
+function validateTrustProxyOptions(options = undefined, subject = "ip partition") {
+    if (options !== undefined && !isPlainObject(options)) {
+        throw new TypeError(`Sloppy RateLimit ${subject} options must be a plain object.`);
+    }
+    if (options?.trustProxy !== undefined && typeof options.trustProxy !== "boolean") {
+        throw new TypeError(`Sloppy RateLimit ${subject} trustProxy must be a boolean.`);
+    }
+    return Object.freeze({ trustProxy: options?.trustProxy === true });
+}
+
+function rawRemoteAddress(ctx, options = undefined) {
+    const proxy = validateTrustProxyOptions(options);
+    if (proxy.trustProxy) {
+        const forwarded = firstHeaderValue(requestHeader(ctx, "x-forwarded-for"))
+            ?.split(",")[0]
+            ?.trim();
+        if (forwarded !== undefined && forwarded.length !== 0) {
+            return forwarded;
+        }
+    }
+    return firstHeaderValue(ctx?.connection?.remoteAddress) ??
+        firstHeaderValue(ctx?.request?.remoteAddress) ??
         "unknown";
 }
 
@@ -121,15 +160,16 @@ function createPartition(kind, metadata, resolver, options = {}) {
         metadata: Object.freeze({ kind, ...metadata }),
         needsAuth: options.needsAuth === true,
         resolve: resolver,
-        orIp() {
+        orIp(ipOptions = undefined) {
+            const fallbackOptions = validateTrustProxyOptions(ipOptions, "orIp fallback");
             const primary = partition;
             return createPartition(
                 `${kind}.orIp`,
-                { kind: primary.metadata.kind, fallback: "ip", ...primary.metadata },
+                { ...primary.metadata, fallback: "ip", fallbackTrustProxy: fallbackOptions.trustProxy },
                 (ctx) => {
                     const value = primary.resolve(ctx);
                     return value === undefined || value === null || value === ""
-                        ? `ip:${rawRemoteAddress(ctx)}`
+                        ? `ip:${rawRemoteAddress(ctx, fallbackOptions)}`
                         : value;
                 },
                 { needsAuth: false },
@@ -147,7 +187,11 @@ function ensurePartition(partitionBy) {
         return partitionBy;
     }
     if (typeof partitionBy === "function") {
-        return createPartition("custom", { kind: "custom", partial: true }, partitionBy);
+        return createPartition(
+            "custom",
+            { kind: "custom", marker: partitionBy.name || "anonymous", partial: true },
+            partitionBy,
+        );
     }
     throw new TypeError("Sloppy RateLimit partitionBy is required; use RateLimit.partition.*() or 'global'.");
 }
@@ -175,10 +219,12 @@ function normalizePolicyOptions(algorithm, options, required) {
     if (store !== undefined && typeof store !== "string" && store?.[STORE_MARKER] !== true) {
         throw new TypeError("Sloppy RateLimit store must be a store name or RateLimit store.");
     }
+    const nameExplicit = options.name !== undefined;
     const name = optionalName(options.name) ?? `${algorithm}:${partition.metadata.kind}`;
     return Object.freeze({
         algorithm,
         name,
+        nameExplicit,
         partition,
         store,
         cost,
@@ -195,6 +241,7 @@ function createPolicy(algorithm, options, required) {
         [POLICY_MARKER]: true,
         algorithm,
         name: normalized.name,
+        nameExplicit: normalized.nameExplicit,
         partition: normalized.partition,
         store: normalized.store,
         options: normalized,
@@ -430,7 +477,7 @@ function createMemoryStore(options = undefined) {
                 released = true;
                 entry.active = Math.max(0, entry.active - cost);
                 if (entry.active === 0) {
-                    entry.expiresAt = nowMs() + 60000;
+                    entries.delete(key);
                 }
             },
         };
@@ -444,7 +491,8 @@ function createMemoryStore(options = undefined) {
         async check(input) {
             assertActive();
             const current = input.nowMs ?? nowMs();
-            const key = `${input.policy.name}:${input.policy.algorithm}:${input.partitionHash}`;
+            const policyKey = input.policyKey ?? input.policy.name;
+            const key = `${policyKey}:${input.policy.algorithm}:${input.partitionHash}`;
             if (input.policy.algorithm === "fixedWindow") {
                 return checkFixedWindow(key, input.policy, input.cost, current);
             }
@@ -517,7 +565,12 @@ function redis(redisClient, options = undefined) {
             if (redisClient !== undefined && typeof redisClient.ping === "function") {
                 try {
                     await redisClient.ping();
-                    return { status: "healthy", data: { kind: "redis", prefixHash: stableHash(prefix) } };
+                    return {
+                        status: "degraded",
+                        message: "Redis connection responded, but the Sloppy Redis rate-limit provider is not available in this build.",
+                        errorCode: "SLOPPY_E_RATE_LIMIT_REDIS_UNAVAILABLE",
+                        data: { kind: "redis", prefixHash: stableHash(prefix) },
+                    };
                 } catch (error) {
                     return { status: "unhealthy", message: String(error?.message ?? error) };
                 }
@@ -576,6 +629,14 @@ function normalizeCost(policy, ctx) {
 
 function routeLabel(ctx) {
     return ctx?.routePattern ?? ctx?.route?.pattern ?? "unknown";
+}
+
+function effectivePolicyKey(policy, ctx) {
+    if (policy.nameExplicit === true) {
+        return `named:${policy.name}`;
+    }
+    const method = ctx?.request?.method ?? ctx?.method ?? "UNKNOWN";
+    return `route:${String(method).toUpperCase()}:${routeLabel(ctx)}:${policy.name}`;
 }
 
 function metricLabels(policy, store, outcome, ctx) {
@@ -649,6 +710,20 @@ function denialResult(ctx, policy, result) {
     });
 }
 
+function partitionHash(policy, partitionValue) {
+    const metadata = policy.partition.metadata;
+    return stableHash(stableStringify({
+        customMarker: metadata.marker,
+        fallback: metadata.fallback,
+        fallbackTrustProxy: metadata.fallbackTrustProxy === true,
+        kind: metadata.kind,
+        name: metadata.name,
+        partial: metadata.partial === true,
+        trustProxy: metadata.trustProxy === true,
+        value: String(partitionValue),
+    }));
+}
+
 async function enforceRateLimit(ctx, policy) {
     if (!isRateLimitPolicy(policy)) {
         throw new TypeError("Sloppy rate-limit enforcement expects a RateLimit policy.");
@@ -669,7 +744,7 @@ async function enforceRateLimit(ctx, policy) {
             policy: policy.name,
         });
     }
-    const partitionHash = stableHash(`${policy.partition.metadata.kind}:${String(partitionValue)}`);
+    const partitionHashValue = partitionHash(policy, partitionValue);
     const store = resolveStore(ctx, policy);
     const cost = normalizeCost(policy, ctx);
     const current = nowMs(ctx?.clock);
@@ -677,8 +752,9 @@ async function enforceRateLimit(ctx, policy) {
     try {
         result = await store.check({
             policy,
+            policyKey: effectivePolicyKey(policy, ctx),
             cost,
-            partitionHash,
+            partitionHash: partitionHashValue,
             nowMs: current,
         });
     } catch (error) {
@@ -692,13 +768,13 @@ async function enforceRateLimit(ctx, policy) {
     if (policy.algorithm === "concurrency") {
         recordMetric(ctx, "rate_limit.concurrency.active", labels, Math.max(0, result.limit - result.remaining));
     }
-    recordDiagnostic(ctx, policy, store, partitionHash, result);
+    recordDiagnostic(ctx, policy, store, partitionHashValue, result);
     if (result.allowed) {
-        return Object.freeze({ ...result, partitionHash, store, release: result.release });
+        return Object.freeze({ ...result, partitionHash: partitionHashValue, store, release: result.release });
     }
     return Object.freeze({
         ...result,
-        partitionHash,
+        partitionHash: partitionHashValue,
         store,
         response: denialResult(ctx, policy, result),
     });
@@ -717,8 +793,13 @@ function rateLimitHealth(store) {
 }
 
 const partition = Object.freeze({
-    ip() {
-        return createPartition("ip", { kind: "ip" }, (ctx) => `ip:${rawRemoteAddress(ctx)}`);
+    ip(options = undefined) {
+        const proxy = validateTrustProxyOptions(options);
+        return createPartition(
+            "ip",
+            { kind: "ip", trustProxy: proxy.trustProxy },
+            (ctx) => `ip:${rawRemoteAddress(ctx, proxy)}`,
+        );
     },
     user() {
         return createPartition("user", { kind: "user" }, (ctx) => ctx?.user?.sub, { needsAuth: true });
@@ -743,11 +824,15 @@ const partition = Object.freeze({
         const routeParam = optionalName(name, "route parameter name");
         return createPartition("routeParam", { kind: "routeParam", name: routeParam }, (ctx) => ctx?.route?.[routeParam]);
     },
-    custom(fn) {
+    custom(fn, options = undefined) {
         if (typeof fn !== "function") {
             throw new TypeError("Sloppy RateLimit.partition.custom expects a function.");
         }
-        return createPartition("custom", { kind: "custom", partial: true }, fn);
+        if (options !== undefined && !isPlainObject(options)) {
+            throw new TypeError("Sloppy RateLimit.partition.custom options must be a plain object.");
+        }
+        const marker = optionalName(options?.marker ?? (fn.name || "anonymous"), "custom partition marker");
+        return createPartition("custom", { kind: "custom", marker, partial: true }, fn);
     },
 });
 

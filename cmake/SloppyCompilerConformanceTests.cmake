@@ -176,6 +176,16 @@
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
+        NAME sloppy.cli.rate_limit_malformed_partial
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=routes;--plan;tests/fixtures/cli/rate-limit-malformed-partial.plan.json"
+            "-DSLOPPY_EXPECTED_ERROR=route rateLimit partial must be a boolean" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.cli.rate_limit_malformed_partial
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
         NAME sloppy.run.missing_artifacts
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"

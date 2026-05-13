@@ -45,6 +45,7 @@ Options also accept `name`, `store`, `cost`, `skip`, `statusCode: 429`, and
 Use explicit partition helpers:
 
 - `RateLimit.partition.ip()`
+- `RateLimit.partition.ip({ trustProxy: true })`
 - `RateLimit.partition.user()`
 - `RateLimit.partition.apiKey()`
 - `RateLimit.partition.header(name)`
@@ -56,6 +57,17 @@ Use explicit partition helpers:
 User and claim partitions require an authenticated request. Raw IPs, user IDs,
 API keys, headers, cookies, and tokens are hashed before store keys,
 diagnostics, or metrics see them.
+
+`RateLimit.partition.ip()` uses the connection/request remote address and
+ignores `X-Forwarded-For` by default. Only use
+`RateLimit.partition.ip({ trustProxy: true })` behind a trusted proxy that
+sanitizes `X-Forwarded-For`; otherwise spoofed headers must not affect quota
+selection.
+
+Policies without an explicit `name` are scoped to the route method and pattern,
+so two unnamed routes do not accidentally share quota. Explicitly reusing the
+same `name` opts into sharing for the same store, algorithm, selector metadata,
+and partition hash.
 
 ## Stores
 
@@ -79,12 +91,21 @@ app.get("/upload", upload)
 because a first-party Redis provider is not present on `main`. It does not
 fall back to memory.
 
+`Health.rateLimit(RateLimit.redis(...))` reports `degraded` while the provider
+is absent, even if a supplied object can respond to `ping()`, because
+enforcement still fails closed.
+
 ## Testing
 
 `TestHost.create(app, { clock })` lets window and refill tests use
 `FakeClock.fixed(...)`. `host.expectRateLimited(...)` asserts the default `429`
 ProblemDetails response. `rateLimit.stores` can inject isolated stores for a
 test host.
+
+Concurrency policies hold a lease for the route handler lifetime. The lease is
+released when a synchronous handler returns, an async handler settles, or a
+handler throws. Bounded `Results.stream(...)` handlers release after the stream
+descriptor has been produced, not after an external client drain.
 
 ## WebSockets
 

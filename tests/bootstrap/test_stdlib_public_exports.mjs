@@ -192,6 +192,7 @@ assert.equal(typeof SloppyRealtimeError, "function");
 assert.equal(typeof RateLimit.fixedWindow, "function");
 assert.equal(typeof RateLimit.slidingWindow, "function");
 assert.equal(typeof RateLimit.tokenBucket, "function");
+assert.equal(typeof RateLimit.concurrency, "function");
 assert.equal(typeof RateLimit.memory, "function");
 assert.equal(typeof SloppyRateLimitError, "function");
 assert.equal(typeof TestHost.create, "function");

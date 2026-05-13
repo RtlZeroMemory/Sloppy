@@ -646,6 +646,10 @@ static bool sl_cli_openapi_response_status_seen(const SlCliRoute* route, size_t 
 
 static bool sl_cli_openapi_route_has_response_status(const SlCliRoute* route, uint64_t status)
 {
+    if (route->response_count == 0U) {
+        uint64_t existing_status = route->response_status == 0U ? 200U : route->response_status;
+        return existing_status == status;
+    }
     return sl_cli_openapi_response_status_seen(route, route->response_count, status);
 }
 

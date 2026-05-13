@@ -17,6 +17,10 @@ the app-host dispatcher.
 }
 ```
 
+If `name` is omitted, the effective store key is scoped to the route method and
+pattern. Reusing the same explicit `name` opts into quota sharing for matching
+store, algorithm, selector metadata, and partition hash.
+
 Algorithm-specific fields:
 
 | Algorithm | Required fields |
@@ -28,6 +32,18 @@ Algorithm-specific fields:
 
 Numeric values must be positive and bounded. Header partition names must be
 HTTP tokens.
+
+## IP Partitions
+
+`RateLimit.partition.ip()` reads `ctx.connection.remoteAddress` or
+`ctx.request.remoteAddress`. It does not read `X-Forwarded-For` by default.
+`RateLimit.partition.ip({ trustProxy: true })` reads the first
+`X-Forwarded-For` value and falls back to the remote address only for apps
+behind a trusted proxy that sanitizes that header.
+
+Partition hashes include selector metadata such as partition kind, header name,
+claim name, route parameter name, custom marker, and the resolved value. The
+hash is stored and reported; the raw value is not.
 
 ## Memory Store
 
@@ -45,6 +61,10 @@ rejected keys, and disposal state without raw partition values.
 distributed store without accidental memory fallback. In the current `main`
 build there is no first-party Redis provider, so `check()` raises
 `SLOPPY_E_RATE_LIMIT_REDIS_UNAVAILABLE`.
+
+Health is `degraded` while the provider is absent, even when a supplied Redis
+client can respond to `ping()`. Redis errors are not converted to memory
+fallback.
 
 ## Metrics
 

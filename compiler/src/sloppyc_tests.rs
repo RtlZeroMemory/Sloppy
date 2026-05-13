@@ -8203,8 +8203,38 @@ app.get("/me", () => Results.ok({ ok: true }))
     refillPerSecond: 1,
     partitionBy: RateLimit.partition.user()
   }));
+app.get("/login", () => Results.text("ok"))
+  .rateLimit(RateLimit.slidingWindow({
+    name: "login-ip",
+    limit: 5,
+    windowMs: 60000,
+    partitionBy: RateLimit.partition.ip()
+  }));
+app.get("/export", () => Results.text("ok"))
+  .rateLimit(RateLimit.concurrency({
+    name: "export-user",
+    limit: 1,
+    partitionBy: RateLimit.partition.user()
+  }));
 app.get("/dynamic", () => Results.text("ok"))
   .rateLimit(createPolicy());
+const dynamic = createPolicy();
+app.get("/dynamic-identifier", () => Results.text("ok"))
+  .rateLimit(dynamic);
+app.get("/dynamic-extra", () => Results.text("ok"))
+  .rateLimit(dynamic, { ignoredByRuntime: true });
+app.get("/static-extra", () => Results.text("ok"))
+  .rateLimit(RateLimit.fixedWindow({
+    name: "extra-ip",
+    limit: 10,
+    windowMs: 60000,
+    partitionBy: RateLimit.partition.ip()
+  }), { ignoredByRuntime: true });
+app.get("/unknown-algorithm", () => Results.text("ok"))
+  .rateLimit(RateLimit.customWindow({
+    name: "custom",
+    limit: 10
+  }));
 export default app;
 "#;
     let app = extract(std::path::Path::new("app.ts"), source)
@@ -8228,6 +8258,22 @@ export default app;
     assert_eq!(me.rate_limits[0].algorithm, "tokenBucket");
     assert_eq!(me.rate_limits[0].partition.as_deref(), Some("user"));
     assert!(!me.rate_limits[0].partial);
+    let login = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/login")
+        .expect("login route should exist");
+    assert_eq!(login.rate_limits[0].algorithm, "slidingWindow");
+    assert_eq!(login.rate_limits[0].partition.as_deref(), Some("ip"));
+    assert!(!login.rate_limits[0].partial);
+    let export = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/export")
+        .expect("export route should exist");
+    assert_eq!(export.rate_limits[0].algorithm, "concurrency");
+    assert_eq!(export.rate_limits[0].partition.as_deref(), Some("user"));
+    assert!(!export.rate_limits[0].partial);
     let dynamic = app
         .routes
         .iter()
@@ -8235,6 +8281,38 @@ export default app;
         .expect("dynamic route should exist");
     assert_eq!(dynamic.rate_limits[0].algorithm, "dynamic");
     assert!(dynamic.rate_limits[0].partial);
+    let dynamic_identifier = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/dynamic-identifier")
+        .expect("dynamic identifier route should exist");
+    assert_eq!(dynamic_identifier.rate_limits[0].algorithm, "dynamic");
+    assert!(dynamic_identifier.rate_limits[0].partial);
+    let dynamic_extra = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/dynamic-extra")
+        .expect("dynamic extra route should exist");
+    assert_eq!(dynamic_extra.rate_limits[0].algorithm, "dynamic");
+    assert!(dynamic_extra.rate_limits[0].partial);
+    let static_extra = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/static-extra")
+        .expect("static extra route should exist");
+    assert_eq!(static_extra.rate_limits[0].algorithm, "fixedWindow");
+    assert_eq!(
+        static_extra.rate_limits[0].name.as_deref(),
+        Some("extra-ip")
+    );
+    assert!(static_extra.rate_limits[0].partial);
+    let unknown_algorithm = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/unknown-algorithm")
+        .expect("unknown algorithm route should exist");
+    assert_eq!(unknown_algorithm.rate_limits[0].algorithm, "dynamic");
+    assert!(unknown_algorithm.rate_limits[0].partial);
 
     let plan = super::emit_plan(&app, "bundle-hash", "map-hash")
         .expect("plan should emit rate-limit route metadata");
@@ -8266,6 +8344,32 @@ export default app;
         serde_json::json!("dynamic")
     );
     assert_eq!(dynamic["rateLimit"][0]["partial"], serde_json::json!(true));
+    let static_extra = routes
+        .iter()
+        .find(|route| route["pattern"] == "/static-extra")
+        .expect("static-extra route should be emitted");
+    assert_eq!(
+        static_extra["rateLimit"][0],
+        serde_json::json!({
+            "name": "extra-ip",
+            "algorithm": "fixedWindow",
+            "store": null,
+            "partition": "ip",
+            "partial": true
+        })
+    );
+    let unknown_algorithm = routes
+        .iter()
+        .find(|route| route["pattern"] == "/unknown-algorithm")
+        .expect("unknown algorithm route should be emitted");
+    assert_eq!(
+        unknown_algorithm["rateLimit"][0]["algorithm"],
+        serde_json::json!("dynamic")
+    );
+    assert_eq!(
+        unknown_algorithm["rateLimit"][0]["partial"],
+        serde_json::json!(true)
+    );
 }
 
 #[test]

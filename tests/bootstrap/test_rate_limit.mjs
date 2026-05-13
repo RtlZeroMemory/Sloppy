@@ -64,14 +64,138 @@ assert.deepEqual(policy.metadata.partition.kind, "ip");
     await host.post("/login", { remoteAddress: "203.0.113.10" }).then((response) => response.expectStatus(200));
     await host.post("/login", { remoteAddress: "203.0.113.10" }).then((response) => response.expectStatus(200));
     const denied = await host.post("/login", { remoteAddress: "203.0.113.10" });
-    denied.expectStatus(429).expectHeader("Retry-After", "1").expectProblem({
-        status: 429,
-        code: "SLOPPY_E_RATE_LIMIT_EXCEEDED",
-        title: "Too Many Requests",
-    });
+    denied
+        .expectStatus(429)
+        .expectHeader("Retry-After", "1")
+        .expectHeader("RateLimit-Limit", "2")
+        .expectHeader("RateLimit-Remaining", "0")
+        .expectHeader("RateLimit-Reset", "1")
+        .expectProblem({
+            status: 429,
+            code: "SLOPPY_E_RATE_LIMIT_EXCEEDED",
+            title: "Too Many Requests",
+        });
     assert.equal(calls, 2);
     assert.equal(denied.text().includes("203.0.113.10"), false);
     host.diagnostics.expectCode("SLOPPY_E_RATE_LIMIT_EXCEEDED").expectNoSecretLeaks();
+}
+
+{
+    const app = Sloppy.create();
+    app.get("/xff-safe", () => Results.ok({ ok: true })).rateLimit(RateLimit.fixedWindow({
+        limit: 1,
+        windowMs: 60_000,
+        partitionBy: RateLimit.partition.ip(),
+    }));
+    const host = await TestHost.create(app);
+    await host.get("/xff-safe", {
+        remoteAddress: "203.0.113.77",
+        headers: { "x-forwarded-for": "198.51.100.1" },
+    }).then((response) => response.expectStatus(200));
+    await host.get("/xff-safe", {
+        remoteAddress: "203.0.113.77",
+        headers: { "x-forwarded-for": "198.51.100.2" },
+    }).then((response) => response.expectStatus(429));
+}
+
+{
+    const app = Sloppy.create();
+    app.get("/xff-trusted", () => Results.ok({ ok: true })).rateLimit(RateLimit.fixedWindow({
+        limit: 1,
+        windowMs: 60_000,
+        partitionBy: RateLimit.partition.ip({ trustProxy: true }),
+    }));
+    const host = await TestHost.create(app);
+    await host.get("/xff-trusted", {
+        remoteAddress: "203.0.113.10",
+        headers: { "x-forwarded-for": "198.51.100.10, 203.0.113.10" },
+    }).then((response) => response.expectStatus(200));
+    await host.get("/xff-trusted", {
+        remoteAddress: "203.0.113.10",
+        headers: { "x-forwarded-for": "198.51.100.11, 203.0.113.10" },
+    }).then((response) => response.expectStatus(200));
+    await host.get("/xff-trusted", {
+        remoteAddress: "203.0.113.10",
+        headers: { "x-forwarded-for": "198.51.100.10, 203.0.113.10" },
+    }).then((response) => response.expectStatus(429));
+}
+
+{
+    const app = Sloppy.create();
+    app.get("/selector-api-key", () => Results.ok({ ok: true })).rateLimit(RateLimit.fixedWindow({
+        name: "selector-shared",
+        limit: 1,
+        windowMs: 60_000,
+        partitionBy: RateLimit.partition.header("x-api-key"),
+    }));
+    app.get("/selector-tenant", () => Results.ok({ ok: true })).rateLimit(RateLimit.fixedWindow({
+        name: "selector-shared",
+        limit: 1,
+        windowMs: 60_000,
+        partitionBy: RateLimit.partition.header("x-tenant"),
+    }));
+    const host = await TestHost.create(app, { secrets: { selector: "same-value" } });
+    await host.get("/selector-api-key", { headers: { "x-api-key": "same-value" } }).then((response) => response.expectStatus(200));
+    await host.get("/selector-tenant", { headers: { "x-tenant": "same-value" } }).then((response) => response.expectStatus(200));
+    await host.get("/selector-api-key", { headers: { "x-api-key": "same-value" } }).then((response) => response.expectStatus(429));
+    const diagnostics = JSON.stringify(host.diagnostics.snapshot());
+    assert.equal(diagnostics.includes("same-value"), false);
+    assert.equal(
+        host.diagnostics.filter({ code: "SLOPPY_E_RATE_LIMIT_EXCEEDED" })
+            .some((record) => typeof record.fields.partitionHash === "string" && record.fields.partitionHash.length > 0),
+        true,
+    );
+}
+
+{
+    const app = Sloppy.create();
+    app.get("/selector-claim", () => Results.ok({ ok: true })).requiresAuth().rateLimit(RateLimit.fixedWindow({
+        name: "tenant-selector",
+        limit: 1,
+        windowMs: 60_000,
+        partitionBy: RateLimit.partition.claim("tenant"),
+    }));
+    app.get("/selector-header", () => Results.ok({ ok: true })).rateLimit(RateLimit.fixedWindow({
+        name: "tenant-selector",
+        limit: 1,
+        windowMs: 60_000,
+        partitionBy: RateLimit.partition.header("tenant"),
+    }));
+    const host = await TestHost.create(app);
+    await host.get("/selector-claim", { user: user("ada", { claims: { tenant: "acme" } }) }).then((response) => response.expectStatus(200));
+    await host.get("/selector-header", { headers: { tenant: "acme" } }).then((response) => response.expectStatus(200));
+}
+
+{
+    const app = Sloppy.create();
+    app.get("/unnamed-a", () => Results.ok({ ok: true })).rateLimit(RateLimit.fixedWindow({
+        limit: 1,
+        windowMs: 60_000,
+        partitionBy: RateLimit.partition.ip(),
+    }));
+    app.get("/unnamed-b", () => Results.ok({ ok: true })).rateLimit(RateLimit.fixedWindow({
+        limit: 1,
+        windowMs: 60_000,
+        partitionBy: RateLimit.partition.ip(),
+    }));
+    app.get("/named-a", () => Results.ok({ ok: true })).rateLimit(RateLimit.fixedWindow({
+        name: "shared-route-quota",
+        limit: 1,
+        windowMs: 60_000,
+        partitionBy: RateLimit.partition.ip(),
+    }));
+    app.get("/named-b", () => Results.ok({ ok: true })).rateLimit(RateLimit.fixedWindow({
+        name: "shared-route-quota",
+        limit: 1,
+        windowMs: 60_000,
+        partitionBy: RateLimit.partition.ip(),
+    }));
+    const host = await TestHost.create(app);
+    await host.get("/unnamed-a", { remoteAddress: "192.0.2.44" }).then((response) => response.expectStatus(200));
+    await host.get("/unnamed-a", { remoteAddress: "192.0.2.44" }).then((response) => response.expectStatus(429));
+    await host.get("/unnamed-b", { remoteAddress: "192.0.2.44" }).then((response) => response.expectStatus(200));
+    await host.get("/named-a", { remoteAddress: "192.0.2.45" }).then((response) => response.expectStatus(200));
+    await host.get("/named-b", { remoteAddress: "192.0.2.45" }).then((response) => response.expectStatus(429));
 }
 
 {
@@ -180,9 +304,97 @@ assert.deepEqual(policy.metadata.partition.kind, "ip");
 }
 
 {
+    const store = RateLimit.memory();
+    const clockPolicy = RateLimit.concurrency({
+        name: "clocked-concurrency",
+        limit: 1,
+        partitionBy: RateLimit.partition.custom((ctx) => ctx.partition, { marker: "clock-partition" }),
+    });
+    const lease = await store.check({
+        policy: clockPolicy,
+        cost: 1,
+        partitionHash: "clock-partition",
+        nowMs: 1234,
+    });
+    assert.equal(lease.allowed, true);
+    lease.release();
+    assert.equal(store.stats().keys, 0);
+    const next = await store.check({
+        policy: clockPolicy,
+        cost: 1,
+        partitionHash: "clock-partition",
+        nowMs: 1,
+    });
+    assert.equal(next.allowed, true);
+    next.release();
+}
+
+{
+    const app = Sloppy.create();
+    let host;
+    let nestedStatus;
+    app.get("/concurrent-async", async () => {
+        if (nestedStatus === undefined) {
+            const nested = await host.get("/concurrent-async", { remoteAddress: "198.51.100.80" });
+            nestedStatus = nested.status;
+        }
+        return Results.ok({ ok: true });
+    }).rateLimit(RateLimit.concurrency({
+        limit: 1,
+        partitionBy: RateLimit.partition.ip(),
+    }));
+    host = await TestHost.create(app);
+    await host.get("/concurrent-async", { remoteAddress: "198.51.100.80" }).then((response) => response.expectStatus(200));
+    assert.equal(nestedStatus, 429);
+    await host.get("/concurrent-async", { remoteAddress: "198.51.100.80" }).then((response) => response.expectStatus(200));
+}
+
+{
+    const app = Sloppy.create();
+    let thrown = false;
+    app.get("/concurrent-throw", () => {
+        if (!thrown) {
+            thrown = true;
+            throw new Error("boom");
+        }
+        return Results.ok({ ok: true });
+    }).rateLimit(RateLimit.concurrency({
+        limit: 1,
+        partitionBy: RateLimit.partition.ip(),
+    }));
+    const host = await TestHost.create(app);
+    await assert.rejects(() => host.get("/concurrent-throw", { remoteAddress: "198.51.100.81" }), /boom/);
+    await host.get("/concurrent-throw", { remoteAddress: "198.51.100.81" }).then((response) => response.expectStatus(200));
+}
+
+{
+    const app = Sloppy.create();
+    app.get("/concurrent-stream", () => Results.stream(async (writer) => {
+        writer.writeText("event: ready\n\n");
+    })).rateLimit(RateLimit.concurrency({
+        limit: 1,
+        partitionBy: RateLimit.partition.ip(),
+    }));
+    const host = await TestHost.create(app);
+    await host.get("/concurrent-stream", { remoteAddress: "198.51.100.82" }).then((response) => response.expectStatus(200));
+    await host.get("/concurrent-stream", { remoteAddress: "198.51.100.82" }).then((response) => response.expectStatus(200));
+}
+
+{
     const redis = RateLimit.redis(undefined, { prefix: "sloppy:rl:" });
+    const redisPolicy = RateLimit.fixedWindow({
+        name: "redis-unavailable",
+        limit: 1,
+        windowMs: 1000,
+        partitionBy: RateLimit.partition.ip(),
+    });
     await assertRejectsMessage(
-        () => redis.check({}),
+        () => redis.check({
+            policy: redisPolicy,
+            cost: 1,
+            partitionHash: "partition",
+            nowMs: 0,
+        }),
         /SLOPPY_E_RATE_LIMIT_REDIS_UNAVAILABLE/,
     );
 }
@@ -201,8 +413,8 @@ assert.deepEqual(policy.metadata.partition.kind, "ip");
         partitionBy: RateLimit.partition.ip(),
     }));
     const host = await TestHost.create(app);
-    const socket = await host.websocket("/ws").connect();
+    const socket = await host.websocket("/ws").connect({ remoteAddress: "203.0.113.200" });
     await socket.expectClose();
-    await host.websocket("/ws").connect().expectRejected(429);
+    await host.websocket("/ws").connect({ remoteAddress: "203.0.113.200" }).expectRejected(429);
     assert.equal(accepted, 1);
 }

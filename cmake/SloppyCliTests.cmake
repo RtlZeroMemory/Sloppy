@@ -386,6 +386,10 @@
         sloppy.cli.openapi_rate_limit_json tests/golden/cli/openapi-rate-limit.json openapi
         --plan tests/fixtures/cli/rate-limit.plan.json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_rate_limit_primary_429_json
+        tests/golden/cli/openapi-rate-limit-primary-429.json openapi --plan
+        tests/fixtures/cli/rate-limit-primary-429.plan.json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.openapi_users_json tests/golden/cli/openapi-users.json openapi --plan
         compiler/tests/fixtures/realistic-users-api/expected/app.plan.json)
     sloppy_add_cli_golden_test(

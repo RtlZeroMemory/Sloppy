@@ -15,3 +15,13 @@ const health = await store.health();
 assert.equal(health.status, "degraded");
 assert.equal(health.errorCode, "SLOPPY_E_RATE_LIMIT_REDIS_UNAVAILABLE");
 assert.equal(JSON.stringify(store.stats()).includes("sloppy:test:rl:"), false);
+
+const pingingStore = RateLimit.redis({
+    async ping() {
+        return "PONG";
+    },
+}, { prefix: "sloppy:test:rl:ping:" });
+const pingingHealth = await pingingStore.health();
+assert.equal(pingingHealth.status, "degraded");
+assert.equal(pingingHealth.errorCode, "SLOPPY_E_RATE_LIMIT_REDIS_UNAVAILABLE");
+assert.equal(JSON.stringify(pingingHealth).includes("sloppy:test:rl:ping:"), false);

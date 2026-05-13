@@ -348,8 +348,13 @@ static int sl_cli_parse_route_rate_limits(yyjson_val* value, SlCliRoute* route)
         route->rate_limit_partitions[route->rate_limit_count] =
             sl_cli_json_span(entry, "partition");
         partial = yyjson_obj_get(entry, "partial");
+        if (partial != NULL && !yyjson_is_bool(partial)) {
+            sl_cli_write_cstr(
+                stderr, "sloppy: malformed metadata: route rateLimit partial must be a boolean\n");
+            return 1;
+        }
         route->rate_limit_partials[route->rate_limit_count] =
-            partial != NULL && yyjson_is_bool(partial) && yyjson_get_bool(partial);
+            partial != NULL && yyjson_get_bool(partial);
         route->rate_limit_count += 1U;
     }
     return 0;

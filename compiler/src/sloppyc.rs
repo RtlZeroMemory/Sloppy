@@ -16295,13 +16295,14 @@ fn extend_unique(values: &mut Vec<String>, incoming: Vec<String>) {
 }
 
 fn route_rate_limit_from_call(call: &CallExpression<'_>) -> Result<RateLimitMetadata, Diagnostic> {
-    if call.arguments.len() != 1 {
+    if call.arguments.is_empty() {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_RATE_LIMIT",
-            "rateLimit requires exactly one RateLimit policy",
+            "rateLimit requires a RateLimit policy",
         )
         .with_span(call.span));
     }
+    let arity_partial = call.arguments.len() != 1;
     let Argument::CallExpression(policy_call) = &call.arguments[0] else {
         return Ok(RateLimitMetadata {
             name: None,
@@ -16329,13 +16330,21 @@ fn route_rate_limit_from_call(call: &CallExpression<'_>) -> Result<RateLimitMeta
             partial: true,
         });
     }
-    let algorithm = chain[1].to_string();
+    let supported_algorithm = matches!(
+        chain[1],
+        "fixedWindow" | "slidingWindow" | "tokenBucket" | "concurrency"
+    );
+    let algorithm = if supported_algorithm {
+        chain[1].to_string()
+    } else {
+        "dynamic".to_string()
+    };
     let mut metadata = RateLimitMetadata {
         name: None,
         algorithm,
         store: None,
         partition: None,
-        partial: false,
+        partial: arity_partial || !supported_algorithm,
     };
     let Some(options) = policy_call.arguments.first().and_then(object_argument) else {
         metadata.partial = true;
