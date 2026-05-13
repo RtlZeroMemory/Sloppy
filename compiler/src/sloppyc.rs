@@ -14444,17 +14444,23 @@ fn route_call_parts<'a>(
     };
     let (metadata, handler_arg) = if kind == "websocket" && call.arguments.len() == 3 {
         if route_handler_argument(&call.arguments[1]) {
-            let mut metadata = RouteMetadata::default();
-            metadata.websocket = Some(websocket_options_from_argument(&call.arguments[2])?);
+            let metadata = RouteMetadata {
+                websocket: Some(websocket_options_from_argument(&call.arguments[2])?),
+                ..Default::default()
+            };
             (metadata, &call.arguments[1])
         } else {
-            let mut metadata = RouteMetadata::default();
-            metadata.websocket = Some(websocket_options_from_argument(&call.arguments[1])?);
+            let metadata = RouteMetadata {
+                websocket: Some(websocket_options_from_argument(&call.arguments[1])?),
+                ..Default::default()
+            };
             (metadata, &call.arguments[2])
         }
     } else if kind == "websocket" {
-        let mut metadata = RouteMetadata::default();
-        metadata.websocket = Some(default_websocket_options());
+        let metadata = RouteMetadata {
+            websocket: Some(default_websocket_options()),
+            ..Default::default()
+        };
         (metadata, &call.arguments[1])
     } else if call.arguments.len() == 3 {
         (
