@@ -184,6 +184,10 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_testhost_ops_matrix.mjs")
         add_test(
+            NAME bootstrap.stdlib.testhost_full_framework_matrix
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_testhost_full_framework_matrix.mjs")
+        add_test(
             NAME bootstrap.stdlib.prealpha_control_plane_dogfood
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_prealpha_control_plane_dogfood.mjs")
@@ -302,7 +306,7 @@
             bootstrap.stdlib.internal_utilities
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.testhost_process_modes
             bootstrap.stdlib.testhost_framework_matrix bootstrap.stdlib.testhost_services_matrix
-            bootstrap.stdlib.testhost_ops_matrix
+            bootstrap.stdlib.testhost_ops_matrix bootstrap.stdlib.testhost_full_framework_matrix
             bootstrap.stdlib.realtime_framework bootstrap.stdlib.runtime_classic_surface
             bootstrap.stdlib.prealpha_control_plane_dogfood
             bootstrap.stdlib.static_files
@@ -337,6 +341,9 @@
         set_tests_properties(
             bootstrap.stdlib.testhost_ops_matrix PROPERTIES LABELS
                                                           "bootstrap;testhost;ops;conformance")
+        set_tests_properties(
+            bootstrap.stdlib.testhost_full_framework_matrix PROPERTIES LABELS
+                                                                     "bootstrap;testhost;framework;static-assets;websocket;realtime;workers;conformance")
         set_tests_properties(
             bootstrap.stdlib.static_files PROPERTIES LABELS
                                                    "bootstrap;static-assets;conformance")

@@ -1,0 +1,384 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "kind": "web",
+  "completeness": "complete",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-framework-feature-matrix-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-framework-feature-matrix-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Assets.Get"
+    },
+    {
+      "id": 2,
+      "exportName": "__sloppy_handler_2",
+      "displayName": "Orders.Get"
+    },
+    {
+      "id": 3,
+      "exportName": "__sloppy_handler_3",
+      "displayName": "Orders.Webhook"
+    },
+    {
+      "id": 4,
+      "exportName": "__sloppy_handler_4",
+      "displayName": "Orders.Realtime"
+    },
+    {
+      "id": 5,
+      "exportName": "__sloppy_handler_5",
+      "displayName": "Jobs.DeliverWebhooks"
+    }
+  ],
+  "requiredFeatures": [
+    "stdlib.cache",
+    "stdlib.httpclient",
+    "stdlib.redis",
+    "stdlib.webhooks",
+    "stdlib.workers",
+    "runtime.realtime",
+    "runtime.static-files"
+  ],
+  "httpClients": [
+    {
+      "name": "webhooks",
+      "target": "static",
+      "baseUrl": "https://receiver.example",
+      "strictNetwork": true
+    },
+    {
+      "name": "billing",
+      "target": "dynamic",
+      "strictNetwork": true
+    }
+  ],
+  "auth": {
+    "schemes": [
+      {
+        "kind": "bearer",
+        "name": "bearerAuth",
+        "header": "Authorization"
+      }
+    ],
+    "policies": ["Orders.Read", "Ops.Run"]
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/assets/{path}",
+      "handlerId": 1,
+      "name": "Assets.Get",
+      "module": "assets",
+      "tags": ["static"],
+      "auth": {
+        "allowAnonymous": true
+      },
+      "completeness": {
+        "status": "complete"
+      },
+      "response": {
+        "kind": "bytes",
+        "helper": "Results.bytes",
+        "status": 200
+      },
+      "cacheHeaders": {
+        "cacheControl": "public, max-age=31536000, immutable",
+        "vary": ["Accept-Encoding"],
+        "etag": true
+      }
+    },
+    {
+      "method": "GET",
+      "pattern": "/orders/{id:int}",
+      "handlerId": 2,
+      "name": "Orders.Get",
+      "module": "orders",
+      "auth": {
+        "required": true,
+        "schemes": ["bearerAuth"],
+        "scopes": ["orders:read"],
+        "policy": "Orders.Read"
+      },
+      "bindings": [
+        {
+          "kind": "route",
+          "name": "id",
+          "schema": "OrderParams"
+        },
+        {
+          "kind": "query",
+          "name": "include",
+          "schema": "OrderQuery"
+        }
+      ],
+      "outputCache": {
+        "ttlMs": 15000,
+        "cacheName": "orders",
+        "varyByQuery": ["include"],
+        "varyByHeader": ["accept-language"],
+        "varyByRouteParams": ["id"],
+        "varyByUser": true,
+        "varyByRole": false,
+        "varyByClaim": [],
+        "tags": ["orders"],
+        "statusCodes": [200],
+        "maxBodyBytes": 65536,
+        "allowAuthenticated": true,
+        "allowSetCookie": false,
+        "staleWhileRevalidateMs": 1000
+      },
+      "cacheHeaders": {
+        "cacheControl": "private, max-age=15",
+        "vary": ["Accept-Language"],
+        "etag": true
+      },
+      "rateLimit": [
+        {
+          "name": "orders-user",
+          "algorithm": "slidingWindow",
+          "store": "redis",
+          "partition": "user",
+          "partial": false
+        }
+      ],
+      "completeness": {
+        "status": "complete"
+      },
+      "response": {
+        "kind": "json",
+        "helper": "Results.ok",
+        "status": 200,
+        "bodySchema": "OrderResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "pattern": "/webhooks/orders",
+      "handlerId": 3,
+      "name": "Orders.Webhook",
+      "module": "webhooks",
+      "tags": ["webhooks"],
+      "auth": {
+        "allowAnonymous": true
+      },
+      "rateLimit": [
+        {
+          "name": "webhooks-ip",
+          "algorithm": "fixedWindow",
+          "store": "default",
+          "partition": "ip",
+          "partial": false
+        }
+      ],
+      "completeness": {
+        "status": "complete"
+      },
+      "response": {
+        "kind": "json",
+        "helper": "Results.accepted",
+        "status": 202
+      }
+    },
+    {
+      "method": "GET",
+      "kind": "websocket",
+      "pattern": "/realtime/orders",
+      "handlerId": 4,
+      "name": "Orders.Realtime",
+      "module": "realtime",
+      "tags": ["realtime"],
+      "auth": {
+        "required": true,
+        "schemes": ["bearerAuth"],
+        "scopes": ["orders:read"]
+      },
+      "realtime": {
+        "kind": "realtime",
+        "transport": "websocket",
+        "channelExpression": "orders"
+      },
+      "rateLimit": [
+        {
+          "name": "realtime-user",
+          "algorithm": "concurrency",
+          "store": "memory",
+          "partition": "user",
+          "partial": false
+        }
+      ],
+      "completeness": {
+        "status": "partial"
+      },
+      "response": {
+        "kind": "text",
+        "helper": "Results.status",
+        "status": 101
+      }
+    },
+    {
+      "method": "POST",
+      "pattern": "/jobs/deliver-webhooks",
+      "handlerId": 5,
+      "name": "Jobs.DeliverWebhooks",
+      "module": "jobs",
+      "docsInternal": true,
+      "auth": {
+        "required": true,
+        "schemes": ["bearerAuth"],
+        "roles": ["ops"],
+        "policy": "Ops.Run"
+      },
+      "completeness": {
+        "status": "complete"
+      },
+      "response": {
+        "kind": "json",
+        "helper": "Results.ok",
+        "status": 200,
+        "bodySchema": "JobRunSummary"
+      }
+    }
+  ],
+  "schemas": [
+    {
+      "name": "OrderParams",
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "id": {
+            "kind": "int"
+          }
+        }
+      }
+    },
+    {
+      "name": "OrderQuery",
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "include": {
+            "kind": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "OrderResponse",
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "id": {
+            "kind": "int"
+          },
+          "status": {
+            "kind": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "JobRunSummary",
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "claimed": {
+            "kind": "int"
+          },
+          "delivered": {
+            "kind": "int"
+          }
+        }
+      }
+    }
+  ],
+  "cache": {
+    "enabled": true,
+    "staticMetadata": true,
+    "outputCacheRoutes": [
+      {
+        "method": "GET",
+        "pattern": "/orders/{id:int}",
+        "cacheName": "orders",
+        "ttlMs": 15000
+      }
+    ]
+  },
+  "workers": {
+    "static": false,
+    "resources": [],
+    "policy": {
+      "boundedByDefault": true,
+      "noRawNativeHandles": true,
+      "ownerThreadSettlement": true
+    }
+  },
+  "doctorChecks": [
+    {
+      "id": "framework.matrix.redis",
+      "status": "ok",
+      "message": "Redis-backed rate limit metadata is visible without Redis URL or password values"
+    },
+    {
+      "id": "framework.matrix.webhooks",
+      "status": "ok",
+      "message": "Webhooks routes and delivery client metadata are visible without signing secrets or payload values"
+    },
+    {
+      "id": "framework.matrix.realtime",
+      "status": "ok",
+      "message": "Realtime websocket route metadata is visible with channel and auth boundaries"
+    },
+    {
+      "id": "framework.matrix.static-files",
+      "status": "ok",
+      "message": "Static file route metadata is visible without absolute local filesystem paths"
+    }
+  ],
+  "modules": [
+    {
+      "name": "assets",
+      "dependencies": []
+    },
+    {
+      "name": "orders",
+      "dependencies": ["assets"]
+    },
+    {
+      "name": "webhooks",
+      "dependencies": ["orders"]
+    },
+    {
+      "name": "realtime",
+      "dependencies": ["orders"]
+    },
+    {
+      "name": "jobs",
+      "dependencies": ["webhooks"]
+    }
+  ],
+  "dataProviders": [
+    {
+      "token": "data.main",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "service": "data.main",
+      "database": "app.db"
+    }
+  ]
+}

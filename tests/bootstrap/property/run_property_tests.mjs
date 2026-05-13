@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,6 +9,7 @@ import {
     Base64Url,
     Binary,
     CancellationController,
+    Cache,
     Deadline,
     Hex,
     HttpClient,
@@ -16,6 +18,7 @@ import {
     ProblemDetails,
     RateLimit,
     Realtime,
+    Redis,
     Results,
     schema,
     Sloppy,
@@ -23,6 +26,7 @@ import {
     TestHost,
     Text,
     Time,
+    Webhooks,
     WorkQueue,
 } from "../../../stdlib/sloppy/index.js";
 
@@ -31,9 +35,16 @@ const DEFAULT_PROPERTY_TARGETS = Object.freeze([
     "results",
     "time",
     "http-client",
+    "route-patterns",
     "static-files",
+    "cache",
+    "redis",
     "rate-limit",
+    "websocket",
+    "webhooks",
     "realtime",
+    "schema",
+    "scheduler",
     "workers",
     "logging",
     "config",
@@ -150,6 +161,56 @@ function randomText(random, maxLength = 96) {
         }
     }
     return output;
+}
+
+function safeSegment(random, prefix = "p", maxLength = 16) {
+    const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789-_";
+    let output = prefix;
+    const length = 1 + random.int(Math.max(1, maxLength));
+    for (let index = 0; index < length; index += 1) {
+        output += alphabet[random.int(alphabet.length)];
+    }
+    return output;
+}
+
+function lowerCaseHeaders(headers) {
+    return new Map(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
+}
+
+async function withCryptoBridge(callback) {
+    const previous = globalThis.__sloppy;
+    globalThis.__sloppy = {
+        ...(previous ?? {}),
+        crypto: {
+            ...(previous?.crypto ?? {}),
+            randomUuid() {
+                return crypto.randomUUID();
+            },
+            randomBytes(length) {
+                return new Uint8Array(crypto.randomBytes(length));
+            },
+            hash(algorithm, bytes) {
+                return new Uint8Array(crypto.createHash(algorithm).update(Buffer.from(bytes)).digest());
+            },
+            hmac(algorithm, key, bytes) {
+                return new Uint8Array(crypto.createHmac(algorithm, Buffer.from(key)).update(Buffer.from(bytes)).digest());
+            },
+            constantTimeEquals(left, right) {
+                const a = Buffer.from(left);
+                const b = Buffer.from(right);
+                return a.length === b.length && crypto.timingSafeEqual(a, b);
+            },
+        },
+    };
+    try {
+        return await callback();
+    } finally {
+        if (previous === undefined) {
+            delete globalThis.__sloppy;
+        } else {
+            globalThis.__sloppy = previous;
+        }
+    }
 }
 
 function assertBytesEqual(actual, expected) {
@@ -380,6 +441,46 @@ const properties = Object.freeze({
         await assertRejects(() => HttpClient.request("http://example.test/", { headers: { "x-test": "a\r\nb" } }), /header value/);
     },
 
+    async "route-patterns"(random, iteration) {
+        const routeId = 1 + random.int(1_000_000);
+        const search = safeSegment(random, "q");
+        const app = Sloppy.create();
+        app.get(`/property/${iteration}/items/{id:int}`, (ctx) => Results.json({
+            id: Number(ctx.route.id),
+            query: ctx.query.search,
+            header: ctx.request.headers.get("x-property"),
+            url: app.urlFor("property.item", { id: ctx.route.id }, { search: ctx.query.search }),
+        })).name("property.item");
+        app.post(`/property/${iteration}/echo/{slug}`, async (ctx) => Results.json({
+            slug: ctx.route.slug,
+            body: await ctx.request.json(),
+        }));
+        const host = await TestHost.create(app);
+        try {
+            const response = await host.get(`/property/${iteration}/items/${routeId}`)
+                .query({ search })
+                .header("x-property", "yes")
+                .send();
+            response.expectStatus(200);
+            assert.deepEqual(await response.json(), {
+                id: routeId,
+                query: search,
+                header: "yes",
+                url: `/property/${iteration}/items/${routeId}?search=${encodeURIComponent(search)}`,
+            });
+
+            await host.get(`/property/${iteration}/items/not-an-int`).expectStatus(404);
+            const body = { value: randomText(random, 16).replace(/\0/gu, "") };
+            const echoed = await host.post(`/property/${iteration}/echo/${safeSegment(random, "slug")}`).json(body).send();
+            echoed.expectStatus(200);
+            assert.deepEqual((await echoed.json()).body, body);
+            await assertRejects(() => host.get(`/property/${iteration}/items/${routeId}?bad=%zz`), /percent escapes/);
+            assertThrows(() => app.urlFor("property.item", { id: "not/an/id" }), /must satisfy 'int'/);
+        } finally {
+            await host.close();
+        }
+    },
+
     async "static-files"(random) {
         const previousCwd = process.cwd();
         const root = await mkdtemp(path.join(tmpdir(), "sloppy-static-property-"));
@@ -422,6 +523,8 @@ const properties = Object.freeze({
                 traversal.expectStatus(403);
                 const hidden = await host.get("/assets/.hidden");
                 hidden.expectStatus(403);
+                const missing = await host.get("/assets/missing.js");
+                missing.expectStatus(404);
             } finally {
                 await host.close();
             }
@@ -429,6 +532,107 @@ const properties = Object.freeze({
             process.chdir(previousCwd);
             await rm(root, { recursive: true, force: true });
         }
+    },
+
+    async cache(random) {
+        const key = Cache.key("property", safeSegment(random, "key"));
+        const tag = safeSegment(random, "tag");
+        const cache = Cache.memory(`property-${random.nextU32()}`, { maxEntries: 4 });
+        try {
+            const value = { count: random.int(1000), nested: { text: randomText(random, 16).replace(/\0/gu, "") } };
+            await cache.set(key, value, { tags: [tag], maxValueBytes: 4096 });
+            assert.deepEqual(await cache.get(key), value);
+            const copy = await cache.get(key);
+            copy.nested.text = "mutated";
+            assert.deepEqual(await cache.get(key), value);
+            assert.equal(await cache.invalidateTag(tag), 1);
+            assert.equal(await cache.get(key), undefined);
+
+            let current = 1_000;
+            const clocked = Cache.memory(`clock-${random.nextU32()}`, {
+                maxEntries: 8,
+                clock: {
+                    now() {
+                        return new Date(current);
+                    },
+                    monotonicNowMs() {
+                        return current;
+                    },
+                },
+            });
+            try {
+                await clocked.set("sliding", { ok: true }, { slidingExpirationMs: 10, absoluteExpiration: new Date(current + 25) });
+                current += 5;
+                assert.deepEqual(await clocked.get("sliding"), { ok: true });
+                current += 26;
+                assert.equal(await clocked.get("sliding"), undefined);
+            } finally {
+                clocked.dispose();
+            }
+
+            let runs = 0;
+            const [left, right] = await Promise.all([
+                cache.getOrCreate("coalesced", { ttlMs: 100 }, async () => {
+                    runs += 1;
+                    await Promise.resolve();
+                    return { winner: true };
+                }),
+                cache.getOrCreate("coalesced", { ttlMs: 100 }, async () => {
+                    runs += 1;
+                    return { winner: false };
+                }),
+            ]);
+            assert.deepEqual(left, { winner: true });
+            assert.deepEqual(right, { winner: true });
+            assert.equal(runs, 1);
+            await assertRejects(
+                () => cache.set("too-large", { value: "abcdef" }, { maxValueBytes: 2 }),
+                /SLOPPY_E_CACHE_VALUE_TOO_LARGE|maxValueBytes/,
+            );
+            await cache.set("typed", { id: 1 }, { schema: schema.object({ id: schema.integer() }) });
+            await assertRejects(() => cache.get("typed", schema.object({ id: schema.string() })), /schema validation/);
+            assert.equal(Cache.key("bad\0key"), "bad%00key");
+            assertThrows(() => Cache.tags("good", ["bad\0tag"]), /cache tag|cache key/);
+        } finally {
+            cache.dispose();
+        }
+    },
+
+    redis(random) {
+        const payload = safeSegment(random, "value", 20);
+        const encoded = Text.utf8.encode(`*2\r\n$3\r\nGET\r\n$${payload.length}\r\n${payload}\r\n`);
+        const parser = new Redis.RespParser({ maxResponseBytes: 1024, maxArrayItems: 8, maxArrayDepth: 4 });
+        const split = 1 + random.int(encoded.byteLength - 1);
+        parser.feed(encoded.subarray(0, split));
+        assert.equal(parser.read(), undefined);
+        parser.feed(encoded.subarray(split));
+        const value = parser.read();
+        assert.equal(Array.isArray(value), true);
+        assert.equal(Text.utf8.decode(value[0]), "GET");
+        assert.equal(Text.utf8.decode(value[1]), payload);
+        assert.equal(parser.read(), undefined);
+
+        const integerParser = new Redis.RespParser();
+        integerParser.feed(Text.utf8.encode(`:${random.int(1_000_000)}\r\n`));
+        assert.equal(typeof integerParser.read(), "number");
+
+        const errorParser = new Redis.RespParser();
+        errorParser.feed(Text.utf8.encode("-ERR broken\r\n"));
+        assert.equal(errorParser.read().code, "ERR");
+
+        const capped = new Redis.RespParser({ maxResponseBytes: 4 });
+        assertThrows(() => capped.feed(Text.utf8.encode("$5\r\nhello\r\n")), /byte limit/);
+        const malformed = new Redis.RespParser();
+        malformed.feed(Text.utf8.encode("$2\r\nabxx"));
+        assertThrows(() => malformed.read(), /missing CRLF/);
+
+        assert.equal(Redis._redactUrl("redis://user:secret@example.test:6379/0").includes("secret"), false);
+        const client = Redis.client("property", { url: "redis://example.test/0" });
+        assert.equal(client.diagnostics().url, "redis://example.test/0");
+        client.close();
+        assertThrows(() => Redis.client("bad name", { url: "redis://example.test/0" }), /letters, digits/);
+        assertThrows(() => Redis.client("property", { url: "http://example.test" }), /redis:\/\/ or rediss:\/\//);
+        assertThrows(() => Redis.client("property", { url: "redis://example.test/-1" }), /database path/);
     },
 
     async "rate-limit"(random) {
@@ -488,6 +692,143 @@ const properties = Object.freeze({
         assert.ok(bucketDenied.retryAfterMs >= 1);
     },
 
+    async webhooks(random, iteration) {
+        await withCryptoBridge(async () => {
+            const Event = Webhooks.event("property.created", {
+                version: 1,
+                schema: schema.object({
+                    id: schema.string().minLength(1),
+                    count: schema.integer(),
+                }),
+            });
+            const payload = { id: `evt_${iteration}`, count: random.int(10_000) };
+            const body = JSON.stringify(payload);
+            const timestamp = String(2_000 + random.int(1_000));
+            const secret = `secret-${safeSegment(random, "s")}`;
+            const signed = await Webhooks.sign(body, {
+                secret,
+                event: Event.name,
+                id: `delivery_${iteration}`,
+                timestamp,
+                attempt: 1 + random.int(5),
+            });
+            const request = {
+                headers: lowerCaseHeaders(signed.headers),
+                bytes() {
+                    return Text.utf8.encode(body);
+                },
+            };
+            const seen = new Set();
+            const dedupe = {
+                seen(id) {
+                    return seen.has(id);
+                },
+                mark(id) {
+                    seen.add(id);
+                },
+            };
+            const verified = await Webhooks.verify(request, {
+                secret,
+                event: Event,
+                toleranceMs: 1000,
+                nowMs: Number(timestamp) * 1000,
+                dedupe,
+            });
+            assert.deepEqual(verified.payload, payload);
+            await assertRejects(() => Webhooks.verify(request, {
+                secret,
+                event: Event,
+                toleranceMs: 1000,
+                nowMs: Number(timestamp) * 1000,
+                dedupe,
+            }), /SLOPPY_E_WEBHOOK_REPLAY_DETECTED/);
+            await assertRejects(() => Webhooks.verify(request, {
+                secret: `${secret}-wrong`,
+                toleranceMs: 1000,
+                nowMs: Number(timestamp) * 1000,
+            }), /SLOPPY_E_WEBHOOK_SIGNATURE_INVALID/);
+            await assertRejects(() => Webhooks.verify(request, {
+                secret,
+                toleranceMs: 1000,
+                nowMs: (Number(timestamp) + 2) * 1000,
+            }), /SLOPPY_E_WEBHOOK_TIMESTAMP_OUT_OF_RANGE/);
+
+            const invalidSigned = await Webhooks.sign(JSON.stringify({ id: "", count: "bad" }), {
+                secret,
+                event: Event.name,
+                id: `delivery_invalid_${iteration}`,
+                timestamp: String(Number(timestamp) + 1),
+            });
+            await assertRejects(() => Webhooks.verify({
+                headers: lowerCaseHeaders(invalidSigned.headers),
+                async text() {
+                    return JSON.stringify({ id: "", count: "bad" });
+                },
+            }, {
+                secret,
+                event: Event,
+                toleranceMs: 1000,
+                nowMs: (Number(timestamp) + 1) * 1000,
+            }), /SLOPPY_E_WEBHOOK_EVENT_VALIDATION_FAILED/);
+
+            assertThrows(() => Webhooks.event("not_dotted", { version: 1, schema: Event.schema }), /dotted/);
+            assertThrows(() => Webhooks.retry.fixed({ retryOnStatus: [99] }), /valid HTTP statuses/);
+            assertThrows(() => Webhooks.outbox({ provider: "main", signingSecret: "" }), /signingSecret/);
+        });
+    },
+
+    async websocket(random, iteration) {
+        const protocol = `sloppy.prop${iteration}`;
+        const origin = `https://${safeSegment(random, "origin")}.example`;
+        const route = `/property/ws/${iteration}`;
+        const app = Sloppy.create();
+        app.ws(route, {
+            protocols: [protocol],
+            origins: [origin],
+            maxMessageBytes: 256,
+            maxSendQueueBytes: 2048,
+        }, async (_ctx, socket) => {
+            await socket.accept();
+            await socket.sendText("ready");
+            const message = await socket.messages().take(1000, "property message");
+            if (message.kind === "text") {
+                await socket.sendText(`text:${message.text}`);
+            } else if (message.kind === "json") {
+                await socket.sendJson({ json: message.json() });
+            } else if (message.kind === "binary") {
+                await socket.sendBytes(message.bytes);
+            }
+            await socket.close(1000, "property complete");
+        });
+        const host = await TestHost.create(app);
+        try {
+            await host.websocket(route).origin("https://wrong.example").protocols([protocol]).connect().expectRejected(403);
+            await host.websocket(route).origin(origin).protocols(["wrong.protocol"]).connect().expectRejected(400);
+            const socket = await host.websocket(route).origin(origin).protocols([protocol]).connect();
+            assert.equal(socket.protocol, protocol);
+            await socket.expectText("ready");
+            const mode = random.pick(["text", "json", "binary"]);
+            if (mode === "text") {
+                const text = safeSegment(random, "msg");
+                await socket.sendText(text);
+                await socket.expectText(`text:${text}`);
+            } else if (mode === "json") {
+                const body = { value: random.int(1000), text: safeSegment(random, "j") };
+                await socket.sendJson(body);
+                await socket.expectJson({ json: body });
+            } else {
+                const body = new Uint8Array([random.int(256), random.int(256), random.int(256)]);
+                await socket.sendBytes(body);
+                await socket.expectBytes(body);
+            }
+            await socket.expectClose(1000);
+            host.metrics.expectCounter("websocket.upgrades.rejected.total", 1, { outcome: "origin" });
+            host.metrics.expectCounter("websocket.upgrades.rejected.total", 1, { outcome: "protocol" });
+        } finally {
+            await host.close();
+        }
+    },
+
     realtime(random, iteration) {
         const maxLength = 1 + random.int(32);
         const text = "x".repeat(random.int(maxLength + 1));
@@ -536,6 +877,80 @@ const properties = Object.freeze({
             () => Channel.serializeServerMessage("didReceive", { text: "x".repeat(maxLength + 1) }),
             "SLOPPY_E_REALTIME_VALIDATION_FAILED",
         );
+    },
+
+    schema(random) {
+        const maxName = 1 + random.int(16);
+        const Model = schema.object({
+            name: schema.string().minLength(1).maxLength(maxName),
+            count: schema.integer().min(0).max(1000),
+            enabled: schema.boolean().default(true),
+            tag: schema.string().nullable().optional(),
+            values: schema.array(schema.number()),
+        });
+        const name = "x".repeat(1 + random.int(maxName));
+        const payload = {
+            name,
+            count: random.int(1001),
+            values: Array.from({ length: random.int(5) }, () => random.int(1000) / 10),
+        };
+        const valid = Model.validate(payload);
+        assert.equal(valid.ok, true);
+        assert.equal(valid.value.enabled, true);
+        assert.notEqual(valid.value, payload);
+        const invalid = Model.validate({
+            name: "",
+            count: -1,
+            values: [1, "bad"],
+        });
+        assert.equal(invalid.ok, false);
+        assert(invalid.issues.some((issue) => issue.path.join(".") === "name"));
+        assert(invalid.issues.some((issue) => issue.path.join(".") === "count"));
+        assert(invalid.issues.some((issue) => issue.path.join(".") === "values.1"));
+        assertThrows(() => schema.string().minLength(-1), /non-negative/);
+        assertThrows(() => schema.object({ bad: "not-a-schema" }), /schema/);
+        assertThrows(() => schema.array("not-a-schema"), /schema/);
+    },
+
+    async scheduler(random) {
+        const settle = async () => {
+            for (let index = 0; index < 5; index += 1) {
+                await Promise.resolve();
+            }
+        };
+        const intervalMs = 1 + random.int(25);
+        const expectedRuns = 2 + random.int(3);
+        const clock = Time.fakeClock({ now: new Date("2026-01-01T00:00:00Z") });
+        const runs = [];
+        const job = Time.every(intervalMs, async (ctx) => {
+            runs.push({ run: ctx.run, skippedRuns: ctx.skippedRuns, at: ctx.startedAt.toISOString() });
+        }, {
+            clock,
+            immediate: true,
+            maxRuns: expectedRuns,
+        });
+        await settle();
+        for (let index = 1; index < expectedRuns; index += 1) {
+            clock.advanceBy(intervalMs);
+            await settle();
+        }
+        await job.stop();
+        assert.deepEqual(runs.map((entry) => entry.run), Array.from({ length: expectedRuns }, (_value, index) => index + 1));
+        assert.equal(runs.every((entry) => entry.skippedRuns === 0), true);
+
+        const pausedRuns = [];
+        const paused = Time.every(intervalMs, async (ctx) => {
+            pausedRuns.push(ctx.run);
+        }, { clock, maxRuns: 2 });
+        paused.pause();
+        clock.advanceBy(intervalMs);
+        await settle();
+        assert.deepEqual(pausedRuns, []);
+        paused.resume();
+        clock.advanceBy(intervalMs);
+        await settle();
+        await paused.stop();
+        assert.deepEqual(pausedRuns, [1]);
     },
 
     async workers(random) {

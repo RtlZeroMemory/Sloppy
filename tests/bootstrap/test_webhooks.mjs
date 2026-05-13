@@ -734,6 +734,83 @@ try {
     }
 
     {
+        const body = JSON.stringify({ orderId: "ord_inbound", total: 48 });
+        const nowMs = 4000 * 1000;
+        const seen = new Set();
+        const app = Sloppy.create();
+        app.post("/webhooks/inbound", async (ctx) => {
+            try {
+                const verified = await Webhooks.verify(ctx, {
+                    secret: "inbound-secret",
+                    event: OrderCreated,
+                    toleranceMs: 1000,
+                    nowMs,
+                    dedupe: {
+                        seen(id) {
+                            return seen.has(id);
+                        },
+                        mark(id) {
+                            seen.add(id);
+                        },
+                    },
+                });
+                return Results.ok({ id: verified.id, event: verified.event, orderId: verified.payload.orderId });
+            } catch (error) {
+                if (error instanceof SloppyWebhookError) {
+                    return Results.problem({
+                        title: "Webhook rejected",
+                        code: error.code,
+                    }, { status: 400 });
+                }
+                throw error;
+            }
+        });
+        const host = await TestHost.create(app);
+        try {
+            const signed = await Webhooks.sign(body, {
+                secret: "inbound-secret",
+                event: "order.created",
+                id: "delivery_host_1",
+                timestamp: "4000",
+            });
+            const accepted = await host.post("/webhooks/inbound").headers(signed.headers).text(body).send();
+            accepted.expectStatus(200);
+            assert.deepEqual(await accepted.json(), {
+                id: "delivery_host_1",
+                event: "order.created",
+                orderId: "ord_inbound",
+            });
+
+            const replay = await host.post("/webhooks/inbound").headers(signed.headers).text(body).send();
+            replay.expectStatus(400);
+            assert.equal((await replay.json()).code, "SLOPPY_E_WEBHOOK_REPLAY_DETECTED");
+
+            const invalidSignature = await host.post("/webhooks/inbound")
+                .headers({
+                    ...signed.headers,
+                    "Sloppy-Webhook-Id": "delivery_host_2",
+                    "Sloppy-Webhook-Signature": "v1=deadbeef",
+                })
+                .text(body)
+                .send();
+            invalidSignature.expectStatus(400);
+            assert.equal((await invalidSignature.json()).code, "SLOPPY_E_WEBHOOK_SIGNATURE_INVALID");
+
+            const stale = await Webhooks.sign(body, {
+                secret: "inbound-secret",
+                event: "order.created",
+                id: "delivery_host_3",
+                timestamp: "3998",
+            });
+            const staleResponse = await host.post("/webhooks/inbound").headers(stale.headers).text(body).send();
+            staleResponse.expectStatus(400);
+            assert.equal((await staleResponse.json()).code, "SLOPPY_E_WEBHOOK_TIMESTAMP_OUT_OF_RANGE");
+        } finally {
+            await host.close();
+        }
+    }
+
+    {
         const db = new WebhookDb();
         const app = createWebhookApp(db);
         app.post("/orders", async (ctx) => {
