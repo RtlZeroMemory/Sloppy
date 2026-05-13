@@ -154,6 +154,24 @@ return Results.problem("Database is down");
 Calling `Results.problem()` with no argument produces
 `{ title: "Sloppy problem", status: 500 }`.
 
+## Cache Headers
+
+Result descriptors can attach HTTP cache policy headers without enabling
+server-side output caching:
+
+```ts
+return Results.json({ theme: "dark" })
+    .cacheControl("private, max-age=30")
+    .cacheHeaders({
+        vary: ["Accept-Language"],
+        etag: true,
+    });
+```
+
+`cacheControl(value)` sets `Cache-Control`. `cacheHeaders(options)` can set
+`cacheControl`, merge `Vary`, set `Last-Modified`, and generate or set `ETag`.
+Use route `.outputCache(...)` when Sloppy should store the server response.
+
 ### Default error responses
 
 Install `ProblemDetails.defaults()` once on the app to wrap every route in a

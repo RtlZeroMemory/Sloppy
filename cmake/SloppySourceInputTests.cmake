@@ -689,6 +689,15 @@
                     -CargoExecutable "${CARGO_EXECUTABLE}" -SloppyCli "$<TARGET_FILE:sloppy>")
             set_tests_properties(conformance.users_api_sqlite.localhost_transport
                                  PROPERTIES LABELS "conformance;v8;transport;sqlite;capability")
+            add_test(
+                NAME conformance.cache.package_runtime
+                COMMAND
+                    powershell -NoProfile -ExecutionPolicy Bypass -File
+                    "${PROJECT_SOURCE_DIR}/tests/scripts/test_cache_package_runtime.ps1"
+                    -ProjectSourceDir "${PROJECT_SOURCE_DIR}" -CMakeBinaryDir "${CMAKE_BINARY_DIR}"
+                    -SloppyCli "$<TARGET_FILE:sloppy>")
+            set_tests_properties(conformance.cache.package_runtime
+                                 PROPERTIES LABELS "conformance;v8;source-input;package;cache")
         endif()
 
         function(sloppy_add_conformance_existing_artifact_test test_name artifacts method target

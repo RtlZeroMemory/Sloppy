@@ -110,6 +110,11 @@ when the host exposes `process.memoryUsage()`.
 `Health.http(url, options)` and `Health.tcp(host, port, options)` provide
 bounded HTTP and TCP dependency probes.
 
+`Health.cache(cache)` reports safe cache stats and becomes unhealthy after the
+cache is disposed. Memory caches do not probe another process. Distributed and
+hybrid caches report the registered cache state through the cache API rather
+than exposing provider secrets.
+
 ## Compiler Visibility
 
 The bootstrap app host supports every built-in listed above.

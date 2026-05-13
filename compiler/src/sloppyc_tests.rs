@@ -1837,6 +1837,7 @@ fn program_mode_marks_each_runtime_stdlib_subpath() {
         ("sloppy/time", "Time", "stdlib.time"),
         ("sloppy/crypto", "Random", "stdlib.crypto"),
         ("sloppy/codec", "Base64", "stdlib.codec"),
+        ("sloppy/cache", "Cache", "stdlib.cache"),
         ("sloppy/workers", "WorkQueue", "stdlib.workers"),
     ];
     for (index, (module, imported, feature)) in cases.iter().enumerate() {
@@ -1862,6 +1863,127 @@ fn program_mode_marks_each_runtime_stdlib_subpath() {
 
         fs::remove_dir_all(&root).expect("program fixture directory should be removable");
     }
+}
+
+#[test]
+fn output_cache_fluent_route_metadata_stays_plan_visible() {
+    let root = fixture_temp_dir("output-cache-route-metadata");
+    let input = root.join("app.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"import { Sloppy, Results } from "sloppy";
+
+const app = Sloppy.create();
+app.get("/products", () => Results.json([]))
+  .outputCache({
+    ttlMs: 30000,
+    varyByQuery: ["category", "page"],
+    tags: ["products"]
+  })
+  .cacheHeaders({
+    cacheControl: "public, max-age=60",
+    vary: ["Accept-Encoding"],
+    etag: true
+  });
+app.get("/disabled", () => Results.json({ ok: true }))
+  .outputCache({ ttlMs: 1000 })
+  .noOutputCache();
+app.get("/reenabled", () => Results.json({ ok: true }))
+  .noOutputCache()
+  .outputCache({ ttlMs: 5000 });
+
+export default app;
+"#,
+    )
+    .expect("entry should write");
+
+    super::build(
+        &input,
+        &out_dir,
+        &CompileOptions {
+            kind: Some(super::ProjectKind::Web),
+            ..CompileOptions::default()
+        },
+    )
+    .expect("web app should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+
+    assert!(plan["requiredFeatures"]
+        .as_array()
+        .expect("required features should be an array")
+        .contains(&serde_json::json!("stdlib.cache")));
+    assert_eq!(plan["features"]["cache"], serde_json::json!(true));
+    let routes = plan["routes"]
+        .as_array()
+        .expect("routes should be an array");
+    let product_route = routes
+        .iter()
+        .find(|route| route["pattern"] == "/products" && route["method"] == "GET")
+        .expect("products route should exist");
+    assert_eq!(
+        product_route["outputCache"]["ttlMs"].as_f64(),
+        Some(30000.0)
+    );
+    assert_eq!(
+        product_route["cacheHeaders"]["cacheControl"],
+        serde_json::json!("public, max-age=60")
+    );
+    let disabled_route = routes
+        .iter()
+        .find(|route| route["pattern"] == "/disabled" && route["method"] == "GET")
+        .expect("disabled route should exist");
+    assert!(disabled_route.get("outputCache").is_none());
+    let reenabled_route = routes
+        .iter()
+        .find(|route| route["pattern"] == "/reenabled" && route["method"] == "GET")
+        .expect("reenabled route should exist");
+    assert_eq!(
+        reenabled_route["outputCache"]["ttlMs"].as_f64(),
+        Some(5000.0)
+    );
+    let output_cache_routes = plan["cache"]["outputCacheRoutes"]
+        .as_array()
+        .expect("output cache routes should be an array");
+    assert!(output_cache_routes
+        .iter()
+        .any(|route| route["pattern"] == "/products"));
+    assert!(output_cache_routes
+        .iter()
+        .any(|route| route["pattern"] == "/reenabled"));
+    assert!(!output_cache_routes
+        .iter()
+        .any(|route| route["pattern"] == "/disabled"));
+
+    fs::remove_dir_all(&root).expect("web fixture directory should be removable");
+}
+
+#[test]
+fn root_cache_import_is_available_to_compiled_web_runtime() {
+    let source = r#"import { Cache, Results, Sloppy } from "sloppy";
+function createCache() {
+  return Cache.memory("default");
+}
+const app = Sloppy.create();
+app.services.addSingleton("cache.default", () => createCache());
+app.get("/cached", () => Results.json({ ok: true }))
+  .outputCache({ ttlMs: 1000 });
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("root Cache import should extract for web apps");
+    assert!(app.uses_cache_runtime);
+    let emitted_js = super::emit_app_js(&app);
+    assert!(
+        emitted_js.source.contains("Cache"),
+        "compiled web bundle must import Cache when service helpers capture it:\n{}",
+        emitted_js.source
+    );
+    assert!(emitted_js
+        .source
+        .contains("return Cache.memory(\"default\")"));
 }
 
 #[test]
@@ -2027,6 +2149,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         noncrypto_hash_security_context_visible: false,
         uses_codec_runtime: false,
         checksum_security_context_visible: false,
+        uses_cache_runtime: false,
         uses_net_runtime: false,
         uses_os_runtime: false,
         uses_http_client_runtime: false,

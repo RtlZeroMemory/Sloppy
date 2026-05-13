@@ -15,7 +15,7 @@ if(NOT result EQUAL 0)
     message(FATAL_ERROR "PostgreSQL bridge live run failed without printing secrets.\n${error}")
 endif()
 
-if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace" OR NOT output MATCHES "postgresTimedOut.*true" OR NOT output MATCHES "materializedRejected.*true" OR NOT output MATCHES "cursorCount.*152" OR NOT output MATCHES "cursorMaxRowsRejected.*true" OR NOT output MATCHES "poolPinned.*true" OR NOT output MATCHES "cursorTimedOut.*true")
+if(NOT output MATCHES "Ada" OR NOT output MATCHES "Grace" OR NOT output MATCHES "postgresTimedOut.*true" OR NOT output MATCHES "materializedRejected.*true" OR NOT output MATCHES "cursorCount.*152" OR NOT output MATCHES "cursorMaxRowsRejected.*true" OR NOT output MATCHES "poolPinned.*true" OR NOT output MATCHES "cursorTimedOut.*true" OR NOT output MATCHES "cacheEvidence.*getOk.*true" OR NOT output MATCHES "cacheEvidence.*ttlExpired.*true" OR NOT output MATCHES "cacheEvidence.*slidingExpired.*true" OR NOT output MATCHES "cacheEvidence.*tagInvalidated.*true" OR NOT output MATCHES "cacheEvidence.*cleanupOk.*true" OR NOT output MATCHES "cacheEvidence.*namespaceIsolation.*true" OR NOT output MATCHES "cacheEvidence.*hybridMemory.*true" OR NOT output MATCHES "cacheEvidence.*hybridGets.*true")
     message(FATAL_ERROR "PostgreSQL bridge live output did not include expected cursor, bounded materialization, pool pinning, and timeout evidence.\n${output}")
 endif()
 

@@ -1,0 +1,173 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-cache-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-cache-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Cache.Products"
+    },
+    {
+      "id": 2,
+      "exportName": "__sloppy_handler_2",
+      "displayName": "Cache.AdminSummary"
+    }
+  ],
+  "requiredFeatures": ["stdlib.cache"],
+  "auth": {
+    "schemes": [
+      {
+        "kind": "bearer",
+        "name": "bearerAuth",
+        "header": "Authorization"
+      }
+    ],
+    "policies": []
+  },
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/products",
+      "handlerId": 1,
+      "name": "Cache.Products",
+      "auth": {
+        "required": true
+      },
+      "outputCache": {
+        "ttlMs": 30000,
+        "cacheName": "default",
+        "varyByQuery": ["category"],
+        "varyByHeader": ["accept-language"],
+        "varyByRouteParams": [],
+        "varyByUser": true,
+        "varyByRole": false,
+        "varyByClaim": [],
+        "tags": ["products"],
+        "statusCodes": [200],
+        "maxBodyBytes": 65536,
+        "allowAuthenticated": true,
+        "allowSetCookie": false,
+        "staleWhileRevalidateMs": 0
+      },
+      "cacheHeaders": {
+        "cacheControl": "private, max-age=30",
+        "vary": ["Accept-Language"],
+        "etag": true
+      },
+      "response": {
+        "kind": "json",
+        "helper": "json",
+        "status": 200,
+        "bodySchema": "ProductsResponse"
+      },
+      "completeness": {
+        "status": "complete",
+        "reasons": []
+      }
+    },
+    {
+      "method": "GET",
+      "pattern": "/admin-summary",
+      "handlerId": 2,
+      "name": "Cache.AdminSummary",
+      "auth": {
+        "required": true,
+        "roles": ["admin"]
+      },
+      "outputCache": {
+        "ttlMs": 5000,
+        "cacheName": "default",
+        "varyByQuery": [],
+        "varyByHeader": [],
+        "varyByRouteParams": [],
+        "varyByUser": false,
+        "varyByRole": true,
+        "varyByClaim": [],
+        "tags": ["admin-summary"],
+        "statusCodes": [200],
+        "maxBodyBytes": 65536,
+        "allowAuthenticated": true,
+        "allowSharedAuthenticated": true,
+        "allowSetCookie": false,
+        "staleWhileRevalidateMs": 0
+      },
+      "response": {
+        "kind": "json",
+        "helper": "json",
+        "status": 200,
+        "bodySchema": "ProductsResponse"
+      },
+      "completeness": {
+        "status": "complete",
+        "reasons": []
+      }
+    }
+  ],
+  "cache": {
+    "enabled": true,
+    "staticMetadata": true,
+    "outputCacheRoutes": [
+      {
+        "method": "GET",
+        "pattern": "/products",
+        "cacheName": "default",
+        "ttlMs": 30000
+      },
+      {
+        "method": "GET",
+        "pattern": "/admin-summary",
+        "cacheName": "default",
+        "ttlMs": 5000
+      }
+    ]
+  },
+  "schemas": [
+    {
+      "name": "ProductsResponse",
+      "definition": {
+        "kind": "object",
+        "properties": {
+          "items": {
+            "kind": "array",
+            "items": {
+              "kind": "object"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "doctorChecks": [
+    {
+      "id": "stdlib.cache.contract",
+      "status": "ok",
+      "message": "Cache feature metadata is Plan-visible; app-host cache execution depends on configured cache services and provider-backed cache bridges"
+    }
+  ],
+  "features": {
+    "cache": true,
+    "auth": true
+  },
+  "strongPlan": {
+    "evidence": {
+      "cache": true,
+      "auth": true
+    }
+  }
+}

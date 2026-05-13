@@ -22,6 +22,7 @@ const DB_VALUE_KINDS = Object.freeze({
     bytes: true,
 });
 const LOWERED_QUERIES = new WeakSet();
+const REAL_PROVIDER_HANDLES = new WeakMap();
 const PLACEHOLDER_STYLES = Object.freeze({
     question: (index) => ({
         text: "?",
@@ -1050,6 +1051,16 @@ function closeActiveCursors(cursors) {
     cursors.clear();
 }
 
+function markRealDataProvider(provider, kind) {
+    REAL_PROVIDER_HANDLES.set(provider, kind);
+    return provider;
+}
+
+function isRealDataProvider(provider, kind = undefined) {
+    const actual = REAL_PROVIDER_HANDLES.get(provider);
+    return kind === undefined ? actual !== undefined : actual === kind;
+}
+
 function normalizeResultMode(value, operation) {
     if (value === undefined) {
         return "object";
@@ -1512,7 +1523,7 @@ function createSqliteConnection(nativeBridge, handle) {
         state.transactionActive = false;
     }
 
-    return Object.freeze({
+    const connection = {
         query(...args) {
             assertOpen("query");
             const query = normalizeSqliteOperation("query", args);
@@ -1610,7 +1621,8 @@ function createSqliteConnection(nativeBridge, handle) {
                 resource: "opaque",
             });
         },
-    });
+    };
+    return Object.freeze(markRealDataProvider(connection, "sqlite"));
 }
 
 function redactConnectionString(value) {
@@ -2047,7 +2059,7 @@ function createPostgresConnection(nativeBridge, handle) {
         state.transactionActive = false;
     }
 
-    return Object.freeze({
+    const connection = {
         query(...args) {
             assertOpen("query");
             const query = normalizePostgresOperation("query", args);
@@ -2134,7 +2146,8 @@ function createPostgresConnection(nativeBridge, handle) {
                 resource: "opaque",
             });
         },
-    });
+    };
+    return Object.freeze(markRealDataProvider(connection, "postgres"));
 }
 
 function createSqlServerClosedError(operation) {
@@ -2357,7 +2370,7 @@ function createSqlServerConnection(nativeBridge, handle) {
         state.transactionActive = false;
     }
 
-    return Object.freeze({
+    const connection = {
         query(...args) {
             assertOpen("query");
             const query = normalizeSqlServerOperation("query", args);
@@ -2443,7 +2456,8 @@ function createSqlServerConnection(nativeBridge, handle) {
                 resource: "opaque",
             });
         },
-    });
+    };
+    return Object.freeze(markRealDataProvider(connection, "sqlserver"));
 }
 
 function openPostgres(options) {
@@ -2924,7 +2938,7 @@ const ProviderHealth = Object.freeze({
     check: checkProviderHealth,
 });
 
-export { Migrations, ProviderHealth, sql };
+export { Migrations, ProviderHealth, isRealDataProvider, sql };
 
 export const data = Object.freeze({
     createFakeProvider,

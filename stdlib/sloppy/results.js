@@ -323,6 +323,24 @@ function assertHeaderValueSafe(value, label) {
     }
 }
 
+function resultStableHash(value) {
+    const text = String(value);
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < text.length; index += 1) {
+        hash ^= text.charCodeAt(index) & 0xff;
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
+}
+
+function mergeVaryHeader(existing, value) {
+    if (existing === undefined || existing.length === 0) {
+        return value;
+    }
+    const tokens = existing.split(",").map((token) => token.trim().toLowerCase());
+    return tokens.includes(value.toLowerCase()) ? existing : `${existing}, ${value}`;
+}
+
 function assertCookieAttributeValueSafe(value, label) {
     assertHeaderValueSafe(value, label);
     if (value.includes(";")) {
@@ -474,6 +492,16 @@ function createResult(kind, body, contentType, options, extra, fast, rawJsonBody
             return withCookie(descriptor, name, value, cookieOptions);
         },
     });
+    Object.defineProperty(descriptor, "cacheControl", {
+        value(value) {
+            return withCacheControl(descriptor, value);
+        },
+    });
+    Object.defineProperty(descriptor, "cacheHeaders", {
+        value(cacheOptions) {
+            return withCacheHeaders(descriptor, cacheOptions);
+        },
+    });
 
     return Object.freeze(descriptor);
 }
@@ -579,6 +607,98 @@ function withCookie(descriptor, name, value, options) {
         undefined,
         rawJsonBody,
     );
+}
+
+function descriptorExtra(descriptor) {
+    const extra = {};
+    if (descriptor.location !== undefined) {
+        extra.location = descriptor.location;
+    }
+    if (descriptor.chunks !== undefined) {
+        extra.chunks = Object.freeze([...descriptor.chunks]);
+    }
+    return Object.keys(extra).length === 0 ? undefined : extra;
+}
+
+function cloneResult(descriptor, options) {
+    const rawJsonBody = Object.prototype.hasOwnProperty.call(descriptor, RAW_JSON_BODY)
+        ? descriptor[RAW_JSON_BODY]
+        : undefined;
+    return createResult(
+        descriptor.kind,
+        descriptor.body,
+        descriptor.contentType,
+        options,
+        descriptorExtra(descriptor),
+        undefined,
+        rawJsonBody,
+    );
+}
+
+function withResultHeaders(descriptor, headers) {
+    return cloneResult(descriptor, {
+        status: descriptor.status,
+        headers: {
+            ...(isPlainObject(descriptor.headers) ? descriptor.headers : {}),
+            ...headers,
+        },
+        json: descriptor.json,
+        setCookies: descriptor.setCookies,
+    });
+}
+
+function withCacheControl(descriptor, value) {
+    assertHeaderValueSafe(value, "Cache-Control");
+    if (value.length === 0) {
+        throw new TypeError("Sloppy Results Cache-Control must be non-empty.");
+    }
+    return withResultHeaders(descriptor, { "Cache-Control": value });
+}
+
+function normalizeCacheHeadersOptions(options) {
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy Results cacheHeaders options must be a plain object.");
+    }
+    if (options.cacheControl !== undefined) {
+        assertHeaderValueSafe(options.cacheControl, "Cache-Control");
+        if (options.cacheControl.length === 0) {
+            throw new TypeError("Sloppy Results Cache-Control must be non-empty.");
+        }
+    }
+    if (options.vary !== undefined && !Array.isArray(options.vary)) {
+        throw new TypeError("Sloppy Results cacheHeaders vary must be an array.");
+    }
+    return options;
+}
+
+function withCacheHeaders(descriptor, options) {
+    const normalized = normalizeCacheHeadersOptions(options);
+    const headers = {};
+    if (normalized.cacheControl !== undefined) {
+        headers["Cache-Control"] = normalized.cacheControl;
+    }
+    if (normalized.vary !== undefined) {
+        for (const value of normalized.vary) {
+            assertHeaderValueSafe(value, "Vary");
+            headers.Vary = mergeVaryHeader(headers.Vary ?? descriptor.headers?.Vary ?? descriptor.headers?.vary, value);
+        }
+    }
+    if (normalized.lastModified !== undefined) {
+        const date = normalized.lastModified instanceof Date ? normalized.lastModified : new Date(normalized.lastModified);
+        if (!Number.isFinite(date.getTime())) {
+            throw new TypeError("Sloppy Results cacheHeaders lastModified must be a valid Date or timestamp.");
+        }
+        headers["Last-Modified"] = date.toUTCString();
+    }
+    if (normalized.etag !== undefined) {
+        if (normalized.etag === true) {
+            headers.ETag = `"${resultStableHash(serializeJson(descriptor.body ?? ""))}"`;
+        } else {
+            assertHeaderValueSafe(normalized.etag, "ETag");
+            headers.ETag = normalized.etag;
+        }
+    }
+    return withResultHeaders(descriptor, headers);
 }
 
 const TEXT_OK_RESULT = createResult("text", "ok", TEXT_CONTENT_TYPE, undefined, undefined, {

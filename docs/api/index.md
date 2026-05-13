@@ -21,6 +21,7 @@ configuration, services, validation, or data access.
 - [Security headers](security.md) — first-party response security headers
 - [Health checks](health.md) — `Health`, `app.health()`, liveness/readiness/startup
 - [Metrics](metrics.md) — counters, gauges, histograms, JSON snapshots, Prometheus output
+- [Cache](cache.md) — memory, distributed, hybrid, cache-aside, output cache, cache headers
 - [Management](management.md) — opt-in actuator-style backend endpoints
 - [Errors](errors.md) — `app.useErrors(...)`, typed mappings, safe logging
 - [ProblemDetails](problem-details.md) — problem response descriptor options

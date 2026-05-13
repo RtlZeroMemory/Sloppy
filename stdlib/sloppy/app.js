@@ -33,6 +33,7 @@ import {
 import { createServiceProvider, createServicesBuilder } from "./internal/services.js";
 import { createMutationGuard, isPlainObject } from "./internal/shared.js";
 import { Health, createHealthHandler as createOpsHealthHandler } from "./health.js";
+import { isCache } from "./cache.js";
 import { Metrics } from "./metrics.js";
 import { normalizeJsonOptions, Results } from "./results.js";
 import { createSseRouteHandler, createWebSocketRouteHandler } from "./realtime.js";
@@ -903,6 +904,48 @@ function docsHtml(options) {
 <script>const byId=(id)=>globalThis["doc"+"ument"]["get"+"ElementById"](id);fetch(${JSON.stringify(options.openapiPath)}).then(r=>r.json()).then(j=>{if(j["x-slop-openapi-policy"]?.mode==="partial")byId("warn").style.display="block";byId("spec").textContent=JSON.stringify(j,null,2);}).catch(e=>{byId("spec").textContent=String(e);});</script></body></html>`;
 }
 
+function attachCacheMetrics(value, metricsRegistry) {
+    if (isCache(value) && typeof value.__setMetricsRegistry === "function") {
+        value.__setMetricsRegistry(metricsRegistry);
+    }
+    return value;
+}
+
+function createMetricsAwareServices(services, metricsRegistry) {
+    return Object.freeze({
+        get(token) {
+            return attachCacheMetrics(services.get(token), metricsRegistry);
+        },
+        tryGet(token) {
+            return attachCacheMetrics(services.tryGet(token), metricsRegistry);
+        },
+        createScope() {
+            const scope = services.createScope();
+            return Object.freeze({
+                ...scope,
+                get(token) {
+                    return attachCacheMetrics(scope.get(token), metricsRegistry);
+                },
+                tryGet(token) {
+                    return attachCacheMetrics(scope.tryGet(token), metricsRegistry);
+                },
+            });
+        },
+        addCache(cache, name = undefined) {
+            attachCacheMetrics(cache, metricsRegistry);
+            services.addCache(cache, name);
+            return this;
+        },
+        addHttpClient(clientOrName, options = undefined) {
+            services.addHttpClient(clientOrName, options);
+            return this;
+        },
+        dispose() {
+            return services.dispose();
+        },
+    });
+}
+
 function createApp(host) {
     const routes = [];
     const workerResources = [];
@@ -926,6 +969,7 @@ function createApp(host) {
     let contentNegotiation = host.options.contentNegotiation;
     const authState = createAuthState();
     const metricsRegistry = Metrics.createRegistry();
+    const services = createMetricsAwareServices(host.services, metricsRegistry);
     const opsHealthRegistry = Health.createRegistry();
     const lifecycleState = {
         startupComplete: false,
@@ -937,6 +981,7 @@ function createApp(host) {
     let managementExposed = false;
     const routeHost = {
         ...host,
+        services,
         auth: authState,
         handleError(error, context) {
             if (errorPolicyState.policy === null) {
@@ -1042,7 +1087,7 @@ function createApp(host) {
     const app = {
         config: host.config,
         log: host.log,
-        services: host.services,
+        services,
         capabilities: host.capabilities,
         metrics: metricsRegistry,
         auth: Object.freeze({
@@ -1681,6 +1726,20 @@ function createApp(host) {
                 capabilities: host.capabilities.list(),
                 auth: snapshotAuthState(authState),
                 workers: Object.freeze(workerResources.map(snapshotWorkerResource)),
+                cache: Object.freeze({
+                    enabled: routes.some((route) => route.metadata?.outputCache !== undefined),
+                    outputCacheRoutes: Object.freeze(routes
+                        .filter((route) => route.metadata?.outputCache !== undefined)
+                        .map((route) => Object.freeze({
+                            method: route.method,
+                            pattern: route.pattern,
+                            cacheName: route.metadata.outputCache.cacheName,
+                            varyByQuery: route.metadata.outputCache.varyByQuery,
+                            varyByHeader: route.metadata.outputCache.varyByHeader,
+                            varyByRouteParams: route.metadata.outputCache.varyByRouteParams,
+                            varyByUser: route.metadata.outputCache.varyByUser,
+                        }))),
+                }),
                 errors: errorPolicyState.policy === null ? undefined : Object.freeze({
                     detail: errorPolicyState.policy.detail,
                     missingRoute: errorPolicyState.policy.missingRoute,

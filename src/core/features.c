@@ -32,6 +32,10 @@
      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |                                             \
      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO))
 #define SL_FEATURE_DEPS_WORKERS SL_FEATURE_DEPS_NET
+#define SL_FEATURE_DEPS_CACHE                                                                      \
+    (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |             \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP) |                                               \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC))
 #define SL_FEATURE_DEPS_NODE_COMPAT                                                                \
     (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8))
 #define SL_FEATURE_DEPS_FFI                                                                        \
@@ -178,6 +182,16 @@ static SlRuntimeFeatureDescriptor sl_feature_workers_descriptor(SlRuntimeFeature
         sl_feature_literal("sloppy/workers", sizeof("sloppy/workers") - 1U),
         sl_feature_literal("__sloppy.workers", sizeof("__sloppy.workers") - 1U),
         SL_FEATURE_DEPS_WORKERS, available, true, true);
+}
+
+static SlRuntimeFeatureDescriptor sl_feature_cache_descriptor(SlRuntimeFeatureId id)
+{
+    return sl_feature_descriptor_make(
+        id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+        sl_feature_literal("stdlib.cache", sizeof("stdlib.cache") - 1U),
+        sl_feature_literal("cache stdlib", sizeof("cache stdlib") - 1U),
+        sl_feature_literal("sloppy/cache", sizeof("sloppy/cache") - 1U), sl_str_empty(),
+        SL_FEATURE_DEPS_CACHE, true, false, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_node_compat_descriptor(SlRuntimeFeatureId id,
@@ -348,6 +362,8 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_http_client_descriptor(id, http_client);
     case SL_RUNTIME_FEATURE_STDLIB_WORKERS:
         return sl_feature_workers_descriptor(id, workers);
+    case SL_RUNTIME_FEATURE_STDLIB_CACHE:
+        return sl_feature_cache_descriptor(id);
     case SL_RUNTIME_FEATURE_STDLIB_FFI:
         return sl_feature_ffi_descriptor(id, ffi);
     case SL_RUNTIME_FEATURE_STDLIB_FS:
@@ -686,7 +702,11 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          false, true},
         {SL_RUNTIME_FEATURE_RUNTIME_REALTIME, SL_RUNTIME_FEATURE_KIND_HTTP,
          SL_FEATURE_STR("runtime.realtime"), SL_FEATURE_STR("realtime runtime"), SL_FEATURE_EMPTY,
-         SL_FEATURE_EMPTY, SL_FEATURE_DEPS_REALTIME, true, false, true}};
+         SL_FEATURE_EMPTY, SL_FEATURE_DEPS_REALTIME, true, false, true},
+        {SL_RUNTIME_FEATURE_STDLIB_CACHE, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.cache"), SL_FEATURE_STR("cache stdlib"),
+         SL_FEATURE_STR("sloppy/cache"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_CACHE, true, false,
+         true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {
         return NULL;

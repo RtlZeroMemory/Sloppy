@@ -5,6 +5,7 @@
   "modules": [
     "sloppy/index.js",
     "sloppy/auth.js",
+    "sloppy/cache.js",
     "sloppy/codec.js",
     "sloppy/config.js",
     "sloppy/crypto.js",

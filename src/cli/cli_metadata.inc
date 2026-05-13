@@ -457,6 +457,10 @@ static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
         route.params_schema = sl_cli_json_span(value, "paramsSchema");
         route.openapi_override = sl_cli_json_span(value, "openapi");
         route.openapi_override_value = yyjson_obj_get(value, "openapi");
+        route.output_cache = sl_cli_json_span(value, "outputCache");
+        route.output_cache_value = yyjson_obj_get(value, "outputCache");
+        route.cache_headers = sl_cli_json_span(value, "cacheHeaders");
+        route.cache_headers_value = yyjson_obj_get(value, "cacheHeaders");
         {
             yyjson_val* docs_internal = yyjson_obj_get(value, "docsInternal");
             yyjson_val* docs = yyjson_obj_get(value, "docs");

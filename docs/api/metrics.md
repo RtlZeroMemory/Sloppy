@@ -104,6 +104,28 @@ the native registry:
 - `db.pool.exhausted`
 - `db.queue.depth`
 
+## Cache metrics
+
+Cache services registered with `app.services.addCache(...)` publish safe
+low-cardinality counters when resolved through the app service provider:
+
+- `cache.gets.total`
+- `cache.hits.total`
+- `cache.misses.total`
+- `cache.sets.total`
+- `cache.removes.total`
+- `cache.evictions.total`
+- `cache.expired.total`
+- `cache.tag_invalidations.total`
+- `cache.get_or_create.factory.total`
+- `cache.stampede.waiters.total`
+- `output_cache.requests.total`
+
+Cache labels use cache names, backend kinds, operation names, route patterns,
+status classes, and bounded bypass reasons. They do not include raw cache keys,
+raw URLs, user IDs, cookies, authorization headers, SQL parameters, or cached
+values.
+
 ## HTTP client metrics
 
 Named clients created through `Http.client(...)` expose a client-local metrics

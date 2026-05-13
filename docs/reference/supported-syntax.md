@@ -31,7 +31,7 @@ Compiler-recognized modules:
 - `"sloppy/providers/sqlite"` (`sqlite`, `Sqlite`)
 - `"sloppy/providers/postgres"` (`Postgres`)
 - `"sloppy/providers/sqlserver"` (`SqlServer`)
-- `"sloppy/fs"`, `"sloppy/time"`, `"sloppy/crypto"`, `"sloppy/codec"`, `"sloppy/net"`, `"sloppy/os"`, `"sloppy/workers"`, `"sloppy/ffi"`
+- `"sloppy/fs"`, `"sloppy/time"`, `"sloppy/crypto"`, `"sloppy/codec"`, `"sloppy/cache"`, `"sloppy/net"`, `"sloppy/os"`, `"sloppy/workers"`, `"sloppy/ffi"`
 - relative imports constrained to source root
 - installed pure-JavaScript package imports in Program Mode
 - supported Node shim specifiers such as `node:path` in Program Mode
@@ -164,6 +164,7 @@ Plan when imported. Default imports and import aliases are rejected with
 | `sloppy/time` | `Time`, `Deadline`, `CancellationController`, `TimeoutError`, `CancelledError`, `InvalidDeadlineError`, `TimerDisposedError` | `stdlib.time` |
 | `sloppy/crypto` | `Random`, `Hash`, `Hmac`, `Password`, `ConstantTime`, `Secret`, `NonCryptoHash` | `stdlib.crypto` |
 | `sloppy/codec` | `Base64`, `Base64Url`, `Hex`, `Text`, `Binary`, `Compression`, `Checksums` | `stdlib.codec` |
+| `sloppy/cache` | `Cache`, `SloppyCacheError` | `stdlib.cache` |
 | `sloppy/workers` | `BackgroundService`, `WorkQueue`, `WorkerPool`, `Worker`, `WorkerCancellationController`, `WorkerCancellationSignal`, `SloppyWorkerError` | `stdlib.workers` |
 | `sloppy/ffi` | `unsafeFfi`, `t` | `stdlib.ffi` |
 
@@ -176,6 +177,7 @@ import { System, Environment, Process, Signals } from "sloppy/os";
 import { Time, Deadline, CancellationController } from "sloppy/time";
 import { Random, Hash, Hmac, Secret } from "sloppy/crypto";
 import { Base64, Hex, Text, Binary } from "sloppy/codec";
+import { Cache } from "sloppy/cache";
 import { BackgroundService, WorkQueue } from "sloppy/workers";
 import { unsafeFfi as ffi, t } from "sloppy/ffi";
 ```

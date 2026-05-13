@@ -1,0 +1,13 @@
+{
+  "findings": [
+    { "severity": "note", "code": "SLOPPY_AUDIT_OPT_NATIVE_JSON_CANDIDATE", "message": "route response metadata is available for future native JSON analysis", "path": "optimization" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_OPT_NATIVE_JSON_CANDIDATE", "message": "route response metadata is available for future native JSON analysis", "path": "optimization" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_AUTH_SCHEMES_VISIBLE", "message": "auth scheme metadata is Plan-visible without secret values", "path": "auth" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_AUTH_PROTECTED_ROUTES", "message": "protected route auth metadata is Plan-visible", "path": "auth" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_CACHE_PLAN_VISIBLE", "message": "sloppy/cache is Plan-visible as stdlib.cache", "path": "requiredFeatures" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_OUTPUT_CACHE_VISIBLE", "message": "OutputCache route metadata is visible without raw cache keys", "path": "routes.outputCache" },
+    { "severity": "warn", "code": "SLOPPY_AUDIT_OUTPUT_CACHE_AUTH_ROUTE", "message": "protected OutputCache routes must vary by user or bypass authenticated requests at runtime", "path": "routes.outputCache" },
+    { "severity": "warn", "code": "SLOPPY_AUDIT_OUTPUT_CACHE_SHARED_AUTH", "message": "shared authenticated OutputCache routes require an application-level data isolation review", "path": "routes.outputCache" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_CACHE_HEADERS_VISIBLE", "message": "cache header route metadata is visible in OpenAPI extensions", "path": "routes.cacheHeaders" }
+  ]
+}

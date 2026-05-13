@@ -21,6 +21,7 @@ pub(crate) enum ImportKind {
     SlopFilesystem,
     SlopCrypto,
     SlopCodec,
+    SlopCache,
     SlopNet,
     SlopHttp,
     SlopOs,
@@ -124,6 +125,9 @@ pub(crate) fn classify_import_with_mode(
     }
     if specifier == "sloppy/codec" {
         return ImportKind::SlopCodec;
+    }
+    if specifier == "sloppy/cache" {
+        return ImportKind::SlopCache;
     }
     if specifier == "sloppy/net" {
         return ImportKind::SlopNet;
@@ -781,6 +785,10 @@ mod tests {
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/codec"),
             ImportKind::SlopCodec
+        );
+        assert_eq!(
+            classify_import(Path::new("app.js"), "sloppy/cache"),
+            ImportKind::SlopCache
         );
         assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/net"),

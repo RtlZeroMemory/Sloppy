@@ -220,6 +220,12 @@
         sloppy.cli.doctor_workers_json ${SLOPPY_DOCTOR_WORKERS_JSON_GOLDEN} doctor --plan
         tests/fixtures/cli/workers-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_cache_text tests/golden/cli/doctor-cache-text.txt doctor --plan
+        tests/fixtures/cli/cache-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_cache_json tests/golden/cli/doctor-cache-json.json doctor --plan
+        tests/fixtures/cli/cache-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.doctor_config_text ${SLOPPY_DOCTOR_CONFIG_TEXT_GOLDEN} doctor --plan
         tests/fixtures/cli/config.plan.json --format text)
     sloppy_add_cli_golden_test(
@@ -350,6 +356,12 @@
         sloppy.cli.audit_workers_json tests/golden/cli/audit-workers-json.json audit --plan
         tests/fixtures/cli/workers-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.audit_cache_text tests/golden/cli/audit-cache-text.txt audit --plan
+        tests/fixtures/cli/cache-policy.plan.json --format text)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.audit_cache_json tests/golden/cli/audit-cache-json.json audit --plan
+        tests/fixtures/cli/cache-policy.plan.json --format json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.audit_ffi_text tests/golden/cli/audit-ffi-text.txt audit --plan
         tests/fixtures/cli/ffi-policy.plan.json --format text)
     sloppy_add_cli_golden_test(
@@ -383,6 +395,9 @@
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_response_content_json tests/golden/cli/openapi-response-content.json
         openapi --plan tests/fixtures/cli/openapi-response-content.plan.json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_cache_json tests/golden/cli/openapi-cache.json openapi --plan
+        tests/fixtures/cli/cache-policy.plan.json)
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_strict_complete_json tests/golden/cli/openapi-response-content.json
         openapi --plan tests/fixtures/cli/openapi-response-content.plan.json --strict)

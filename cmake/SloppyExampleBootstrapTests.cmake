@@ -172,6 +172,10 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_orm_testhost.mjs")
         add_test(
+            NAME bootstrap.stdlib.cache_platform
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_cache_platform.mjs")
+        add_test(
             NAME bootstrap.stdlib.codec
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec.mjs")
         add_test(NAME bootstrap.stdlib.auth
@@ -212,7 +216,8 @@
             bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.orm bootstrap.stdlib.orm_runtime_classic
             bootstrap.stdlib.orm_runtime_classic_sync bootstrap.stdlib.orm_testhost
-            bootstrap.stdlib.codec bootstrap.stdlib.auth
+            bootstrap.stdlib.testservices_runtime bootstrap.stdlib.cache_platform bootstrap.stdlib.codec
+            bootstrap.stdlib.auth
             bootstrap.stdlib.ops_management bootstrap.stdlib.ops_properties bootstrap.stdlib.property
             bootstrap.stdlib.os
             bootstrap.stdlib.http_client bootstrap.stdlib.workers bootstrap.stdlib.ffi

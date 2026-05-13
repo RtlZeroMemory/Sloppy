@@ -1,4 +1,5 @@
 import { Base64Url, Text } from "./codec.js";
+import { Cache, isCache } from "./cache.js";
 import { Hmac, Random, Secret } from "./crypto.js";
 import { data, Migrations } from "./data.js";
 import { Directory, File } from "./fs.js";
@@ -733,10 +734,11 @@ function disposeOverrideValues(values) {
     return Promise.all(pending).then(() => undefined);
 }
 
-function createServiceOverlay(baseServices, serviceOverrides, providerOverrides, httpClientOverrides) {
+function createServiceOverlay(baseServices, serviceOverrides, providerOverrides, cacheOverrides, httpClientOverrides) {
     const serviceMap = normalizeOverrideMap(serviceOverrides, "service");
     const httpOverrideMap = createTestHttpServiceOverrides(httpClientOverrides);
     const providerMap = normalizeOverrideMap(providerOverrides, "provider");
+    const cacheMap = normalizeOverrideMap(cacheOverrides, "cache");
     const merged = new Map(Object.entries(serviceMap));
     const httpOverrides = new Map(Object.entries(httpOverrideMap));
     for (const [name, provider] of Object.entries(providerMap)) {
@@ -745,6 +747,12 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides,
         }
         merged.set(name, provider);
         merged.set(`data.${name}`, provider);
+    }
+    for (const [name, cache] of Object.entries(cacheMap)) {
+        if (!isCache(cache)) {
+            throw new TypeError(`Sloppy TestHost cache override '${name}' must be a Cache instance.`);
+        }
+        merged.set(Cache.token(name), cache);
     }
 
     function wrapScope(scope) {
@@ -1066,6 +1074,7 @@ function createContext(app, hostState, method, targetParts, headers, route, matc
         config: hostState.config,
         log: app.log,
         metrics: typeof app.__getMetricsRegistry === "function" ? app.__getMetricsRegistry() : undefined,
+        diagnostics: hostState.diagnostics,
         user: options?.user,
         requireUser() {
             if (this.user?.authenticated !== true) {
@@ -2376,8 +2385,9 @@ function createTestHost(app, options = {}) {
     const jobs = createJobsHelpers(options.jobs);
     const hostState = Object.freeze({
         config: createConfigOverlay(app.config, options.config, options.secrets),
-        services: createServiceOverlay(app.services, options.services, options.providers, options.httpClients),
+        services: createServiceOverlay(app.services, options.services, options.providers, options.caches, options.httpClients),
         clock: options.clock,
+        diagnostics,
     });
 
     function appMetricsRegistry() {

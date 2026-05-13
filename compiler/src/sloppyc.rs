@@ -267,6 +267,8 @@ struct RouteMetadata {
     query_schema: Option<String>,
     params_schema: Option<String>,
     openapi_override: Option<Value>,
+    output_cache: Option<Value>,
+    cache_headers: Option<Value>,
     websocket: Option<WebSocketRouteOptionsMetadata>,
 }
 
@@ -407,6 +409,7 @@ struct AppState {
     noncrypto_hash_security_context_visible: bool,
     codec_imported: bool,
     checksum_security_context_visible: bool,
+    cache_imported: bool,
     net_imported: bool,
     os_imported: bool,
     http_client_imported: bool,
@@ -476,6 +479,7 @@ impl AppState {
             noncrypto_hash_security_context_visible: false,
             codec_imported: false,
             checksum_security_context_visible: false,
+            cache_imported: false,
             net_imported: false,
             os_imported: false,
             http_client_imported: false,
@@ -1042,6 +1046,7 @@ struct ModuleGraph {
     noncrypto_hash_security_context_visible: bool,
     uses_codec_runtime: bool,
     checksum_security_context_visible: bool,
+    uses_cache_runtime: bool,
     uses_net_runtime: bool,
     uses_os_runtime: bool,
     uses_http_client_runtime: bool,
@@ -1093,6 +1098,7 @@ impl ModuleGraph {
             noncrypto_hash_security_context_visible: false,
             uses_codec_runtime: false,
             checksum_security_context_visible: false,
+            uses_cache_runtime: false,
             uses_net_runtime: false,
             uses_os_runtime: false,
             uses_http_client_runtime: false,
@@ -1585,6 +1591,7 @@ fn extract_program_with_metrics(
         noncrypto_hash_security_context_visible: graph.noncrypto_hash_security_context_visible,
         uses_codec_runtime: graph.uses_codec_runtime,
         checksum_security_context_visible: graph.checksum_security_context_visible,
+        uses_cache_runtime: graph.uses_cache_runtime,
         uses_net_runtime: graph.uses_net_runtime,
         uses_os_runtime: graph.uses_os_runtime,
         uses_http_client_runtime: graph.uses_http_client_runtime,
@@ -2401,6 +2408,7 @@ fn analyze_program_import(
         | resolver::ImportKind::SlopFilesystem
         | resolver::ImportKind::SlopCrypto
         | resolver::ImportKind::SlopCodec
+        | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
@@ -3095,6 +3103,7 @@ fn validate_program_stdlib_import(
         resolver::ImportKind::SlopTime => validate_module_sloppy_time_import(path, import),
         resolver::ImportKind::SlopCrypto => validate_module_sloppy_crypto_import(path, import),
         resolver::ImportKind::SlopCodec => validate_module_sloppy_codec_import(path, import),
+        resolver::ImportKind::SlopCache => validate_module_sloppy_cache_import(path, import),
         resolver::ImportKind::SlopNet => validate_module_sloppy_net_import(path, import),
         resolver::ImportKind::SlopHttp => validate_module_sloppy_http_import(path, import),
         resolver::ImportKind::SlopOs => validate_module_sloppy_os_import(path, import),
@@ -3595,6 +3604,7 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopFilesystem
         | resolver::ImportKind::SlopCrypto
         | resolver::ImportKind::SlopCodec
+        | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
@@ -3863,6 +3873,7 @@ fn program_reexport_require_expr(
         | resolver::ImportKind::SlopFilesystem
         | resolver::ImportKind::SlopCrypto
         | resolver::ImportKind::SlopCodec
+        | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
         | resolver::ImportKind::SlopOs
@@ -4042,6 +4053,7 @@ fn mark_program_import(
         resolver::ImportKind::SlopFilesystem => graph.uses_fs_runtime = true,
         resolver::ImportKind::SlopCrypto => graph.uses_crypto_runtime = true,
         resolver::ImportKind::SlopCodec => graph.uses_codec_runtime = true,
+        resolver::ImportKind::SlopCache => graph.uses_cache_runtime = true,
         resolver::ImportKind::SlopNet => {
             if let Some(specifiers) = &import.specifiers {
                 for specifier in specifiers {
@@ -4072,6 +4084,7 @@ fn mark_program_import(
             graph.uses_fs_runtime = true;
             graph.uses_crypto_runtime = true;
             graph.uses_codec_runtime = true;
+            graph.uses_cache_runtime = true;
             graph.uses_net_runtime = true;
             graph.uses_os_runtime = true;
             graph.uses_workers_runtime = true;
@@ -4198,7 +4211,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-                .with_hint("Use documented named imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/http\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"; Sloppy does not implement Node or npm resolution."));
+                .with_hint("Use documented named imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/cache\", \"sloppy/net\", \"sloppy/http\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"; Sloppy does not implement Node or npm resolution."));
     }
 
     if let Some((specifier, span)) = &state.unsupported_import_name {
@@ -4208,7 +4221,7 @@ fn extract_entry(
         )
         .with_path(path)
         .with_span(*span)
-        .with_hint("Use documented imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/net\", \"sloppy/http\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"."));
+        .with_hint("Use documented imports from \"sloppy\", \"sloppy/time\", \"sloppy/fs\", \"sloppy/crypto\", \"sloppy/codec\", \"sloppy/cache\", \"sloppy/net\", \"sloppy/http\", \"sloppy/os\", \"sloppy/workers\", or \"sloppy/ffi\"."));
     }
 
     if !state.sloppy_imported {
@@ -4472,6 +4485,7 @@ fn extract_entry(
             }),
         checksum_security_context_visible: state.checksum_security_context_visible
             || graph.checksum_security_context_visible,
+        uses_cache_runtime: state.cache_imported || graph.uses_cache_runtime,
         uses_net_runtime: state.net_imported || graph.uses_net_runtime,
         uses_os_runtime: state.os_imported
             || graph.uses_os_runtime
@@ -4771,6 +4785,10 @@ fn sloppy_codec_import_name_supported(name: &str) -> bool {
     CODEC_EXPORTS.contains(&name)
 }
 
+fn sloppy_cache_import_name_supported(name: &str) -> bool {
+    matches!(name, "Cache" | "SloppyCacheError")
+}
+
 fn sloppy_net_import_name_supported(name: &str) -> bool {
     matches!(
         name,
@@ -4814,6 +4832,7 @@ enum SloppyStdlibImport {
     Time,
     Crypto,
     Codec,
+    Cache,
     Net,
     Http,
     Os,
@@ -4829,6 +4848,7 @@ impl SloppyStdlibImport {
             "sloppy/time" => Some(Self::Time),
             "sloppy/crypto" => Some(Self::Crypto),
             "sloppy/codec" => Some(Self::Codec),
+            "sloppy/cache" => Some(Self::Cache),
             "sloppy/net" => Some(Self::Net),
             "sloppy/http" => Some(Self::Http),
             "sloppy/os" => Some(Self::Os),
@@ -4845,6 +4865,7 @@ impl SloppyStdlibImport {
             Self::Time => sloppy_time_import_name_supported(name),
             Self::Crypto => sloppy_crypto_import_name_supported(name),
             Self::Codec => sloppy_codec_import_name_supported(name),
+            Self::Cache => sloppy_cache_import_name_supported(name),
             Self::Net => sloppy_net_import_name_supported(name),
             Self::Http => sloppy_http_import_name_supported(name),
             Self::Os => sloppy_os_import_name_supported(name),
@@ -4973,6 +4994,7 @@ fn mark_sloppy_root_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclar
             continue;
         }
         match specifier.imported.name().as_str() {
+            "Cache" | "SloppyCacheError" => graph.uses_cache_runtime = true,
             "data" => graph.uses_data_runtime = true,
             "sql" => {
                 graph.uses_data_runtime = true;
@@ -5043,6 +5065,18 @@ fn validate_module_sloppy_codec_import(
         import,
         "sloppy/codec",
         sloppy_codec_import_name_supported,
+    )
+}
+
+fn validate_module_sloppy_cache_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/cache",
+        sloppy_cache_import_name_supported,
     )
 }
 
@@ -5918,6 +5952,7 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
         SloppyStdlibImport::Time => state.time_imported = true,
         SloppyStdlibImport::Crypto => state.crypto_imported = true,
         SloppyStdlibImport::Codec => state.codec_imported = true,
+        SloppyStdlibImport::Cache => state.cache_imported = true,
         SloppyStdlibImport::Net => state.net_imported = true,
         SloppyStdlibImport::Http => state.http_client_imported = true,
         SloppyStdlibImport::Os => state.os_imported = true,
@@ -6203,6 +6238,8 @@ fn extract_import(
                 ("Auth", "Auth") => state.auth_imported = true,
                 ("Realtime", "Realtime") => state.realtime_imported = true,
                 ("Config", "Config") => state.config_imported = true,
+                ("Cache", "Cache") => state.cache_imported = true,
+                ("SloppyCacheError", "SloppyCacheError") => state.cache_imported = true,
                 ("ProblemDetails", "ProblemDetails") => state.problem_details_imported = true,
                 ("RequestId", "RequestId") => state.request_id_imported = true,
                 ("RequestLogging", "RequestLogging") => state.request_logging_imported = true,
@@ -6304,6 +6341,8 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
         "Sloppy"
             | "Results"
             | "Auth"
+            | "Cache"
+            | "SloppyCacheError"
             | "Realtime"
             | "ProblemDetails"
             | "RequestId"
@@ -6954,6 +6993,8 @@ fn extract_expression_statement(
         query_schema: contract_metadata.query_schema.clone(),
         params_schema: contract_metadata.params_schema.clone(),
         openapi_override: contract_metadata.openapi_override.clone(),
+        output_cache: contract_metadata.output_cache.clone(),
+        cache_headers: contract_metadata.cache_headers.clone(),
         docs: None,
         health: None,
         middleware: route_middleware_metadata(&route_middleware),
@@ -8859,6 +8900,8 @@ fn static_asset_route(
         query_schema: None,
         params_schema: None,
         openapi_override: None,
+        output_cache: None,
+        cache_headers: None,
         docs: None,
         health: None,
         middleware: route_middleware_metadata(context.middleware),
@@ -10208,6 +10251,8 @@ fn app_map_controller_call(
             query_schema: contract_metadata.query_schema.clone(),
             params_schema: contract_metadata.params_schema.clone(),
             openapi_override: contract_metadata.openapi_override.clone(),
+            output_cache: contract_metadata.output_cache.clone(),
+            cache_headers: contract_metadata.cache_headers.clone(),
             docs: None,
             health: None,
             middleware,
@@ -10582,6 +10627,8 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
             query_schema: None,
             params_schema: None,
             openapi_override: None,
+            output_cache: None,
+            cache_headers: None,
             docs: None,
             health: None,
             middleware: route.middleware.clone(),
@@ -12063,6 +12110,8 @@ fn ops_route(
         query_schema: None,
         params_schema: None,
         openapi_override: None,
+        output_cache: None,
+        cache_headers: None,
         docs: None,
         health: None,
         middleware: route_middleware_metadata(context.middleware),
@@ -12135,6 +12184,8 @@ fn health_route(
         query_schema: None,
         params_schema: None,
         openapi_override: None,
+        output_cache: None,
+        cache_headers: None,
         docs: None,
         health: Some(HealthRouteMetadata {
             kind: spec.kind,
@@ -12478,6 +12529,8 @@ fn docs_route(input: DocsRouteInput<'_>) -> Result<Route, Diagnostic> {
         query_schema: None,
         params_schema: None,
         openapi_override: None,
+        output_cache: None,
+        cache_headers: None,
         docs: input.docs,
         health: None,
         middleware: route_middleware_metadata(input.middleware),
@@ -13468,6 +13521,13 @@ fn extract_relative_helper_import(
             }
             continue;
         }
+        if import_source == "sloppy/cache" {
+            validate_module_sloppy_cache_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_cache_runtime = true;
+            }
+            continue;
+        }
         if import_source == "sloppy/net" {
             validate_module_sloppy_net_import(&imported.path, import)?;
             if let Some(specifiers) = &import.specifiers {
@@ -13841,6 +13901,13 @@ fn extract_relative_module(
             validate_module_sloppy_codec_import(&imported.path, import)?;
             if import_has_runtime_value_specifier(import) {
                 graph.uses_codec_runtime = true;
+            }
+            continue;
+        }
+        if import_source == "sloppy/cache" {
+            validate_module_sloppy_cache_import(&imported.path, import)?;
+            if import_has_runtime_value_specifier(import) {
+                graph.uses_cache_runtime = true;
             }
             continue;
         }
@@ -14544,6 +14611,8 @@ fn extract_module_function_routes(
                     query_schema: contract_metadata.query_schema.clone(),
                     params_schema: contract_metadata.params_schema.clone(),
                     openapi_override: contract_metadata.openapi_override.clone(),
+                    output_cache: contract_metadata.output_cache.clone(),
+                    cache_headers: contract_metadata.cache_headers.clone(),
                     docs: None,
                     health: None,
                     middleware: Vec::new(),
@@ -15259,6 +15328,7 @@ fn route_metadata_chain<'a>(
     let mut current = expression;
     let mut metadata = RouteMetadata::default();
     let mut auth_replaced_by_later_setter = false;
+    let mut output_cache_setter_seen = false;
     while let Expression::CallExpression(call) = current {
         let Expression::StaticMemberExpression(member) = &call.callee else {
             break;
@@ -15414,6 +15484,28 @@ fn route_metadata_chain<'a>(
                 }
                 current = &member.object;
             }
+            "outputCache" => {
+                if !output_cache_setter_seen {
+                    metadata.output_cache =
+                        Some(route_static_metadata_from_call(call, "outputCache")?);
+                    output_cache_setter_seen = true;
+                }
+                current = &member.object;
+            }
+            "noOutputCache" => {
+                if !output_cache_setter_seen {
+                    metadata.output_cache = None;
+                    output_cache_setter_seen = true;
+                }
+                current = &member.object;
+            }
+            "cacheHeaders" => {
+                if metadata.cache_headers.is_none() {
+                    metadata.cache_headers =
+                        Some(route_static_metadata_from_call(call, "cacheHeaders")?);
+                }
+                current = &member.object;
+            }
             _ => break,
         }
     }
@@ -15501,6 +15593,12 @@ fn merged_route_metadata(options: &RouteMetadata, fluent: &RouteMetadata) -> Rou
     }
     if fluent.openapi_override.is_some() {
         merged.openapi_override = fluent.openapi_override.clone();
+    }
+    if fluent.output_cache.is_some() {
+        merged.output_cache = fluent.output_cache.clone();
+    }
+    if fluent.cache_headers.is_some() {
+        merged.cache_headers = fluent.cache_headers.clone();
     }
     if let Some(fluent_websocket) = &fluent.websocket {
         let mut websocket = merged.websocket.unwrap_or_default();
@@ -15884,6 +15982,31 @@ fn route_openapi_override_from_call(call: &CallExpression<'_>) -> Result<Value, 
         .with_span(call.span));
     }
     Ok(value)
+}
+
+fn route_static_metadata_from_call(
+    call: &CallExpression<'_>,
+    method: &str,
+) -> Result<Value, Diagnostic> {
+    if call.arguments.len() != 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_ROUTE_OPTIONS",
+            format!("{method} requires exactly one options object"),
+        )
+        .with_span(call.span));
+    }
+    let Some(value) = call.arguments.first().and_then(argument_json_value) else {
+        return Ok(json!({
+            "static": false
+        }));
+    };
+    if value.is_object() {
+        Ok(value)
+    } else {
+        Ok(json!({
+            "static": false
+        }))
+    }
 }
 
 fn validate_route_schema_reference(
@@ -20966,7 +21089,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             .any(|binding| binding.kind == "config")
     });
     let queue_service_entries = framework_queue_service_entries(app);
+    let needs_output_cache_runtime = app.routes.iter().any(|route| route.output_cache.is_some());
     let needs_framework_services = needs_framework_arg_helper
+        || needs_output_cache_runtime
         || !app.service_registrations.is_empty()
         || !queue_service_entries.is_empty()
         || app.routes.iter().any(|route| {
@@ -21089,6 +21214,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     }
     if app.uses_codec_runtime {
         runtime_exports.extend(CODEC_EXPORTS.iter().copied());
+    }
+    if needs_output_cache_runtime && !app.uses_codec_runtime {
+        runtime_exports.push("Text");
+    }
+    if app.uses_cache_runtime || needs_output_cache_runtime {
+        runtime_exports.extend(["Cache", "SloppyCacheError"]);
     }
     if app.uses_net_runtime {
         runtime_exports.extend([
@@ -21705,6 +21836,58 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             "function __sloppy_cors_preflight(policy, routeMethods, ctx) { const allowed = __sloppy_cors_allowed_origin(policy, __sloppy_request_header(ctx, \"origin\")); const requestedMethod = (__sloppy_request_header(ctx, \"access-control-request-method\") ?? \"\").toUpperCase(); const requestedHeaders = __sloppy_request_header(ctx, \"access-control-request-headers\"); const methods = policy.methods.length === 0 ? routeMethods : policy.methods; if (allowed === undefined || !methods.includes(requestedMethod) || !__sloppy_cors_requested_headers_allowed(policy, requestedHeaders)) { return Results.status(403); } const headers = { \"Access-Control-Allow-Origin\": allowed, \"Access-Control-Allow-Methods\": methods.join(\", \") }; if (!policy.origins.includes(\"*\")) { headers.Vary = \"Origin, Access-Control-Request-Method, Access-Control-Request-Headers\"; } if (policy.credentials) { headers[\"Access-Control-Allow-Credentials\"] = \"true\"; } if (policy.headers.length !== 0) { headers[\"Access-Control-Allow-Headers\"] = policy.headers.join(\", \"); } if (policy.maxAgeSeconds !== null && policy.maxAgeSeconds !== undefined) { headers[\"Access-Control-Max-Age\"] = String(policy.maxAgeSeconds); } return Results.status(204, undefined, { headers }); }",
         );
     }
+    if needs_output_cache_runtime {
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_plain_object(value) { return value !== null && typeof value === \"object\" && !Array.isArray(value); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_header(result, value) { return { ...result, headers: { ...(__sloppy_output_cache_plain_object(result?.headers) ? result.headers : {}), \"X-Sloppy-Output-Cache\": value } }; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_request_value(value) { return value === undefined || value === null ? \"\" : String(value); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_request_header(ctx, name) { const headers = ctx?.request?.headers; if (headers === undefined || headers === null) { return undefined; } const lower = String(name).toLowerCase(); if (typeof headers.get === \"function\") { const direct = headers.get(name) ?? headers.get(lower); if (direct !== undefined && direct !== null) { return direct; } if (typeof headers.entries === \"function\") { for (const [key, value] of headers.entries()) { if (String(key).toLowerCase() === lower) { return value; } } } return undefined; } if (__sloppy_output_cache_plain_object(headers)) { for (const [key, value] of Object.entries(headers)) { if (key.toLowerCase() === lower) { return value; } } } return undefined; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_body_size(result) { if (result?.body === undefined) { return 0; } if (typeof result.body === \"string\") { return Text.utf8.encode(result.body).byteLength; } if (result.body instanceof Uint8Array) { return result.body.byteLength; } const serialized = JSON.stringify(result.body); return serialized === undefined ? 0 : Text.utf8.encode(serialized).byteLength; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_non_json(value, seen = new Set()) { if (value === null || typeof value === \"string\" || typeof value === \"number\" || typeof value === \"boolean\") { return false; } if (typeof value === \"function\" || typeof value === \"symbol\" || typeof value === \"undefined\" || typeof value === \"bigint\") { return true; } if (typeof value !== \"object\" || seen.has(value)) { return true; } seen.add(value); if (Array.isArray(value)) { return value.some((item) => __sloppy_output_cache_non_json(item, seen)); } if (!__sloppy_output_cache_plain_object(value)) { return true; } return Object.values(value).some((item) => __sloppy_output_cache_non_json(item, seen)); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_unsupported_reason(result) { if (result?.__sloppyResult !== true) { return \"unsupported-result\"; } if (result.kind === \"stream\") { return \"streaming\"; } if (result.kind === \"json\") { return __sloppy_output_cache_non_json(result.body) ? \"unsupported-body\" : undefined; } if (result.kind === \"text\") { return typeof result.body === \"string\" ? undefined : \"unsupported-body\"; } if (result.kind === \"bytes\") { return result.body instanceof Uint8Array ? undefined : \"unsupported-body\"; } if (result.kind === \"empty\") { return result.body === undefined ? undefined : \"unsupported-body\"; } return \"unsupported-result-kind\"; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_key(ctx, routeKey, options, authRequired) { const query = __sloppy_output_cache_plain_object(ctx?.query) ? ctx.query : {}; const queryParts = options.varyByQuery === \"all\" ? Object.entries(query).sort(([left], [right]) => String(left).localeCompare(String(right))) : (Array.isArray(options.varyByQuery) ? options.varyByQuery : []).map((name) => [name, __sloppy_output_cache_request_value(query[name])]); const headerParts = (Array.isArray(options.varyByHeader) ? options.varyByHeader : []).map((name) => [String(name).toLowerCase(), __sloppy_output_cache_request_value(__sloppy_output_cache_request_header(ctx, name))]); const route = __sloppy_output_cache_plain_object(ctx?.route) ? ctx.route : {}; const routeParts = (Array.isArray(options.varyByRouteParams) ? options.varyByRouteParams : []).map((name) => [name, __sloppy_output_cache_request_value(route[name])]); const partition = []; if (authRequired || options.allowAuthenticated === true) { if (options.varyByUser === true) { const sub = ctx?.user?.sub ?? ctx?.user?.id; if (typeof sub !== \"string\" || sub.length === 0) { return undefined; } partition.push([\"user\", sub]); } else if (options.allowSharedAuthenticated === true) { if (options.varyByRole === true) { const roles = Array.isArray(ctx?.user?.roles) ? ctx.user.roles.map(String).sort().join(\",\") : \"\"; partition.push([\"roles\", roles]); } if (Array.isArray(options.varyByClaim)) { for (const claim of options.varyByClaim) { const value = typeof ctx?.user?.claim === \"function\" ? ctx.user.claim(claim) : ctx?.user?.claims?.[claim]; partition.push([`claim:${claim}`, __sloppy_output_cache_request_value(value)]); } } if (partition.length === 0) { return undefined; } } else { return undefined; } } return `output:${JSON.stringify({ routeKey, query: queryParts, headers: headerParts, params: routeParts, partition })}`; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_output_cache_bypass_reason(ctx, result, options, authRequired) { if ((ctx?.request?.method ?? \"GET\") !== \"GET\" && (ctx?.request?.method ?? \"GET\") !== \"HEAD\") { return \"method\"; } if (authRequired && options.allowAuthenticated !== true) { return \"auth-unsafe\"; } const unsupported = __sloppy_output_cache_unsupported_reason(result); if (unsupported !== undefined) { return unsupported; } const statusCodes = Array.isArray(options.statusCodes) ? options.statusCodes : [200, 203, 204]; if (!statusCodes.includes(result.status)) { return \"status\"; } if (Array.isArray(result.setCookies) && result.setCookies.length !== 0 && options.allowSetCookie !== true) { return \"set-cookie\"; } const headers = __sloppy_output_cache_plain_object(result.headers) ? result.headers : {}; if (Object.keys(headers).some((name) => name.toLowerCase() === \"set-cookie\") && options.allowSetCookie !== true) { return \"set-cookie\"; } const maxBodyBytes = Number.isInteger(options.maxBodyBytes) ? options.maxBodyBytes : 1048576; if (__sloppy_output_cache_body_size(result) > maxBodyBytes) { return \"body-too-large\"; } return undefined; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "async function __sloppy_output_cache(ctx, routeKey, options, authRequired, terminal) { const scope = __sloppy_framework_services.createScope(ctx); ctx.services = scope; try { const cache = scope.get(Cache.token(options.cacheName ?? \"default\")); const key = __sloppy_output_cache_key(ctx, routeKey, options, authRequired); if (key !== undefined) { const cached = await cache.get(key); if (cached !== undefined) { return __sloppy_output_cache_header(cached, \"HIT\"); } } const result = await terminal(ctx); const reason = key === undefined ? \"auth-unsafe\" : __sloppy_output_cache_bypass_reason(ctx, result, options, authRequired); if (reason !== undefined) { return __sloppy_output_cache_header(result, \"BYPASS\"); } await cache.set(key, result, { ttlMs: options.ttlMs, tags: Array.isArray(options.tags) ? options.tags : [`route:${routeKey}`] }); return __sloppy_output_cache_header(result, \"MISS\"); } finally { await scope.dispose(); } }",
+        );
+    }
     push_generated_line(&mut output, &mut generated_line, "");
 
     for helper_source in &app.helper_sources {
@@ -21740,9 +21923,25 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         ));
 
         output.push_str(&prefix);
-        output.push_str(&route.handler.emitted_source);
-        output.push_str(";\n");
-        generated_line += route.handler.emitted_source.matches('\n').count() + 1;
+        if let Some(output_cache) = &route.output_cache {
+            let route_key =
+                serde_json::to_string(&format!("output:{}:{}", route.method, route.pattern))
+                    .unwrap_or_else(|_| "\"\"".to_string());
+            let options_json =
+                serde_json::to_string(output_cache).unwrap_or_else(|_| "{}".to_string());
+            let auth_required = route.auth.is_some();
+            let wrapped = format!(
+                "async function(ctx) {{ return await __sloppy_output_cache(ctx, {route_key}, {options_json}, {auth_required}, ({})); }}",
+                route.handler.emitted_source
+            );
+            output.push_str(&wrapped);
+            output.push_str(";\n");
+            generated_line += wrapped.matches('\n').count() + 1;
+        } else {
+            output.push_str(&route.handler.emitted_source);
+            output.push_str(";\n");
+            generated_line += route.handler.emitted_source.matches('\n').count() + 1;
+        }
         push_generated_line(
             &mut output,
             &mut generated_line,
@@ -22297,6 +22496,12 @@ fn emit_source_map(app: &ExtractedApp, emitted_js: &EmittedAppJs) -> String {
                     "kind": health.kind,
                     "checks": health.checks
                 });
+            }
+            if let Some(output_cache) = &route.output_cache {
+                route_json["outputCache"] = output_cache.clone();
+            }
+            if let Some(cache_headers) = &route.cache_headers {
+                route_json["cacheHeaders"] = cache_headers.clone();
             }
             if !route.middleware.is_empty() {
                 route_json["middleware"] = json!(route

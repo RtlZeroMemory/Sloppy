@@ -70,6 +70,10 @@ import {
     unsafeFfi,
 } from "../../stdlib/sloppy/ffi.js";
 import {
+    Cache as CacheSubpath,
+    SloppyCacheError,
+} from "../../stdlib/sloppy/cache.js";
+import {
     column,
     orm,
     relation,
@@ -78,6 +82,7 @@ import {
 import {
     Auth,
     BackgroundService as RootBackgroundService,
+    Cache,
     Config,
     FakeClock,
     Health,
@@ -86,6 +91,7 @@ import {
     HttpError as RootHttpError,
     SloppyHttpClientError as RootSloppyHttpClientError,
     Metrics,
+    SloppyCacheError as RootSloppyCacheError,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
     TestHttp as RootTestHttp,
@@ -130,6 +136,7 @@ const documentedSubpathExports = {
         SloppyWorkerError,
     ],
     "sloppy/ffi": [t, unsafeFfi],
+    "sloppy/cache": [CacheSubpath, SloppyCacheError],
     "sloppy/orm": [orm, table, column, relation],
 };
 
@@ -140,6 +147,11 @@ for (const [specifier, exports] of Object.entries(documentedSubpathExports)) {
 }
 
 assert.equal(RootHttpClient, HttpClient);
+assert.equal(Cache, CacheSubpath);
+assert.equal(RootSloppyCacheError, SloppyCacheError);
+assert.equal(typeof Cache.memory, "function");
+assert.equal(typeof Cache.hybrid, "function");
+assert.equal(typeof Cache.token, "function");
 assert.equal(RootHttp, Http);
 assert.equal(RootHttpClientFactory, HttpClientFactory);
 assert.equal(RootHttpError, HttpError);

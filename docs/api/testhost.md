@@ -163,6 +163,8 @@ await host.delete("/users/42").expectNoBody();
 Use TestHost options for per-host app-host overrides:
 
 ```ts
+import { Cache, TestData, TestHost } from "sloppy";
+
 const host = await TestHost.create(app, {
     config: {
         "Feature:Enabled": true,
@@ -176,6 +178,10 @@ const host = await TestHost.create(app, {
     providers: {
         main: TestData.sqliteMemory(),
     },
+    caches: {
+        // Experimental: Cache.memory is a per-process app-host cache.
+        main: Cache.memory({ maxEntries: 100 }),
+    },
 });
 ```
 
@@ -185,6 +191,8 @@ matching tokens. Provider overrides are exposed under both the provider name
 and `data.<name>` service token. A provider named `main` is also available as
 `ctx.db`, which keeps app-host ORM tests close to the request-handler shape
 used by runtime provider injection.
+Cache overrides are exposed under `cache.<name>` service tokens and work with
+route `.outputCache(...)` in app-host tests.
 
 Outbound HTTP clients can be replaced with `TestHttp.mock()`:
 

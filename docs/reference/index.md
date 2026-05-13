@@ -19,6 +19,7 @@ exhaustive level — they're there for "I need every option" lookup.
 - [Routing](routing.md)
 - [Request context](request-context.md)
 - [Results](results.md)
+- [Cache](cache.md)
 - [Dependency injection](dependency-injection.md)
 - [Validation](validation.md)
 - [Workers](workers.md)

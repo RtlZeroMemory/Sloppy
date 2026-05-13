@@ -1,0 +1,87 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sloppy API",
+    "version": "0.0.0"
+  },
+  "x-slop-openapi-policy": {
+    "mode": "complete",
+    "routesTotal": 2,
+    "routesIncluded": 2,
+    "routesOmitted": 0,
+    "operationsComplete": 2,
+    "operationsPartial": 0,
+    "missing": [],
+    "optimizations": "reported-only"
+  },
+  "paths": {
+    "/admin-summary": {
+      "get": {
+        "operationId": "Cache.AdminSummary",
+        "security": [{ "bearerAuth": [] }],
+        "x-slop-auth": {
+          "required": true,
+          "roles": ["admin"]
+        },
+        "x-slop-output-cache": { "ttlMs": 5000, "cacheName": "default", "varyByQuery": [], "varyByHeader": [], "varyByRouteParams": [], "varyByUser": false, "varyByRole": true, "varyByClaim": [], "tags": ["admin-summary"], "statusCodes": [200], "maxBodyBytes": 65536, "allowAuthenticated": true, "allowSharedAuthenticated": true, "allowSetCookie": false, "staleWhileRevalidateMs": 0 },
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["native-json-serialization", "static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "json", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductsResponse" } } } },
+          "401": { "description": "authentication failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } },
+          "403": { "description": "authorization failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } }
+        }
+      }
+    },
+    "/products": {
+      "get": {
+        "operationId": "Cache.Products",
+        "security": [{ "bearerAuth": [] }],
+        "x-slop-auth": {
+          "required": true
+        },
+        "x-slop-output-cache": { "ttlMs": 30000, "cacheName": "default", "varyByQuery": ["category"], "varyByHeader": ["accept-language"], "varyByRouteParams": [], "varyByUser": true, "varyByRole": false, "varyByClaim": [], "tags": ["products"], "statusCodes": [200], "maxBodyBytes": 65536, "allowAuthenticated": true, "allowSetCookie": false, "staleWhileRevalidateMs": 0 },
+        "x-slop-cache-headers": { "cacheControl": "private, max-age=30", "vary": ["Accept-Language"], "etag": true },
+        "x-slop-completeness": "complete",
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": ["native-json-serialization", "static-route-dispatch"],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "json", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductsResponse" } } } },
+          "401": { "description": "authentication failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } },
+          "403": { "description": "authorization failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "SlopValidationProblem": {
+        "description": "Slop validation problem response",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } }
+      }
+    },
+    "schemas": {
+      "SlopValidationProblem": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer" },
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      },
+      "ProductsResponse": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "type": "object" } }
+        },
+        "required": ["items"]
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    }
+  }
+}

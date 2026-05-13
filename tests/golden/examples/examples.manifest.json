@@ -2,6 +2,9 @@
   "schemaVersion": 1,
   "examples": [
     { "name": "auth-api", "kind": "web", "entry": "app.js", "tier": "pr", "reason": "compile and tooling coverage for auth metadata; protected runtime requests require header-capable manual testing" },
+    { "name": "cache-basic", "kind": "web", "entry": "app.js", "tier": "pr", "reason": "covered by bootstrap cache platform tests" },
+    { "name": "cache-hybrid-postgres", "kind": "web", "entry": "app.js", "tier": "live-provider", "reason": "requires PostgreSQL provider configuration" },
+    { "name": "cache-output-api", "kind": "web", "entry": "app.js", "tier": "pr", "reason": "covered by bootstrap output cache tests" },
     { "name": "codec-base64-hex", "kind": "program-js", "entry": "app.js", "tier": "extended", "reason": "stdlib codec runtime smoke is V8-gated" },
     { "name": "codec-checksums", "kind": "program-js", "entry": "app.js", "tier": "extended", "reason": "stdlib codec runtime smoke is V8-gated" },
     { "name": "codec-compression", "kind": "program-js", "entry": "app.js", "tier": "extended", "reason": "compression bridge availability is runtime-gated" },
