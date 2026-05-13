@@ -1,7 +1,7 @@
 # Auth API
 
-Small source-input example for Sloppy JWT bearer, signed session cookies, API
-keys, roles, policies, and Plan/OpenAPI auth metadata.
+Small source-input example for Sloppy JWT bearer, rotating memory-backed session
+cookies, API keys, roles, policies, and Plan/OpenAPI auth metadata.
 
 Build from this directory:
 

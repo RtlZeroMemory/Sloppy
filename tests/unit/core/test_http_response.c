@@ -165,11 +165,18 @@ static int test_statuses_and_content_length(void)
         return 1;
     }
 
+    if (expect_response(sl_http_response_text(403U, sl_str_from_cstr("Forbidden\n")),
+                        "HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: "
+                        "text/plain; charset=utf-8\r\nContent-Length: 10\r\n\r\nForbidden\n") != 0)
+    {
+        return 2;
+    }
+
     if (expect_response(sl_http_response_empty(201U),
                         "HTTP/1.1 201 Created\r\nConnection: close\r\nContent-Length: "
                         "0\r\n\r\n") != 0)
     {
-        return 2;
+        return 3;
     }
 
     return expect_response(sl_http_response_text(501U, sl_str_from_cstr("No body\n")),

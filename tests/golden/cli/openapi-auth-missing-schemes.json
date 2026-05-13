@@ -21,6 +21,9 @@
       "get": {
         "operationId": "Protected.Index",
         "x-slop-partial": "auth required but auth scheme metadata is missing",
+        "x-slop-auth": {
+          "required": true
+        },
         "x-slop-completeness": "partial",
         "x-slop-missing": [
         "route Plan completeness is not complete",
@@ -31,7 +34,9 @@
         "x-slop-optimization-candidates": [],
         "parameters": [],
         "responses": {
-          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" }
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" },
+          "401": { "description": "authentication failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } },
+          "403": { "description": "authorization failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } }
         }
       }
     }

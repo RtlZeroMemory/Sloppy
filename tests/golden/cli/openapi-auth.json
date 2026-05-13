@@ -1,0 +1,116 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Sloppy API",
+    "version": "0.0.0"
+  },
+  "x-slop-openapi-policy": {
+    "mode": "partial",
+    "routesTotal": 3,
+    "routesIncluded": 3,
+    "routesOmitted": 0,
+    "operationsComplete": 0,
+    "operationsPartial": 3,
+    "missing": [
+      { "method": "GET", "path": "/me", "reason": "response metadata is unknown" },
+      { "method": "GET", "path": "/public", "reason": "response metadata is unknown" },
+      { "method": "POST", "path": "/internal/jobs", "reason": "response metadata is unknown" }
+    ],
+    "optimizations": "reported-only"
+  },
+  "paths": {
+    "/me": {
+      "get": {
+        "operationId": "Users.Me",
+        "security": [{ "jwt": [] }],
+        "x-slop-auth": {
+          "required": true,
+          "schemes": ["jwt"],
+          "scopes": ["users:read"],
+          "roles": ["admin"],
+          "policy": "Users.Read"
+        },
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "route Plan completeness is not complete",
+        "response metadata is unknown"
+        ],
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": [],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" },
+          "401": { "description": "authentication failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } },
+          "403": { "description": "authorization failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } }
+        }
+      }
+    },
+    "/public": {
+      "get": {
+        "operationId": "Public.Index",
+        "x-slop-auth": {
+          "required": false,
+          "allowAnonymous": true
+        },
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "route Plan completeness is not complete",
+        "response metadata is unknown"
+        ],
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": [],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" }
+        }
+      }
+    },
+    "/internal/jobs": {
+      "post": {
+        "operationId": "Internal.Job",
+        "security": [{ "apiKey": [] }],
+        "x-slop-auth": {
+          "required": true,
+          "schemes": ["apiKey"],
+          "scopes": ["jobs:write"]
+        },
+        "x-slop-completeness": "partial",
+        "x-slop-missing": [
+        "route Plan completeness is not complete",
+        "response metadata is unknown"
+        ],
+        "x-slop-capabilities": [],
+        "x-slop-optimization-candidates": [],
+        "parameters": [],
+        "responses": {
+          "200": { "description": "response metadata unknown", "x-slop-partial": "response metadata unknown" },
+          "401": { "description": "authentication failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } },
+          "403": { "description": "authorization failed", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "SlopValidationProblem": {
+        "description": "Slop validation problem response",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/SlopValidationProblem" } } }
+      }
+    },
+    "schemas": {
+      "SlopValidationProblem": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer" },
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "securitySchemes": {
+      "jwt": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" },
+      "apiKey": { "type": "apiKey", "in": "header", "name": "X-API-Key" },
+      "cookieSession": { "type": "apiKey", "in": "cookie", "name": "sloppy.session" }
+    }
+  }
+}

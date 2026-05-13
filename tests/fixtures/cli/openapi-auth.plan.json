@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-openapi-auth-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-openapi-auth-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "exportName": "__sloppy_handler_1",
+      "displayName": "Users.Me"
+    },
+    {
+      "id": 2,
+      "exportName": "__sloppy_handler_2",
+      "displayName": "Internal.Job"
+    },
+    {
+      "id": 3,
+      "exportName": "__sloppy_handler_3",
+      "displayName": "Public.Index"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/me",
+      "handlerId": 1,
+      "name": "Users.Me",
+      "auth": {
+        "required": true,
+        "schemes": ["jwt"],
+        "scopes": ["users:read"],
+        "roles": ["admin"],
+        "policy": "Users.Read"
+      }
+    },
+    {
+      "method": "POST",
+      "pattern": "/internal/jobs",
+      "handlerId": 2,
+      "name": "Internal.Job",
+      "auth": {
+        "required": true,
+        "schemes": ["apiKey"],
+        "scopes": ["jobs:write"]
+      }
+    },
+    {
+      "method": "GET",
+      "pattern": "/public",
+      "handlerId": 3,
+      "name": "Public.Index",
+      "auth": {
+        "required": false,
+        "allowAnonymous": true
+      }
+    }
+  ],
+  "auth": {
+    "schemes": [
+      {
+        "kind": "jwtBearer",
+        "name": "jwt"
+      },
+      {
+        "kind": "apiKey",
+        "name": "apiKey",
+        "header": "X-API-Key"
+      },
+      {
+        "kind": "cookieSession",
+        "name": "cookieSession",
+        "cookie": "sloppy.session",
+        "store": "memory"
+      }
+    ],
+    "policies": ["Users.Read"]
+  }
+}

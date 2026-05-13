@@ -1,0 +1,18 @@
+{
+  "checks": [
+    { "id": "bootstrap.assets", "status": "ok", "message": "bootstrap runtime asset found" },
+    { "id": "engine.v8", "status": "warn", "message": "V8 bridge disabled in this build; V8 runtime tests not run" },
+    { "id": "providers.live", "status": "warn", "message": "live provider checks are not configured by default and no live DB was contacted" },
+    { "id": "package.runtime", "status": "warn", "message": "package release status requires package smoke" },
+    { "id": "app.plan.parse", "status": "ok", "message": "app plan parsed by native Plan v1 parser" },
+    { "id": "app.plan.routes", "status": "ok", "message": "route metadata present" },
+    { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
+    { "id": "app.plan.capabilities", "status": "warn", "message": "capability metadata not present" },
+    { "id": "app.auth.schemes", "status": "ok", "message": "auth scheme metadata is Plan-visible without secret values" },
+    { "id": "app.auth.policies", "status": "ok", "message": "auth policy names are Plan-visible" },
+    { "id": "app.auth.protected-routes", "status": "ok", "message": "protected route auth metadata is Plan-visible" },
+    { "id": "app.auth.route-scheme", "status": "error", "message": "route references an auth scheme that is not configured (route: Admin.Report)" },
+    { "id": "app.auth.route-policy", "status": "error", "message": "route references an auth policy that is not configured (route: Admin.Report)" },
+    { "id": "route.response", "status": "warn", "message": "route response metadata is unknown" }
+  ]
+}

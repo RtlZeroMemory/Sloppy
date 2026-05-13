@@ -16,7 +16,9 @@ configuration, services, validation, or data access.
 - [Static files](static-files.md) — `app.useStaticFiles(...)`, build-time asset routes
 - [Middleware](middleware.md) — `app.use(fn)`, `group.use(fn)`, pipeline order
 - [CORS](cors.md) — `app.useCors(policy)`, allowed origins, preflight
-- [Auth](auth.md) — experimental JWT bearer, API keys, route authorization, `ctx.user`
+- [Auth](auth.md) — experimental JWT bearer, API keys, route authorization, scopes, policies, `ctx.user`
+- [Sessions](sessions.md) — signed cookie sessions and CSRF
+- [Security headers](security.md) — first-party response security headers
 - [Health checks](health.md) — `Health`, `app.health()`, liveness/readiness/startup
 - [Metrics](metrics.md) — counters, gauges, histograms, JSON snapshots, Prometheus output
 - [Management](management.md) — opt-in actuator-style backend endpoints

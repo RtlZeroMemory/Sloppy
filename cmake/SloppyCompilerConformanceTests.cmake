@@ -166,6 +166,16 @@
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
+        NAME sloppy.cli.auth_malformed_bool
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=routes;--plan;tests/fixtures/cli/auth-malformed-bool.plan.json"
+            "-DSLOPPY_EXPECTED_ERROR=route auth.required must be a boolean" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.cli.auth_malformed_bool
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
         NAME sloppy.run.missing_artifacts
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"

@@ -137,10 +137,11 @@ runtime secret/config hand-off design.
   prevent native code or kernel bugs from misbehaving. If you need
   process isolation, that's the OS's job.
 - **Identity-provider features.** Sloppy's public alpha, pre-production auth
-  stack covers HS256 JWT bearer tokens, API keys, route requirements, roles,
-  claims, and policies.
-  OIDC, JWKS, OAuth flows, refresh tokens, session cookies, and user management
-  are separate product work.
+  stack covers JWT bearer tokens, API keys, signed cookie sessions, CSRF,
+  route requirements, scopes, roles, claims, and policies. Static JWKS-shaped
+  key material can be configured locally for `kid` lookup. OIDC discovery,
+  remote JWKS fetch, OAuth flows, refresh tokens, and user management are
+  separate product work.
 - **Encryption at rest.** Use the platform's secret store (Kubernetes
   secrets, AWS Secrets Manager, Vault) to inject values via
   environment variables.

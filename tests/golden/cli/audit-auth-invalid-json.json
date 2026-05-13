@@ -1,0 +1,9 @@
+{
+  "findings": [
+    { "severity": "note", "code": "SLOPPY_AUDIT_AUTH_SCHEMES_VISIBLE", "message": "auth scheme metadata is Plan-visible without secret values", "path": "auth" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_AUTH_POLICIES_VISIBLE", "message": "auth policy names are Plan-visible", "path": "auth" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_AUTH_ROUTE_SCHEME_UNKNOWN", "message": "protected route references an auth scheme that is not configured", "path": "auth" },
+    { "severity": "error", "code": "SLOPPY_AUDIT_AUTH_POLICY_MISSING", "message": "protected route references an auth policy that is not configured", "path": "auth" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_AUTH_PROTECTED_ROUTES", "message": "protected route auth metadata is Plan-visible", "path": "auth" }
+  ]
+}

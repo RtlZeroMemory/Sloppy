@@ -182,6 +182,8 @@ static const char* sl_http_response_reason(uint16_t status)
         return "Bad Request";
     case 401U:
         return "Unauthorized";
+    case 403U:
+        return "Forbidden";
     case 404U:
         return "Not Found";
     case 405U:

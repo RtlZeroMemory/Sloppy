@@ -97,6 +97,14 @@ Request body media types are emitted from Plan binding metadata:
 `multipart/form-data`. Validation problem responses use
 `application/problem+json`.
 
+Plan-visible Sloppy auth providers emit OpenAPI `securitySchemes`.
+Protected routes emit route-specific `security` requirements when the
+route names schemes; otherwise they use the configured Plan-visible
+schemes. Protected operations also include deterministic `401` and `403`
+`application/problem+json` responses when those statuses are not already
+declared in route metadata. Anonymous routes do not emit an OpenAPI
+security requirement.
+
 ## Sloppy extensions
 
 The output uses `x-slop-*` extension fields for things OpenAPI doesn't
@@ -110,6 +118,9 @@ directly model:
   writes.
 - `x-slop-source` — `{ path, line, column }` pointing at the route
   declaration in source.
+- `x-slop-auth` — route auth metadata from the Plan, including whether
+  auth is required, `allowAnonymous`, schemes, scopes, roles, claims, and
+  policy when present.
 - `x-slop-optimization-candidates` — Plan-derived hints surfaced for
   tooling.
 - `x-slop-partial` — a marker noting the field/section was emitted with

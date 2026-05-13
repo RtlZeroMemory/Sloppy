@@ -8,9 +8,9 @@ use std::{
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    Argument, ArrayExpressionElement, BindingPattern, CallExpression, ChainElement, ClassElement,
-    Declaration, ExportAllDeclaration, ExportDefaultDeclaration, ExportNamedDeclaration,
-    Expression, ExpressionStatement, ForStatementInit, ImportDeclaration,
+    Argument, ArrayExpression, ArrayExpressionElement, BindingPattern, CallExpression,
+    ChainElement, ClassElement, Declaration, ExportAllDeclaration, ExportDefaultDeclaration,
+    ExportNamedDeclaration, Expression, ExpressionStatement, ForStatementInit, ImportDeclaration,
     ImportDeclarationSpecifier, ImportOrExportKind, MethodDefinitionKind, ModuleExportName,
     ObjectExpression, ObjectPropertyKind, PropertyKey, PropertyKind, Statement, TSLiteral,
     TSSignature, TSType, TSTypeName, VariableDeclaration,
@@ -6585,7 +6585,7 @@ fn extract_expression_statement(
         return Ok(());
     }
 
-    if route_group_require_auth_call(path, &statement.expression, state)? {
+    if route_group_auth_call(path, &statement.expression, state)? {
         return Ok(());
     }
 
@@ -6780,6 +6780,10 @@ fn extract_expression_statement(
     let auth = contract_metadata.auth.clone().or(inherited_auth);
     let cors = state.cors_policy.clone();
     if let Some(requirement) = &auth {
+        if requirement.required {
+            force_auth_required_route_v8_dispatch(&mut handler);
+            ensure_auth_required_route_request_context(&mut handler);
+        }
         handler.emitted_source = wrap_handler_with_auth(&handler.emitted_source, requirement);
         handler.is_async = true;
     }
@@ -7494,10 +7498,12 @@ fn app_group_call<'a>(
                 tag_groups.push(route_tags_from_arguments(call)?);
                 current = &member.object;
             }
-            "requireAuth" => {
-                if metadata.auth.is_none() {
-                    metadata.auth = Some(auth_requirement_from_call(call)?);
-                }
+            "requireAuth" | "requiresAuth" => {
+                merge_auth_requirement(&mut metadata.auth, auth_requirement_from_call(call)?);
+                current = &member.object;
+            }
+            "allowAnonymous" => {
+                merge_auth_requirement(&mut metadata.auth, anonymous_auth_requirement());
                 current = &member.object;
             }
             _ => break,
@@ -8932,6 +8938,27 @@ fn app_use_auth_provider_call(
                 .to_string();
             let max_age_seconds = object_integer_property_value(options, "maxAgeSeconds")
                 .or_else(|| object_integer_property_value(options, "maxAge"));
+            let store = if let Some(store_expr) = object_property_expression(options, "store") {
+                if cookie_session_store_kind(store_expr) == Some("memory") {
+                    Some("memory".to_string())
+                } else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_AUTH",
+                        "Auth.cookieSession compiler extraction supports Auth.sessionStore.memory() for generated session stores; DB session stores remain stdlib runtime objects",
+                    )
+                    .with_path(path)
+                    .with_span(store_expr.span()));
+                }
+            } else {
+                None
+            };
+            let idle_timeout_ms = object_integer_property_value(options, "idleTimeoutMs")
+                .or_else(|| object_integer_property_value(options, "idleTimeout"));
+            let absolute_timeout_ms = object_integer_property_value(options, "absoluteTimeoutMs")
+                .or_else(|| object_integer_property_value(options, "absoluteTimeout"));
+            let rotation = object_bool_property_value(options, "rotation")
+                .or_else(|| object_bool_property_value(options, "rotate"))
+                .unwrap_or(false);
             let secret_config_key = object_property_expression(options, "secret")
                 .and_then(config_required_key_from_expression)
                 .ok_or_else(|| {
@@ -8959,6 +8986,10 @@ fn app_use_auth_provider_call(
                 same_site,
                 path: cookie_path,
                 max_age_seconds,
+                store,
+                idle_timeout_ms,
+                absolute_timeout_ms,
+                rotation,
                 secret_config_key: Some(secret_config_key),
             });
         }
@@ -9019,7 +9050,12 @@ fn app_auth_policy_call(
         .with_path(path)
         .with_span(policy_span)
     })?;
-    validate_auth_policy_source(path, &policy_source, policy_span)?;
+    let policy_source = if policy_source.trim_start().starts_with("Auth.policy") {
+        policy_source.replacen("Auth.policy", "__sloppy_auth_policy", 1)
+    } else {
+        validate_auth_policy_source(path, &policy_source, policy_span)?;
+        policy_source
+    };
     if !state.auth.policies.iter().any(|policy| policy.name == name) {
         state.auth.policies.push(AuthPolicyMetadata {
             name: name.to_string(),
@@ -9029,7 +9065,7 @@ fn app_auth_policy_call(
     Ok(true)
 }
 
-fn route_group_require_auth_call(
+fn route_group_auth_call(
     path: &Path,
     expression: &Expression<'_>,
     state: &mut AppState,
@@ -9040,11 +9076,15 @@ fn route_group_require_auth_call(
     let Some((receiver, property)) = static_member_name(&call.callee) else {
         return Ok(false);
     };
-    if property != "requireAuth" || !state.group_vars.contains_key(receiver) {
+    if !state.group_vars.contains_key(receiver) {
         return Ok(false);
     }
-    let requirement = auth_requirement_from_call(call)
-        .map_err(|diagnostic| diagnostic.with_path(path).with_span(call.span))?;
+    let requirement = match property {
+        "requireAuth" | "requiresAuth" => auth_requirement_from_call(call)
+            .map_err(|diagnostic| diagnostic.with_path(path).with_span(call.span))?,
+        "allowAnonymous" => anonymous_auth_requirement(),
+        _ => return Ok(false),
+    };
     if let Some(group) = state.group_vars.get_mut(receiver) {
         group.auth = Some(requirement);
     }
@@ -9093,6 +9133,17 @@ fn config_required_key_from_expression<'a>(expression: &'a Expression<'a>) -> Op
         return None;
     }
     call.arguments.first().and_then(string_argument)
+}
+
+fn cookie_session_store_kind(expression: &Expression<'_>) -> Option<&'static str> {
+    let Expression::CallExpression(call) = expression else {
+        return None;
+    };
+    let chain = static_member_chain(&call.callee)?;
+    if chain == ["Auth", "sessionStore", "memory"] {
+        return Some("memory");
+    }
+    None
 }
 
 fn config_required_keys_from_source(source: &str) -> Option<Vec<String>> {
@@ -10220,7 +10271,8 @@ fn auth_schemes_json(auth: &AuthMetadata) -> String {
                     "issuer": issuer,
                     "audience": audience,
                     "clockSkewSeconds": clock_skew_seconds,
-                    "secretConfigKey": secret_config_key
+                    "secretConfigKey": secret_config_key,
+                    "secretEnvKey": secret_config_key.as_deref().map(config_key_to_env_name)
                 }),
                 AuthSchemeMetadata::ApiKey {
                     name,
@@ -10230,7 +10282,8 @@ fn auth_schemes_json(auth: &AuthMetadata) -> String {
                     "kind": "apiKey",
                     "name": name,
                     "header": header,
-                    "configKey": config_key
+                    "configKey": config_key,
+                    "configEnvKey": config_key.as_deref().map(config_key_to_env_name)
                 }),
                 AuthSchemeMetadata::CookieSession {
                     name,
@@ -10240,6 +10293,10 @@ fn auth_schemes_json(auth: &AuthMetadata) -> String {
                     same_site,
                     path,
                     max_age_seconds,
+                    store,
+                    idle_timeout_ms,
+                    absolute_timeout_ms,
+                    rotation,
                     secret_config_key,
                 } => json!({
                     "kind": "cookieSession",
@@ -10250,7 +10307,12 @@ fn auth_schemes_json(auth: &AuthMetadata) -> String {
                     "sameSite": same_site,
                     "path": path,
                     "maxAgeSeconds": max_age_seconds,
-                    "secretConfigKey": secret_config_key
+                    "store": store,
+                    "idleTimeoutMs": idle_timeout_ms,
+                    "absoluteTimeoutMs": absolute_timeout_ms,
+                    "rotation": rotation,
+                    "secretConfigKey": secret_config_key,
+                    "secretEnvKey": secret_config_key.as_deref().map(config_key_to_env_name)
                 }),
             })
             .collect::<Vec<_>>(),
@@ -10265,7 +10327,7 @@ fn auth_policies_js(auth: &AuthMetadata) -> String {
         .filter_map(|policy| {
             let source = policy.source.as_ref()?;
             let name = serde_json::to_string(&policy.name).ok()?;
-            Some(format!("[{name}, {source}]"))
+            Some(format!("[{name}, __sloppy_auth_policy_function({source})]"))
         })
         .collect::<Vec<_>>()
         .join(", ");
@@ -13857,13 +13919,21 @@ fn extract_module_function_routes(
             Statement::ExpressionStatement(statement) => {
                 if let Expression::CallExpression(call) = &statement.expression {
                     if let Some((receiver, property)) = static_member_name(&call.callee) {
-                        if property == "requireAuth" && groups.contains_key(receiver) {
-                            let requirement = auth_requirement_from_call(call)
-                                .map_err(|diagnostic| diagnostic.with_path(path))?;
-                            if let Some(group) = groups.get_mut(receiver) {
-                                group.auth = Some(requirement);
+                        if groups.contains_key(receiver) {
+                            let requirement = match property {
+                                "requireAuth" | "requiresAuth" => Some(
+                                    auth_requirement_from_call(call)
+                                        .map_err(|diagnostic| diagnostic.with_path(path))?,
+                                ),
+                                "allowAnonymous" => Some(anonymous_auth_requirement()),
+                                _ => None,
+                            };
+                            if let Some(requirement) = requirement {
+                                if let Some(group) = groups.get_mut(receiver) {
+                                    group.auth = Some(requirement);
+                                }
+                                continue;
                             }
-                            continue;
                         }
                     }
                 }
@@ -14237,6 +14307,9 @@ fn wrap_handler_with_providers_and_helpers(
 fn wrap_handler_with_auth(handler_source: &str, requirement: &AuthRequirementMetadata) -> String {
     let requirement_json = serde_json::to_string(&json!({
         "required": requirement.required,
+        "allowAnonymous": requirement.allow_anonymous,
+        "schemes": requirement.schemes,
+        "scopes": requirement.scopes,
         "roles": requirement.roles,
         "claims": requirement.claims,
         "policy": requirement.policy
@@ -14245,6 +14318,26 @@ fn wrap_handler_with_auth(handler_source: &str, requirement: &AuthRequirementMet
     format!(
         "async function(ctx) {{ return await __sloppy_require_auth(ctx, {requirement_json}, () => ({handler_source})(ctx)); }}"
     )
+}
+
+fn force_auth_required_route_v8_dispatch(handler: &mut Handler) {
+    if let Some(response) = &mut handler.response {
+        response.native_body = None;
+    }
+    for response in &mut handler.responses {
+        response.native_body = None;
+    }
+}
+
+fn ensure_auth_required_route_request_context(handler: &mut Handler) {
+    if handler
+        .bindings
+        .iter()
+        .any(|binding| binding.kind == "context")
+    {
+        return;
+    }
+    handler.bindings.push(context_request_binding());
 }
 
 fn providers_used_by_effects(
@@ -14360,6 +14453,7 @@ fn route_metadata_chain<'a>(
 ) -> Result<(&'a Expression<'a>, RouteMetadata), Diagnostic> {
     let mut current = expression;
     let mut metadata = RouteMetadata::default();
+    let mut auth_replaced_by_later_setter = false;
     while let Expression::CallExpression(call) = current {
         let Expression::StaticMemberExpression(member) = &call.callee else {
             break;
@@ -14391,14 +14485,64 @@ fn route_metadata_chain<'a>(
                 current = &member.object;
             }
             "requireAuth" | "requiresAuth" | "security" => {
+                let requirement = auth_requirement_from_call(call)?;
                 if metadata.auth.is_none() {
-                    metadata.auth = Some(auth_requirement_from_call(call)?);
+                    metadata.auth = Some(requirement);
+                    auth_replaced_by_later_setter = true;
+                } else if !auth_replaced_by_later_setter {
+                    merge_auth_requirement(&mut metadata.auth, requirement);
+                }
+                current = &member.object;
+            }
+            "allowAnonymous" => {
+                let requirement = anonymous_auth_requirement();
+                if metadata.auth.is_none() {
+                    metadata.auth = Some(requirement);
+                    auth_replaced_by_later_setter = true;
+                } else if !auth_replaced_by_later_setter {
+                    merge_auth_requirement(&mut metadata.auth, requirement);
                 }
                 current = &member.object;
             }
             "authorize" => {
-                if metadata.auth.is_none() {
-                    metadata.auth = Some(auth_requirement_from_policy_call(call)?);
+                let policy = route_name_from_argument(call)?;
+                if !auth_replaced_by_later_setter {
+                    merge_auth_requirement(
+                        &mut metadata.auth,
+                        AuthRequirementMetadata {
+                            required: true,
+                            policy: Some(policy),
+                            ..AuthRequirementMetadata::default()
+                        },
+                    );
+                }
+                current = &member.object;
+            }
+            "requiresScope" => {
+                let scopes = route_tags_from_arguments(call)?;
+                if !auth_replaced_by_later_setter {
+                    merge_auth_requirement(
+                        &mut metadata.auth,
+                        AuthRequirementMetadata {
+                            required: true,
+                            scopes,
+                            ..AuthRequirementMetadata::default()
+                        },
+                    );
+                }
+                current = &member.object;
+            }
+            "requiresRole" => {
+                let roles = route_tags_from_arguments(call)?;
+                if !auth_replaced_by_later_setter {
+                    merge_auth_requirement(
+                        &mut metadata.auth,
+                        AuthRequirementMetadata {
+                            required: true,
+                            roles,
+                            ..AuthRequirementMetadata::default()
+                        },
+                    );
                 }
                 current = &member.object;
             }
@@ -14465,6 +14609,40 @@ fn route_metadata_chain<'a>(
     Ok((current, metadata))
 }
 
+fn merge_auth_requirement(
+    existing: &mut Option<AuthRequirementMetadata>,
+    incoming: AuthRequirementMetadata,
+) {
+    let Some(existing) = existing else {
+        *existing = Some(incoming);
+        return;
+    };
+
+    extend_unique(&mut existing.schemes, incoming.schemes);
+    extend_unique(&mut existing.scopes, incoming.scopes);
+    extend_unique(&mut existing.roles, incoming.roles);
+    extend_unique(&mut existing.claims, incoming.claims);
+    if existing.policy.is_none() {
+        existing.policy = incoming.policy;
+    }
+}
+
+fn anonymous_auth_requirement() -> AuthRequirementMetadata {
+    AuthRequirementMetadata {
+        required: false,
+        allow_anonymous: true,
+        ..AuthRequirementMetadata::default()
+    }
+}
+
+fn extend_unique(values: &mut Vec<String>, incoming: Vec<String>) {
+    for value in incoming {
+        if !values.contains(&value) {
+            values.push(value);
+        }
+    }
+}
+
 fn merged_route_metadata(options: &RouteMetadata, fluent: &RouteMetadata) -> RouteMetadata {
     let mut merged = options.clone();
     if fluent.name.is_some() {
@@ -14525,13 +14703,23 @@ fn auth_requirement_from_call(
         )
         .with_span(call.span));
     }
-    let requirement = AuthRequirementMetadata {
+    let mut requirement = AuthRequirementMetadata {
         required: true,
         ..AuthRequirementMetadata::default()
     };
     let Some(argument) = call.arguments.first() else {
         return Ok(requirement);
     };
+    if let Some(scheme) = string_argument(argument) {
+        requirement.schemes.push(scheme.to_string());
+        return Ok(requirement);
+    }
+    if let Argument::ArrayExpression(array) = argument {
+        requirement
+            .schemes
+            .extend(auth_string_list_from_array(array, "requireAuth schemes")?);
+        return Ok(requirement);
+    }
     let Some(object) = object_argument(argument) else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_AUTH",
@@ -14572,6 +14760,38 @@ fn auth_requirement_from_object(
             .with_span(property.span));
         };
         match key {
+            "scheme" => {
+                let Some(scheme) = expression_string_literal(&property.value) else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_AUTH",
+                        "requireAuth scheme must be a string literal",
+                    )
+                    .with_span(property.value.span()));
+                };
+                requirement.schemes.push(scheme.to_string());
+            }
+            "schemes" => {
+                requirement.schemes.extend(auth_string_list_from_expression(
+                    &property.value,
+                    "requireAuth schemes",
+                )?);
+            }
+            "scope" => {
+                let Some(scope) = expression_string_literal(&property.value) else {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_AUTH",
+                        "requireAuth scope must be a string literal",
+                    )
+                    .with_span(property.value.span()));
+                };
+                requirement.scopes.push(scope.to_string());
+            }
+            "scopes" => {
+                requirement.scopes.extend(auth_string_list_from_expression(
+                    &property.value,
+                    "requireAuth scopes",
+                )?);
+            }
             "role" => {
                 let Some(role) = expression_string_literal(&property.value) else {
                     return Err(Diagnostic::new(
@@ -14607,6 +14827,17 @@ fn auth_requirement_from_object(
                 };
                 requirement.claims.push(claim.to_string());
             }
+            "allowAnonymous" => {
+                if !matches!(&property.value, Expression::BooleanLiteral(value) if value.value) {
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_AUTH",
+                        "requireAuth allowAnonymous must be the literal true when provided",
+                    )
+                    .with_span(property.value.span()));
+                }
+                requirement.required = false;
+                requirement.allow_anonymous = true;
+            }
             _ => {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_AUTH",
@@ -14619,28 +14850,39 @@ fn auth_requirement_from_object(
     Ok(requirement)
 }
 
-fn auth_requirement_from_policy_call(
-    call: &CallExpression<'_>,
-) -> Result<AuthRequirementMetadata, Diagnostic> {
-    if call.arguments.len() != 1 {
-        return Err(Diagnostic::new(
-            "SLOPPYC_E_UNSUPPORTED_AUTH",
-            "authorize requires exactly one policy string",
-        )
-        .with_span(call.span));
+fn auth_string_list_from_expression(
+    expression: &Expression<'_>,
+    subject: &str,
+) -> Result<Vec<String>, Diagnostic> {
+    if let Some(value) = expression_string_literal(expression) {
+        return Ok(vec![value.to_string()]);
     }
-    let Some(policy) = call.arguments.first().and_then(string_argument) else {
+    let Expression::ArrayExpression(array) = expression else {
         return Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_AUTH",
-            "authorize policy must be a string literal",
+            format!("{subject} must be a string literal or string literal array"),
         )
-        .with_span(call.span));
+        .with_span(expression.span()));
     };
-    Ok(AuthRequirementMetadata {
-        required: true,
-        policy: Some(policy.to_string()),
-        ..AuthRequirementMetadata::default()
-    })
+    auth_string_list_from_array(array, subject)
+}
+
+fn auth_string_list_from_array(
+    array: &ArrayExpression<'_>,
+    subject: &str,
+) -> Result<Vec<String>, Diagnostic> {
+    let mut values = Vec::new();
+    for element in &array.elements {
+        let ArrayExpressionElement::StringLiteral(value) = element else {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_UNSUPPORTED_AUTH",
+                format!("{subject} must contain only string literals"),
+            )
+            .with_span(array.span));
+        };
+        values.push(value.value.as_str().to_string());
+    }
+    Ok(values)
 }
 
 fn route_string_metadata_from_call(
@@ -15242,7 +15484,16 @@ fn object_integer_property_value(
     object: &oxc_ast::ast::ObjectExpression<'_>,
     name: &str,
 ) -> Option<i64> {
-    object_json_property_value(object, name).and_then(|value| value.as_i64())
+    object_json_property_value(object, name).and_then(|value| {
+        value.as_i64().or_else(|| {
+            let number = value.as_f64()?;
+            if number.fract() == 0.0 {
+                Some(number as i64)
+            } else {
+                None
+            }
+        })
+    })
 }
 
 fn object_json_property_value(
@@ -20280,7 +20531,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "function __sloppy_request_header(ctx, name) { const headers = ctx?.request?.headers; if (headers === undefined || headers === null) { return undefined; } if (typeof headers.get === \"function\") { return headers.get(name) ?? headers.get(String(name).toLowerCase()) ?? undefined; } if (__sloppy_is_plain_object(headers)) { const lower = String(name).toLowerCase(); for (const [key, value] of Object.entries(headers)) { if (key.toLowerCase() === lower) { return value; } } } return undefined; }",
+            "function __sloppy_request_header(ctx, name) { const headers = ctx?.request?.headers; if (headers === undefined || headers === null) { return undefined; } const lower = String(name).toLowerCase(); if (typeof headers.get === \"function\") { const direct = headers.get(name) ?? headers.get(lower); if (direct !== undefined && direct !== null) { return direct; } if (typeof headers.entries === \"function\") { for (const [key, value] of headers.entries()) { if (String(key).toLowerCase() === lower) { return value; } } } return undefined; } if (__sloppy_is_plain_object(headers)) { for (const [key, value] of Object.entries(headers)) { if (key.toLowerCase() === lower) { return value; } } } return undefined; }",
         );
         push_generated_line(
             &mut output,
@@ -20307,6 +20558,16 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
+            "function __sloppy_auth_policy(configure) { const requirements = []; const builder = { requireAuthenticated() { requirements.push([\"authenticated\"]); return builder; }, requireScope(...scopes) { requirements.push([\"scope\", scopes.flat()]); return builder; }, requireRole(...roles) { requirements.push([\"role\", roles.flat()]); return builder; }, requireClaim(name, value) { requirements.push([\"claim\", name, value]); return builder; }, custom(predicate) { requirements.push([\"custom\", predicate]); return builder; } }; configure(builder); return { async evaluate(user, ctx, resource) { for (const requirement of requirements) { if (requirement[0] === \"authenticated\" && user?.authenticated !== true) { return false; } if (requirement[0] === \"scope\" && !requirement[1].every((scope) => user?.hasScope(scope))) { return false; } if (requirement[0] === \"role\" && !requirement[1].some((role) => user?.hasRole(role))) { return false; } if (requirement[0] === \"claim\" && !user?.hasClaim(requirement[1], requirement[2])) { return false; } if (requirement[0] === \"custom\" && await requirement[1](user, ctx, resource) !== true) { return false; } } return true; } }; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_auth_policy_function(policy) { if (typeof policy === \"function\") { return policy; } if (policy && typeof policy.evaluate === \"function\") { return (user, ctx, resource) => policy.evaluate(user, ctx, resource); } return () => false; }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
             &format!(
                 "const __sloppy_auth_policies = {};",
                 auth_policies_js(&app.auth)
@@ -20315,12 +20576,27 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "function __sloppy_auth_user(claims, scheme) { const roles = Array.isArray(claims.roles) ? claims.roles.filter((role) => typeof role === \"string\") : (typeof claims.role === \"string\" ? [claims.role] : []); const user = { authenticated: true, sub: typeof claims.sub === \"string\" ? claims.sub : \"\", name: typeof claims.name === \"string\" ? claims.name : \"\", roles: Object.freeze([...new Set(roles)]), claims: Object.freeze({ ...claims }), scheme, hasRole(role) { return typeof role === \"string\" && user.roles.includes(role); }, hasClaim(name, value) { return typeof name === \"string\" && Object.prototype.hasOwnProperty.call(user.claims, name) && (value === undefined || Object.is(user.claims[name], value)); } }; return Object.freeze(user); }",
+            "const __sloppy_auth_default_scheme = __sloppy_auth_schemes[0]?.name;",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "function __sloppy_auth_anonymous() { return Object.freeze({ authenticated: false, sub: \"\", name: \"\", roles: Object.freeze([]), claims: Object.freeze({}), scheme: \"\", hasRole() { return false; }, hasClaim() { return false; } }); }",
+            "const __sloppy_auth_memory_sessions = new Map(); let __sloppy_auth_session_counter = 0;",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_auth_user(claims, scheme, authScheme = scheme) { const roles = Array.isArray(claims.roles) ? claims.roles.filter((role) => typeof role === \"string\") : (typeof claims.role === \"string\" ? [claims.role] : []); const scopes = []; if (typeof claims.scope === \"string\") { scopes.push(...claims.scope.split(/\\s+/).filter((scope) => scope.length !== 0)); } if (typeof claims.scp === \"string\") { scopes.push(...claims.scp.split(/\\s+/).filter((scope) => scope.length !== 0)); } if (Array.isArray(claims.scopes)) { scopes.push(...claims.scopes.filter((scope) => typeof scope === \"string\")); } if (Array.isArray(claims.scp)) { scopes.push(...claims.scp.filter((scope) => typeof scope === \"string\")); } const user = { authenticated: true, sub: typeof claims.sub === \"string\" ? claims.sub : \"\", name: typeof claims.name === \"string\" ? claims.name : \"\", roles: Object.freeze([...new Set(roles)]), scopes: Object.freeze([...new Set(scopes)]), claims: Object.freeze({ ...claims }), scheme, authScheme, hasRole(role) { return typeof role === \"string\" && user.roles.includes(role); }, hasScope(scope) { return typeof scope === \"string\" && user.scopes.includes(scope); }, hasClaim(name, value) { return typeof name === \"string\" && Object.prototype.hasOwnProperty.call(user.claims, name) && (value === undefined || Object.is(user.claims[name], value)); } }; return Object.freeze(user); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_auth_anonymous() { return Object.freeze({ authenticated: false, sub: \"\", name: \"\", roles: Object.freeze([]), scopes: Object.freeze([]), claims: Object.freeze({}), scheme: \"\", authScheme: \"\", hasRole() { return false; }, hasScope() { return false; }, hasClaim() { return false; } }); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_auth_attach_context(ctx) { ctx.user ??= __sloppy_auth_anonymous(); if (ctx.auth === undefined) { Object.defineProperties(ctx, { auth: { value: Object.freeze({ get user() { return ctx.user; } }), enumerable: true }, claims: { get() { return ctx.user?.claims ?? {}; }, enumerable: true }, requireUser: { value() { if (ctx.user?.authenticated !== true) { throw new Error(\"SLOPPY_E_AUTH_MISSING_CREDENTIALS: authenticated user is required.\"); } return ctx.user; }, enumerable: true }, hasScope: { value(scope) { return ctx.user?.hasScope(scope) === true; }, enumerable: true }, hasRole: { value(role) { return ctx.user?.hasRole(role) === true; }, enumerable: true }, hasClaim: { value(name, value) { return ctx.user?.hasClaim(name, value) === true; }, enumerable: true }, authorize: { async value(policy, resource) { const fn = __sloppy_auth_policies.get(policy); return typeof fn === \"function\" && (await fn(ctx.user, ctx, resource)) === true; }, enumerable: true } }); } return ctx; }",
         );
         push_generated_line(
             &mut output,
@@ -20345,7 +20621,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "async function __sloppy_auth_jwt(token, scheme) { const parts = String(token).split(\".\"); if (parts.length !== 3 || parts.some((part) => part.length === 0)) { return undefined; } const header = __sloppy_auth_json(parts[0]); if (header.alg === \"none\" || header.alg !== \"HS256\") { return undefined; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { return undefined; } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const expected = await Hmac.sha256(secret, `${parts[0]}.${parts[1]}`); const actual = Base64Url.decode(parts[2], { padding: \"optional\" }); if (!__sloppy_ct_bytes(expected, actual)) { return undefined; } const claims = __sloppy_auth_json(parts[1]); if (claims === null || typeof claims !== \"object\" || Array.isArray(claims)) { return undefined; } const now = Math.floor(Date.now() / 1000); const skew = Number.isInteger(scheme.clockSkewSeconds) ? scheme.clockSkewSeconds : 0; if (scheme.issuer && claims.iss !== scheme.issuer) { return undefined; } if (scheme.audience && (Array.isArray(claims.aud) ? !claims.aud.includes(scheme.audience) : claims.aud !== scheme.audience)) { return undefined; } if (claims.exp !== undefined && (!Number.isFinite(claims.exp) || claims.exp <= now - skew)) { return undefined; } if (claims.nbf !== undefined && (!Number.isFinite(claims.nbf) || claims.nbf > now + skew)) { return undefined; } if (claims.iat !== undefined && (!Number.isFinite(claims.iat) || claims.iat > now + skew)) { return undefined; } if (claims.sub !== undefined && typeof claims.sub !== \"string\") { return undefined; } return __sloppy_auth_user(claims, \"jwtBearer\"); }",
+            "function __sloppy_auth_config_value(configKey, envKey) { if (typeof configKey !== \"string\" || configKey.length === 0) { return undefined; } const key = typeof envKey === \"string\" && envKey.length !== 0 ? envKey : configKey.split(\":\").join(\"__\"); return Environment.get(key); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "async function __sloppy_auth_jwt(token, scheme) { const parts = String(token).split(\".\"); if (parts.length !== 3 || parts.some((part) => part.length === 0)) { return undefined; } const header = __sloppy_auth_json(parts[0]); if (header.alg === \"none\" || header.alg !== \"HS256\") { return undefined; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { return undefined; } const secret = __sloppy_auth_config_value(scheme.secretConfigKey, scheme.secretEnvKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const expected = await Hmac.sha256(Secret.fromUtf8(secret), `${parts[0]}.${parts[1]}`); const actual = Base64Url.decode(parts[2], { padding: \"optional\" }); if (!__sloppy_ct_bytes(expected, actual)) { return undefined; } const claims = __sloppy_auth_json(parts[1]); if (claims === null || typeof claims !== \"object\" || Array.isArray(claims)) { return undefined; } const now = Math.floor(Date.now() / 1000); const skew = Number.isInteger(scheme.clockSkewSeconds) ? scheme.clockSkewSeconds : 0; if (scheme.issuer && claims.iss !== scheme.issuer) { return undefined; } if (scheme.audience && (Array.isArray(claims.aud) ? !claims.aud.includes(scheme.audience) : claims.aud !== scheme.audience)) { return undefined; } if (claims.exp !== undefined && (!Number.isFinite(claims.exp) || claims.exp <= now - skew)) { return undefined; } if (claims.nbf !== undefined && (!Number.isFinite(claims.nbf) || claims.nbf > now + skew)) { return undefined; } if (claims.iat !== undefined && (!Number.isFinite(claims.iat) || claims.iat > now + skew)) { return undefined; } if (claims.sub !== undefined && typeof claims.sub !== \"string\") { return undefined; } return __sloppy_auth_user(claims, \"jwtBearer\", scheme.name); }",
         );
         push_generated_line(
             &mut output,
@@ -20355,7 +20636,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "async function __sloppy_auth_session(ctx, scheme) { const value = __sloppy_auth_cookie(ctx, scheme.cookie); if (typeof value !== \"string\") { return undefined; } const parts = value.split(\".\"); if (parts.length !== 2 || parts.some((part) => part.length === 0)) { return false; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { return false; } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const expected = await Hmac.sha256(secret, parts[0]); let actual; try { actual = Base64Url.decode(parts[1], { padding: \"optional\" }); } catch { return false; } if (!__sloppy_ct_bytes(expected, actual)) { return false; } const payload = __sloppy_auth_json(parts[0]); if (payload === null || typeof payload !== \"object\" || Array.isArray(payload) || payload.claims === null || typeof payload.claims !== \"object\" || Array.isArray(payload.claims)) { return false; } const now = Math.floor(Date.now() / 1000); if (payload.exp !== undefined && (!Number.isFinite(payload.exp) || payload.exp <= now)) { return false; } return __sloppy_auth_user(payload.claims, \"cookieSession\"); }",
+            "async function __sloppy_auth_session(ctx, scheme) { const value = __sloppy_auth_cookie(ctx, scheme.cookie); if (typeof value !== \"string\") { return undefined; } const parts = value.split(\".\"); if (parts.length !== 2 || parts.some((part) => part.length === 0)) { return false; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { return false; } const secret = __sloppy_auth_config_value(scheme.secretConfigKey, scheme.secretEnvKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const expected = await Hmac.sha256(Secret.fromUtf8(secret), parts[0]); let actual; try { actual = Base64Url.decode(parts[1], { padding: \"optional\" }); } catch { return false; } if (!__sloppy_ct_bytes(expected, actual)) { return false; } const payload = __sloppy_auth_json(parts[0]); if (payload === null || typeof payload !== \"object\" || Array.isArray(payload)) { return false; } const nowMs = Date.now(); const now = Math.floor(nowMs / 1000); if (scheme.store === \"memory\") { if (typeof payload.sid !== \"string\" || payload.sid.length === 0) { return false; } const record = __sloppy_auth_memory_sessions.get(payload.sid); if (record === undefined || record.revokedAt !== undefined || (record.expiresAt !== undefined && record.expiresAt <= nowMs) || (record.idleExpiresAt !== undefined && record.idleExpiresAt <= nowMs)) { if (record !== undefined) { __sloppy_auth_memory_sessions.delete(payload.sid); } return false; } record.lastSeenAt = nowMs; if (Number.isInteger(scheme.idleTimeoutMs)) { record.idleExpiresAt = nowMs + scheme.idleTimeoutMs; } ctx.session = Object.freeze({ id: payload.sid, scheme: scheme.name, issuedAt: Math.floor(record.createdAt / 1000), expiresAt: Math.floor(record.expiresAt / 1000), revoke() { __sloppy_auth_memory_sessions.delete(payload.sid); } }); return __sloppy_auth_user(record.claims, \"cookieSession\", scheme.name); } if (payload.claims === null || typeof payload.claims !== \"object\" || Array.isArray(payload.claims)) { return false; } if (payload.exp !== undefined && (!Number.isFinite(payload.exp) || payload.exp <= now)) { return false; } ctx.session = Object.freeze({ scheme: scheme.name, issuedAt: payload.iat, expiresAt: payload.exp }); return __sloppy_auth_user(payload.claims, \"cookieSession\", scheme.name); }",
         );
         push_generated_line(
             &mut output,
@@ -20365,12 +20646,17 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "async function __sloppy_auth_sign_in(ctx, claims) { const scheme = __sloppy_auth_session_scheme(); if (claims === null || typeof claims !== \"object\" || Array.isArray(claims)) { throw new TypeError(\"Sloppy Auth.signIn claims must be a plain object.\"); } const copied = { ...claims }; if (copied.claims !== undefined) { if (copied.claims === null || typeof copied.claims !== \"object\" || Array.isArray(copied.claims)) { throw new TypeError(\"Sloppy Auth.signIn claims.claims must be a plain object when provided.\"); } Object.assign(copied, copied.claims); delete copied.claims; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { throw new Error(\"sloppy: auth session secret config is required.\"); } const secret = Environment.get(scheme.secretConfigKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const current = Math.floor(Date.now() / 1000); const payload = { iat: current, claims: copied }; if (Number.isInteger(scheme.maxAgeSeconds)) { payload.exp = current + scheme.maxAgeSeconds; } const body = Base64Url.encode(Text.utf8.encode(JSON.stringify(payload))); const signature = await Hmac.sha256(secret, body); const value = `${body}.${Base64Url.encode(signature)}`; ctx.user = __sloppy_auth_user(copied, \"cookieSession\"); const options = { path: scheme.path ?? \"/\", secure: scheme.secure !== false, httpOnly: scheme.httpOnly !== false, sameSite: scheme.sameSite ?? \"lax\" }; if (Number.isInteger(scheme.maxAgeSeconds)) { options.maxAgeSeconds = scheme.maxAgeSeconds; } return Results.ok({ ok: true }).cookie(scheme.cookie, value, options); }",
+            "async function __sloppy_auth_sign_in(ctx, claims) { const scheme = __sloppy_auth_session_scheme(); if (claims === null || typeof claims !== \"object\" || Array.isArray(claims)) { throw new TypeError(\"Sloppy Auth.signIn claims must be a plain object.\"); } const copied = { ...claims }; if (copied.claims !== undefined) { if (copied.claims === null || typeof copied.claims !== \"object\" || Array.isArray(copied.claims)) { throw new TypeError(\"Sloppy Auth.signIn claims.claims must be a plain object when provided.\"); } Object.assign(copied, copied.claims); delete copied.claims; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { throw new Error(\"sloppy: auth session secret config is required.\"); } const secret = __sloppy_auth_config_value(scheme.secretConfigKey, scheme.secretEnvKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const nowMs = Date.now(); const current = Math.floor(nowMs / 1000); let payload; let maxAgeSeconds = scheme.maxAgeSeconds; if (scheme.store === \"memory\") { const sid = `session-${nowMs}-${++__sloppy_auth_session_counter}`; const absolute = nowMs + (Number.isInteger(scheme.absoluteTimeoutMs) ? scheme.absoluteTimeoutMs : 86400000); const idle = Number.isInteger(scheme.idleTimeoutMs) ? nowMs + scheme.idleTimeoutMs : undefined; __sloppy_auth_memory_sessions.set(sid, { id: sid, claims: copied, createdAt: nowMs, lastSeenAt: nowMs, expiresAt: absolute, idleExpiresAt: idle }); payload = { sid }; maxAgeSeconds = Math.ceil((absolute - nowMs) / 1000); ctx.session = Object.freeze({ id: sid, scheme: scheme.name, issuedAt: current, expiresAt: Math.floor(absolute / 1000), revoke() { __sloppy_auth_memory_sessions.delete(sid); } }); } else { payload = { iat: current, claims: copied }; if (Number.isInteger(scheme.maxAgeSeconds)) { payload.exp = current + scheme.maxAgeSeconds; } } const body = Base64Url.encode(Text.utf8.encode(JSON.stringify(payload))); const signature = await Hmac.sha256(Secret.fromUtf8(secret), body); const value = `${body}.${Base64Url.encode(signature)}`; ctx.user = __sloppy_auth_user(copied, \"cookieSession\", scheme.name); const options = { path: scheme.path ?? \"/\", secure: scheme.secure !== false, httpOnly: scheme.httpOnly !== false, sameSite: scheme.sameSite ?? \"lax\" }; if (Number.isInteger(maxAgeSeconds)) { options.maxAgeSeconds = maxAgeSeconds; } return Results.ok({ ok: true }).cookie(scheme.cookie, value, options); }",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "function __sloppy_auth_sign_out(ctx) { const scheme = __sloppy_auth_session_scheme(); ctx.user = __sloppy_auth_anonymous(); return Results.status(204).cookie(scheme.cookie, \"\", { path: scheme.path ?? \"/\", secure: scheme.secure !== false, httpOnly: scheme.httpOnly !== false, sameSite: scheme.sameSite ?? \"lax\", maxAgeSeconds: 0, expires: new Date(0) }); }",
+            "function __sloppy_auth_sign_out(ctx) { const scheme = __sloppy_auth_session_scheme(); if (typeof ctx?.session?.id === \"string\") { __sloppy_auth_memory_sessions.delete(ctx.session.id); } ctx.user = __sloppy_auth_anonymous(); return Results.status(204).cookie(scheme.cookie, \"\", { path: scheme.path ?? \"/\", secure: scheme.secure !== false, httpOnly: scheme.httpOnly !== false, sameSite: scheme.sameSite ?? \"lax\", maxAgeSeconds: 0, expires: new Date(0) }); }",
+        );
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "async function __sloppy_auth_rotate_session(ctx, result) { if (result === null || typeof result !== \"object\" || typeof result.cookie !== \"function\" || typeof ctx?.session?.id !== \"string\") { return result; } const scheme = __sloppy_auth_schemes.find((entry) => entry.kind === \"cookieSession\" && entry.store === \"memory\" && entry.rotation === true && entry.name === ctx.session.scheme); if (scheme === undefined) { return result; } const previous = __sloppy_auth_memory_sessions.get(ctx.session.id); if (previous === undefined || previous.revokedAt !== undefined) { return result; } if (typeof scheme.secretConfigKey !== \"string\" || scheme.secretConfigKey.length === 0) { throw new Error(\"sloppy: auth session secret config is required.\"); } const secret = __sloppy_auth_config_value(scheme.secretConfigKey, scheme.secretEnvKey); if (typeof secret !== \"string\" || secret.length === 0) { throw new Error(`sloppy: auth secret config '${scheme.secretConfigKey}' is required.`); } const nowMs = Date.now(); __sloppy_auth_memory_sessions.delete(ctx.session.id); const sid = `session-${nowMs}-${++__sloppy_auth_session_counter}`; const absolute = Number.isInteger(previous.expiresAt) ? previous.expiresAt : nowMs + (Number.isInteger(scheme.absoluteTimeoutMs) ? scheme.absoluteTimeoutMs : 86400000); const idle = Number.isInteger(scheme.idleTimeoutMs) ? nowMs + scheme.idleTimeoutMs : undefined; const record = { id: sid, claims: previous.claims, createdAt: previous.createdAt, lastSeenAt: nowMs, expiresAt: absolute, idleExpiresAt: idle }; __sloppy_auth_memory_sessions.set(sid, record); const body = Base64Url.encode(Text.utf8.encode(JSON.stringify({ sid }))); const signature = await Hmac.sha256(Secret.fromUtf8(secret), body); const value = `${body}.${Base64Url.encode(signature)}`; ctx.session = Object.freeze({ id: sid, scheme: scheme.name, issuedAt: Math.floor(record.createdAt / 1000), expiresAt: Math.floor(record.expiresAt / 1000), revoke() { __sloppy_auth_memory_sessions.delete(sid); } }); return result.cookie(scheme.cookie, value, { path: scheme.path ?? \"/\", secure: scheme.secure !== false, httpOnly: scheme.httpOnly !== false, sameSite: scheme.sameSite ?? \"lax\", maxAgeSeconds: Math.ceil((absolute - nowMs) / 1000) }); }",
         );
         push_generated_line(
             &mut output,
@@ -20380,12 +20666,12 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "async function __sloppy_authenticate(ctx) { ctx.user ??= __sloppy_auth_anonymous(); for (const scheme of __sloppy_auth_schemes) { if (scheme.kind === \"jwtBearer\") { const value = __sloppy_request_header(ctx, \"authorization\"); if (typeof value !== \"string\") { continue; } const match = value.match(/^Bearer\\s+(.+)$/i); if (match === null) { return false; } const user = await __sloppy_auth_jwt(match[1], scheme); if (user === undefined) { return false; } ctx.user = user; return true; } if (scheme.kind === \"cookieSession\") { const user = await __sloppy_auth_session(ctx, scheme); if (user === undefined) { continue; } if (user === false) { return false; } ctx.user = user; return true; } if (scheme.kind === \"apiKey\") { const key = __sloppy_request_header(ctx, scheme.header); if (typeof key !== \"string\") { continue; } if (typeof scheme.configKey !== \"string\" || scheme.configKey.length === 0) { return false; } const expected = Environment.get(scheme.configKey); if (typeof expected !== \"string\" || expected.length === 0 || !__sloppy_ct_string(key, expected)) { return false; } ctx.user = __sloppy_auth_user({ sub: \"api-key\" }, \"apiKey\"); return true; } } return false; }",
+            "async function __sloppy_authenticate(ctx) { ctx.user ??= __sloppy_auth_anonymous(); for (const scheme of __sloppy_auth_schemes) { if (scheme.kind === \"jwtBearer\") { const value = __sloppy_request_header(ctx, \"authorization\"); if (typeof value !== \"string\") { continue; } const match = value.match(/^Bearer\\s+(.+)$/i); if (match === null) { return false; } const user = await __sloppy_auth_jwt(match[1], scheme); if (user === undefined) { return false; } ctx.user = user; return true; } if (scheme.kind === \"cookieSession\") { const user = await __sloppy_auth_session(ctx, scheme); if (user === undefined) { continue; } if (user === false) { return false; } ctx.user = user; return true; } if (scheme.kind === \"apiKey\") { const key = __sloppy_request_header(ctx, scheme.header); if (typeof key !== \"string\") { continue; } if (typeof scheme.configKey !== \"string\" || scheme.configKey.length === 0) { return false; } const expected = __sloppy_auth_config_value(scheme.configKey, scheme.configEnvKey); if (typeof expected !== \"string\" || expected.length === 0 || !__sloppy_ct_string(key, expected)) { return false; } ctx.user = __sloppy_auth_user({ sub: \"api-key\" }, \"apiKey\", scheme.name); return true; } } return false; }",
         );
         push_generated_line(
             &mut output,
             &mut generated_line,
-            "async function __sloppy_require_auth(ctx, requirement, terminal) { if (ctx.user === undefined || ctx.user.authenticated !== true) { const ok = await __sloppy_authenticate(ctx); if (!ok) { return __sloppy_auth_problem(401, \"Unauthorized\", \"SLOPPY_E_AUTH_UNAUTHORIZED\"); } } if (Array.isArray(requirement.roles) && requirement.roles.length !== 0 && !requirement.roles.some((role) => ctx.user.hasRole(role))) { return __sloppy_auth_problem(403, \"Forbidden\", \"SLOPPY_E_AUTH_FORBIDDEN\"); } if (Array.isArray(requirement.claims) && requirement.claims.length !== 0 && !requirement.claims.every((claim) => ctx.user.hasClaim(claim))) { return __sloppy_auth_problem(403, \"Forbidden\", \"SLOPPY_E_AUTH_FORBIDDEN\"); } if (typeof requirement.policy === \"string\" && requirement.policy.length !== 0) { const policy = __sloppy_auth_policies.get(requirement.policy); if (typeof policy !== \"function\" || (await policy(ctx.user, ctx)) !== true) { return __sloppy_auth_problem(403, \"Forbidden\", \"SLOPPY_E_AUTH_FORBIDDEN\"); } } return await terminal(); }",
+            "async function __sloppy_require_auth(ctx, requirement, terminal) { __sloppy_auth_attach_context(ctx); if (requirement && requirement.required === false) { return await terminal(); } if (ctx.user === undefined || ctx.user.authenticated !== true) { const ok = await __sloppy_authenticate(ctx); if (!ok) { return __sloppy_auth_problem(401, \"Unauthorized\", \"SLOPPY_E_AUTH_UNAUTHORIZED\"); } __sloppy_auth_attach_context(ctx); } if (Array.isArray(requirement.schemes) && requirement.schemes.length !== 0 && !requirement.schemes.includes(ctx.user.scheme) && !requirement.schemes.includes(ctx.user.authScheme)) { return __sloppy_auth_problem(401, \"Unauthorized\", \"SLOPPY_E_AUTH_UNAUTHORIZED\"); } if ((!Array.isArray(requirement.schemes) || requirement.schemes.length === 0) && typeof __sloppy_auth_default_scheme === \"string\" && ctx.user.scheme !== __sloppy_auth_default_scheme && ctx.user.authScheme !== __sloppy_auth_default_scheme) { return __sloppy_auth_problem(401, \"Unauthorized\", \"SLOPPY_E_AUTH_UNAUTHORIZED\"); } if (Array.isArray(requirement.scopes) && requirement.scopes.length !== 0 && !requirement.scopes.every((scope) => ctx.user.hasScope(scope))) { return __sloppy_auth_problem(403, \"Forbidden\", \"SLOPPY_E_AUTH_FORBIDDEN\"); } if (Array.isArray(requirement.roles) && requirement.roles.length !== 0 && !requirement.roles.some((role) => ctx.user.hasRole(role))) { return __sloppy_auth_problem(403, \"Forbidden\", \"SLOPPY_E_AUTH_FORBIDDEN\"); } if (Array.isArray(requirement.claims) && requirement.claims.length !== 0 && !requirement.claims.every((claim) => ctx.user.hasClaim(claim))) { return __sloppy_auth_problem(403, \"Forbidden\", \"SLOPPY_E_AUTH_FORBIDDEN\"); } if (typeof requirement.policy === \"string\" && requirement.policy.length !== 0) { const policy = __sloppy_auth_policies.get(requirement.policy); if (typeof policy !== \"function\" || (await policy(ctx.user, ctx)) !== true) { return __sloppy_auth_problem(403, \"Forbidden\", \"SLOPPY_E_AUTH_FORBIDDEN\"); } } return await __sloppy_auth_rotate_session(ctx, await terminal()); }",
         );
     }
     if needs_request_id_helper {

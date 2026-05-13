@@ -11,6 +11,11 @@ app.use(Auth.jwtBearer({
 app.use(Auth.cookieSession({
     name: "sloppy.session",
     secret: Config.required("Auth:SessionSecret"),
+    store: Auth.sessionStore.memory({ maxEntries: 128 }),
+    idleTimeoutMs: 1800000,
+    absoluteTimeoutMs: 86400000,
+    rotation: true,
+    csrf: true,
 }));
 
 app.get("/public", () => Results.ok({ ok: true }));
@@ -43,8 +48,14 @@ app.get("/internal/status", () => Results.ok({ ok: true }))
 app.auth.addPolicy("admin-or-ops", (user) =>
     user.roles.includes("admin") || user.claims.department === "ops",
 );
+app.auth.addPolicy("users-read", Auth.policy((policy) =>
+    policy.requireAuthenticated().requireScope("users:read"),
+));
 
 app.get("/ops", () => Results.ok({ ok: true }))
     .requireAuth({ policy: "admin-or-ops" });
+
+app.get("/users", () => Results.ok({ ok: true }))
+    .requireAuth({ policy: "users-read" });
 
 export default app;

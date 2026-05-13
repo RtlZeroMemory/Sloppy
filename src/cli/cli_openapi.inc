@@ -649,6 +649,17 @@ static bool sl_cli_openapi_route_has_response_status(const SlCliRoute* route, ui
     return sl_cli_openapi_response_status_seen(route, route->response_count, status);
 }
 
+static void sl_cli_openapi_emit_problem_response(FILE* out, uint64_t status, const char* description)
+{
+    sl_cli_write_cstr(out, "          \"");
+    sl_cli_write_u64(out, status);
+    sl_cli_write_cstr(out, "\": { \"description\": ");
+    sl_cli_json_escape(out, sl_cli_span_cstr(description));
+    sl_cli_write_cstr(out,
+                      ", \"content\": { \"application/problem+json\": { \"schema\": { \"$ref\": "
+                      "\"#/components/schemas/SlopValidationProblem\" } } } }");
+}
+
 static void sl_cli_openapi_emit_response(FILE* out, const SlCliMetadata* metadata,
                                          const SlCliRoute* route, uint64_t status, SlCliSpan kind,
                                          SlCliSpan helper, SlCliSpan body_schema)
@@ -703,11 +714,20 @@ static void sl_cli_openapi_emit_responses(FILE* out, const SlCliMetadata* metada
     {
         sl_cli_write_cstr(out, first ? "" : ",\n");
         sl_cli_write_cstr(out, "          \"400\": { \"$ref\": "
-                               "\"#/components/responses/SlopValidationProblem\" }\n");
+                               "\"#/components/responses/SlopValidationProblem\" }");
+        first = false;
     }
-    else {
-        sl_cli_write_cstr(out, "\n");
+    if (route->auth_required && !sl_cli_openapi_route_has_response_status(route, 401U)) {
+        sl_cli_write_cstr(out, first ? "" : ",\n");
+        sl_cli_openapi_emit_problem_response(out, 401U, "authentication failed");
+        first = false;
     }
+    if (route->auth_required && !sl_cli_openapi_route_has_response_status(route, 403U)) {
+        sl_cli_write_cstr(out, first ? "" : ",\n");
+        sl_cli_openapi_emit_problem_response(out, 403U, "authorization failed");
+        first = false;
+    }
+    sl_cli_write_cstr(out, "\n");
     sl_cli_write_cstr(out, "        }");
 }
 
@@ -742,10 +762,83 @@ static void sl_cli_openapi_emit_candidates(FILE* out, const SlCliMetadata* metad
     sl_cli_write_cstr(out, "]");
 }
 
+static bool sl_cli_openapi_auth_scheme_known(const SlCliMetadata* metadata, SlCliSpan name)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < metadata->auth_scheme_count; index += 1U) {
+        if (sl_cli_span_equal(metadata->auth_schemes[index].name, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_cli_openapi_route_has_unknown_auth_scheme(const SlCliMetadata* metadata,
+                                                        const SlCliRoute* route)
+{
+    size_t index = 0U;
+
+    for (index = 0U; index < route->auth_scheme_count; index += 1U) {
+        if (!sl_cli_openapi_auth_scheme_known(metadata, route->auth_schemes[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void sl_cli_openapi_emit_string_array(FILE* out, const SlCliSpan* values, size_t count)
+{
+    size_t index = 0U;
+
+    sl_cli_write_cstr(out, "[");
+    for (index = 0U; index < count; index += 1U) {
+        sl_cli_write_cstr(out, index == 0U ? "" : ", ");
+        sl_cli_json_escape(out, values[index]);
+    }
+    sl_cli_write_cstr(out, "]");
+}
+
+static void sl_cli_openapi_emit_auth_metadata(FILE* out, const SlCliRoute* route, bool* first)
+{
+    if (!route->auth_required && !route->auth_allow_anonymous) {
+        return;
+    }
+
+    sl_cli_openapi_emit_field_prefix(out, first);
+    sl_cli_write_cstr(out, "\"x-slop-auth\": {\n          \"required\": ");
+    sl_cli_write_cstr(out, route->auth_required ? "true" : "false");
+    if (route->auth_allow_anonymous) {
+        sl_cli_write_cstr(out, ",\n          \"allowAnonymous\": true");
+    }
+    if (route->auth_scheme_count > 0U) {
+        sl_cli_write_cstr(out, ",\n          \"schemes\": ");
+        sl_cli_openapi_emit_string_array(out, route->auth_schemes, route->auth_scheme_count);
+    }
+    if (route->auth_scope_count > 0U) {
+        sl_cli_write_cstr(out, ",\n          \"scopes\": ");
+        sl_cli_openapi_emit_string_array(out, route->auth_scopes, route->auth_scope_count);
+    }
+    if (route->auth_role_count > 0U) {
+        sl_cli_write_cstr(out, ",\n          \"roles\": ");
+        sl_cli_openapi_emit_string_array(out, route->auth_roles, route->auth_role_count);
+    }
+    if (route->auth_claim_count > 0U) {
+        sl_cli_write_cstr(out, ",\n          \"claims\": ");
+        sl_cli_openapi_emit_string_array(out, route->auth_claims, route->auth_claim_count);
+    }
+    if (!sl_cli_span_empty(route->auth_policy)) {
+        sl_cli_write_cstr(out, ",\n          \"policy\": ");
+        sl_cli_json_escape(out, route->auth_policy);
+    }
+    sl_cli_write_cstr(out, "\n        }");
+}
+
 static void sl_cli_openapi_emit_security(FILE* out, const SlCliMetadata* metadata,
                                          const SlCliRoute* route, bool* first)
 {
     size_t index = 0U;
+    size_t scheme_count = route->auth_scheme_count;
 
     if (!route->auth_required) {
         return;
@@ -756,12 +849,23 @@ static void sl_cli_openapi_emit_security(FILE* out, const SlCliMetadata* metadat
             out, "\"x-slop-partial\": \"auth required but auth scheme metadata is missing\"");
         return;
     }
+    if (scheme_count > 0U && sl_cli_openapi_route_has_unknown_auth_scheme(metadata, route)) {
+        sl_cli_openapi_emit_field_prefix(out, first);
+        sl_cli_write_cstr(
+            out, "\"x-slop-partial\": \"auth route references an unknown auth scheme\"");
+        return;
+    }
+    if (scheme_count == 0U) {
+        scheme_count = metadata->auth_scheme_count;
+    }
     sl_cli_openapi_emit_field_prefix(out, first);
     sl_cli_write_cstr(out, "\"security\": [");
-    for (index = 0U; index < metadata->auth_scheme_count; index += 1U) {
+    for (index = 0U; index < scheme_count; index += 1U) {
         sl_cli_write_cstr(out, index == 0U ? "" : ", ");
         sl_cli_write_cstr(out, "{ ");
-        sl_cli_json_escape(out, metadata->auth_schemes[index].name);
+        sl_cli_json_escape(
+            out, route->auth_scheme_count == 0U ? metadata->auth_schemes[index].name
+                                                : route->auth_schemes[index]);
         sl_cli_write_cstr(out, ": [] }");
     }
     sl_cli_write_cstr(out, "]");
@@ -871,6 +975,7 @@ static void sl_cli_openapi_emit_operation(FILE* out, const SlCliMetadata* metada
         sl_cli_write_cstr(out, "]");
     }
     sl_cli_openapi_emit_security(out, metadata, route, &first);
+    sl_cli_openapi_emit_auth_metadata(out, route, &first);
     if (!sl_cli_span_empty(route->kind) && !sl_cli_span_equal_cstr(route->kind, "http")) {
         sl_cli_openapi_emit_field_prefix(out, &first);
         sl_cli_write_cstr(out, "\"x-slop-realtime\": { \"kind\": ");

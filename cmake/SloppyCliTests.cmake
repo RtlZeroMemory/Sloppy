@@ -208,6 +208,12 @@
         sloppy.cli.doctor_http_client_json ${SLOPPY_DOCTOR_HTTP_CLIENT_JSON_GOLDEN} doctor
         --plan tests/fixtures/cli/http-client-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_auth_json tests/golden/cli/doctor-auth-json.json doctor --plan
+        tests/fixtures/cli/openapi-auth.plan.json --format json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.doctor_auth_invalid_json tests/golden/cli/doctor-auth-invalid-json.json
+        doctor --plan tests/fixtures/cli/auth-invalid.plan.json --format json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.doctor_workers_text ${SLOPPY_DOCTOR_WORKERS_TEXT_GOLDEN} doctor --plan
         tests/fixtures/cli/workers-policy.plan.json --format text)
     sloppy_add_cli_golden_test(
@@ -301,6 +307,12 @@
         sloppy.cli.audit_http_client_json tests/golden/cli/audit-http-client-json.json audit
         --plan tests/fixtures/cli/http-client-policy.plan.json --format json)
     sloppy_add_cli_golden_test(
+        sloppy.cli.audit_auth_json tests/golden/cli/audit-auth-json.json audit --plan
+        tests/fixtures/cli/openapi-auth.plan.json --format json)
+    sloppy_add_cli_nonzero_golden_test(
+        sloppy.cli.audit_auth_invalid_json tests/golden/cli/audit-auth-invalid-json.json audit
+        --plan tests/fixtures/cli/auth-invalid.plan.json --format json)
+    sloppy_add_cli_golden_test(
         sloppy.cli.audit_workers_text tests/golden/cli/audit-workers-text.txt audit --plan
         tests/fixtures/cli/workers-policy.plan.json --format text)
     sloppy_add_cli_golden_test(
@@ -325,6 +337,9 @@
         sloppy.cli.openapi_auth_missing_schemes_json
         tests/golden/cli/openapi-auth-missing-schemes.json openapi --plan
         tests/fixtures/cli/openapi-auth-missing-schemes.plan.json)
+    sloppy_add_cli_golden_test(
+        sloppy.cli.openapi_auth_json tests/golden/cli/openapi-auth.json openapi --plan
+        tests/fixtures/cli/openapi-auth.plan.json)
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_scalar_schema_json tests/golden/cli/openapi-scalar-schema.json openapi
         --plan tests/fixtures/cli/openapi-scalar-schema.plan.json)

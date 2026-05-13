@@ -7292,6 +7292,13 @@ app.auth.addPolicy("ops", (user) => user.claims.department === requiredDepartmen
 app.get("/", () => Results.ok({ ok: true })).requireAuth({ policy: "ops" });
 export default app;
 "#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+const store = Math.random() > 0 ? Auth.sessionStore.memory() : undefined;
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), store }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
     ] {
         let diagnostic = extract(std::path::Path::new("app.ts"), source)
             .expect_err("unsupported static auth metadata should fail closed");
@@ -7308,7 +7315,11 @@ app.use(Auth.cookieSession({
   secret: Config.required("Auth:SessionSecret"),
   secure: true,
   httpOnly: true,
-  sameSite: "lax"
+  sameSite: "lax",
+  store: Auth.sessionStore.memory(),
+  idleTimeoutMs: 30000,
+  absoluteTimeoutMs: 60000,
+  rotation: true
 }));
 app.get("/me", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
 export default app;
@@ -7325,6 +7336,10 @@ export default app;
             same_site,
             path,
             max_age_seconds,
+            store,
+            idle_timeout_ms,
+            absolute_timeout_ms,
+            rotation,
             secret_config_key,
         } => {
             assert_eq!(name, "cookieSessionAuth");
@@ -7334,6 +7349,10 @@ export default app;
             assert_eq!(same_site, "lax");
             assert_eq!(path, "/");
             assert_eq!(*max_age_seconds, None);
+            assert_eq!(store.as_deref(), Some("memory"));
+            assert_eq!(*idle_timeout_ms, Some(30000));
+            assert_eq!(*absolute_timeout_ms, Some(60000));
+            assert!(*rotation);
             assert_eq!(secret_config_key.as_deref(), Some("Auth:SessionSecret"));
         }
         other => panic!("expected cookie session scheme, got {other:?}"),
@@ -7342,11 +7361,202 @@ export default app;
         .expect("plan should emit cookie auth metadata");
     assert!(plan.contains("\"kind\": \"cookieSession\""));
     assert!(plan.contains("\"cookie\": \"sloppy.session\""));
+    assert!(plan.contains("\"store\": \"memory\""));
+    assert!(plan.contains("\"maxAgeSeconds\": null"));
+    assert!(plan.contains("\"idleTimeoutMs\": 30000"));
+    assert!(plan.contains("\"absoluteTimeoutMs\": 60000"));
+    assert!(plan.contains("\"rotation\": true"));
     assert!(plan.contains("\"configKey\": \"Auth:SessionSecret\""));
     assert!(plan.contains("\"secret\": \"<redacted>\""));
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js.source.contains("__sloppy_auth_session"));
     assert!(emitted_js.source.contains("cookieSession"));
+    assert!(emitted_js
+        .source
+        .contains("\"secretEnvKey\":\"Auth__SessionSecret\""));
+    assert!(emitted_js.source.contains("__sloppy_auth_memory_sessions"));
+    assert!(emitted_js
+        .source
+        .contains("__sloppy_auth_memory_sessions.delete"));
+    assert!(emitted_js.source.contains("__sloppy_auth_rotate_session"));
+    assert!(emitted_js.source.contains("previous.expiresAt"));
+    assert!(emitted_js
+        .source
+        .contains("return await __sloppy_auth_rotate_session(ctx, await terminal());"));
+}
+
+#[test]
+fn static_auth_route_aliases_emit_schemes_scopes_and_anonymous_metadata() {
+    let source = r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.jwtBearer({ secret: Config.required("Auth:JwtSecret") }));
+app.auth.addPolicy("ops", (user) => true);
+app.get("/me", () => Results.ok({ ok: true }))
+  .requiresAuth("bearerAuth")
+  .requiresScope("users:read")
+  .requiresRole("admin")
+  .authorize("ops");
+app.get("/reprotected", () => Results.ok({ ok: true }))
+  .allowAnonymous()
+  .requiresScope("users:read");
+app.get("/anonymous-after-scope", () => Results.ok({ ok: true }))
+  .requiresScope("users:read")
+  .allowAnonymous();
+app.get("/require-after-scope", () => Results.ok({ ok: true }))
+  .requiresScope("lost:scope")
+  .requiresAuth("bearerAuth");
+const group = app.group("/group").requireAuth();
+group.allowAnonymous();
+group.get("/open", () => Results.ok({ ok: true }));
+app.get("/public", () => Results.ok({ ok: true })).allowAnonymous();
+export default app;
+"#;
+    let app =
+        extract(std::path::Path::new("app.ts"), source).expect("auth route aliases should extract");
+    let protected = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/me")
+        .expect("protected route should exist")
+        .auth
+        .as_ref()
+        .expect("protected route auth should extract");
+    assert!(protected.required);
+    assert_eq!(protected.schemes, vec!["bearerAuth"]);
+    assert_eq!(protected.scopes, vec!["users:read"]);
+    assert_eq!(protected.roles, vec!["admin"]);
+    assert_eq!(protected.policy.as_deref(), Some("ops"));
+    let reprotected = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/reprotected")
+        .expect("reprotected route should exist")
+        .auth
+        .as_ref()
+        .expect("reprotected route auth should extract");
+    assert!(reprotected.required);
+    assert!(!reprotected.allow_anonymous);
+    assert_eq!(reprotected.scopes, vec!["users:read"]);
+    let anonymous_after_scope = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/anonymous-after-scope")
+        .expect("anonymous-after-scope route should exist")
+        .auth
+        .as_ref()
+        .expect("anonymous-after-scope route auth should extract");
+    assert!(!anonymous_after_scope.required);
+    assert!(anonymous_after_scope.allow_anonymous);
+    assert!(anonymous_after_scope.scopes.is_empty());
+    let require_after_scope = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/require-after-scope")
+        .expect("require-after-scope route should exist")
+        .auth
+        .as_ref()
+        .expect("require-after-scope route auth should extract");
+    assert!(require_after_scope.required);
+    assert_eq!(require_after_scope.schemes, vec!["bearerAuth"]);
+    assert!(require_after_scope.scopes.is_empty());
+    let group_open = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/group/open")
+        .expect("group route should exist")
+        .auth
+        .as_ref()
+        .expect("group route auth should extract");
+    assert!(!group_open.required);
+    assert!(group_open.allow_anonymous);
+    let public = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/public")
+        .expect("public route should exist")
+        .auth
+        .as_ref()
+        .expect("anonymous route auth should extract");
+    assert!(!public.required);
+    assert!(public.allow_anonymous);
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("\"secretEnvKey\":\"Auth__JwtSecret\""));
+    assert!(emitted_js.source.contains("__sloppy_auth_config_value"));
+    let plan = super::emit_plan(&app, "bundle-hash", "map-hash")
+        .expect("plan should emit auth route metadata");
+    let plan: serde_json::Value =
+        serde_json::from_str(&plan).expect("plan output should be valid JSON");
+    let routes = plan["routes"]
+        .as_array()
+        .expect("plan routes should be an array");
+    let protected = routes
+        .iter()
+        .find(|route| route["pattern"] == "/me")
+        .expect("protected route should be emitted");
+    assert_eq!(
+        protected["dispatch"]["executionKind"],
+        serde_json::json!("v8-handler")
+    );
+    assert!(protected["response"].get("nativeBody").is_none());
+    assert_eq!(
+        protected["bindings"][0]["kind"],
+        serde_json::json!("context")
+    );
+    assert_eq!(
+        protected["auth"]["schemes"],
+        serde_json::json!(["bearerAuth"])
+    );
+    assert_eq!(
+        protected["auth"]["scopes"],
+        serde_json::json!(["users:read"])
+    );
+    assert_eq!(protected["auth"]["roles"], serde_json::json!(["admin"]));
+    assert_eq!(protected["auth"]["policy"], serde_json::json!("ops"));
+    let reprotected = routes
+        .iter()
+        .find(|route| route["pattern"] == "/reprotected")
+        .expect("reprotected route should be emitted");
+    assert_eq!(reprotected["auth"]["required"], serde_json::json!(true));
+    assert_eq!(
+        reprotected["auth"]["scopes"],
+        serde_json::json!(["users:read"])
+    );
+    let anonymous_after_scope = routes
+        .iter()
+        .find(|route| route["pattern"] == "/anonymous-after-scope")
+        .expect("anonymous-after-scope route should be emitted");
+    assert_eq!(
+        anonymous_after_scope["auth"]["allowAnonymous"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        anonymous_after_scope["auth"]["scopes"],
+        serde_json::json!([])
+    );
+    let require_after_scope = routes
+        .iter()
+        .find(|route| route["pattern"] == "/require-after-scope")
+        .expect("require-after-scope route should be emitted");
+    assert_eq!(
+        require_after_scope["auth"]["schemes"],
+        serde_json::json!(["bearerAuth"])
+    );
+    assert_eq!(require_after_scope["auth"]["scopes"], serde_json::json!([]));
+    let group_open = routes
+        .iter()
+        .find(|route| route["pattern"] == "/group/open")
+        .expect("group route should be emitted");
+    assert_eq!(
+        group_open["auth"]["allowAnonymous"],
+        serde_json::json!(true)
+    );
+    let public = routes
+        .iter()
+        .find(|route| route["pattern"] == "/public")
+        .expect("public route should be emitted");
+    assert_eq!(public["auth"]["allowAnonymous"], serde_json::json!(true));
 }
 
 #[test]

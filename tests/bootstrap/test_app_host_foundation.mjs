@@ -1466,6 +1466,16 @@ async function flushMicrotasks(count = 6) {
     assert.equal(wildcard.headers["Access-Control-Allow-Origin"], "*");
     assert.equal(wildcard.headers.Vary, undefined);
 
+    const aliasApp = Sloppy.create();
+    aliasApp.cors({ origins: ["https://alias.example"] });
+    aliasApp.get("/alias", () => Results.ok({ ok: true }));
+    const alias = aliasApp.__getRoutes()[0].handler({
+        request: {
+            headers: requestHeaders({ Origin: "https://alias.example" }),
+        },
+    });
+    assert.equal(alias.headers["Access-Control-Allow-Origin"], "https://alias.example");
+
     assertThrowsMessage(() => Sloppy.create().useCors({}), /origins/);
     assertThrowsMessage(() => Sloppy.create().useCors({ origins: "*", credentials: true }), /credentials/);
     assertThrowsMessage(() => Sloppy.create().useCors({ origins: "https://app.example", headers: ["bad header"] }), /HTTP token/);
@@ -2014,7 +2024,7 @@ async function flushMicrotasks(count = 6) {
     app.get("/key", (ctx) => Results.json({
         authenticated: ctx.user.authenticated,
         sub: ctx.user.sub,
-    })).requireAuth();
+    })).requireAuth({ schemes: ["apiKeyAuth"] });
     app.get("/principal", (ctx) => Results.json({
         authenticated: ctx.user.authenticated,
         sub: ctx.user.sub,
@@ -2091,7 +2101,7 @@ async function flushMicrotasks(count = 6) {
                 trace: "trace-1",
             });
         await host.post("/form").form({ name: "Ada", role: "admin" }).expectJson({ name: "Ada", role: "admin" });
-        await host.get("/principal").asUser({ sub: "u_1", roles: ["admin"] }).expectJson({
+        await host.get("/principal").asUser({ sub: "u_1", roles: ["admin"], scheme: "bearerAuth" }).expectJson({
             authenticated: true,
             sub: "u_1",
         });

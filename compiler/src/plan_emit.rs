@@ -807,6 +807,9 @@ pub(crate) fn emit_plan_with_route_artifact(
             if let Some(auth) = &route.auth {
                 route_json["auth"] = json!({
                     "required": auth.required,
+                    "allowAnonymous": auth.allow_anonymous,
+                    "schemes": auth.schemes,
+                    "scopes": auth.scopes,
                     "roles": auth.roles,
                     "claims": auth.claims,
                     "policy": auth.policy
@@ -1391,6 +1394,10 @@ pub(crate) fn emit_plan_with_route_artifact(
                 same_site,
                 path,
                 max_age_seconds,
+                store,
+                idle_timeout_ms,
+                absolute_timeout_ms,
+                rotation,
                 secret_config_key,
             } => json!({
                 "kind": "cookieSession",
@@ -1402,6 +1409,10 @@ pub(crate) fn emit_plan_with_route_artifact(
                 "sameSite": same_site,
                 "path": path,
                 "maxAgeSeconds": max_age_seconds,
+                "store": store,
+                "idleTimeoutMs": idle_timeout_ms,
+                "absoluteTimeoutMs": absolute_timeout_ms,
+                "rotation": rotation,
                 "configKey": secret_config_key,
                 "secret": "<redacted>"
             }),

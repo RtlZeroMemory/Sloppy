@@ -23,6 +23,8 @@ typedef struct SlCliRoute
     size_t header_count;
     yyjson_val* openapi_override_value;
     size_t tag_count;
+    size_t auth_scheme_count;
+    size_t auth_scope_count;
     size_t auth_role_count;
     size_t auth_claim_count;
     uint64_t source_line;
@@ -62,6 +64,8 @@ typedef struct SlCliRoute
     SlCliSpan json_response_schema;
     SlCliSpan json_response_fallback;
     SlCliSpan dynamic_reason;
+    SlCliSpan auth_schemes[SL_CLI_MAX_ROUTE_AUTH_SCHEMES];
+    SlCliSpan auth_scopes[SL_CLI_MAX_ROUTE_AUTH_SCOPES];
     SlCliSpan auth_roles[SL_CLI_MAX_ROUTE_AUTH_ROLES];
     SlCliSpan auth_claims[SL_CLI_MAX_ROUTE_AUTH_CLAIMS];
     uint64_t response_statuses[SL_CLI_MAX_ROUTE_RESPONSES];
@@ -88,6 +92,7 @@ typedef struct SlCliRoute
     bool docs_internal;
     bool docs_strict;
     bool auth_required;
+    bool auth_allow_anonymous;
     bool dynamic_metadata;
     bool header_required[SL_CLI_MAX_ROUTE_BINDINGS];
 } SlCliRoute;
@@ -158,6 +163,7 @@ typedef struct SlCliAuthScheme
     SlCliSpan name;
     SlCliSpan header;
     SlCliSpan cookie;
+    SlCliSpan store;
 } SlCliAuthScheme;
 
 typedef struct SlCliFfiFunction

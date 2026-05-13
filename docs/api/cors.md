@@ -1,8 +1,8 @@
 # CORS
 
 `app.useCors(policy)` enables Cross-Origin Resource Sharing for routes
-registered after the call. It also auto-registers an `OPTIONS` preflight route
-for each subsequent path.
+registered after the call. `app.cors(policy)` is an alias. It also
+auto-registers an `OPTIONS` preflight route for each subsequent path.
 
 ```ts
 import { Sloppy } from "sloppy";
