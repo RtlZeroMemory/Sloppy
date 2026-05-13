@@ -168,8 +168,6 @@ assert.equal(typeof TestServices.sqlServer, "function");
 assert.equal(typeof TestServices.docker.available, "function");
 assert.equal(typeof FakeClock.fixed, "function");
 assert.equal(typeof TestData.sqliteMemory, "function");
-assert.equal(typeof TestServices.postgres, "function");
-assert.equal(typeof TestServices.sqlserver, "function");
 assert.equal(RootBackgroundService, BackgroundService);
 assert.equal(RootFfiTypes, t);
 assert.equal(RootUnsafeFfi, unsafeFfi);

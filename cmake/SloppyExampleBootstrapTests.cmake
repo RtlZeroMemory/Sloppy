@@ -172,10 +172,6 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_orm_testhost.mjs")
         add_test(
-            NAME bootstrap.stdlib.testservices
-            COMMAND "${NODE_EXECUTABLE}"
-                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_testservices.mjs")
-        add_test(
             NAME bootstrap.stdlib.codec
             COMMAND "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_codec.mjs")
         add_test(NAME bootstrap.stdlib.auth

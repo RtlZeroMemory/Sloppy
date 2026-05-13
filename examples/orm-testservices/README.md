@@ -1,6 +1,6 @@
 # ORM TestServices
 
-`TestServices.postgres()` and `TestServices.sqlserver()` are opt-in live
+`TestServices.postgres()` and `TestServices.sqlServer()` are opt-in live
 provider helpers for app-host tests. They report `SKIPPED` when the matching
 environment variable or native bridge is unavailable.
 
