@@ -1620,7 +1620,7 @@ function createSqliteConnection(nativeBridge, handle) {
 function redactConnectionString(value) {
     return value
         .replace(
-            /(^|[\s&])(password=)(?:'(?:\\.|[^'])*'|"(?:\\.|[^"])*"|[^\s&]*)/gi,
+            /(^|[\s;?&])(password\s*=\s*)(?:'(?:\\.|[^'])*'|"(?:\\.|[^"])*"|[^\s;?&]*)/gi,
             (_match, prefix, key) => `${prefix}${key}<redacted>`,
         )
         .replace(/(postgres(?:ql)?:\/\/[^:\s/@]+:)[^@\s/]+(@)/gi, "$1<redacted>$2");

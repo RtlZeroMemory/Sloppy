@@ -390,6 +390,7 @@ pub(crate) enum AuthSchemeMetadata {
         idle_timeout_ms: Option<i64>,
         absolute_timeout_ms: Option<i64>,
         rotation: bool,
+        csrf: bool,
         secret_config_key: Option<String>,
     },
 }

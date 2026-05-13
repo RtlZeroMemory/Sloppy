@@ -26,10 +26,17 @@ boring to review. This page defines the standards for code under
 ## C Safety
 
 - Use checked size arithmetic for capacities, offsets, lengths, and counts.
+- Check multiplication before encoded-size, array, row, or driver-parameter
+  capacity calculations. A "large input is impossible" assumption is not a
+  safety argument.
 - Do not use raw `strcpy`, `strcat`, `sprintf`, or unchecked pointer arithmetic.
 - Write through bounded builders or explicit capacity checks.
 - Treat external input as untrusted until parsed and validated.
 - Keep every allocation paired with a clear owner and cleanup path.
+- Clear output pointers or result structs before returning failure when callers
+  may pass sentinels or reused storage.
+- Roll back arena marks after validation-only allocations that do not become
+  part of the successful result.
 - Do not store arena-backed pointers beyond the arena's lifetime.
 - Do not store request-lifetime views in app-lifetime objects.
 - Keep cleanup labels consistent inside a function; cleanup must run on every
@@ -45,6 +52,12 @@ boring to review. This page defines the standards for code under
 - Redact secrets before diagnostics, doctor output, CLI output, logs, and test
   reports. Never echo raw connection strings, tokens, passwords, or large
   request/response bodies.
+- Redaction covers every rendered diagnostic field, including hints, provider
+  details, report JSON, Authorization values with any scheme, and backend error
+  text attached to a SQL statement.
+- Copy or render driver-owned error text before clearing provider result handles.
+  Do not hold pointers returned by a driver after the result, statement, or
+  handle that owns them has been released.
 - Keep previews bounded and deterministic.
 - Construct diagnostics off the success path in hot code whenever possible.
 
@@ -60,9 +73,32 @@ boring to review. This page defines the standards for code under
   bridge-owned persistent/global handles and explicit reset during shutdown.
 - libuv handles must be closed through the platform/libuv owner and must not be
   observed as closed before their close callback has run.
+- Once a libuv handle initializes successfully, every accept, bind, connect, or
+  setup failure path must close it through the owning close callback.
 - Provider connections, statements, results, cursors, and transactions must have
   deterministic cleanup on normal completion, early exit, cancellation, timeout,
   and runtime shutdown.
+
+## Security Regression Guardrails
+
+- Narrowing sizes for C, C++, ODBC, libpq, V8, or OS APIs requires an explicit
+  upper-bound check against the target type before the cast.
+- Read-only database providers must reject obvious writes in Sloppy before
+  execution and, where the backend supports it, configure the backend connection
+  itself as read-only.
+- Provider diagnostics for statement failures should redact the statement and
+  suppress backend detail when the backend may echo user SQL or parameter values.
+- Recursive delete and directory traversal code must not follow symlinks,
+  junctions, or directory reparse points by default. POSIX directory opens use
+  `O_NOFOLLOW`; do not define it to `0` or otherwise compile away the guard.
+  Platforms without it must fail clearly instead of silently following symlinks.
+  Windows directory recursion checks `FILE_ATTRIBUTE_REPARSE_POINT` before descending.
+- Windows dynamic-library loading goes through the platform helper and uses
+  `LoadLibraryExW` search flags. Plain `LoadLibraryW` is not acceptable in
+  Sloppy-owned implementation code.
+- Security fixes should leave a guardrail behind when a broad mechanical rule is
+  possible. Prefer extending the existing standards scanner or focused tests over
+  adding one-off scripts.
 
 ## Hot Paths
 

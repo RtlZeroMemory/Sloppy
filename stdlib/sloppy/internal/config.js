@@ -165,14 +165,16 @@ function coerceConfigBool(value, key) {
     throw new TypeError(`Sloppy config key '${key}' must be a boolean.`);
 }
 
+const CONFIG_SECRET_VALUES = new WeakMap();
+
 class ConfigSecretValue {
     constructor(value) {
-        this._value = coerceConfigString(value, "secret");
+        CONFIG_SECRET_VALUES.set(this, coerceConfigString(value, "secret"));
         Object.freeze(this);
     }
 
     value() {
-        return this._value;
+        return CONFIG_SECRET_VALUES.get(this);
     }
 
     toString() {

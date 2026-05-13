@@ -824,6 +824,14 @@ function createForgedLoweredQuery() {
         "host=localhost Password=<redacted> user=ada",
     );
     assert.equal(
+        data.postgres.redactConnectionString("host=localhost password = 'secret value' user=ada"),
+        "host=localhost password = <redacted> user=ada",
+    );
+    assert.equal(
+        data.postgres.redactConnectionString("postgres://ada@localhost/db?password = 'secret value'&sslmode=require"),
+        "postgres://ada@localhost/db?password = <redacted>&sslmode=require",
+    );
+    assert.equal(
         data.postgres.redactConnectionString("password='secret\\' value' user=ada"),
         "password=<redacted> user=ada",
     );

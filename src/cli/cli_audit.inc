@@ -4,10 +4,50 @@
  * Private audit command emitters.
  * Included only by src/main.c to preserve existing static helper visibility.
  */
+static void sl_cli_audit_text_write_safe(const char* text);
+
 static void sl_cli_audit_text(SlCliSpan severity, const char* code, const char* message,
                               const char* path)
 {
-    printf("[%.*s] %s %s (%s)\n", (int)severity.length, severity.ptr, code, message, path);
+    printf("[%.*s] %s ", (int)severity.length, severity.ptr, code);
+    sl_cli_audit_text_write_safe(message);
+    printf(" (");
+    sl_cli_audit_text_write_safe(path);
+    printf(")\n");
+}
+
+static void sl_cli_audit_text_write_safe(const char* text)
+{
+    const unsigned char* cursor = (const unsigned char*)text;
+
+    if (cursor == NULL) {
+        return;
+    }
+    while (*cursor != '\0') {
+        switch (*cursor) {
+        case '\n':
+            fputs("\\n", stdout);
+            break;
+        case '\r':
+            fputs("\\r", stdout);
+            break;
+        case '\t':
+            fputs("\\t", stdout);
+            break;
+        case '\x1b':
+            fputs("\\x1B", stdout);
+            break;
+        default:
+            if (*cursor < 0x20U || *cursor == 0x7FU || *cursor >= 0x80U) {
+                printf("\\x%02X", (unsigned int)*cursor);
+            }
+            else {
+                fputc((int)*cursor, stdout);
+            }
+            break;
+        }
+        cursor += 1;
+    }
 }
 
 static void sl_cli_audit_json(SlCliSpan severity, const char* code, const char* message,

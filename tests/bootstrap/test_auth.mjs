@@ -264,6 +264,32 @@ try {
 }
 
 {
+    const signed = Auth.cookieSession({ secret: "signed-session-secret" });
+    assert.equal(signed.maxAgeSeconds, 86400);
+    const stored = Auth.cookieSession({
+        secret: "stored-session-secret",
+        store: Auth.sessionStore.memory(),
+    });
+    assert.equal(stored.maxAgeSeconds, undefined);
+    assert.throws(
+        () => Auth.cookieSession({ secret: "signed-session-secret", sameSite: "none", secure: false }),
+        /sameSite none requires secure cookies/,
+    );
+    assert.throws(
+        () => Auth.cookieSession({ secret: "signed-session-secret", csrf: { cookieName: "bad;name" } }),
+        /CSRF cookie name must be a safe HTTP token/,
+    );
+    assert.throws(
+        () => Auth.cookieSession({ secret: "signed-session-secret", csrf: true, secure: false }),
+        /__Host- CSRF cookies require secure true and path/,
+    );
+    assert.throws(
+        () => Auth.cookieSession({ secret: "signed-session-secret", csrf: true, path: "/app" }),
+        /__Host- CSRF cookies require secure true and path/,
+    );
+}
+
+{
     const builder = Sloppy.createBuilder();
     builder.config.addObject({
         Auth: {
@@ -349,6 +375,32 @@ try {
 
 {
     let sessionClock = 1_700_000_000_000;
+    const app = Sloppy.create();
+    app.use(Auth.cookieSession({
+        secret: "signed-override-secret",
+        clock: () => sessionClock,
+        maxAgeSeconds: 3600,
+    }));
+    app.post("/login", (ctx) => Auth.signIn(ctx, { sub: "short-signed" }, { maxAgeSeconds: 1 }));
+    app.get("/me", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
+
+    const host = Testing.createHost(app);
+    const login = await host.post("/login");
+    const setCookie = login.headers.get("set-cookie");
+    assert.equal(cookieMaxAgeSeconds(setCookie), 1);
+    const session = cookieValue(setCookie);
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { cookie: `sloppy.session=${session}` },
+    })).response.status, 200);
+    sessionClock += 1_001;
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { cookie: `sloppy.session=${session}` },
+    })).response.status, 401);
+    await host.close();
+}
+
+{
+    let sessionClock = 1_700_000_000_000;
     const store = Auth.sessionStore.memory({ maxEntries: 8 });
     const app = Sloppy.create();
     app.use(Auth.cookieSession({
@@ -383,6 +435,33 @@ try {
     })).response.status, 200);
 
     sessionClock = 1_700_000_001_001;
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { cookie: `sloppy.session=${session}` },
+    })).response.status, 401);
+    await host.close();
+}
+
+{
+    let sessionClock = 1_700_000_000_000;
+    const app = Sloppy.create();
+    app.use(Auth.cookieSession({
+        secret: "store-override-secret",
+        store: Auth.sessionStore.memory({ maxEntries: 8 }),
+        absoluteTimeoutMs: 5_000,
+        clock: () => sessionClock,
+    }));
+    app.post("/login", (ctx) => Auth.signIn(ctx, { sub: "short-store" }, { maxAgeSeconds: 1 }));
+    app.get("/me", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
+
+    const host = Testing.createHost(app);
+    const login = await host.post("/login");
+    const setCookie = login.headers.get("set-cookie");
+    assert.equal(cookieMaxAgeSeconds(setCookie), 1);
+    const session = cookieValue(setCookie);
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { cookie: `sloppy.session=${session}` },
+    })).response.status, 200);
+    sessionClock += 1_001;
     assert.equal((await requestJson(host, "GET", "/me", {
         headers: { cookie: `sloppy.session=${session}` },
     })).response.status, 401);

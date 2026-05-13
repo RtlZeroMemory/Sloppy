@@ -8,6 +8,13 @@
 #define SL_DYNLIB_MAX_PATH_CHARS 4096U
 #define SL_DYNLIB_MAX_SYMBOL_CHARS 1024U
 
+#ifndef LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR
+#define LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR 0x00000100
+#endif
+#ifndef LOAD_LIBRARY_SEARCH_DEFAULT_DIRS
+#define LOAD_LIBRARY_SEARCH_DEFAULT_DIRS 0x00001000
+#endif
+
 static bool sl_dynlib_str_valid(SlStr value)
 {
     return value.length == 0U || value.ptr != NULL;
@@ -93,11 +100,12 @@ SlStatus sl_platform_dynlib_open(SlStr path, SlPlatformDynlib* out, SlDiag* out_
     if (!sl_dynlib_copy_wide(path, wide, sizeof(wide) / sizeof(wide[0]))) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    handle = LoadLibraryW(wide);
+    handle = LoadLibraryExW(wide, NULL,
+                            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
     if (handle == NULL) {
         sl_dynlib_diag(out_diag, SL_DIAG_FFI_LIBRARY_NOT_FOUND,
                        sl_str_from_cstr("FFI library could not be loaded"),
-                       sl_str_from_cstr("LoadLibraryW failed"));
+                       sl_str_from_cstr("LoadLibraryExW failed"));
         return sl_status_from_code(SL_STATUS_UNSUPPORTED);
     }
     out->handle = (void*)handle;

@@ -655,6 +655,39 @@ app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), stor
 app.get("/", () => Results.ok({ ok: true })).requireAuth();
 export default app;
 "#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), secure: false, csrf: true }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), path: "/app", csrf: true }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+const sameSite = "strict";
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), sameSite }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+const ttl = 60;
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), maxAgeSeconds: ttl }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+const ttl = 60;
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), maxAge: ttl }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
     ] {
         let diagnostic = extract(std::path::Path::new("app.ts"), source)
             .expect_err("unsupported static auth metadata should fail closed");
@@ -675,7 +708,8 @@ app.use(Auth.cookieSession({
   store: Auth.sessionStore.memory(),
   idleTimeoutMs: 30000,
   absoluteTimeoutMs: 60000,
-  rotation: true
+  rotation: true,
+  csrf: true
 }));
 app.get("/me", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
 export default app;
@@ -696,6 +730,7 @@ export default app;
             idle_timeout_ms,
             absolute_timeout_ms,
             rotation,
+            csrf,
             secret_config_key,
         } => {
             assert_eq!(name, "cookieSessionAuth");
@@ -709,6 +744,7 @@ export default app;
             assert_eq!(*idle_timeout_ms, Some(30000));
             assert_eq!(*absolute_timeout_ms, Some(60000));
             assert!(*rotation);
+            assert!(*csrf);
             assert_eq!(secret_config_key.as_deref(), Some("Auth:SessionSecret"));
         }
         other => panic!("expected cookie session scheme, got {other:?}"),
@@ -722,6 +758,7 @@ export default app;
     assert!(plan.contains("\"idleTimeoutMs\": 30000"));
     assert!(plan.contains("\"absoluteTimeoutMs\": 60000"));
     assert!(plan.contains("\"rotation\": true"));
+    assert!(plan.contains("\"csrf\": true"));
     assert!(plan.contains("\"configKey\": \"Auth:SessionSecret\""));
     assert!(plan.contains("\"secret\": \"<redacted>\""));
     let emitted_js = super::emit_app_js(&app);
@@ -730,6 +767,9 @@ export default app;
     assert!(emitted_js
         .source
         .contains("\"secretEnvKey\":\"Auth__SessionSecret\""));
+    assert!(emitted_js.source.contains("\"csrf\":true"));
+    assert!(emitted_js.source.contains("x-csrf-token"));
+    assert!(emitted_js.source.contains("__sloppy_auth_csrf_failure"));
     assert!(emitted_js.source.contains("__sloppy_auth_memory_sessions"));
     assert!(emitted_js
         .source
@@ -739,6 +779,86 @@ export default app;
     assert!(emitted_js
         .source
         .contains("return await __sloppy_auth_rotate_session(ctx, await terminal());"));
+}
+
+#[test]
+fn cookie_session_csrf_boolean_metadata_and_object_runtime_form_compile() {
+    for (source, expected_csrf) in [
+        (
+            r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), csrf: true }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+            true,
+        ),
+        (
+            r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), csrf: false }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+            false,
+        ),
+    ] {
+        let app = extract(std::path::Path::new("app.ts"), source)
+            .expect("boolean csrf should be compiler-visible");
+        match &app.auth.schemes[0] {
+            super::AuthSchemeMetadata::CookieSession { csrf, .. } => {
+                assert_eq!(*csrf, expected_csrf);
+            }
+            other => panic!("expected cookie session scheme, got {other:?}"),
+        }
+    }
+
+    let object_source = r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.cookieSession({
+  secret: Config.required("Auth:SessionSecret"),
+  csrf: { header: "x-app-csrf", cookieName: "app_csrf" }
+}));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), object_source)
+        .expect("runtime-valid object csrf should compile with partial metadata");
+    match &app.auth.schemes[0] {
+        super::AuthSchemeMetadata::CookieSession { csrf, .. } => {
+            assert!(!*csrf);
+        }
+        other => panic!("expected cookie session scheme, got {other:?}"),
+    }
+}
+
+#[test]
+fn generated_memory_session_checks_csrf_before_refreshing_idle_timeout() {
+    let source = r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.cookieSession({
+  secret: Config.required("Auth:SessionSecret"),
+  store: Auth.sessionStore.memory(),
+  idleTimeoutMs: 1000,
+  csrf: true
+}));
+app.post("/unsafe", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("memory csrf app should extract");
+    let emitted = super::emit_app_js(&app).source;
+    let csrf_check = emitted
+        .find("if (!__sloppy_auth_check_csrf(ctx, scheme, record.csrf))")
+        .expect("generated auth should check csrf");
+    let last_seen = emitted
+        .find("record.lastSeenAt = nowMs")
+        .expect("generated auth should refresh lastSeenAt");
+    let idle_refresh = emitted
+        .find("record.idleExpiresAt = nowMs + scheme.idleTimeoutMs")
+        .expect("generated auth should refresh idle timeout");
+    assert!(csrf_check < last_seen);
+    assert!(last_seen < idle_refresh);
 }
 
 #[test]

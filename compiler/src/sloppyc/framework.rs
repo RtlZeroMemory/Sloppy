@@ -1241,6 +1241,7 @@ pub(super) fn auth_schemes_json(auth: &AuthMetadata) -> String {
                     idle_timeout_ms,
                     absolute_timeout_ms,
                     rotation,
+                    csrf,
                     secret_config_key,
                 } => json!({
                     "kind": "cookieSession",
@@ -1255,6 +1256,7 @@ pub(super) fn auth_schemes_json(auth: &AuthMetadata) -> String {
                     "idleTimeoutMs": idle_timeout_ms,
                     "absoluteTimeoutMs": absolute_timeout_ms,
                     "rotation": rotation,
+                    "csrf": csrf,
                     "secretConfigKey": secret_config_key,
                     "secretEnvKey": secret_config_key.as_deref().map(config_key_to_env_name)
                 }),

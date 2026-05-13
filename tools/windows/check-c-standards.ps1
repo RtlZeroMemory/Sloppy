@@ -86,6 +86,12 @@ function Test-PlatformPath {
     return $RelativePath.StartsWith("src/platform/", [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+function Test-PosixPlatformPath {
+    param([string]$RelativePath)
+
+    return $RelativePath.StartsWith("src/platform/posix/", [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function Test-V8Path {
     param([string]$RelativePath)
 
@@ -181,6 +187,8 @@ $allocPattern = '\b(malloc|free|realloc|calloc)\s*\('
 $analysisSuppressionPattern = '\bNOLINT(?:NEXTLINE|BEGIN|END)?\b'
 $validAnalysisSuppressionPattern = 'sloppy-analysis-suppress:\s*#\d+\s+.+;\s*remove when .+$'
 $packedLayoutPattern = '#\s*pragma\s+pack\b|__attribute__\s*\(\(\s*packed\b|__declspec\s*\(\s*align\b'
+$loadLibraryPattern = '\bLoadLibraryW\s*\('
+$posixDirectoryOpenPattern = '\b(open|openat)\s*\([^;]*\bO_DIRECTORY\b'
 
 function Test-AllowedMemoryPrimitiveBoundary {
     param(
@@ -340,6 +348,39 @@ foreach ($file in $files) {
                 -Severity "error"
         }
 
+        if ((Test-ImplementationPath $relativePath) -and $line -match $loadLibraryPattern) {
+            $violations += New-Finding `
+                -File $relativePath `
+                -Line $lineNumber `
+                -Pattern "LoadLibraryW" `
+                -Rule "Plain Win32 DLL loading is forbidden because it inherits unsafe search-path behavior." `
+                -Fix "Use the platform dynamic-library helper with LoadLibraryExW search flags." `
+                -Severity "error"
+        }
+
+        if ((Test-PosixPlatformPath $relativePath) -and
+            ($line -match $posixDirectoryOpenPattern) -and
+            ($line -notmatch '\bO_NOFOLLOW\b')) {
+            $violations += New-Finding `
+                -File $relativePath `
+                -Line $lineNumber `
+                -Pattern "O_DIRECTORY" `
+                -Rule "Directory handles used by POSIX platform code must not follow symlinks by default." `
+                -Fix "Add O_NOFOLLOW, or document and test a narrow platform exception." `
+                -Severity "error"
+        }
+
+        if ((Test-PosixPlatformPath $relativePath) -and
+            ($line -match '^\s*#\s*define\s+O_NOFOLLOW\s+0\b')) {
+            $violations += New-Finding `
+                -File $relativePath `
+                -Line $lineNumber `
+                -Pattern "O_NOFOLLOW 0" `
+                -Rule "POSIX no-follow hardening must not be silently compiled away." `
+                -Fix "Fail at compile time or return a clear unsupported status when O_NOFOLLOW is unavailable." `
+                -Severity "error"
+        }
+
         $previousLine = $line
     }
 }
@@ -358,6 +399,8 @@ if ($SelfTest) {
         New-Item -ItemType Directory -Force -Path (Join-Path $validRoot "tests/unit/core") | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $invalidRoot "src/core") | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $invalidRoot "src/cli") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $invalidRoot "src/platform/posix") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $invalidRoot "src/platform/win32") | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $invalidRoot "tests/unit/core") | Out-Null
 
         Set-Content -LiteralPath (Join-Path $validRoot "src/core/string.c") -Value @'
@@ -392,6 +435,13 @@ struct BadPacked { char c; int i; };
 #include <string.h>
 void bad_fragment_copy(char* dst, const char* src) { strcpy(dst, src); }
 '@
+        Set-Content -LiteralPath (Join-Path $invalidRoot "src/platform/posix/bad_fs.c") -Value @'
+#define O_NOFOLLOW 0
+int bad_open_dir(int dirfd, const char* name) { return openat(dirfd, name, O_RDONLY | O_DIRECTORY); }
+'@
+        Set-Content -LiteralPath (Join-Path $invalidRoot "src/platform/win32/bad_dynlib.c") -Value @'
+void* bad_load_library(const wchar_t* path) { return LoadLibraryW(path); }
+'@
         Set-Content -LiteralPath (Join-Path $invalidRoot "tests/unit/core/test_bad.c") -Value @'
 #include <string.h>
 void bad_test_copy(char* dst, const char* src) { strncpy(dst, src, 4); }
@@ -422,6 +472,12 @@ struct BadVoidCallCasts {
         }
         if (-not (($invalidOutput -join "`n") -match "\(void\)")) {
             throw "C standards scanner self-test did not assert void casts."
+        }
+        if (-not (($invalidOutput -join "`n") -match "LoadLibraryW")) {
+            throw "C standards scanner self-test did not assert safe Win32 DLL loading."
+        }
+        if (-not (($invalidOutput -join "`n") -match "O_NOFOLLOW")) {
+            throw "C standards scanner self-test did not assert POSIX no-follow directory opens."
         }
         Set-Content -LiteralPath (Join-Path $validRoot "tests/unit/core/test_unused_cast.c") -Value @'
 void ok_unused_cast(void* user) { (void)user; }

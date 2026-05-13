@@ -280,6 +280,9 @@
         sloppy.cli.audit_config_text tests/golden/cli/audit-config-text.txt audit --plan
         tests/fixtures/cli/config.plan.json --format text)
     sloppy_add_cli_nonzero_golden_test(
+        sloppy.cli.audit_escaping_text tests/golden/cli/audit-escaping-text.txt audit --plan
+        tests/fixtures/cli/audit-escaping.plan.json --format text)
+    sloppy_add_cli_nonzero_golden_test(
         sloppy.cli.audit_config_json tests/golden/cli/audit-config-json.json audit --plan
         tests/fixtures/cli/config.plan.json --format json)
     sloppy_add_cli_nonzero_stderr_test(

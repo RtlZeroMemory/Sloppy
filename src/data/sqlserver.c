@@ -85,6 +85,10 @@ static SlStatus sl_sqlsrv_copy_str(SlArena* arena, SlStr src, SlStr* out)
 }
 
 #ifdef SLOPPY_ENABLE_SQLSERVER_PROVIDER
+static SlStatus sl_sqlsrv_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code, SlStr message,
+                               SlStr operation, SlStr hint_a, SlStr hint_b, SlStr hint_c,
+                               SlStatus status);
+
 static SlStatus sl_sqlsrv_copy_cstr(SlArena* arena, SlStr src, char** out)
 {
     SlSlice storage = {0};
@@ -110,6 +114,158 @@ static SlStatus sl_sqlsrv_copy_cstr(SlArena* arena, SlStr src, char** out)
     dst[src.length] = '\0';
     *out = dst;
     return sl_status_ok();
+}
+
+static bool sl_sqlsrv_statement_keyword_is(SlStr sql, const char* keyword)
+{
+    size_t index = 0U;
+    size_t offset = 0U;
+
+    if (!sl_sqlsrv_str_valid(sql) || keyword == NULL) {
+        return false;
+    }
+    while (index < sql.length && (sql.ptr[index] == ' ' || sql.ptr[index] == '\t' ||
+                                  sql.ptr[index] == '\r' || sql.ptr[index] == '\n'))
+    {
+        index += 1U;
+    }
+    while (keyword[offset] != '\0') {
+        char actual;
+        char expected = keyword[offset];
+
+        if (index + offset >= sql.length) {
+            return false;
+        }
+        actual = sql.ptr[index + offset];
+        if (actual >= 'a' && actual <= 'z') {
+            actual = (char)(actual - 'a' + 'A');
+        }
+        if (expected >= 'a' && expected <= 'z') {
+            expected = (char)(expected - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+        offset += 1U;
+    }
+    return index + offset == sql.length ||
+           !(sql.ptr[index + offset] == '_' ||
+             (sql.ptr[index + offset] >= '0' && sql.ptr[index + offset] <= '9') ||
+             (sql.ptr[index + offset] >= 'A' && sql.ptr[index + offset] <= 'Z') ||
+             (sql.ptr[index + offset] >= 'a' && sql.ptr[index + offset] <= 'z'));
+}
+
+static bool sl_sqlsrv_ascii_ident(char ch)
+{
+    return ch == '_' || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') ||
+           (ch >= 'a' && ch <= 'z');
+}
+
+static bool sl_sqlsrv_token_at(SlStr sql, size_t index, const char* token)
+{
+    size_t offset = 0U;
+
+    if (token == NULL || index >= sql.length) {
+        return false;
+    }
+    if (index > 0U && sl_sqlsrv_ascii_ident(sql.ptr[index - 1U])) {
+        return false;
+    }
+    while (token[offset] != '\0') {
+        char actual;
+        char expected = token[offset];
+
+        if (index + offset >= sql.length) {
+            return false;
+        }
+        actual = sql.ptr[index + offset];
+        if (actual >= 'a' && actual <= 'z') {
+            actual = (char)(actual - 'a' + 'A');
+        }
+        if (expected >= 'a' && expected <= 'z') {
+            expected = (char)(expected - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+        offset += 1U;
+    }
+    return index + offset >= sql.length || !sl_sqlsrv_ascii_ident(sql.ptr[index + offset]);
+}
+
+static bool sl_sqlsrv_read_remainder_allowed(SlStr sql, size_t index)
+{
+    bool saw_semicolon = false;
+
+    while (index < sql.length) {
+        char ch = sql.ptr[index];
+
+        if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
+            index += 1U;
+            continue;
+        }
+        if (ch == '-' && index + 1U < sql.length && sql.ptr[index + 1U] == '-') {
+            index += 2U;
+            while (index < sql.length && sql.ptr[index] != '\r' && sql.ptr[index] != '\n') {
+                index += 1U;
+            }
+            continue;
+        }
+        if (ch == '/' && index + 1U < sql.length && sql.ptr[index + 1U] == '*') {
+            index += 2U;
+            while (index + 1U < sql.length &&
+                   !(sql.ptr[index] == '*' && sql.ptr[index + 1U] == '/'))
+            {
+                index += 1U;
+            }
+            if (index + 1U >= sql.length) {
+                return false;
+            }
+            index += 2U;
+            continue;
+        }
+        if (saw_semicolon) {
+            return false;
+        }
+        if (ch == ';') {
+            saw_semicolon = true;
+            index += 1U;
+            continue;
+        }
+        if (sl_sqlsrv_token_at(sql, index, "INTO")) {
+            return false;
+        }
+        index += 1U;
+    }
+    return true;
+}
+
+static bool sl_sqlsrv_read_only_query_allowed(SlStr sql)
+{
+    size_t index = 0U;
+
+    if (!sl_sqlsrv_statement_keyword_is(sql, "SELECT")) {
+        return false;
+    }
+    while (index < sql.length && (sql.ptr[index] == ' ' || sql.ptr[index] == '\t' ||
+                                  sql.ptr[index] == '\r' || sql.ptr[index] == '\n'))
+    {
+        index += 1U;
+    }
+    index += sizeof("SELECT") - 1U;
+    return sl_sqlsrv_read_remainder_allowed(sql, index);
+}
+
+static SlStatus sl_sqlsrv_read_only_rejected_diag(SlArena* arena, SlDiag* out_diag, SlStr operation)
+{
+    return sl_sqlsrv_diag(
+        arena, out_diag, SL_DIAG_PERMISSION_DENIED,
+        sl_sqlsrv_literal("sqlserver provider read-only connection rejected write-capable SQL",
+                          sizeof("sqlserver provider read-only connection rejected write-capable "
+                                 "SQL") -
+                              1U),
+        operation, sl_sqlsrv_literal("statement: redacted", sizeof("statement: redacted") - 1U),
+        sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
 }
 
 static bool sl_sqlsrv_has_case_insensitive_at(SlStr text, size_t index, const char* word)
@@ -637,12 +793,18 @@ static SlStatus sl_sqlsrv_diag_from_handle(SlArena* arena, SlDiag* out_diag, SlD
             /* Keep driver details as hints, but never combine them with secrets. */
         }
     }
-    if (!sl_str_is_empty(safe_config)) {
-        return sl_sqlsrv_diag(arena, out_diag, code, message, operation, safe_config, detail, sql,
-                              status);
+    if (!sl_str_is_empty(sql)) {
+        return sl_sqlsrv_diag(
+            arena, out_diag, code, message, operation,
+            sl_sqlsrv_literal("statement: redacted", sizeof("statement: redacted") - 1U),
+            sl_str_empty(), sl_str_empty(), status);
     }
-    return sl_sqlsrv_diag(arena, out_diag, code, message, operation, detail, sql, sl_str_empty(),
-                          status);
+    if (!sl_str_is_empty(safe_config)) {
+        return sl_sqlsrv_diag(arena, out_diag, code, message, operation, safe_config, detail,
+                              sl_str_empty(), status);
+    }
+    return sl_sqlsrv_diag(arena, out_diag, code, message, operation, detail, sl_str_empty(),
+                          sl_str_empty(), status);
 }
 
 static SlStatus sl_sqlsrv_invalid_state_diag(SlArena* arena, SlDiag* out_diag, SlStr operation)
@@ -991,6 +1153,20 @@ SlStatus sl_sqlserver_close(SlSqlServerConnection* connection)
     return sl_status_ok();
 }
 
+static SlStatus sl_sqlsrv_bound_char_value(SlStr value, SQLPOINTER empty, SQLPOINTER* out_value,
+                                           SQLLEN* out_length)
+{
+    if (out_value == NULL || out_length == NULL || !sl_sqlsrv_str_valid(value)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (value.length > 2147483647U) {
+        return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
+    }
+    *out_value = value.length == 0U ? empty : (SQLPOINTER)value.ptr;
+    *out_length = (SQLLEN)value.length;
+    return sl_status_ok();
+}
+
 static SlStatus sl_sqlsrv_bind_params(SlArena* arena, SQLHSTMT stmt, const SlSqlServerParam* params,
                                       size_t param_count, SlDiag* out_diag, SlStr operation,
                                       SlStr sql)
@@ -1013,8 +1189,8 @@ static SlStatus sl_sqlsrv_bind_params(SlArena* arena, SQLHSTMT stmt, const SlSql
             arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
             sl_sqlsrv_literal("sqlserver provider parameter count mismatch",
                               sizeof("sqlserver provider parameter count mismatch") - 1U),
-            operation, sql, sl_str_empty(), sl_str_empty(),
-            sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+            operation, sl_sqlsrv_literal("statement: redacted", sizeof("statement: redacted") - 1U),
+            sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
     for (size_t index = 0U; index < param_count; index += 1U) {
         const SQLUSMALLINT sql_index = (SQLUSMALLINT)(index + 1U);
@@ -1027,21 +1203,16 @@ static SlStatus sl_sqlsrv_bind_params(SlArena* arena, SQLHSTMT stmt, const SlSql
                                   NULL, 0, &indicators[index]);
             break;
         case SL_SQLSERVER_PARAM_TEXT: {
-            SQLPOINTER value_ptr = empty_text;
+            SQLPOINTER value_ptr = NULL;
+            SlStatus status = sl_sqlsrv_bound_char_value(param->value.text, empty_text, &value_ptr,
+                                                         &indicators[index]);
 
-            if (!sl_sqlsrv_str_valid(param->value.text)) {
-                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            if (!sl_status_is_ok(status)) {
+                return status;
             }
-            if (param->value.text.length > 2147483647U) {
-                return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
-            }
-            if (param->value.text.length > 0U) {
-                value_ptr = (SQLPOINTER)param->value.text.ptr;
-            }
-            indicators[index] = (SQLLEN)param->value.text.length;
             rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_VARCHAR,
-                                  param->value.text.length, 0, value_ptr,
-                                  (SQLLEN)param->value.text.length, &indicators[index]);
+                                  (SQLULEN)indicators[index], 0, value_ptr, indicators[index],
+                                  &indicators[index]);
             break;
         }
         case SL_SQLSERVER_PARAM_INTEGER:
@@ -1065,98 +1236,118 @@ static SlStatus sl_sqlsrv_bind_params(SlArena* arena, SQLHSTMT stmt, const SlSql
         case SL_SQLSERVER_PARAM_BYTES: {
             SQLPOINTER value_ptr = empty_bytes;
 
-            if (param->value.bytes.length > 2147483647U ||
-                (param->value.bytes.length != 0U && param->value.bytes.ptr == NULL))
-            {
+            if (param->value.bytes.length != 0U && param->value.bytes.ptr == NULL) {
                 return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+            }
+            if (param->value.bytes.length > 2147483647U) {
+                return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
             }
             if (param->value.bytes.length > 0U) {
                 value_ptr = (SQLPOINTER)param->value.bytes.ptr;
             }
             indicators[index] = (SQLLEN)param->value.bytes.length;
             rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_BINARY, SQL_VARBINARY,
-                                  param->value.bytes.length, 0, value_ptr,
-                                  (SQLLEN)param->value.bytes.length, &indicators[index]);
-            break;
-        }
-        case SL_SQLSERVER_PARAM_DECIMAL:
-            if (!sl_sqlsrv_str_valid(param->value.decimal)) {
-                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-            }
-            indicators[index] = (SQLLEN)param->value.decimal.length;
-            rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_DECIMAL,
-                                  param->value.decimal.length, 0,
-                                  (SQLPOINTER)param->value.decimal.ptr, indicators[index],
+                                  (SQLULEN)indicators[index], 0, value_ptr, indicators[index],
                                   &indicators[index]);
             break;
-        case SL_SQLSERVER_PARAM_UUID:
-            if (!sl_sqlsrv_str_valid(param->value.uuid)) {
-                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        case SL_SQLSERVER_PARAM_DECIMAL: {
+            SQLPOINTER value_ptr = NULL;
+            SlStatus status = sl_sqlsrv_bound_char_value(param->value.decimal, empty_text,
+                                                         &value_ptr, &indicators[index]);
+            if (!sl_status_is_ok(status)) {
+                return status;
             }
-            indicators[index] = (SQLLEN)param->value.uuid.length;
+            rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_DECIMAL,
+                                  (SQLULEN)indicators[index], 0, value_ptr, indicators[index],
+                                  &indicators[index]);
+            break;
+        }
+        case SL_SQLSERVER_PARAM_UUID: {
+            SQLPOINTER value_ptr = NULL;
+            SlStatus status = sl_sqlsrv_bound_char_value(param->value.uuid, empty_text, &value_ptr,
+                                                         &indicators[index]);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
             rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR,
 #ifdef SQL_GUID
                                   SQL_GUID,
 #else
                                   SQL_VARCHAR,
 #endif
-                                  param->value.uuid.length, 0, (SQLPOINTER)param->value.uuid.ptr,
-                                  indicators[index], &indicators[index]);
+                                  (SQLULEN)indicators[index], 0, value_ptr, indicators[index],
+                                  &indicators[index]);
             break;
-        case SL_SQLSERVER_PARAM_JSON:
-            if (!sl_sqlsrv_str_valid(param->value.json)) {
-                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        case SL_SQLSERVER_PARAM_JSON: {
+            SQLPOINTER value_ptr = NULL;
+            SlStatus status = sl_sqlsrv_bound_char_value(param->value.json, empty_text, &value_ptr,
+                                                         &indicators[index]);
+            if (!sl_status_is_ok(status)) {
+                return status;
             }
-            indicators[index] = (SQLLEN)param->value.json.length;
             rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_VARCHAR,
-                                  param->value.json.length, 0, (SQLPOINTER)param->value.json.ptr,
-                                  indicators[index], &indicators[index]);
+                                  (SQLULEN)indicators[index], 0, value_ptr, indicators[index],
+                                  &indicators[index]);
             break;
-        case SL_SQLSERVER_PARAM_DATE:
-            if (!sl_sqlsrv_str_valid(param->value.date)) {
-                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        case SL_SQLSERVER_PARAM_DATE: {
+            SQLPOINTER value_ptr = NULL;
+            SlStatus status = sl_sqlsrv_bound_char_value(param->value.date, empty_text, &value_ptr,
+                                                         &indicators[index]);
+            if (!sl_status_is_ok(status)) {
+                return status;
             }
-            indicators[index] = (SQLLEN)param->value.date.length;
             rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_TYPE_DATE,
-                                  param->value.date.length, 0, (SQLPOINTER)param->value.date.ptr,
-                                  indicators[index], &indicators[index]);
+                                  (SQLULEN)indicators[index], 0, value_ptr, indicators[index],
+                                  &indicators[index]);
             break;
-        case SL_SQLSERVER_PARAM_TIME:
-            if (!sl_sqlsrv_str_valid(param->value.time)) {
-                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        }
+        case SL_SQLSERVER_PARAM_TIME: {
+            SQLPOINTER value_ptr = NULL;
+            SlStatus status = sl_sqlsrv_bound_char_value(param->value.time, empty_text, &value_ptr,
+                                                         &indicators[index]);
+            if (!sl_status_is_ok(status)) {
+                return status;
             }
-            indicators[index] = (SQLLEN)param->value.time.length;
             rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_SS_TIME2,
-                                  param->value.time.length, 0, (SQLPOINTER)param->value.time.ptr,
+                                  (SQLULEN)indicators[index], 0, value_ptr, indicators[index],
+                                  &indicators[index]);
+            break;
+        }
+        case SL_SQLSERVER_PARAM_TIMESTAMP: {
+            SQLPOINTER value_ptr = NULL;
+            SlStatus status = sl_sqlsrv_bound_char_value(param->value.timestamp, empty_text,
+                                                         &value_ptr, &indicators[index]);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_TYPE_TIMESTAMP,
+                                  (SQLULEN)indicators[index], 0, value_ptr, indicators[index],
+                                  &indicators[index]);
+            break;
+        }
+        case SL_SQLSERVER_PARAM_INSTANT: {
+            SQLPOINTER value_ptr = NULL;
+            SlStatus status = sl_sqlsrv_bound_char_value(param->value.instant, empty_text,
+                                                         &value_ptr, &indicators[index]);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR,
+                                  SQL_SS_TIMESTAMPOFFSET, (SQLULEN)indicators[index], 0, value_ptr,
                                   indicators[index], &indicators[index]);
             break;
-        case SL_SQLSERVER_PARAM_TIMESTAMP:
-            if (!sl_sqlsrv_str_valid(param->value.timestamp)) {
-                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-            }
-            indicators[index] = (SQLLEN)param->value.timestamp.length;
-            rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_TYPE_TIMESTAMP,
-                                  param->value.timestamp.length, 0,
-                                  (SQLPOINTER)param->value.timestamp.ptr, indicators[index],
-                                  &indicators[index]);
-            break;
-        case SL_SQLSERVER_PARAM_INSTANT:
-            if (!sl_sqlsrv_str_valid(param->value.instant)) {
-                return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-            }
-            indicators[index] = (SQLLEN)param->value.instant.length;
-            rc = SQLBindParameter(stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR,
-                                  SQL_SS_TIMESTAMPOFFSET, param->value.instant.length, 0,
-                                  (SQLPOINTER)param->value.instant.ptr, indicators[index],
-                                  &indicators[index]);
-            break;
+        }
         default:
             return sl_sqlsrv_diag(
                 arena, out_diag, SL_DIAG_DATABASE_UNSUPPORTED_VALUE,
                 sl_sqlsrv_literal("unsupported sqlserver parameter value",
                                   sizeof("unsupported sqlserver parameter value") - 1U),
-                operation, sql, sl_str_empty(), sl_str_empty(),
-                sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+                operation,
+                sl_sqlsrv_literal("statement: redacted", sizeof("statement: redacted") - 1U),
+                sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
         }
         if (!sl_sqlsrv_success(rc)) {
             return sl_sqlsrv_diag_from_handle(
@@ -1244,12 +1435,8 @@ SlStatus sl_sqlserver_exec(SlArena* arena, SlSqlServerConnection* connection, Sl
     }
     *out_result = (SlSqlServerExecResult){0};
     if (connection != NULL && connection->open && connection->access == SL_SQLSERVER_ACCESS_READ) {
-        return sl_sqlsrv_diag(
-            arena, out_diag, SL_DIAG_PERMISSION_DENIED,
-            sl_sqlsrv_literal("sqlserver provider read-only connection rejected exec",
-                              sizeof("sqlserver provider read-only connection rejected exec") - 1U),
-            sl_sqlsrv_literal("operation: exec", sizeof("operation: exec") - 1U), sql,
-            sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
+        return sl_sqlsrv_read_only_rejected_diag(
+            arena, out_diag, sl_sqlsrv_literal("operation: exec", sizeof("operation: exec") - 1U));
     }
     status = sl_sqlsrv_prepare_execute(
         arena, connection, sql, params, param_count,
@@ -1279,13 +1466,9 @@ SlStatus sl_sqlserver_exec_batch(SlArena* arena, SlSqlServerConnection* connecti
     }
     *out_result = (SlSqlServerExecResult){0};
     if (connection != NULL && connection->open && connection->access == SL_SQLSERVER_ACCESS_READ) {
-        return sl_sqlsrv_diag(
-            arena, out_diag, SL_DIAG_PERMISSION_DENIED,
-            sl_sqlsrv_literal(
-                "sqlserver provider read-only connection rejected exec batch",
-                sizeof("sqlserver provider read-only connection rejected exec batch") - 1U),
-            sl_sqlsrv_literal("operation: execBatch", sizeof("operation: execBatch") - 1U), sql,
-            sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
+        return sl_sqlsrv_read_only_rejected_diag(
+            arena, out_diag,
+            sl_sqlsrv_literal("operation: execBatch", sizeof("operation: execBatch") - 1U));
     }
     if (dbc == SQL_NULL_HDBC) {
         return sl_sqlsrv_invalid_state_diag(
@@ -1726,8 +1909,9 @@ static SlStatus sl_sqlsrv_materialize_rows(SlArena* arena, SQLHSTMT stmt, size_t
                 arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
                 sl_sqlsrv_literal("sqlserver provider query exceeded max rows",
                                   sizeof("sqlserver provider query exceeded max rows") - 1U),
-                operation, sql, sl_str_empty(), sl_str_empty(),
-                sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED));
+                operation,
+                sl_sqlsrv_literal("statement: redacted", sizeof("statement: redacted") - 1U),
+                sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED));
         }
         rows[row_count].values = column_count == 0U ? NULL : cells + (row_count * column_count);
         for (size_t column = 0U; column < column_count; column += 1U) {
@@ -1827,6 +2011,11 @@ SlStatus sl_sqlserver_query(SlArena* arena, SlSqlServerConnection* connection, S
     if (arena == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    if (connection != NULL && connection->open && connection->access == SL_SQLSERVER_ACCESS_READ &&
+        !sl_sqlsrv_read_only_query_allowed(sql))
+    {
+        return sl_sqlsrv_read_only_rejected_diag(arena, out_diag, operation);
+    }
     mark = sl_arena_mark(arena);
     if (options != NULL && options->max_rows > 0U) {
         max_rows = options->max_rows;
@@ -1868,6 +2057,11 @@ SlStatus sl_sqlserver_query_one(SlArena* arena, SlSqlServerConnection* connectio
     *out_result = (SlSqlServerQueryOneResult){0};
     if (arena == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (connection != NULL && connection->open && connection->access == SL_SQLSERVER_ACCESS_READ &&
+        !sl_sqlsrv_read_only_query_allowed(sql))
+    {
+        return sl_sqlsrv_read_only_rejected_diag(arena, out_diag, operation);
     }
     mark = sl_arena_mark(arena);
     status = sl_sqlsrv_prepare_execute(arena, connection, sql, params, param_count, operation,

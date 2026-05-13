@@ -33,6 +33,7 @@
 #include <yyjson.h>
 
 #include <atomic>
+#include <cctype>
 #include <cstdint>
 #include <chrono>
 #include <cstdlib>
@@ -43,6 +44,7 @@
 #include <mutex>
 #include <new>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -259,12 +261,14 @@ SlStatus sl_v8_write_diag_string(SlArena* arena, SlDiag* out_diag, SlDiagCode co
 {
     SlStr copied_message = {};
     SlStatus status;
+    std::string redacted_message;
 
     if (out_diag == nullptr) {
         return sl_status_from_code(failure_code);
     }
 
-    status = sl_v8_std_string_copy_to_arena(arena, message, &copied_message);
+    redacted_message = sl_v8_redact_diagnostic_text(message);
+    status = sl_v8_std_string_copy_to_arena(arena, redacted_message, &copied_message);
 
     if (!sl_status_is_ok(status)) {
         return status;
@@ -280,18 +284,22 @@ SlStatus sl_v8_write_diag_string_with_span(SlArena* arena, SlDiag* out_diag, SlD
 {
     SlStr copied_message = {};
     SlStatus status;
+    std::string redacted_message;
+    std::string redacted_stack_summary;
 
     if (out_diag == nullptr) {
         return sl_status_from_code(failure_code);
     }
 
-    status = sl_v8_std_string_copy_to_arena(arena, message, &copied_message);
+    redacted_message = sl_v8_redact_diagnostic_text(message);
+    redacted_stack_summary = sl_v8_redact_diagnostic_text(stack_summary);
+    status = sl_v8_std_string_copy_to_arena(arena, redacted_message, &copied_message);
     if (!sl_status_is_ok(status)) {
         return status;
     }
 
     return sl_v8_write_diag_with_span(arena, out_diag, code, failure_code, copied_message, span,
-                                      hint, stack_summary);
+                                      hint, redacted_stack_summary);
 }
 
 std::string sl_v8_value_to_string(v8::Isolate* isolate, v8::Local<v8::Value> value)
@@ -1694,6 +1702,220 @@ SlStatus sl_v8_reset_create_arena(SlArena* arena, SlArenaMark mark, SlStatus sta
 }
 
 } // namespace
+
+namespace {
+
+bool sl_v8_ascii_equal_ci(std::string_view text, size_t index, std::string_view expected)
+{
+    if (index + expected.size() > text.size()) {
+        return false;
+    }
+    for (size_t offset = 0U; offset < expected.size(); offset += 1U) {
+        unsigned char actual = static_cast<unsigned char>(text[index + offset]);
+        unsigned char wanted = static_cast<unsigned char>(expected[offset]);
+        if (std::tolower(actual) != std::tolower(wanted)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool sl_v8_token_char(char ch)
+{
+    unsigned char value = static_cast<unsigned char>(ch);
+    return std::isalnum(value) != 0 || ch == '-' || ch == '_';
+}
+
+size_t sl_v8_find_ci(std::string_view text, std::string_view needle, size_t start)
+{
+    for (size_t index = start; index + needle.size() <= text.size(); index += 1U) {
+        if (sl_v8_ascii_equal_ci(text, index, needle)) {
+            return index;
+        }
+    }
+    return std::string::npos;
+}
+
+bool sl_v8_secret_key_boundary(std::string_view text, size_t index, size_t length)
+{
+    if (index > 0U && sl_v8_token_char(text[index - 1U])) {
+        return false;
+    }
+    return index + length >= text.size() || !sl_v8_token_char(text[index + length]);
+}
+
+size_t sl_v8_secret_value_end(std::string_view text, size_t start)
+{
+    if (start < text.size() && (text[start] == '"' || text[start] == '\'')) {
+        const char quote = text[start];
+        size_t cursor = start + 1U;
+        while (cursor < text.size()) {
+            if (text[cursor] == '\\' && cursor + 1U < text.size()) {
+                cursor += 2U;
+                continue;
+            }
+            if (text[cursor] == quote) {
+                return cursor + 1U;
+            }
+            cursor += 1U;
+        }
+        return text.size();
+    }
+    if (start < text.size() && (text[start] == '{' || text[start] == '[')) {
+        const char open = text[start];
+        const char close = open == '{' ? '}' : ']';
+        size_t cursor = start + 1U;
+        size_t depth = 1U;
+        while (cursor < text.size()) {
+            if (text[cursor] == '"' || text[cursor] == '\'') {
+                cursor = sl_v8_secret_value_end(text, cursor);
+                continue;
+            }
+            if (text[cursor] == open) {
+                depth += 1U;
+            }
+            else if (text[cursor] == close) {
+                depth -= 1U;
+                if (depth == 0U) {
+                    return cursor + 1U;
+                }
+            }
+            cursor += 1U;
+        }
+        return text.size();
+    }
+    size_t cursor = start;
+    while (cursor < text.size() && text[cursor] != ' ' && text[cursor] != '\t' &&
+           text[cursor] != '\r' && text[cursor] != '\n' && text[cursor] != ';' &&
+           text[cursor] != '&' && text[cursor] != ',')
+    {
+        cursor += 1U;
+    }
+    return cursor;
+}
+
+size_t sl_v8_header_value_end(std::string_view text, size_t start)
+{
+    size_t cursor = start;
+    while (cursor < text.size() && text[cursor] != '\r' && text[cursor] != '\n') {
+        cursor += 1U;
+    }
+    return cursor;
+}
+
+void sl_v8_redact_cookie_header_value(std::string* text, size_t value_start, size_t field_end)
+{
+    size_t cursor = value_start;
+
+    while (cursor < field_end) {
+        while (cursor < field_end &&
+               ((*text)[cursor] == ' ' || (*text)[cursor] == '\t' || (*text)[cursor] == ';'))
+        {
+            cursor += 1U;
+        }
+        while (cursor < field_end && (*text)[cursor] != '=' && (*text)[cursor] != ';') {
+            cursor += 1U;
+        }
+        if (cursor >= field_end || (*text)[cursor] != '=') {
+            continue;
+        }
+        cursor += 1U;
+        const size_t secret_start = cursor;
+        while (cursor < field_end && (*text)[cursor] != ';') {
+            cursor += 1U;
+        }
+        if (cursor > secret_start) {
+            const size_t old_length = cursor - secret_start;
+            const size_t new_length = sizeof("[REDACTED]") - 1U;
+            text->replace(secret_start, old_length, "[REDACTED]");
+            cursor = secret_start + sizeof("[REDACTED]") - 1U;
+            field_end = field_end - old_length + new_length;
+        }
+    }
+}
+
+} // namespace
+
+std::string sl_v8_redact_diagnostic_text(std::string_view input)
+{
+    static constexpr std::string_view keys[] = {
+        "password",   "token",   "secret",  "authorization", "cookie",
+        "set-cookie", "api_key", "api-key", "apiKey",        "connectionString"};
+    std::string text(input);
+
+    for (std::string_view key : keys) {
+        size_t search = 0U;
+        while (search < text.size()) {
+            size_t index = sl_v8_find_ci(text, key, search);
+            size_t cursor;
+            size_t value_start;
+            size_t value_end;
+            if (index == std::string::npos) {
+                break;
+            }
+            if (!sl_v8_secret_key_boundary(text, index, key.size())) {
+                search = index + 1U;
+                continue;
+            }
+            cursor = index + key.size();
+            while (cursor < text.size() && (text[cursor] == ' ' || text[cursor] == '\t')) {
+                cursor += 1U;
+            }
+            if (cursor < text.size() && (text[cursor] == '"' || text[cursor] == '\'')) {
+                cursor += 1U;
+                while (cursor < text.size() && (text[cursor] == ' ' || text[cursor] == '\t')) {
+                    cursor += 1U;
+                }
+            }
+            if (cursor >= text.size() || (text[cursor] != '=' && text[cursor] != ':')) {
+                search = index + key.size();
+                continue;
+            }
+            cursor += 1U;
+            while (cursor < text.size() && (text[cursor] == ' ' || text[cursor] == '\t')) {
+                cursor += 1U;
+            }
+            if (key == "authorization") {
+                size_t field_end = sl_v8_header_value_end(text, cursor);
+                size_t scheme_end = cursor;
+
+                while (scheme_end < field_end && text[scheme_end] != ' ' &&
+                       text[scheme_end] != '\t')
+                {
+                    scheme_end += 1U;
+                }
+                value_start = scheme_end;
+                while (value_start < field_end &&
+                       (text[value_start] == ' ' || text[value_start] == '\t'))
+                {
+                    value_start += 1U;
+                }
+                if (value_start >= field_end) {
+                    value_start = cursor;
+                }
+                value_end = field_end;
+            }
+            else if (key == "cookie" || key == "set-cookie") {
+                size_t field_end = sl_v8_header_value_end(text, cursor);
+                sl_v8_redact_cookie_header_value(&text, cursor, field_end);
+                search = cursor + 1U;
+                continue;
+            }
+            else {
+                value_start = cursor;
+                value_end = sl_v8_secret_value_end(text, value_start);
+            }
+            if (value_end > value_start) {
+                text.replace(value_start, value_end - value_start, "[REDACTED]");
+                search = value_start + sizeof("[REDACTED]") - 1U;
+            }
+            else {
+                search = cursor + 1U;
+            }
+        }
+    }
+    return text;
+}
 
 extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena* arena,
                                         SlEngine** out_engine)

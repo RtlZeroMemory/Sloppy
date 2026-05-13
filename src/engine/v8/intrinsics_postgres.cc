@@ -294,6 +294,8 @@ struct PgV8Connection
     std::shared_ptr<PgV8Request> request;
     std::shared_ptr<std::mutex> conn_mutex = std::make_shared<std::mutex>();
     bool transaction_pinned = false;
+    bool read_only_configured = false;
+    bool read_only_configuring = false;
 };
 
 struct PgV8ConnectionResource
@@ -438,14 +440,138 @@ SlCapabilityOperation pg_v8_request_capability(PgV8Operation operation)
     switch (operation) {
     case PgV8Operation::Query:
     case PgV8Operation::QueryRaw:
+    case PgV8Operation::QueryCursor:
+    case PgV8Operation::QueryRawCursor:
     case PgV8Operation::QueryOne:
     case PgV8Operation::TransactionQuery:
     case PgV8Operation::TransactionQueryRaw:
+    case PgV8Operation::TransactionQueryCursor:
+    case PgV8Operation::TransactionQueryRawCursor:
     case PgV8Operation::TransactionQueryOne:
         return SL_CAPABILITY_OPERATION_READ;
     default:
         return SL_CAPABILITY_OPERATION_WRITE;
     }
+}
+
+bool pg_v8_sql_keyword_is(const std::string& sql, const char* keyword)
+{
+    size_t index = 0U;
+    size_t offset = 0U;
+
+    while (index < sql.size() &&
+           (sql[index] == ' ' || sql[index] == '\t' || sql[index] == '\r' || sql[index] == '\n'))
+    {
+        index += 1U;
+    }
+    while (keyword[offset] != '\0') {
+        if (index + offset >= sql.size()) {
+            return false;
+        }
+        char actual = sql[index + offset];
+        char expected = keyword[offset];
+        if (actual >= 'a' && actual <= 'z') {
+            actual = static_cast<char>(actual - 'a' + 'A');
+        }
+        if (expected >= 'a' && expected <= 'z') {
+            expected = static_cast<char>(expected - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+        offset += 1U;
+    }
+    return index + offset == sql.size() ||
+           !(sql[index + offset] == '_' ||
+             (sql[index + offset] >= '0' && sql[index + offset] <= '9') ||
+             (sql[index + offset] >= 'A' && sql[index + offset] <= 'Z') ||
+             (sql[index + offset] >= 'a' && sql[index + offset] <= 'z'));
+}
+
+bool pg_v8_ascii_ident(char ch)
+{
+    return ch == '_' || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') ||
+           (ch >= 'a' && ch <= 'z');
+}
+
+bool pg_v8_token_at(const std::string& sql, size_t index, const char* token)
+{
+    size_t offset = 0U;
+
+    if (token == nullptr || index >= sql.size()) {
+        return false;
+    }
+    if (index > 0U && pg_v8_ascii_ident(sql[index - 1U])) {
+        return false;
+    }
+    while (token[offset] != '\0') {
+        if (index + offset >= sql.size()) {
+            return false;
+        }
+        char actual = sql[index + offset];
+        char expected = token[offset];
+        if (actual >= 'a' && actual <= 'z') {
+            actual = static_cast<char>(actual - 'a' + 'A');
+        }
+        if (expected >= 'a' && expected <= 'z') {
+            expected = static_cast<char>(expected - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+        offset += 1U;
+    }
+    return index + offset >= sql.size() || !pg_v8_ascii_ident(sql[index + offset]);
+}
+
+bool pg_v8_select_contains_into(const std::string& sql)
+{
+    size_t index = 0U;
+
+    while (index < sql.size() &&
+           (sql[index] == ' ' || sql[index] == '\t' || sql[index] == '\r' || sql[index] == '\n'))
+    {
+        index += 1U;
+    }
+    index += sizeof("SELECT") - 1U;
+    while (index < sql.size()) {
+        if (sql[index] == '-' && index + 1U < sql.size() && sql[index + 1U] == '-') {
+            index += 2U;
+            while (index < sql.size() && sql[index] != '\r' && sql[index] != '\n') {
+                index += 1U;
+            }
+            continue;
+        }
+        if (sql[index] == '/' && index + 1U < sql.size() && sql[index + 1U] == '*') {
+            index += 2U;
+            while (index + 1U < sql.size() && !(sql[index] == '*' && sql[index + 1U] == '/')) {
+                index += 1U;
+            }
+            if (index + 1U >= sql.size()) {
+                return true;
+            }
+            index += 2U;
+            continue;
+        }
+        if (pg_v8_token_at(sql, index, "INTO")) {
+            return true;
+        }
+        index += 1U;
+    }
+    return false;
+}
+
+SlCapabilityOperation pg_v8_effective_request_capability(PgV8Operation operation,
+                                                         const std::string& sql)
+{
+    SlCapabilityOperation capability = pg_v8_request_capability(operation);
+    if (capability != SL_CAPABILITY_OPERATION_READ) {
+        return capability;
+    }
+    return (pg_v8_sql_keyword_is(sql, "SELECT") && !pg_v8_select_contains_into(sql)) ||
+                   pg_v8_sql_keyword_is(sql, "SHOW")
+               ? SL_CAPABILITY_OPERATION_READ
+               : SL_CAPABILITY_OPERATION_WRITE;
 }
 
 bool pg_v8_access_allows(SlPostgresAccess access, SlCapabilityOperation operation)
@@ -547,6 +673,8 @@ void pg_v8_close_connection(PgV8Connection& connection)
     }
     connection.request.reset();
     connection.transaction_pinned = false;
+    connection.read_only_configured = false;
+    connection.read_only_configuring = false;
     connection.state = PgV8ConnectionState::Closed;
 }
 
@@ -909,14 +1037,17 @@ bool pg_v8_request_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context
 
     PGresult* column_result = pg_v8_request_column_result(request);
     const int columns = column_result == nullptr ? -1 : PQnfields(column_result);
-    v8::Local<v8::Array> rows =
-        v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
+    v8::Local<v8::Array> rows;
     SlV8DbColumnSet column_set;
     std::vector<v8::Local<v8::Value>> values;
 
-    if (columns < 0 || !pg_v8_prepare_columns(isolate, context, column_result, &column_set)) {
+    if (columns < 0 ||
+        request->row_results.size() > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+        !pg_v8_prepare_columns(isolate, context, column_result, &column_set))
+    {
         return false;
     }
+    rows = v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
     values.resize(static_cast<size_t>(columns));
     for (size_t row_index = 0; row_index < request->row_results.size(); row_index += 1) {
         PGresult* row_result = request->row_results[row_index];
@@ -1033,14 +1164,17 @@ bool pg_v8_request_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context,
 
     PGresult* column_result = pg_v8_request_column_result(request);
     const int columns = column_result == nullptr ? -1 : PQnfields(column_result);
-    v8::Local<v8::Array> rows =
-        v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
+    v8::Local<v8::Array> rows;
     SlV8DbColumnSet column_set;
     std::vector<v8::Local<v8::Value>> values;
 
-    if (columns < 0 || !pg_v8_prepare_columns(isolate, context, column_result, &column_set)) {
+    if (columns < 0 ||
+        request->row_results.size() > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+        !pg_v8_prepare_columns(isolate, context, column_result, &column_set))
+    {
         return false;
     }
+    rows = v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
     values.resize(static_cast<size_t>(columns));
     for (size_t row_index = 0; row_index < request->row_results.size(); row_index += 1) {
         PGresult* row_result = request->row_results[row_index];
@@ -1478,10 +1612,18 @@ bool pg_v8_request_prepare_wire(PgV8Request* request)
             continue;
         }
         if (param.format == 1) {
+            if (param.bytes.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+                request->error = "postgres binary parameter is too large";
+                return false;
+            }
             param.value = reinterpret_cast<const char*>(param.bytes.data());
             param.length = static_cast<int>(param.bytes.size());
         }
         else {
+            if (param.text.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+                request->error = "postgres text parameter is too large";
+                return false;
+            }
             param.value = param.text.c_str();
             param.length = static_cast<int>(param.text.size());
         }
@@ -1514,6 +1656,72 @@ bool pg_v8_send_query(PgV8Request* request)
         return false;
     }
     return sent == 1;
+}
+
+bool pg_v8_send_read_only_setup(PgV8Connection* connection)
+{
+    if (connection == nullptr || connection->conn == nullptr) {
+        return false;
+    }
+    int sent = PQsendQuery(connection->conn, "SET default_transaction_read_only = on");
+    if (sent != 1) {
+        return false;
+    }
+    connection->read_only_configuring = true;
+    return true;
+}
+
+bool pg_v8_send_request_or_read_only_setup(PgV8ConnectionResource* resource,
+                                           PgV8Connection* connection,
+                                           const std::shared_ptr<PgV8Request>& request)
+{
+    if (resource == nullptr || connection == nullptr || request == nullptr) {
+        return false;
+    }
+    if (resource->access == SL_POSTGRES_ACCESS_READ && !connection->read_only_configured) {
+        return pg_v8_send_read_only_setup(connection);
+    }
+    return pg_v8_send_query(request.get());
+}
+
+void pg_v8_complete_read_only_setup(PgV8Connection* connection)
+{
+    std::shared_ptr<PgV8Request> request = connection == nullptr ? nullptr : connection->request;
+    PGresult* result = nullptr;
+    bool saw_result = false;
+
+    if (connection == nullptr || request == nullptr || connection->conn == nullptr) {
+        return;
+    }
+    for (;;) {
+        result = PQgetResult(connection->conn);
+        if (result == nullptr) {
+            break;
+        }
+        saw_result = true;
+        if (PQresultStatus(result) != PGRES_COMMAND_OK) {
+            request->error = PQresultErrorMessage(result);
+            PQclear(result);
+            connection->read_only_configuring = false;
+            pg_v8_settle_request(request, false);
+            return;
+        }
+        PQclear(result);
+    }
+    if (!saw_result) {
+        request->error = "postgres read-only setup completed without a result";
+        connection->read_only_configuring = false;
+        pg_v8_settle_request(request, false);
+        return;
+    }
+    connection->read_only_configuring = false;
+    connection->read_only_configured = true;
+    request->state = PgV8RequestState::Sending;
+    if (!pg_v8_send_query(request.get())) {
+        pg_v8_fail_request(request, "postgres query submission failed");
+        return;
+    }
+    pg_v8_pump_connection(connection);
 }
 
 void pg_v8_complete_read(PgV8Connection* connection)
@@ -1624,7 +1832,7 @@ void pg_v8_pump_connection(PgV8Connection* connection)
         }
         request->state = PgV8RequestState::Sending;
         connection->state = PgV8ConnectionState::Busy;
-        if (!pg_v8_send_query(request.get())) {
+        if (!pg_v8_send_request_or_read_only_setup(request->resource, connection, request)) {
             pg_v8_fail_request(request, "postgres query submission failed");
             return;
         }
@@ -1657,6 +1865,10 @@ void pg_v8_pump_connection(PgV8Connection* connection)
             }
             return;
         }
+        if (connection->read_only_configuring) {
+            pg_v8_complete_read_only_setup(connection);
+            return;
+        }
         pg_v8_complete_read(connection);
     }
 }
@@ -1685,7 +1897,7 @@ bool pg_v8_attach_request_to_connection(PgV8ConnectionResource* resource,
     }
     else {
         request->state = PgV8RequestState::Sending;
-        if (!pg_v8_send_query(request.get())) {
+        if (!pg_v8_send_request_or_read_only_setup(resource, connection, request)) {
             request->error = "postgres query submission failed";
             return false;
         }
@@ -2258,8 +2470,9 @@ void pg_v8_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& args,
         return;
     }
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
-    if (!sl_status_is_ok(status) || !pg_v8_check_capability(isolate, backend, &arena, resource,
-                                                            pg_v8_request_capability(operation)))
+    if (!sl_status_is_ok(status) ||
+        !pg_v8_check_capability(isolate, backend, &arena, resource,
+                                pg_v8_effective_request_capability(operation, request->sql)))
     {
         return;
     }

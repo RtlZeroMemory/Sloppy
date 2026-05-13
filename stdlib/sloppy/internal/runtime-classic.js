@@ -4272,11 +4272,13 @@ Reason:
         return bytes.slice();
     }
 
+    const sloppySecretValueBytes = new WeakMap();
+    const sloppySecretValueDisposed = new WeakSet();
+
     class SloppySecretValue {
         constructor(bytes) {
-            this._bytes = sloppyCloneBytes(bytes);
-            this._disposed = false;
-            Object.seal(this);
+            sloppySecretValueBytes.set(this, sloppyCloneBytes(bytes));
+            Object.freeze(this);
         }
 
         static fromUtf8(value) {
@@ -4294,16 +4296,16 @@ Reason:
         }
 
         bytes() {
-            if (this._disposed) {
+            if (sloppySecretValueDisposed.has(this)) {
                 throw new Error("SLOPPY_E_CRYPTO_SECRET_DISPOSED: secret has been disposed");
             }
-            return sloppyCloneBytes(this._bytes);
+            return sloppyCloneBytes(sloppySecretValueBytes.get(this));
         }
 
         dispose() {
-            if (!this._disposed) {
-                this._bytes.fill(0);
-                this._disposed = true;
+            if (!sloppySecretValueDisposed.has(this)) {
+                sloppySecretValueBytes.get(this).fill(0);
+                sloppySecretValueDisposed.add(this);
             }
         }
 
@@ -16133,7 +16135,7 @@ Reason:
         function redactPostgresTestServiceConnectionString(value) {
             return String(value ?? "")
                 .replace(
-                    /(^|[\s&])(password=)(?:'(?:\\.|[^'])*'|"(?:\\.|[^"])*"|[^\s&]*)/gi,
+                    /(^|[\s;?&])(password\s*=\s*)(?:'(?:\\.|[^'])*'|"(?:\\.|[^"])*"|[^\s;?&]*)/gi,
                     (_match, prefix, key) => `${prefix}${key}<redacted>`,
                 )
                 .replace(/(postgres(?:ql)?:\/\/[^:\s/@]+:)[^@\s/]+(@)/gi, "$1<redacted>$2");

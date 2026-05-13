@@ -196,8 +196,9 @@ static int test_statement_redaction_never_prints_parameter_values(void)
         return 1;
     }
 
-    if (!str_contains(redacted, sl_str_from_cstr("select * from users")) ||
+    if (!str_contains(redacted, sl_str_from_cstr("statement: users.bySecret")) ||
         !str_contains(redacted, sl_str_from_cstr("parameters=2 redacted")) ||
+        str_contains(redacted, sl_str_from_cstr("select * from users")) ||
         str_contains(redacted, sl_str_from_cstr("super-secret")) ||
         str_contains(redacted, sl_str_from_cstr("hidden")))
     {

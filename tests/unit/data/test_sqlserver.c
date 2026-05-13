@@ -44,6 +44,23 @@ static bool diag_has_hint_containing(const SlDiag* diag, const char* expected)
     return false;
 }
 
+static bool diag_contains_text(const SlDiag* diag, const char* expected)
+{
+    const size_t expected_length = strlen(expected);
+
+    if (diag == NULL) {
+        return false;
+    }
+    if (diag->message.ptr != NULL) {
+        for (size_t offset = 0U; offset + expected_length <= diag->message.length; offset += 1U) {
+            if (memcmp(diag->message.ptr + offset, expected, expected_length) == 0) {
+                return true;
+            }
+        }
+    }
+    return diag_has_hint_containing(diag, expected);
+}
+
 static const char* classify_live_open_failure(const SlDiag* diag)
 {
     if (diag_has_hint_containing(diag, "Data source name not found") ||
@@ -329,19 +346,64 @@ static int test_invalid_options_and_use_after_close(void)
     if (one.found || one.column_count != 0U || one.column_names != NULL || one.values != NULL) {
         return 29;
     }
-    status = sl_sqlserver_exec(&arena, &read_only, sl_str_from_cstr("insert into t values (1)"),
-                               NULL, 0U, &result, &diag);
+    status =
+        sl_sqlserver_exec(&arena, &read_only, sl_str_from_cstr("insert into t values ('sekrit')"),
+                          NULL, 0U, &result, &diag);
     if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
-        diag.code != SL_DIAG_PERMISSION_DENIED)
+        diag.code != SL_DIAG_PERMISSION_DENIED || diag_contains_text(&diag, "sekrit"))
     {
         return 25;
     }
-    status = sl_sqlserver_exec_batch(&arena, &read_only,
-                                     sl_str_from_cstr("insert into t values (1)"), &result, &diag);
+    diag = (SlDiag){0};
+    status = sl_sqlserver_exec_batch(
+        &arena, &read_only, sl_str_from_cstr("insert into t values ('sekrit')"), &result, &diag);
     if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
-        diag.code != SL_DIAG_PERMISSION_DENIED)
+        diag.code != SL_DIAG_PERMISSION_DENIED || diag_contains_text(&diag, "sekrit"))
     {
         return 34;
+    }
+    diag = (SlDiag){0};
+    status = sl_sqlserver_query(&arena, &read_only,
+                                sl_str_from_cstr("insert into t output inserted.id values (1)"),
+                                NULL, 0U, NULL, &query_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_PERMISSION_DENIED || diag_contains_text(&diag, "insert into t"))
+    {
+        return 35;
+    }
+    diag = (SlDiag){0};
+    status = sl_sqlserver_query(&arena, &read_only, sl_str_from_cstr("select 1; delete from users"),
+                                NULL, 0U, NULL, &query_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_PERMISSION_DENIED || diag_contains_text(&diag, "delete from users"))
+    {
+        return 37;
+    }
+    diag = (SlDiag){0};
+    status = sl_sqlserver_query(&arena, &read_only,
+                                sl_str_from_cstr("select id into copied_users from users"), NULL,
+                                0U, NULL, &query_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_PERMISSION_DENIED || diag_contains_text(&diag, "copied_users"))
+    {
+        return 38;
+    }
+    diag = (SlDiag){0};
+    status =
+        sl_sqlserver_query(&arena, &read_only, sl_str_from_cstr("select 1 -- trailing comment"),
+                           NULL, 0U, NULL, &query_result, &diag);
+    if (sl_status_code(status) == SL_STATUS_INVALID_STATE && diag.code == SL_DIAG_PERMISSION_DENIED)
+    {
+        return 39;
+    }
+    diag = (SlDiag){0};
+    status = sl_sqlserver_query_one(
+        &arena, &read_only, sl_str_from_cstr("update t set value = 'sekrit' output inserted.id"),
+        NULL, 0U, &one, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_PERMISSION_DENIED || diag_contains_text(&diag, "sekrit"))
+    {
+        return 36;
     }
     options.connection_string = sl_str_from_cstr("Driver={x};Server=x");
     options.access = (SlSqlServerAccess)99;

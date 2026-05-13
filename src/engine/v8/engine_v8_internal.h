@@ -29,6 +29,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -281,6 +282,7 @@ struct SlV8Engine
 };
 
 bool sl_v8_runtime_feature_active(const SlV8Engine* backend, SlRuntimeFeatureId id);
+std::string sl_v8_redact_diagnostic_text(std::string_view text);
 
 bool sl_v8_install_provider_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> context,
                                        v8::Local<v8::Object> data);

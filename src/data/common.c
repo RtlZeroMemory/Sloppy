@@ -227,12 +227,13 @@ SlStatus sl_db_sql_statement_redacted(SlArena* arena, const SlDbSqlStatement* st
     SlStatus status;
 
     if (arena == NULL || statement == NULL || out == NULL || !sl_db_str_valid(statement->text) ||
+        !sl_db_str_valid(statement->statement_label) ||
         (statement->parameter_count != 0U && statement->parameters == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_checked_add_size(statement->text.length, 64U, &max_capacity);
+    status = sl_checked_add_size(statement->statement_label.length, 96U, &max_capacity);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -240,7 +241,12 @@ SlStatus sl_db_sql_statement_redacted(SlArena* arena, const SlDbSqlStatement* st
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_string_builder_append_str(&builder, statement->text);
+    status = sl_string_builder_append_cstr(&builder, "statement: ");
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_str(&builder, sl_str_is_empty(statement->statement_label)
+                                                            ? sl_str_from_cstr("<unlabeled>")
+                                                            : statement->statement_label);
+    }
     if (sl_status_is_ok(status)) {
         status = sl_string_builder_append_cstr(&builder, " [parameters=");
     }

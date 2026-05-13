@@ -897,7 +897,7 @@ bool sqlite_v8_result_to_array(v8::Isolate* isolate, v8::Local<v8::Context> cont
     std::vector<v8::Local<v8::Value>> values;
 
     if (result == nullptr || out == nullptr ||
-        result->row_count > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
+        result->row_count > static_cast<size_t>(std::numeric_limits<int>::max()))
     {
         return false;
     }
@@ -945,7 +945,7 @@ bool sqlite_v8_result_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> contex
     std::vector<v8::Local<v8::Value>> values;
 
     if (result == nullptr || out == nullptr ||
-        result->row_count > static_cast<size_t>(std::numeric_limits<uint32_t>::max()))
+        result->row_count > static_cast<size_t>(std::numeric_limits<int>::max()))
     {
         return false;
     }

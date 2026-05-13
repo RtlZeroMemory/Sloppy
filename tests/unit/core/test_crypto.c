@@ -404,11 +404,15 @@ static int test_noncrypto_xxhash64_vectors(void)
 static int test_invalid_and_capacity_guards(void)
 {
     static const unsigned char password[] = "pw";
+    static const unsigned char dummy = 0U;
     unsigned char digest[SL_CRYPTO_SHA256_SIZE] = {0};
     char encoded[SL_CRYPTO_PASSWORD_HASH_ENCODED_MAX] = {0};
     char token[8] = {0};
     char tiny[3] = {0};
     char huge_hex[(1025U * 2U) + 1U] = {0};
+    char sentinel[1] = {'x'};
+    size_t overflow_groups = (SIZE_MAX / 4U) + 1U;
+    size_t overflow_length = (overflow_groups * 3U) - 2U;
     size_t written = 999U;
     bool equal = true;
     SlCryptoHashAlgorithm algorithm = SL_CRYPTO_HASH_SHA256;
@@ -432,6 +436,17 @@ static int test_invalid_and_capacity_guards(void)
                       SL_STATUS_CAPACITY_EXCEEDED) != 0)
     {
         return 71;
+    }
+    if (written != 0U) {
+        return 72;
+    }
+    written = 999U;
+    if (expect_status(sl_crypto_base64_encode(sl_bytes_from_parts(&dummy, overflow_length),
+                                              sentinel, sizeof(sentinel), &written),
+                      SL_STATUS_OVERFLOW) != 0 ||
+        sentinel[0] != 'x' || written != 0U)
+    {
+        return 75;
     }
 
     if (expect_status(sl_crypto_random_uuid_v4(token, sizeof(token) - 1U),

@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 static int expect_true(bool condition)
 {
@@ -17,6 +18,21 @@ static int expect_status(SlStatus status, SlStatusCode code)
 static int expect_str_equal(SlStr actual, SlStr expected)
 {
     return expect_true(sl_str_equal(actual, expected));
+}
+
+static int expect_str_contains(SlStr actual, const char* expected)
+{
+    const size_t expected_length = strlen(expected);
+
+    if (expected_length == 0U) {
+        return 0;
+    }
+    for (size_t offset = 0U; offset + expected_length <= actual.length; offset += 1U) {
+        if (memcmp(actual.ptr + offset, expected, expected_length) == 0) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 typedef struct ExpectedDiagCodeName
@@ -2090,6 +2106,9 @@ static int test_redaction_helper(void)
                           &arena,
                           sl_str_from_cstr("password=secret PWD = {top;secret}; token:abc "
                                            "postgres://ada:secret@localhost/db API_KEY=xyz "
+                                           "Authorization: Bearer bearer-secret\n"
+                                           "authorization: Basic basic-secret\n"
+                                           "AUTHORIZATION: Digest digest-secret\n"
                                            "monkey=value donkey:abc key=plain "
                                            "key exchange: keep key steps: visible "
                                            "connectionString=Server=.;Password=p; "
@@ -2108,21 +2127,65 @@ static int test_redaction_helper(void)
     {
         return 101;
     }
-    if (expect_str_equal(
-            redacted, sl_str_from_cstr("password=<redacted> PWD = <redacted>; "
-                                       "token:<redacted> postgres://ada:<redacted>@localhost/db "
-                                       "API_KEY=<redacted> monkey=value donkey:abc key=<redacted> "
-                                       "key exchange: keep key steps: visible "
-                                       "connectionString=<redacted>; clientSecret=<redacted> "
-                                       "private_key=<redacted> passphrase=<redacted> "
-                                       "certificatePath=<redacted> privateKeyPath=<redacted> "
-                                       "clientCertificatePath=<redacted> "
-                                       "clientPrivateKeyPath=<redacted> "
-                                       "caBundlePath=<redacted> "
-                                       "trustStorePath=<redacted> keyPath=<redacted> "
-                                       "certPath=<redacted> caPath=<redacted>")) != 0)
+    if (expect_str_equal(redacted,
+                         sl_str_from_cstr("password=<redacted> PWD = <redacted>; "
+                                          "token:<redacted> postgres://ada:<redacted>@localhost/db "
+                                          "API_KEY=<redacted> Authorization: <redacted>\n"
+                                          "authorization: <redacted>\n"
+                                          "AUTHORIZATION: <redacted>\n"
+                                          "monkey=value donkey:abc key=<redacted> "
+                                          "key exchange: keep key steps: visible "
+                                          "connectionString=<redacted>; clientSecret=<redacted> "
+                                          "private_key=<redacted> passphrase=<redacted> "
+                                          "certificatePath=<redacted> privateKeyPath=<redacted> "
+                                          "clientCertificatePath=<redacted> "
+                                          "clientPrivateKeyPath=<redacted> "
+                                          "caBundlePath=<redacted> "
+                                          "trustStorePath=<redacted> keyPath=<redacted> "
+                                          "certPath=<redacted> caPath=<redacted>")) != 0)
     {
         return 102;
+    }
+    return 0;
+}
+
+static int test_report_json_redacts_secret_hints(void)
+{
+    unsigned char buffer[4096];
+    SlArena arena;
+    SlDiagBuilder builder;
+    SlDiag diag;
+    SlStr rendered;
+
+    if (expect_status(make_arena(&arena, buffer, sizeof(buffer)), SL_STATUS_OK) != 0) {
+        return 111;
+    }
+    if (expect_status(sl_diag_builder_init(&builder, &arena, SL_DIAG_SEVERITY_ERROR,
+                                           SL_DIAG_PERMISSION_DENIED,
+                                           sl_str_from_cstr("safe public failure")),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_diag_builder_add_hint(
+                &builder, sl_str_from_cstr("password=hunter2 token=abc connectionString=Server=.;"
+                                           "Password=p\nAuthorization: Bearer bearer-secret\n"
+                                           "Authorization: Basic basic-secret\n"
+                                           "Authorization: Digest digest-secret")),
+            SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0 ||
+        expect_status(sl_diag_render_report_json(&arena, &diag, NULL, &rendered), SL_STATUS_OK) !=
+            0)
+    {
+        return 112;
+    }
+    if (expect_str_contains(rendered, "<redacted>") != 0 ||
+        expect_str_contains(rendered, "hunter2") == 0 ||
+        expect_str_contains(rendered, "token=abc") == 0 ||
+        expect_str_contains(rendered, "Password=p") == 0 ||
+        expect_str_contains(rendered, "bearer-secret") == 0 ||
+        expect_str_contains(rendered, "basic-secret") == 0 ||
+        expect_str_contains(rendered, "digest-secret") == 0)
+    {
+        return 113;
     }
     return 0;
 }
@@ -2398,6 +2461,11 @@ int main(void)
     }
 
     result = test_redaction_helper();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_report_json_redacts_secret_hints();
     if (result != 0) {
         return result;
     }

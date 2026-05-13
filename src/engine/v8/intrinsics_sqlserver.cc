@@ -291,6 +291,28 @@ struct SqlSrvV8CompletionPayload
     SqlSrvV8Connection* connection = nullptr;
 };
 
+bool sqlsrv_v8_size_fits_odbc_parameter(size_t value)
+{
+    return value <= static_cast<size_t>(std::numeric_limits<SQLLEN>::max()) &&
+           value <= static_cast<size_t>(std::numeric_limits<SQLULEN>::max());
+}
+
+bool sqlsrv_v8_prepare_bind_length(SqlSrvV8Request* request, size_t value, SQLLEN* out_indicator,
+                                   SQLULEN* out_column_size)
+{
+    if (request == nullptr || out_indicator == nullptr || out_column_size == nullptr ||
+        !sqlsrv_v8_size_fits_odbc_parameter(value))
+    {
+        if (request != nullptr) {
+            request->error = "sqlserver parameter value is too large";
+        }
+        return false;
+    }
+    *out_indicator = static_cast<SQLLEN>(value);
+    *out_column_size = static_cast<SQLULEN>(value);
+    return true;
+}
+
 bool sqlsrv_v8_plan_provider_matches(const SlPlanDataProvider& provider, SlStr token)
 {
     if (sl_str_equal(provider.token, token)) {
@@ -337,6 +359,147 @@ SlCapabilityOperation sqlsrv_v8_request_capability(SqlSrvV8Operation operation)
     default:
         return SL_CAPABILITY_OPERATION_WRITE;
     }
+}
+
+bool sqlsrv_v8_sql_keyword_is(const std::string& sql, const char* keyword)
+{
+    size_t index = 0U;
+    size_t offset = 0U;
+
+    while (index < sql.size() &&
+           (sql[index] == ' ' || sql[index] == '\t' || sql[index] == '\r' || sql[index] == '\n'))
+    {
+        index += 1U;
+    }
+    while (keyword[offset] != '\0') {
+        if (index + offset >= sql.size()) {
+            return false;
+        }
+        char actual = sql[index + offset];
+        char expected = keyword[offset];
+        if (actual >= 'a' && actual <= 'z') {
+            actual = static_cast<char>(actual - 'a' + 'A');
+        }
+        if (expected >= 'a' && expected <= 'z') {
+            expected = static_cast<char>(expected - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+        offset += 1U;
+    }
+    return index + offset == sql.size() ||
+           !(sql[index + offset] == '_' ||
+             (sql[index + offset] >= '0' && sql[index + offset] <= '9') ||
+             (sql[index + offset] >= 'A' && sql[index + offset] <= 'Z') ||
+             (sql[index + offset] >= 'a' && sql[index + offset] <= 'z'));
+}
+
+bool sqlsrv_v8_ascii_ident(char ch)
+{
+    return ch == '_' || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') ||
+           (ch >= 'a' && ch <= 'z');
+}
+
+bool sqlsrv_v8_token_at(const std::string& sql, size_t index, const char* token)
+{
+    size_t offset = 0U;
+
+    if (token == nullptr || index >= sql.size()) {
+        return false;
+    }
+    if (index > 0U && sqlsrv_v8_ascii_ident(sql[index - 1U])) {
+        return false;
+    }
+    while (token[offset] != '\0') {
+        if (index + offset >= sql.size()) {
+            return false;
+        }
+        char actual = sql[index + offset];
+        char expected = token[offset];
+        if (actual >= 'a' && actual <= 'z') {
+            actual = static_cast<char>(actual - 'a' + 'A');
+        }
+        if (expected >= 'a' && expected <= 'z') {
+            expected = static_cast<char>(expected - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+        offset += 1U;
+    }
+    return index + offset >= sql.size() || !sqlsrv_v8_ascii_ident(sql[index + offset]);
+}
+
+bool sqlsrv_v8_read_remainder_allowed(const std::string& sql, size_t index)
+{
+    bool saw_semicolon = false;
+
+    while (index < sql.size()) {
+        char ch = sql[index];
+        if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
+            index += 1U;
+            continue;
+        }
+        if (ch == '-' && index + 1U < sql.size() && sql[index + 1U] == '-') {
+            index += 2U;
+            while (index < sql.size() && sql[index] != '\r' && sql[index] != '\n') {
+                index += 1U;
+            }
+            continue;
+        }
+        if (ch == '/' && index + 1U < sql.size() && sql[index + 1U] == '*') {
+            index += 2U;
+            while (index + 1U < sql.size() && !(sql[index] == '*' && sql[index + 1U] == '/')) {
+                index += 1U;
+            }
+            if (index + 1U >= sql.size()) {
+                return false;
+            }
+            index += 2U;
+            continue;
+        }
+        if (saw_semicolon) {
+            return false;
+        }
+        if (ch == ';') {
+            saw_semicolon = true;
+            index += 1U;
+            continue;
+        }
+        if (sqlsrv_v8_token_at(sql, index, "INTO")) {
+            return false;
+        }
+        index += 1U;
+    }
+    return true;
+}
+
+bool sqlsrv_v8_read_sql_allowed(const std::string& sql)
+{
+    size_t index = 0U;
+
+    if (!sqlsrv_v8_sql_keyword_is(sql, "SELECT")) {
+        return false;
+    }
+    while (index < sql.size() &&
+           (sql[index] == ' ' || sql[index] == '\t' || sql[index] == '\r' || sql[index] == '\n'))
+    {
+        index += 1U;
+    }
+    index += sizeof("SELECT") - 1U;
+    return sqlsrv_v8_read_remainder_allowed(sql, index);
+}
+
+SlCapabilityOperation sqlsrv_v8_effective_request_capability(SqlSrvV8Operation operation,
+                                                             const std::string& sql)
+{
+    SlCapabilityOperation capability = sqlsrv_v8_request_capability(operation);
+    if (capability != SL_CAPABILITY_OPERATION_READ) {
+        return capability;
+    }
+    return sqlsrv_v8_read_sql_allowed(sql) ? SL_CAPABILITY_OPERATION_READ
+                                           : SL_CAPABILITY_OPERATION_WRITE;
 }
 
 bool sqlsrv_v8_access_allows(SlSqlServerAccess access, SlCapabilityOperation operation)
@@ -759,12 +922,16 @@ bool sqlsrv_v8_prepare_columns(v8::Isolate* isolate, v8::Local<v8::Context> cont
 bool sqlsrv_v8_rows_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context,
                              const SqlSrvV8Request& request, v8::Local<v8::Array>* out)
 {
-    v8::Local<v8::Array> rows = v8::Array::New(isolate, static_cast<int>(request.rows.size()));
+    v8::Local<v8::Array> rows;
     SlV8DbColumnSet columns;
     std::vector<v8::Local<v8::Value>> values(request.columns.size());
     if (out == nullptr) {
         return false;
     }
+    if (request.rows.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        return false;
+    }
+    rows = v8::Array::New(isolate, static_cast<int>(request.rows.size()));
     if (!sqlsrv_v8_prepare_columns(isolate, context, request, &columns)) {
         return false;
     }
@@ -833,12 +1000,16 @@ bool sqlsrv_v8_row_to_object(v8::Isolate* isolate, v8::Local<v8::Context> contex
 bool sqlsrv_v8_rows_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context,
                            const SqlSrvV8Request& request, v8::Local<v8::Object>* out)
 {
-    v8::Local<v8::Array> rows = v8::Array::New(isolate, static_cast<int>(request.rows.size()));
+    v8::Local<v8::Array> rows;
     SlV8DbColumnSet columns;
     std::vector<v8::Local<v8::Value>> values(request.columns.size());
     if (out == nullptr) {
         return false;
     }
+    if (request.rows.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        return false;
+    }
+    rows = v8::Array::New(isolate, static_cast<int>(request.rows.size()));
     if (!sqlsrv_v8_prepare_columns(isolate, context, request, &columns)) {
         return false;
     }
@@ -1197,9 +1368,14 @@ bool sqlsrv_v8_bind_params(SqlSrvV8Request* request)
     if (request == nullptr || request->stmt == SQL_NULL_HSTMT) {
         return false;
     }
+    if (request->params.size() > static_cast<size_t>(std::numeric_limits<SQLUSMALLINT>::max())) {
+        request->error = "sqlserver parameter array exceeds supported parameter count";
+        return false;
+    }
     for (size_t index = 0U; index < request->params.size(); index += 1U) {
         SqlSrvV8Param& param = request->params[index];
         SQLUSMALLINT sql_index = static_cast<SQLUSMALLINT>(index + 1U);
+        SQLULEN column_size = 0;
         SQLRETURN rc = SQL_ERROR;
         switch (param.kind) {
         case SqlSrvV8ParamKind::Null:
@@ -1223,11 +1399,14 @@ bool sqlsrv_v8_bind_params(SqlSrvV8Request* request)
                                   SQL_DOUBLE, 0, 0, &param.float_value, 0, &param.indicator);
             break;
         case SqlSrvV8ParamKind::Text:
-            param.indicator = static_cast<SQLLEN>(param.text.size());
-            rc =
-                SQLBindParameter(request->stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR,
-                                 SQL_WVARCHAR, param.text.size(), 0, (SQLPOINTER)param.text.c_str(),
-                                 param.indicator, &param.indicator);
+            if (!sqlsrv_v8_prepare_bind_length(request, param.text.size(), &param.indicator,
+                                               &column_size))
+            {
+                return false;
+            }
+            rc = SQLBindParameter(request->stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR,
+                                  SQL_WVARCHAR, column_size, 0, (SQLPOINTER)param.text.c_str(),
+                                  param.indicator, &param.indicator);
             break;
         case SqlSrvV8ParamKind::Decimal:
         case SqlSrvV8ParamKind::Uuid:
@@ -1236,16 +1415,23 @@ bool sqlsrv_v8_bind_params(SqlSrvV8Request* request)
         case SqlSrvV8ParamKind::LocalDateTime:
         case SqlSrvV8ParamKind::OffsetDateTime:
         case SqlSrvV8ParamKind::JsonText:
-            param.indicator = static_cast<SQLLEN>(param.text.size());
-            rc =
-                SQLBindParameter(request->stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR,
-                                 param.sql_type, param.text.size(), 0,
-                                 (SQLPOINTER)param.text.c_str(), param.indicator, &param.indicator);
+            if (!sqlsrv_v8_prepare_bind_length(request, param.text.size(), &param.indicator,
+                                               &column_size))
+            {
+                return false;
+            }
+            rc = SQLBindParameter(request->stmt, sql_index, SQL_PARAM_INPUT, SQL_C_CHAR,
+                                  param.sql_type, column_size, 0, (SQLPOINTER)param.text.c_str(),
+                                  param.indicator, &param.indicator);
             break;
         case SqlSrvV8ParamKind::Bytes:
-            param.indicator = static_cast<SQLLEN>(param.bytes.size());
+            if (!sqlsrv_v8_prepare_bind_length(request, param.bytes.size(), &param.indicator,
+                                               &column_size))
+            {
+                return false;
+            }
             rc = SQLBindParameter(request->stmt, sql_index, SQL_PARAM_INPUT, SQL_C_BINARY,
-                                  SQL_VARBINARY, param.bytes.size(), 0,
+                                  SQL_VARBINARY, column_size, 0,
                                   param.bytes.empty() ? nullptr : (SQLPOINTER)param.bytes.data(),
                                   param.indicator, &param.indicator);
             break;
@@ -1297,6 +1483,15 @@ bool sqlsrv_v8_allocate_connection(SqlSrvV8ConnectionResource* resource,
         return false;
     }
     SQLSetConnectAttr(connection->dbc, SQL_ATTR_LOGIN_TIMEOUT, (SQLPOINTER)15, 0);
+    if (resource->access == SL_SQLSERVER_ACCESS_READ) {
+        rc = SQLSetConnectAttr(connection->dbc, SQL_ATTR_ACCESS_MODE,
+                               (SQLPOINTER)SQL_MODE_READ_ONLY, 0);
+        if (!SQL_SUCCEEDED(rc)) {
+            request->error = sqlsrv_v8_diag(SQL_HANDLE_DBC, connection->dbc,
+                                            "sqlserver ODBC read-only access setup failed");
+            return false;
+        }
+    }
     return true;
 }
 
@@ -1645,6 +1840,10 @@ bool sqlsrv_v8_read_cell(SQLHSTMT stmt, const SqlSrvV8Column& column, SQLUSMALLI
 bool sqlsrv_v8_materialize_current_row(SqlSrvV8Request* request)
 {
     std::vector<SqlSrvV8Cell> row;
+    if (request->columns.size() > static_cast<size_t>(std::numeric_limits<SQLUSMALLINT>::max())) {
+        request->error = "sqlserver column count exceeds supported ODBC range";
+        return false;
+    }
     row.reserve(request->columns.size());
     for (size_t index = 0U; index < request->columns.size(); index += 1U) {
         SqlSrvV8Cell cell = {};
@@ -2377,8 +2576,9 @@ void sqlsrv_v8_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
     }
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
     if (!sl_status_is_ok(status) ||
-        !sqlsrv_v8_check_capability(isolate, backend, &arena, resource,
-                                    sqlsrv_v8_request_capability(operation)))
+        !sqlsrv_v8_check_capability(
+            isolate, backend, &arena, resource,
+            sqlsrv_v8_effective_request_capability(operation, request->sql)))
     {
         return;
     }

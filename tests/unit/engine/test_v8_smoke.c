@@ -3318,6 +3318,76 @@ static int test_promise_rejection_returns_diagnostic(void)
     return 0;
 }
 
+static int test_promise_rejection_redacts_secret_text(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 70;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 71;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-promise-secret-reject.js"),
+                sl_str_from_cstr("globalThis.sloppy_reject_secret = async function () { throw new "
+                                 "Error('password=hunter2 token=abc Authorization: Bearer "
+                                 "bearer-secret; Authorization: Basic basic-secret; "
+                                 "Authorization: Digest digest-secret\\n"
+                                 "{\"token\":\"json-secret\",\"api_key\":\"api-secret\"}\\n"
+                                 "Cookie: sid=cookie-secret; csrf=csrf-secret\\n"
+                                 "Set-Cookie: sid=set-cookie-secret; HttpOnly\\n"
+                                 "connectionString=postgres://ada:conn-secret@localhost/db'); };"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 72;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_reject_secret"), &result,
+                                               &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 73;
+    }
+
+    if (diag.code != SL_DIAG_V8_UNHANDLED_REJECTION ||
+        expect_str_contains(diag.message, sl_str_from_cstr("[REDACTED]")) != 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("hunter2")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("token=abc")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("bearer-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("basic-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("digest-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("json-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("api-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("cookie-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("csrf-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("set-cookie-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("conn-secret")) == 0)
+    {
+        sl_engine_destroy(engine);
+        return 74;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_pending_promise_returns_deadline_diagnostic(void)
 {
     unsigned char engine_storage[8192];
@@ -8109,6 +8179,14 @@ static int test_provider_bridge_non_live_invalid_shapes(void)
                     "  Object.setPrototypeOf(pgInheritedMax, { maxConnections: 'bad' });"
                     "  expectOpenClose(() => __sloppy.data.postgres.open(pgInheritedMax), "
                     "__sloppy.data.postgres.close);"
+                    "  const pgRead = __sloppy.data.postgres.open({ "
+                    "connectionString: 'postgres://localhost/sloppy', capability: 'data.pg', "
+                    "access: 'read' });"
+                    "  expectThrow(() => __sloppy.data.postgres.queryCursor(pgRead, 'select id "
+                    "into copied from users', []), 'read-only');"
+                    "  expectThrow(() => __sloppy.data.postgres.queryRawCursor(pgRead, 'insert "
+                    "into users values (1)', []), 'read-only');"
+                    "  __sloppy.data.postgres.close(pgRead);"
                     "  expectThrow(() => __sloppy.data.postgres.open({ "
                     "connectionString: 'postgres://localhost/sloppy', capability: 'data.pg', "
                     "get maxConnections() { throw new Error('max'); } }), 'open requires open "
@@ -8129,6 +8207,14 @@ static int test_provider_bridge_non_live_invalid_shapes(void)
                     "  Object.setPrototypeOf(sqlSrvInheritedMax, { maxConnections: 'bad' });"
                     "  expectOpenClose(() => __sloppy.data.sqlserver.open(sqlSrvInheritedMax), "
                     "__sloppy.data.sqlserver.close);"
+                    "  const sqlSrvRead = __sloppy.data.sqlserver.open({ "
+                    "connectionString: 'Driver={ODBC Driver 18 for SQL Server};Server=localhost;', "
+                    "capability: 'data.sqlsrv', access: 'read' });"
+                    "  expectThrow(() => __sloppy.data.sqlserver.query(sqlSrvRead, 'select 1; "
+                    "delete from users', []), 'read-only');"
+                    "  expectThrow(() => __sloppy.data.sqlserver.queryCursor(sqlSrvRead, 'select "
+                    "id into copied from users', []), 'read-only');"
+                    "  __sloppy.data.sqlserver.close(sqlSrvRead);"
                     "  expectThrow(() => __sloppy.data.sqlserver.open({ "
                     "connectionString: 'Driver={ODBC Driver 18 for SQL Server};Server=localhost;', "
                     "capability: 'data.sqlsrv', get maxConnections() { throw new Error('max'); } "
@@ -8148,8 +8234,10 @@ static int test_provider_bridge_non_live_invalid_shapes(void)
                                                &result, &diag),
                       SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_JSON ||
-        expect_bytes_equal(result.response.body, "{\"checks\":[true,true,true,true,true,true,true,"
-                                                 "true,true,true,true,true,true,true]}") != 0)
+        expect_bytes_equal(result.response.body,
+                           "{\"checks\":[true,true,true,true,true,true,true,"
+                           "true,true,true,true,true,true,true,true,true,true,"
+                           "true]}") != 0)
     {
         sl_engine_destroy(engine);
         return 230;
@@ -8429,6 +8517,11 @@ int main(int argc, char** argv)
     }
 
     result = test_promise_rejection_returns_diagnostic();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_promise_rejection_redacts_secret_text();
     if (result != 0) {
         return result;
     }

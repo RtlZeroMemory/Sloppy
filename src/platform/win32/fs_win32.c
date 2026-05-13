@@ -597,13 +597,24 @@ static SlStatus sl_fs_win32_delete_tree(SlArena* arena, const wchar_t* wide, SlD
                 sl_arena_reset_to(arena, tree_mark);
                 return status;
             }
-            if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+            if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 &&
+                (data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0)
+            {
                 status = sl_fs_win32_delete_tree(arena, child, out_diag);
                 if (!sl_status_is_ok(status)) {
                     FindClose(find);
                     sl_arena_reset_to(arena, tree_mark);
                     return status;
                 }
+                if (!RemoveDirectoryW(child)) {
+                    DWORD error = GetLastError();
+                    FindClose(find);
+                    sl_arena_reset_to(arena, tree_mark);
+                    return sl_fs_win32_status(
+                        error, out_diag, sl_str_from_cstr("filesystem directory delete failed"));
+                }
+            }
+            else if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) {
                 if (!RemoveDirectoryW(child)) {
                     DWORD error = GetLastError();
                     FindClose(find);
