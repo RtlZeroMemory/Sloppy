@@ -12,13 +12,28 @@
 #include "sloppy/builder.h"
 #include "sloppy/checked_math.h"
 #include "sloppy/container.h"
+#include "sloppy/json_profile.h"
 
 #include <yyjson.h>
 
 #define SL_REQUEST_VALIDATION_MAX_ISSUES 8U
 #define SL_REQUEST_VALIDATION_MAX_JSON_DEPTH 50U
+#define SL_REQUEST_VALIDATION_MAX_PATH_FRAMES 64U
 #define SL_REQUEST_VALIDATION_PROBLEM_INITIAL 256U
 #define SL_REQUEST_VALIDATION_PROBLEM_MAX 4096U
+
+typedef enum SlRequestValidationPathFrameKind
+{
+    SL_REQUEST_VALIDATION_PATH_FIELD = 0,
+    SL_REQUEST_VALIDATION_PATH_INDEX = 1
+} SlRequestValidationPathFrameKind;
+
+typedef struct SlRequestValidationPathFrame
+{
+    SlStr field;
+    size_t index;
+    SlRequestValidationPathFrameKind kind;
+} SlRequestValidationPathFrame;
 
 typedef struct SlRequestValidationIssue
 {
@@ -36,7 +51,33 @@ typedef struct SlRequestValidationState
     size_t max_depth;
     size_t max_string_bytes;
     size_t max_array_length;
+    SlRequestValidationPathFrame path_frames[SL_REQUEST_VALIDATION_MAX_PATH_FRAMES];
+    size_t path_frame_count;
+    size_t path_suppressed_count;
+    bool profile_enabled;
 } SlRequestValidationState;
+
+static uint64_t sl_request_validation_profile_begin(const SlRequestValidationState* state,
+                                                    SlJsonProfilePhase phase)
+{
+    return state != NULL && state->profile_enabled ? sl_json_profile_phase_begin(phase) : 0U;
+}
+
+static void sl_request_validation_profile_end(const SlRequestValidationState* state,
+                                              SlJsonProfilePhase phase, uint64_t start_ns)
+{
+    if (state != NULL && state->profile_enabled) {
+        sl_json_profile_phase_end(phase, start_ns);
+    }
+}
+
+static void sl_request_validation_profile_counter_add(const SlRequestValidationState* state,
+                                                      SlJsonProfileCounter counter, uint64_t amount)
+{
+    if (state != NULL && state->profile_enabled) {
+        sl_json_profile_counter_add(counter, amount);
+    }
+}
 
 static SlStr sl_request_validation_literal(const char* ptr, size_t length)
 {
@@ -79,10 +120,163 @@ static SlStatus sl_request_validation_copy_str(SlArena* arena, SlStr src, SlStr*
     return sl_str_copy_view_to_arena(arena, src, out);
 }
 
+static SlStatus sl_request_validation_path_push_field(SlRequestValidationState* state, SlStr field)
+{
+    SlRequestValidationPathFrame* frame = NULL;
+
+    if (state == NULL || (field.length != 0U && field.ptr == NULL)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (state->path_frame_count >= SL_REQUEST_VALIDATION_MAX_PATH_FRAMES) {
+        state->path_suppressed_count += 1U;
+        return sl_status_ok();
+    }
+    frame = &state->path_frames[state->path_frame_count];
+    *frame =
+        (SlRequestValidationPathFrame){.field = field, .kind = SL_REQUEST_VALIDATION_PATH_FIELD};
+    state->path_frame_count += 1U;
+    return sl_status_ok();
+}
+
+static SlStatus sl_request_validation_path_push_index(SlRequestValidationState* state, size_t index)
+{
+    SlRequestValidationPathFrame* frame = NULL;
+
+    if (state == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (state->path_frame_count >= SL_REQUEST_VALIDATION_MAX_PATH_FRAMES) {
+        state->path_suppressed_count += 1U;
+        return sl_status_ok();
+    }
+    frame = &state->path_frames[state->path_frame_count];
+    *frame =
+        (SlRequestValidationPathFrame){.index = index, .kind = SL_REQUEST_VALIDATION_PATH_INDEX};
+    state->path_frame_count += 1U;
+    return sl_status_ok();
+}
+
+static void sl_request_validation_path_pop(SlRequestValidationState* state)
+{
+    if (state == NULL) {
+        return;
+    }
+    if (state->path_suppressed_count != 0U) {
+        state->path_suppressed_count -= 1U;
+        return;
+    }
+    if (state->path_frame_count != 0U) {
+        state->path_frame_count -= 1U;
+    }
+}
+
+static SlStatus sl_request_validation_render_fallback_path(SlRequestValidationState* state,
+                                                           SlStr* out)
+{
+    SlStr fallback = sl_str_from_cstr("$");
+
+    if (state == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (state->path_frame_count != 0U &&
+        state->path_frames[0U].kind == SL_REQUEST_VALIDATION_PATH_FIELD &&
+        sl_str_equal(state->path_frames[0U].field, sl_str_from_cstr("body")))
+    {
+        fallback = sl_str_from_cstr("body.<truncated>");
+    }
+    return sl_request_validation_copy_str(state->arena, fallback, out);
+}
+
+static SlStatus sl_request_validation_render_current_path(SlRequestValidationState* state,
+                                                          SlStr* out)
+{
+    SlStringBuilder builder = {0};
+    uint64_t profile_start = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (state == NULL || state->arena == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    profile_start =
+        sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_PATH_CONSTRUCTION);
+    status = sl_string_builder_init_arena(&builder, state->arena, 64U,
+                                          SL_REQUEST_VALIDATION_PROBLEM_MAX);
+    if (!sl_status_is_ok(status)) {
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PATH_CONSTRUCTION,
+                                          profile_start);
+        return status;
+    }
+    if (state->path_frame_count != 0U &&
+        state->path_frames[0U].kind == SL_REQUEST_VALIDATION_PATH_FIELD &&
+        sl_str_equal(state->path_frames[0U].field, sl_str_from_cstr("body")))
+    {
+        status = sl_string_builder_append_str(&builder, state->path_frames[0U].field);
+        index = 1U;
+    }
+    else {
+        status = sl_string_builder_append_char(&builder, '$');
+    }
+    if (!sl_status_is_ok(status)) {
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PATH_CONSTRUCTION,
+                                          profile_start);
+        return status;
+    }
+    for (; index < state->path_frame_count; index += 1U) {
+        const SlRequestValidationPathFrame* frame = &state->path_frames[index];
+
+        if (frame->kind == SL_REQUEST_VALIDATION_PATH_FIELD) {
+            status = sl_string_builder_append_char(&builder, '.');
+            if (sl_status_is_ok(status)) {
+                status = sl_string_builder_append_str(&builder, frame->field);
+            }
+        }
+        else {
+            status = sl_string_builder_append_char(&builder, '[');
+            if (sl_status_is_ok(status)) {
+                status = sl_string_builder_append_size(&builder, frame->index);
+            }
+            if (sl_status_is_ok(status)) {
+                status = sl_string_builder_append_char(&builder, ']');
+            }
+        }
+        if (!sl_status_is_ok(status)) {
+            status = sl_request_validation_render_fallback_path(state, out);
+            if (sl_status_is_ok(status)) {
+                sl_request_validation_profile_counter_add(
+                    state, SL_JSON_PROFILE_COUNTER_PATHS_RENDERED, 1U);
+            }
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PATH_CONSTRUCTION,
+                                              profile_start);
+            return status;
+        }
+    }
+    if (state->path_suppressed_count != 0U) {
+        status = sl_string_builder_append_cstr(&builder, ".<truncated>");
+        if (!sl_status_is_ok(status)) {
+            status = sl_request_validation_render_fallback_path(state, out);
+            if (sl_status_is_ok(status)) {
+                sl_request_validation_profile_counter_add(
+                    state, SL_JSON_PROFILE_COUNTER_PATHS_RENDERED, 1U);
+            }
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PATH_CONSTRUCTION,
+                                              profile_start);
+            return status;
+        }
+    }
+    *out = sl_string_builder_view(&builder);
+    sl_request_validation_profile_counter_add(state, SL_JSON_PROFILE_COUNTER_PATHS_RENDERED, 1U);
+    sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PATH_CONSTRUCTION,
+                                      profile_start);
+    return sl_status_ok();
+}
+
 static SlStatus sl_request_validation_add_issue_code(SlRequestValidationState* state, SlStr path,
                                                      SlStr code, SlStr message)
 {
     SlRequestValidationIssue* issue = NULL;
+    uint64_t profile_start = 0U;
     SlStatus status;
 
     if (state == NULL || state->arena == NULL) {
@@ -92,22 +286,41 @@ static SlStatus sl_request_validation_add_issue_code(SlRequestValidationState* s
         return sl_status_ok();
     }
 
+    profile_start =
+        sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_ISSUE_RECORDING);
     status = sl_fixed_vec_push_zero(&state->issues, (void**)&issue);
     if (!sl_status_is_ok(status)) {
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_ISSUE_RECORDING,
+                                          profile_start);
         return status;
     }
     if (sl_str_is_empty(path)) {
-        path = sl_str_from_cstr("$");
+        status = sl_request_validation_render_current_path(state, &path);
+        if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_ISSUE_RECORDING,
+                                              profile_start);
+            return status;
+        }
     }
     status = sl_request_validation_copy_str(state->arena, path, &issue->path);
     if (!sl_status_is_ok(status)) {
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_ISSUE_RECORDING,
+                                          profile_start);
         return status;
     }
     status = sl_request_validation_copy_str(state->arena, code, &issue->code);
     if (!sl_status_is_ok(status)) {
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_ISSUE_RECORDING,
+                                          profile_start);
         return status;
     }
-    return sl_request_validation_copy_str(state->arena, message, &issue->message);
+    status = sl_request_validation_copy_str(state->arena, message, &issue->message);
+    if (sl_status_is_ok(status)) {
+        sl_request_validation_profile_counter_add(state, SL_JSON_PROFILE_COUNTER_ISSUES_EMITTED,
+                                                  1U);
+    }
+    sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_ISSUE_RECORDING, profile_start);
+    return status;
 }
 
 static SlStatus sl_request_validation_add_issue(SlRequestValidationState* state, SlStr path,
@@ -179,6 +392,7 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
     SlStringBuilder builder = {0};
     SlStr body = {0};
     size_t index = 0U;
+    uint64_t profile_start = 0U;
     SlStatus status;
 
     if (arena == NULL || state == NULL || out_result == NULL) {
@@ -186,9 +400,13 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
     }
 
     *out_result = (SlEngineResult){0};
+    profile_start = sl_request_validation_profile_begin(
+        state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION);
     status = sl_string_builder_init_arena(&builder, arena, SL_REQUEST_VALIDATION_PROBLEM_INITIAL,
                                           SL_REQUEST_VALIDATION_PROBLEM_MAX);
     if (!sl_status_is_ok(status)) {
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION,
+                                          profile_start);
         return status;
     }
 
@@ -196,6 +414,8 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
         &builder, "{\"type\":\"https://sloppy.dev/problems/validation\",\"title\":\"Validation "
                   "failed\",\"status\":400,\"code\":\"SLOPPY_E_VALIDATION_FAILED\",\"errors\":[");
     if (!sl_status_is_ok(status)) {
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION,
+                                          profile_start);
         return status;
     }
 
@@ -204,46 +424,66 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
             (const SlRequestValidationIssue*)sl_fixed_vec_at_const(&state->issues, index);
 
         if (issue == NULL) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return sl_status_from_code(SL_STATUS_INTERNAL);
         }
         if (index != 0U) {
             status = sl_string_builder_append_char(&builder, ',');
             if (!sl_status_is_ok(status)) {
+                sl_request_validation_profile_end(
+                    state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
                 return status;
             }
         }
         status = sl_string_builder_append_cstr(&builder, "{\"path\":");
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
         status = sl_request_validation_append_json_escaped(&builder, issue->path);
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
         status = sl_string_builder_append_cstr(&builder, ",\"code\":");
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
         status = sl_request_validation_append_json_escaped(&builder, issue->code);
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
         status = sl_string_builder_append_cstr(&builder, ",\"message\":");
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
         status = sl_request_validation_append_json_escaped(&builder, issue->message);
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
         status = sl_string_builder_append_char(&builder, '}');
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(
+                state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION, profile_start);
             return status;
         }
     }
 
     status = sl_string_builder_append_cstr(&builder, "]}\n");
     if (!sl_status_is_ok(status)) {
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION,
+                                          profile_start);
         return status;
     }
 
@@ -252,12 +492,18 @@ static SlStatus sl_request_validation_problem(SlArena* arena, const SlRequestVal
     out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
     out_result->response = sl_http_response_problem(
         400U, sl_bytes_from_parts((const unsigned char*)body.ptr, body.length));
+    sl_request_validation_profile_counter_add(state, SL_JSON_PROFILE_COUNTER_PROBLEM_DETAILS_BUILT,
+                                              1U);
+    sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_PROBLEM_DETAILS_CONSTRUCTION,
+                                      profile_start);
     return sl_status_ok();
 }
 
-static const SlPlanSchema* sl_request_validation_find_schema(const SlPlan* plan, SlStr name)
+static const SlPlanSchema* sl_request_validation_find_schema(const SlRequestValidationState* state,
+                                                             const SlPlan* plan, SlStr name)
 {
     size_t index = 0U;
+    uint64_t profile_start = 0U;
 
     if (plan == NULL || sl_str_is_empty(name) ||
         (plan->schema_count != 0U && plan->schemas == NULL))
@@ -265,84 +511,18 @@ static const SlPlanSchema* sl_request_validation_find_schema(const SlPlan* plan,
         return NULL;
     }
 
+    profile_start =
+        sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_ROOT_SCHEMA_LOOKUP);
     for (index = 0U; index < plan->schema_count; index += 1U) {
         if (sl_str_equal(plan->schemas[index].name, name)) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_ROOT_SCHEMA_LOOKUP,
+                                              profile_start);
             return &plan->schemas[index];
         }
     }
+    sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_ROOT_SCHEMA_LOOKUP,
+                                      profile_start);
     return NULL;
-}
-
-static SlStatus sl_request_validation_child_path(SlArena* arena, SlStr parent, SlStr child,
-                                                 SlStr* out)
-{
-    SlStringBuilder builder = {0};
-    SlStatus status;
-
-    if (arena == NULL || out == NULL) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-
-    status = sl_string_builder_init_arena(&builder, arena, parent.length + child.length + 2U,
-                                          parent.length + child.length + 2U);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    if (!sl_str_is_empty(parent) && !sl_str_equal(parent, sl_str_from_cstr("$"))) {
-        status = sl_string_builder_append_str(&builder, parent);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-        status = sl_string_builder_append_char(&builder, '.');
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-    }
-    status = sl_string_builder_append_str(&builder, child);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    *out = sl_string_builder_view(&builder);
-    return sl_status_ok();
-}
-
-static SlStatus sl_request_validation_index_path(SlArena* arena, SlStr parent, size_t index,
-                                                 SlStr* out)
-{
-    size_t capacity = 0U;
-    SlStringBuilder builder = {0};
-    SlStatus status;
-
-    if (arena == NULL || out == NULL) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-    *out = sl_str_empty();
-    status = sl_checked_add_size(parent.length, 32U, &capacity);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_string_builder_init_arena(&builder, arena, capacity, capacity);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_string_builder_append_str(&builder, parent);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_string_builder_append_char(&builder, '[');
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_string_builder_append_size(&builder, index);
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    status = sl_string_builder_append_char(&builder, ']');
-    if (!sl_status_is_ok(status)) {
-        return status;
-    }
-    *out = sl_string_builder_view(&builder);
-    return sl_status_ok();
 }
 
 static bool sl_request_validation_email_like(SlStr value)
@@ -481,12 +661,18 @@ static SlStatus sl_request_validation_validate_string(SlRequestValidationState* 
                                                       SlStr path)
 {
     size_t max_string_bytes = 0U;
+    uint64_t profile_start =
+        sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_STRING_VALIDATION);
+    SlStatus status;
 
     if (schema->has_min && schema->min_value >= 0 && value.length < (size_t)schema->min_value) {
-        return sl_request_validation_add_issue_code(
+        status = sl_request_validation_add_issue_code(
             state, path, sl_request_validation_literal("string.min", sizeof("string.min") - 1U),
             sl_request_validation_literal("Expected a longer string.",
                                           sizeof("Expected a longer string.") - 1U));
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_STRING_VALIDATION,
+                                          profile_start);
+        return status;
     }
     if (schema->has_max && schema->max_value >= 0) {
         max_string_bytes = (size_t)schema->max_value;
@@ -495,88 +681,77 @@ static SlStatus sl_request_validation_validate_string(SlRequestValidationState* 
         max_string_bytes = state->max_string_bytes;
     }
     if (max_string_bytes != 0U && value.length > max_string_bytes) {
-        return sl_request_validation_add_issue_code(
+        status = sl_request_validation_add_issue_code(
             state, path, sl_request_validation_literal("string.max", sizeof("string.max") - 1U),
             sl_request_validation_literal("Expected a shorter string.",
                                           sizeof("Expected a shorter string.") - 1U));
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_STRING_VALIDATION,
+                                          profile_start);
+        return status;
     }
     if (sl_str_equal(schema->validation, sl_str_from_cstr("email")) &&
         !sl_request_validation_email_like(value))
     {
-        return sl_request_validation_add_issue_code(
+        status = sl_request_validation_add_issue_code(
             state, path, sl_request_validation_literal("string.email", sizeof("string.email") - 1U),
             sl_request_validation_literal("Expected an email address.",
                                           sizeof("Expected an email address.") - 1U));
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_STRING_VALIDATION,
+                                          profile_start);
+        return status;
     }
     if (sl_str_equal(schema->validation, sl_str_from_cstr("uuid")) &&
         !sl_request_validation_uuid_like(value))
     {
-        return sl_request_validation_add_issue_code(
+        status = sl_request_validation_add_issue_code(
             state, path, sl_request_validation_literal("string.uuid", sizeof("string.uuid") - 1U),
             sl_request_validation_literal("Expected a UUID string.",
                                           sizeof("Expected a UUID string.") - 1U));
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_STRING_VALIDATION,
+                                          profile_start);
+        return status;
     }
+    sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_STRING_VALIDATION,
+                                      profile_start);
     return sl_status_ok();
 }
 
-static bool sl_request_validation_schema_has_property(const SlPlanSchemaNode* schema, SlStr name)
+static const SlPlanSchemaProperty*
+sl_request_validation_find_property(const SlRequestValidationState* state,
+                                    const SlPlanSchemaNode* schema, SlStr name, size_t* out_index)
 {
     size_t index = 0U;
 
+    if (out_index != NULL) {
+        *out_index = SIZE_MAX;
+    }
     if (schema == NULL || (schema->property_count != 0U && schema->properties == NULL)) {
-        return false;
+        return NULL;
     }
     for (index = 0U; index < schema->property_count; index += 1U) {
+        sl_request_validation_profile_counter_add(state,
+                                                  SL_JSON_PROFILE_COUNTER_SCHEMA_FIELD_LOOKUPS, 1U);
+        sl_request_validation_profile_counter_add(
+            state, SL_JSON_PROFILE_COUNTER_SCHEMA_FIELD_LOOKUP_LINEAR, 1U);
         if (sl_str_equal(schema->properties[index].name, name)) {
-            return true;
+            if (out_index != NULL) {
+                *out_index = index;
+            }
+            return &schema->properties[index];
         }
     }
-    return false;
-}
-
-static SlStatus sl_request_validation_reject_unknown_fields(SlRequestValidationState* state,
-                                                            const SlPlanSchemaNode* schema,
-                                                            yyjson_val* value, SlStr path)
-{
-    yyjson_obj_iter iter;
-    yyjson_val* key = NULL;
-    SlStatus status;
-
-    if (state == NULL || schema == NULL || value == NULL) {
-        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
-    }
-    if (state->unknown_fields != SL_PLAN_JSON_UNKNOWN_FIELDS_REJECT) {
-        return sl_status_ok();
-    }
-
-    yyjson_obj_iter_init(value, &iter);
-    while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
-        SlStr name = sl_str_from_parts(yyjson_get_str(key), yyjson_get_len(key));
-        SlStr child_path = {0};
-
-        if (sl_request_validation_schema_has_property(schema, name)) {
-            continue;
-        }
-        status = sl_request_validation_child_path(state->arena, path, name, &child_path);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-        status = sl_request_validation_add_issue_code(
-            state, child_path, sl_request_validation_literal("unknown", sizeof("unknown") - 1U),
-            sl_request_validation_literal("Unknown field is not allowed.",
-                                          sizeof("Unknown field is not allowed.") - 1U));
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-    }
-    return sl_status_ok();
+    return NULL;
 }
 
 static SlStatus sl_request_validation_validate_object(SlRequestValidationState* state,
                                                       const SlPlanSchemaNode* schema,
                                                       yyjson_val* value, SlStr path, size_t depth)
 {
+    yyjson_obj_iter iter;
+    yyjson_val* key = NULL;
     size_t index = 0U;
+    uint64_t seen_mask = 0U;
+    bool use_seen_mask = false;
     SlStatus status;
 
     if (!yyjson_is_obj(value)) {
@@ -586,52 +761,140 @@ static SlStatus sl_request_validation_validate_object(SlRequestValidationState* 
                                           sizeof("Expected an object.") - 1U));
     }
 
-    for (index = 0U; index < schema->property_count; index += 1U) {
-        const SlPlanSchemaProperty* property = &schema->properties[index];
-        SlStr child_path = {0};
-        yyjson_val* child = yyjson_obj_getn(value, property->name.ptr, property->name.length);
+    sl_request_validation_profile_counter_add(state, SL_JSON_PROFILE_COUNTER_OBJECT_FIELDS_SEEN,
+                                              (uint64_t)yyjson_obj_size(value));
+    use_seen_mask = schema->property_count <= 64U;
 
-        if (property->schema == NULL) {
-            continue;
-        }
-        status = sl_request_validation_child_path(state->arena, path, property->name, &child_path);
-        if (!sl_status_is_ok(status)) {
-            return status;
-        }
-        if (child == NULL) {
-            if (!property->schema->optional) {
-                status = sl_request_validation_add_issue_code(
-                    state, child_path,
-                    sl_request_validation_literal("required", sizeof("required") - 1U),
-                    sl_request_validation_literal("Field is required.",
-                                                  sizeof("Field is required.") - 1U));
+    yyjson_obj_iter_init(value, &iter);
+    while ((key = yyjson_obj_iter_next(&iter)) != NULL) {
+        yyjson_val* child = yyjson_obj_iter_get_val(key);
+        SlStr name = sl_str_from_parts(yyjson_get_str(key), yyjson_get_len(key));
+        const SlPlanSchemaProperty* property = NULL;
+        size_t property_index = SIZE_MAX;
+        uint64_t iteration_start = sl_request_validation_profile_begin(
+            state, SL_JSON_PROFILE_PHASE_OBJECT_FIELD_ITERATION);
+        uint64_t lookup_start =
+            sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_FIELD_LOOKUP);
+
+        property = sl_request_validation_find_property(state, schema, name, &property_index);
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_FIELD_LOOKUP, lookup_start);
+
+        if (property == NULL) {
+            if (state->unknown_fields == SL_PLAN_JSON_UNKNOWN_FIELDS_REJECT) {
+                uint64_t unknown_start = sl_request_validation_profile_begin(
+                    state, SL_JSON_PROFILE_PHASE_UNKNOWN_FIELD_POLICY);
+
+                sl_request_validation_profile_counter_add(
+                    state, SL_JSON_PROFILE_COUNTER_UNKNOWN_FIELDS_SEEN, 1U);
+                status = sl_request_validation_path_push_field(state, name);
+                if (sl_status_is_ok(status)) {
+                    status = sl_request_validation_add_issue_code(
+                        state, sl_str_empty(),
+                        sl_request_validation_literal("unknown", sizeof("unknown") - 1U),
+                        sl_request_validation_literal("Unknown field is not allowed.",
+                                                      sizeof("Unknown field is not allowed.") -
+                                                          1U));
+                    sl_request_validation_path_pop(state);
+                }
+                sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_UNKNOWN_FIELD_POLICY,
+                                                  unknown_start);
                 if (!sl_status_is_ok(status)) {
+                    sl_request_validation_profile_end(
+                        state, SL_JSON_PROFILE_PHASE_OBJECT_FIELD_ITERATION, iteration_start);
                     return status;
                 }
             }
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_OBJECT_FIELD_ITERATION,
+                                              iteration_start);
             continue;
+        }
+        if (use_seen_mask && property_index < 64U) {
+            seen_mask |= UINT64_C(1) << property_index;
+        }
+        if (property->schema == NULL) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_OBJECT_FIELD_ITERATION,
+                                              iteration_start);
+            continue;
+        }
+        status = sl_request_validation_path_push_field(state, property->name);
+        if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_OBJECT_FIELD_ITERATION,
+                                              iteration_start);
+            return status;
         }
         if (yyjson_is_null(child)) {
             if (!property->schema->nullable) {
                 status = sl_request_validation_add_issue_code(
-                    state, child_path,
+                    state, sl_str_empty(),
                     sl_request_validation_literal("required", sizeof("required") - 1U),
                     sl_request_validation_literal("Field is required.",
                                                   sizeof("Field is required.") - 1U));
                 if (!sl_status_is_ok(status)) {
+                    sl_request_validation_path_pop(state);
+                    sl_request_validation_profile_end(
+                        state, SL_JSON_PROFILE_PHASE_OBJECT_FIELD_ITERATION, iteration_start);
                     return status;
                 }
             }
+            sl_request_validation_path_pop(state);
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_OBJECT_FIELD_ITERATION,
+                                              iteration_start);
             continue;
         }
         status = sl_request_validation_validate_json_value(state, property->schema, child,
-                                                           child_path, depth + 1U);
+                                                           sl_str_empty(), depth + 1U);
+        sl_request_validation_path_pop(state);
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_OBJECT_FIELD_ITERATION,
+                                              iteration_start);
             return status;
         }
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_OBJECT_FIELD_ITERATION,
+                                          iteration_start);
     }
 
-    return sl_request_validation_reject_unknown_fields(state, schema, value, path);
+    for (index = 0U; index < schema->property_count; index += 1U) {
+        const SlPlanSchemaProperty* property = &schema->properties[index];
+        bool seen = false;
+        uint64_t required_start = sl_request_validation_profile_begin(
+            state, SL_JSON_PROFILE_PHASE_REQUIRED_FIELD_TRACKING);
+
+        if (property->schema == NULL || property->schema->optional) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_REQUIRED_FIELD_TRACKING,
+                                              required_start);
+            continue;
+        }
+        if (use_seen_mask && index < 64U) {
+            sl_request_validation_profile_counter_add(
+                state, SL_JSON_PROFILE_COUNTER_REQUIRED_BITMAP_CHECKS, 1U);
+            seen = (seen_mask & (UINT64_C(1) << index)) != 0U;
+        }
+        else {
+            yyjson_val* child = yyjson_obj_getn(value, property->name.ptr, property->name.length);
+            seen = child != NULL;
+        }
+        if (!seen) {
+            status = sl_request_validation_path_push_field(state, property->name);
+            if (sl_status_is_ok(status)) {
+                status = sl_request_validation_add_issue_code(
+                    state, sl_str_empty(),
+                    sl_request_validation_literal("required", sizeof("required") - 1U),
+                    sl_request_validation_literal("Field is required.",
+                                                  sizeof("Field is required.") - 1U));
+                sl_request_validation_path_pop(state);
+            }
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_REQUIRED_FIELD_TRACKING,
+                                              required_start);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            continue;
+        }
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_REQUIRED_FIELD_TRACKING,
+                                          required_start);
+    }
+
+    return sl_status_ok();
 }
 
 static SlStatus sl_request_validation_validate_array(SlRequestValidationState* state,
@@ -670,18 +933,26 @@ static SlStatus sl_request_validation_validate_array(SlRequestValidationState* s
 
     yyjson_arr_iter_init(value, &iter);
     while ((item = yyjson_arr_iter_next(&iter)) != NULL) {
-        SlStr item_path = {0};
+        uint64_t array_start =
+            sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_ARRAY_VALIDATION);
 
-        status = sl_request_validation_index_path(state->arena, path, item_index, &item_path);
+        status = sl_request_validation_path_push_index(state, item_index);
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_ARRAY_VALIDATION,
+                                              array_start);
             return status;
         }
-        status = sl_request_validation_validate_json_value(state, schema->items, item, item_path,
-                                                           depth + 1U);
+        status = sl_request_validation_validate_json_value(state, schema->items, item,
+                                                           sl_str_empty(), depth + 1U);
+        sl_request_validation_path_pop(state);
         if (!sl_status_is_ok(status)) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_ARRAY_VALIDATION,
+                                              array_start);
             return status;
         }
         item_index += 1U;
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_ARRAY_VALIDATION,
+                                          array_start);
     }
     return sl_status_ok();
 }
@@ -728,10 +999,12 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
                                                           size_t depth)
 {
     SlStatus status;
+    uint64_t scalar_start = 0U;
 
     if (state == NULL || schema == NULL || value == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    sl_request_validation_profile_counter_add(state, SL_JSON_PROFILE_COUNTER_JSON_VALUES_SEEN, 1U);
     if (state->max_depth != 0U && depth > state->max_depth) {
         return sl_request_validation_add_issue(
             state, path,
@@ -754,61 +1027,93 @@ static SlStatus sl_request_validation_validate_json_value(SlRequestValidationSta
     case SL_PLAN_SCHEMA_OBJECT:
         return sl_request_validation_validate_object(state, schema, value, path, depth);
     case SL_PLAN_SCHEMA_STRING:
+        scalar_start =
+            sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_SCALAR_VALIDATION);
         if (!yyjson_is_str(value)) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_SCALAR_VALIDATION,
+                                              scalar_start);
             return sl_request_validation_add_issue_code(
                 state, path, sl_request_validation_literal("type", sizeof("type") - 1U),
                 sl_request_validation_literal("Expected a string.",
                                               sizeof("Expected a string.") - 1U));
         }
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_SCALAR_VALIDATION,
+                                          scalar_start);
         return sl_request_validation_validate_string(
             state, schema, sl_str_from_parts(yyjson_get_str(value), yyjson_get_len(value)), path);
     case SL_PLAN_SCHEMA_NUMBER:
+        scalar_start =
+            sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION);
         if (!yyjson_is_num(value)) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
+                                              scalar_start);
             return sl_request_validation_add_issue_code(
                 state, path, sl_request_validation_literal("type", sizeof("type") - 1U),
                 sl_request_validation_literal("Expected a finite number.",
                                               sizeof("Expected a finite number.") - 1U));
         }
         if (schema->has_min && yyjson_get_num(value) < (double)schema->min_value) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
+                                              scalar_start);
             return sl_request_validation_add_issue_code(
                 state, path, sl_request_validation_literal("number.min", sizeof("number.min") - 1U),
                 sl_request_validation_literal("Expected a larger number.",
                                               sizeof("Expected a larger number.") - 1U));
         }
         if (schema->has_max && yyjson_get_num(value) > (double)schema->max_value) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
+                                              scalar_start);
             return sl_request_validation_add_issue_code(
                 state, path, sl_request_validation_literal("number.max", sizeof("number.max") - 1U),
                 sl_request_validation_literal("Expected a smaller number.",
                                               sizeof("Expected a smaller number.") - 1U));
         }
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
+                                          scalar_start);
         return sl_status_ok();
     case SL_PLAN_SCHEMA_INT:
+        scalar_start =
+            sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION);
         if (!yyjson_is_int(value)) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
+                                              scalar_start);
             return sl_request_validation_add_issue_code(
                 state, path, sl_request_validation_literal("type", sizeof("type") - 1U),
                 sl_request_validation_literal("Expected an integer.",
                                               sizeof("Expected an integer.") - 1U));
         }
         if (schema->has_min && yyjson_get_sint(value) < schema->min_value) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
+                                              scalar_start);
             return sl_request_validation_add_issue_code(
                 state, path, sl_request_validation_literal("number.min", sizeof("number.min") - 1U),
                 sl_request_validation_literal("Expected a larger integer.",
                                               sizeof("Expected a larger integer.") - 1U));
         }
         if (schema->has_max && yyjson_get_sint(value) > schema->max_value) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
+                                              scalar_start);
             return sl_request_validation_add_issue_code(
                 state, path, sl_request_validation_literal("number.max", sizeof("number.max") - 1U),
                 sl_request_validation_literal("Expected a smaller integer.",
                                               sizeof("Expected a smaller integer.") - 1U));
         }
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_NUMBER_INT_VALIDATION,
+                                          scalar_start);
         return sl_status_ok();
     case SL_PLAN_SCHEMA_BOOLEAN:
+        scalar_start =
+            sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_SCALAR_VALIDATION);
         if (!yyjson_is_bool(value)) {
+            sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_SCALAR_VALIDATION,
+                                              scalar_start);
             return sl_request_validation_add_issue_code(
                 state, path, sl_request_validation_literal("type", sizeof("type") - 1U),
                 sl_request_validation_literal("Expected a boolean.",
                                               sizeof("Expected a boolean.") - 1U));
         }
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_SCALAR_VALIDATION,
+                                          scalar_start);
         return sl_status_ok();
     case SL_PLAN_SCHEMA_ARRAY:
         return sl_request_validation_validate_array(state, schema, value, path, depth);
@@ -967,8 +1272,12 @@ static SlStatus sl_request_validation_validate_body(SlRequestValidationState* st
     yyjson_doc* doc = NULL;
     yyjson_val* root = NULL;
     const SlPlanSchema* schema = NULL;
+    uint64_t body_check_start = 0U;
+    uint64_t parse_start = 0U;
+    uint64_t shape_start = 0U;
     SlStatus status;
 
+    sl_request_validation_profile_counter_add(state, SL_JSON_PROFILE_COUNTER_REQUESTS_TOTAL, 1U);
     if (sl_str_is_empty(binding->schema)) {
         return sl_request_validation_add_issue_code(
             state, sl_str_from_cstr("body"),
@@ -977,7 +1286,19 @@ static SlStatus sl_request_validation_validate_body(SlRequestValidationState* st
                                           sizeof("JSON body schema metadata is missing.") - 1U));
     }
 
-    schema = sl_request_validation_find_schema(plan, binding->schema);
+    if (context->request_schema != NULL && (plan->schema_count == 0U || plan->schemas != NULL)) {
+        for (size_t schema_index = 0U; schema_index < plan->schema_count; schema_index += 1U) {
+            if (&plan->schemas[schema_index] == context->request_schema &&
+                sl_str_equal(plan->schemas[schema_index].name, binding->schema))
+            {
+                schema = &plan->schemas[schema_index];
+                break;
+            }
+        }
+    }
+    if (schema == NULL) {
+        schema = sl_request_validation_find_schema(state, plan, binding->schema);
+    }
     if (schema == NULL) {
         return sl_request_validation_add_issue_code(
             state, sl_str_from_cstr("body"),
@@ -987,18 +1308,28 @@ static SlStatus sl_request_validation_validate_body(SlRequestValidationState* st
                                               1U));
     }
 
+    body_check_start =
+        sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_BODY_SIZE_CHECK);
     if (context->request == NULL || context->request->body.ptr == NULL ||
         context->request->body.length == 0U || context->body_kind != SL_HTTP_REQUEST_BODY_JSON)
     {
+        sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_BODY_SIZE_CHECK,
+                                          body_check_start);
         return sl_request_validation_add_issue_code(
             state, sl_str_from_cstr("body"),
             sl_request_validation_literal("body.required", sizeof("body.required") - 1U),
             sl_request_validation_literal("Expected a JSON request body.",
                                           sizeof("Expected a JSON request body.") - 1U));
     }
+    sl_request_validation_profile_counter_add(state, SL_JSON_PROFILE_COUNTER_JSON_BYTES_PARSED,
+                                              (uint64_t)context->request->body.length);
+    sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_BODY_SIZE_CHECK,
+                                      body_check_start);
 
+    parse_start = sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_YYJSON_PARSE);
     doc = yyjson_read_opts((char*)context->request->body.ptr, context->request->body.length, 0U,
                            NULL, &error);
+    sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_YYJSON_PARSE, parse_start);
     if (doc == NULL) {
         return sl_request_validation_add_issue_code(
             state, sl_str_from_cstr("body"),
@@ -1008,8 +1339,14 @@ static SlStatus sl_request_validation_validate_body(SlRequestValidationState* st
     }
 
     root = yyjson_doc_get_root(doc);
-    status = sl_request_validation_validate_json_value(state, &schema->definition, root,
-                                                       sl_str_from_cstr("body"), 0U);
+    shape_start = sl_request_validation_profile_begin(state, SL_JSON_PROFILE_PHASE_SHAPE_LOOKUP);
+    status = sl_request_validation_path_push_field(state, sl_str_from_cstr("body"));
+    if (sl_status_is_ok(status)) {
+        status = sl_request_validation_validate_json_value(state, &schema->definition, root,
+                                                           sl_str_empty(), 0U);
+        sl_request_validation_path_pop(state);
+    }
+    sl_request_validation_profile_end(state, SL_JSON_PROFILE_PHASE_SHAPE_LOOKUP, shape_start);
     yyjson_doc_free(doc);
     return status;
 }
@@ -1096,6 +1433,7 @@ SlStatus sl_request_validation_validate(SlArena* arena, const SlPlan* plan,
                                                           : route->json_request.max_depth;
     state.max_string_bytes = route->json_request.max_string_bytes;
     state.max_array_length = route->json_request.max_array_length;
+    state.profile_enabled = sl_json_profile_enabled();
     status = sl_fixed_vec_init(&state.issues, state.issue_storage, sizeof(SlRequestValidationIssue),
                                SL_REQUEST_VALIDATION_MAX_ISSUES);
     if (!sl_status_is_ok(status)) {

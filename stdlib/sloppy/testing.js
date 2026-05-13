@@ -1,5 +1,9 @@
-import { Text } from "./codec.js";
-import * as fsPromises from "node:fs/promises";
+import { Base64Url, Text } from "./codec.js";
+import { Hmac, Random, Secret } from "./crypto.js";
+import { data, Migrations } from "./data.js";
+import { Directory, File } from "./fs.js";
+import { HttpClient, TcpListener } from "./net.js";
+import { Process as SloppyProcess, System as SloppySystem } from "./os.js";
 import { RAW_JSON_BODY, serializeJson } from "./results.js";
 import { Schema, validationProblem } from "./schema.js";
 
@@ -8,6 +12,10 @@ const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 const PROBLEM_CONTENT_TYPE = "application/problem+json; charset=utf-8";
 const TEXT_CONTENT_TYPE = "text/plain; charset=utf-8";
 const HEADER_TOKEN_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u;
+const TESTHOST_BINARY_BODY = Symbol("sloppyTestHostBinaryBody");
+const TESTHOST_TEXT_BODY = Symbol("sloppyTestHostTextBody");
+const SECRET_REDACTION = "[REDACTED]";
+const SENSITIVE_KEY_PATTERN = /(password|passwd|pwd|secret|token|authorization|cookie|set-cookie|apikey|clientsecret|privatekey|passphrase|connectionstring)/iu;
 const DEFAULT_SERIALIZATION_OPTIONS = Object.freeze({
     json: undefined,
     contentNegotiation: Object.freeze({
@@ -30,6 +38,113 @@ function isPlainObject(value) {
 
     const prototype = Object.getPrototypeOf(value);
     return prototype === Object.prototype || prototype === null;
+}
+
+function normalizeOverrideMap(value, subject) {
+    if (value === undefined) {
+        return Object.freeze({});
+    }
+    if (!isPlainObject(value)) {
+        throw new TypeError(`Sloppy TestHost ${subject} overrides must be a plain object.`);
+    }
+    return Object.freeze({ ...value });
+}
+
+function redactConfiguredSecrets(value, secretTexts) {
+    let text = String(value);
+    for (const secret of secretTexts) {
+        text = text.replaceAll(secret, SECRET_REDACTION);
+    }
+    return text;
+}
+
+function redactedValue(key, value, secretTexts = []) {
+    if (SENSITIVE_KEY_PATTERN.test(String(key))) {
+        return SECRET_REDACTION;
+    }
+    if (value === null || value === undefined) {
+        return value;
+    }
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        return redactConfiguredSecrets(value, secretTexts);
+    }
+    if (Array.isArray(value)) {
+        return Object.freeze(value.map((entry) => redactedValue(key, entry, secretTexts)));
+    }
+    if (isPlainObject(value)) {
+        const copied = {};
+        for (const [entryKey, entryValue] of Object.entries(value)) {
+            copied[entryKey] = redactedValue(entryKey, entryValue, secretTexts);
+        }
+        return Object.freeze(copied);
+    }
+    return redactConfiguredSecrets(value, secretTexts);
+}
+
+function createDiagnosticsStore(secrets = []) {
+    const records = [];
+    const secretTexts = secrets
+        .filter((value) => typeof value === "string" && value.length > 0)
+        .map((value) => String(value));
+
+    function sanitizeRecord(record) {
+        const fields = {};
+        for (const [key, value] of Object.entries(record.fields ?? {})) {
+            fields[key] = redactedValue(key, value, secretTexts);
+        }
+        return Object.freeze({
+            code: String(record.code),
+            subsystem: record.subsystem ?? "testhost",
+            severity: record.severity ?? "info",
+            message: redactConfiguredSecrets(record.message ?? record.code, secretTexts),
+            fields: Object.freeze(fields),
+        });
+    }
+
+    const diagnostics = {
+        record(record) {
+            records.push(sanitizeRecord(record));
+        },
+        snapshot() {
+            return Object.freeze([...records]);
+        },
+        latest() {
+            return records.at(-1);
+        },
+        filter(criteria = {}) {
+            if (!isPlainObject(criteria)) {
+                throw new TypeError("Sloppy TestHost diagnostics filter criteria must be a plain object.");
+            }
+            return Object.freeze(records.filter((record) => {
+                if (criteria.code !== undefined && record.code !== criteria.code) {
+                    return false;
+                }
+                if (criteria.subsystem !== undefined && record.subsystem !== criteria.subsystem) {
+                    return false;
+                }
+                if (criteria.severity !== undefined && record.severity !== criteria.severity) {
+                    return false;
+                }
+                return true;
+            }));
+        },
+        expectCode(code) {
+            if (!records.some((record) => record.code === code)) {
+                throw new Error(`Sloppy TestHost expected diagnostic code '${code}'.`);
+            }
+            return diagnostics;
+        },
+        expectNoSecretLeaks() {
+            const text = serializeJson(records);
+            for (const secret of secretTexts) {
+                if (text.includes(secret)) {
+                    throw new Error("Sloppy TestHost diagnostics leaked a configured secret value.");
+                }
+            }
+            return diagnostics;
+        },
+    };
+    return Object.freeze(diagnostics);
 }
 
 function assertHeaderName(name, subject) {
@@ -116,6 +231,31 @@ function createHeadersLike(entries) {
     });
 }
 
+function headersToEntries(headers) {
+    if (headers === undefined || headers === null) {
+        return [];
+    }
+    if (typeof headers.entries === "function") {
+        return Array.from(headers.entries());
+    }
+    if (isPlainObject(headers)) {
+        return Object.entries(headers);
+    }
+    throw new TypeError("Sloppy test host headers must be response headers or a plain object.");
+}
+
+function responseHeaderEntries(response, omitEntityHeaders = false) {
+    const entries = [];
+    for (const [name, value] of response.headers.entries()) {
+        const lower = name.toLowerCase();
+        if (omitEntityHeaders && (lower === "content-type" || lower === "content-length")) {
+            continue;
+        }
+        entries.push([name, value]);
+    }
+    return entries;
+}
+
 function hasHeader(entries, name) {
     const lower = name.toLowerCase();
     return entries.some(([current]) => current.toLowerCase() === lower);
@@ -128,7 +268,8 @@ function setDefaultHeader(entries, name, value) {
 }
 
 function bodySourceCount(options) {
-    return ["body", "text", "json"].filter((key) => options?.[key] !== undefined).length;
+    return ["body", "text", "json"].filter((key) => options?.[key] !== undefined).length +
+        (options?.[TESTHOST_TEXT_BODY] === undefined ? 0 : 1);
 }
 
 function normalizeRequestBodyWithOptions(options, headerEntries, serializationOptions) {
@@ -164,6 +305,8 @@ function normalizeRequestBodyWithOptions(options, headerEntries, serializationOp
     } else if (options.text !== undefined) {
         bytes = Text.utf8.encode(String(options.text));
         setDefaultHeader(headerEntries, "Content-Type", TEXT_CONTENT_TYPE);
+    } else if (options[TESTHOST_TEXT_BODY] !== undefined) {
+        bytes = Text.utf8.encode(String(options[TESTHOST_TEXT_BODY]));
     } else if (typeof options.body === "string") {
         bytes = Text.utf8.encode(options.body);
     } else {
@@ -417,6 +560,230 @@ function createCookiesLike(headers) {
     });
 }
 
+function createConfigOverlay(baseConfig, overrides, secrets) {
+    const configOverrides = normalizeOverrideMap(overrides, "config");
+    const secretOverrides = normalizeOverrideMap(secrets, "secret");
+    const merged = Object.freeze({
+        ...configOverrides,
+        ...secretOverrides,
+    });
+
+    function hasOverride(key) {
+        return Object.prototype.hasOwnProperty.call(merged, key);
+    }
+
+    function valueOrBase(key, fallback, required) {
+        if (hasOverride(key)) {
+            return merged[key];
+        }
+        if (fallback !== undefined) {
+            return baseConfig.get(key, fallback);
+        }
+        return required ? baseConfig.require(key) : baseConfig.get(key);
+    }
+
+    return Object.freeze({
+        get(key, fallback) {
+            return valueOrBase(key, fallback, false);
+        },
+        has(key) {
+            return hasOverride(key) || baseConfig.has(key);
+        },
+        require(key) {
+            return valueOrBase(key, undefined, true);
+        },
+        getString(key, fallback) {
+            const value = valueOrBase(key, fallback, fallback === undefined);
+            if (typeof value !== "string") {
+                throw new TypeError(`Sloppy config key '${key}' must be a string.`);
+            }
+            return value;
+        },
+        getInt(key, fallback) {
+            const value = Number(valueOrBase(key, fallback, fallback === undefined));
+            if (!Number.isInteger(value)) {
+                throw new TypeError(`Sloppy config key '${key}' must be an integer.`);
+            }
+            return value;
+        },
+        getNumber(key, fallback) {
+            const value = Number(valueOrBase(key, fallback, fallback === undefined));
+            if (!Number.isFinite(value)) {
+                throw new TypeError(`Sloppy config key '${key}' must be a number.`);
+            }
+            return value;
+        },
+        getBool(key, fallback) {
+            const value = valueOrBase(key, fallback, fallback === undefined);
+            if (typeof value === "boolean") {
+                return value;
+            }
+            if (typeof value === "string" && /^(true|false)$/iu.test(value)) {
+                return value.toLowerCase() === "true";
+            }
+            throw new TypeError(`Sloppy config key '${key}' must be a boolean.`);
+        },
+        getBoolean(key, fallback) {
+            return this.getBool(key, fallback);
+        },
+        getDuration(key, fallback) {
+            if (!hasOverride(key)) {
+                return baseConfig.getDuration(key, fallback);
+            }
+            const value = valueOrBase(key, fallback, fallback === undefined);
+            if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+                return value;
+            }
+            if (typeof value === "string") {
+                const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)$/iu);
+                if (match !== null) {
+                    const factors = { ms: 1, s: 1000, m: 60 * 1000, h: 60 * 60 * 1000 };
+                    return Number(match[1]) * factors[match[2].toLowerCase()];
+                }
+            }
+            throw new TypeError(`Sloppy config key '${key}' must be a duration in ms, s, m, or h.`);
+        },
+        getBytes(key, fallback) {
+            if (!hasOverride(key)) {
+                return baseConfig.getBytes(key, fallback);
+            }
+            const value = valueOrBase(key, fallback, fallback === undefined);
+            if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+                return value;
+            }
+            if (typeof value === "string") {
+                const match = value.trim().match(/^(\d+)\s*(b|kb|mb|gb|kib|mib|gib)$/iu);
+                if (match !== null) {
+                    const factors = {
+                        b: 1,
+                        kb: 1000,
+                        mb: 1000 * 1000,
+                        gb: 1000 * 1000 * 1000,
+                        kib: 1024,
+                        mib: 1024 * 1024,
+                        gib: 1024 * 1024 * 1024,
+                    };
+                    return Number(match[1]) * factors[match[2].toLowerCase()];
+                }
+            }
+            throw new TypeError(`Sloppy config key '${key}' must be a byte size.`);
+        },
+        getArray(key, fallback) {
+            const value = valueOrBase(key, fallback, fallback === undefined);
+            if (!Array.isArray(value)) {
+                throw new TypeError(`Sloppy config key '${key}' must be an array.`);
+            }
+            return Object.freeze([...value]);
+        },
+        getObject(key, fallback) {
+            const value = valueOrBase(key, fallback, fallback === undefined);
+            if (!isPlainObject(value)) {
+                throw new TypeError(`Sloppy config key '${key}' must be an object.`);
+            }
+            return Object.freeze({ ...value });
+        },
+        getSecret(key) {
+            const value = valueOrBase(key, undefined, true);
+            return Object.freeze({
+                value() {
+                    return String(value);
+                },
+                toString() {
+                    return "[Secret redacted]";
+                },
+                toJSON() {
+                    return "[Secret redacted]";
+                },
+            });
+        },
+        bind(key, schema) {
+            if (Object.keys(merged).some((entry) => entry === key || entry.startsWith(`${key}:`))) {
+                const object = {};
+                const prefix = `${key}:`;
+                for (const [entryKey, entryValue] of Object.entries(merged)) {
+                    if (entryKey.startsWith(prefix)) {
+                        object[entryKey.slice(prefix.length)] = entryValue;
+                    }
+                }
+                return Object.freeze({
+                    ...baseConfig.bind(key, schema),
+                    ...object,
+                });
+            }
+            return baseConfig.bind(key, schema);
+        },
+    });
+}
+
+function disposeOverrideValues(values) {
+    const pending = [];
+    for (const value of values) {
+        if (value === null || value === undefined) {
+            continue;
+        }
+        const cleanup = value[Symbol.asyncDispose] ?? value[Symbol.dispose] ?? value.dispose ?? value.close;
+        if (typeof cleanup === "function") {
+            pending.push(Promise.resolve(cleanup.call(value)));
+        }
+    }
+    return Promise.all(pending).then(() => undefined);
+}
+
+function createServiceOverlay(baseServices, serviceOverrides, providerOverrides) {
+    const serviceMap = normalizeOverrideMap(serviceOverrides, "service");
+    const providerMap = normalizeOverrideMap(providerOverrides, "provider");
+    const merged = new Map(Object.entries(serviceMap));
+    for (const [name, provider] of Object.entries(providerMap)) {
+        if (provider === null || typeof provider !== "object") {
+            throw new TypeError(`Sloppy TestHost provider override '${name}' must be an object.`);
+        }
+        merged.set(name, provider);
+        merged.set(`data.${name}`, provider);
+    }
+
+    function wrapScope(scope) {
+        return Object.freeze({
+            capabilities: scope.capabilities,
+            get(token) {
+                if (merged.has(token)) {
+                    return merged.get(token);
+                }
+                return scope.get(token);
+            },
+            tryGet(token) {
+                if (merged.has(token)) {
+                    return merged.get(token);
+                }
+                return scope.tryGet(token);
+            },
+            dispose() {
+                return scope.dispose();
+            },
+        });
+    }
+
+    return Object.freeze({
+        get(token) {
+            if (merged.has(token)) {
+                return merged.get(token);
+            }
+            return baseServices.get(token);
+        },
+        tryGet(token) {
+            if (merged.has(token)) {
+                return merged.get(token);
+            }
+            return baseServices.tryGet(token);
+        },
+        createScope() {
+            return wrapScope(baseServices.createScope());
+        },
+        dispose() {
+            return disposeOverrideValues(merged.values());
+        },
+    });
+}
+
 function arrayPairsLookup(pairs, name) {
     for (let index = pairs.length - 1; index >= 0; index -= 1) {
         if (pairs[index][0] === name) {
@@ -440,7 +807,7 @@ function createFileLike(fieldName, name, contentType, bytes) {
             return Text.utf8.decode(fileBytes);
         },
         async saveTo(path) {
-            await fsPromises.writeFile(path, fileBytes);
+            await File.writeBytes(path, fileBytes);
         },
     });
 }
@@ -643,14 +1010,16 @@ function signalObject() {
     });
 }
 
-function createContext(app, method, targetParts, headers, route, matchedRoute, bodyKind, bodyBytes) {
+function createContext(app, hostState, method, targetParts, headers, route, matchedRoute, bodyKind, bodyBytes, options = undefined) {
     const request = createRequestObject(method, targetParts, headers, bodyKind, bodyBytes);
-    return Object.freeze({
-        services: app.services.createScope(),
+    const context = {
+        services: hostState.services.createScope(),
         capabilities: app.capabilities,
-        config: app.config,
+        config: hostState.config,
         log: app.log,
         metrics: typeof app.__getMetricsRegistry === "function" ? app.__getMetricsRegistry() : undefined,
+        user: options?.user,
+        clock: hostState.clock,
         route,
         routePattern: matchedRoute?.pattern ?? null,
         query: parseQuery(targetParts.queryString),
@@ -671,7 +1040,8 @@ function createContext(app, method, targetParts, headers, route, matchedRoute, b
                 startupComplete: true,
                 shuttingDown: false,
             }),
-    });
+    };
+    return Object.freeze(context);
 }
 
 function descriptorHeaders(result) {
@@ -695,9 +1065,29 @@ function descriptorHeaders(result) {
     return entries;
 }
 
+function assertExpectedResponseValue(actual, expected, subject) {
+    if (expected instanceof RegExp) {
+        if (!expected.test(String(actual ?? ""))) {
+            throw new Error(`Sloppy test host expected ${subject} to match ${expected}, got ${actual}.`);
+        }
+        return;
+    }
+    if (!Object.is(actual, expected)) {
+        throw new Error(`Sloppy test host expected ${subject} ${expected}, got ${actual}.`);
+    }
+}
+
+function assertDeepJsonEqual(actual, expected, subject) {
+    const actualText = serializeJson(actual);
+    const expectedText = serializeJson(expected);
+    if (actualText !== expectedText) {
+        throw new Error(`Sloppy test host expected ${subject} ${expectedText}, got ${actualText}.`);
+    }
+}
+
 function responseFromParts(status, headers, bodyBytes) {
     const body = new Uint8Array(bodyBytes);
-    return Object.freeze({
+    const response = {
         status,
         headers: createHeadersLike(headers),
         bytes() {
@@ -709,7 +1099,65 @@ function responseFromParts(status, headers, bodyBytes) {
         json() {
             return JSON.parse(Text.utf8.decode(body));
         },
-    });
+        problem() {
+            const value = JSON.parse(Text.utf8.decode(body));
+            if (!isPlainObject(value) || !Number.isInteger(value.status)) {
+                throw new TypeError("Sloppy test host response is not a ProblemDetails body.");
+            }
+            return value;
+        },
+        expectStatus(expected) {
+            assertExpectedResponseValue(status, expected, "status");
+            return response;
+        },
+        expectHeader(name, expected) {
+            assertHeaderName(name, "response assertion");
+            const actual = response.headers.get(name);
+            if (actual === undefined) {
+                throw new Error(`Sloppy test host expected response header '${name}'.`);
+            }
+            assertExpectedResponseValue(actual, expected, `header '${name}'`);
+            return response;
+        },
+        expectJson(expectedOrSchema = undefined) {
+            const value = response.json();
+            if (expectedOrSchema !== undefined) {
+                if (typeof expectedOrSchema?.validate === "function") {
+                    Schema.validate(value, expectedOrSchema);
+                } else {
+                    assertDeepJsonEqual(value, expectedOrSchema, "JSON");
+                }
+            }
+            return response;
+        },
+        expectText(expected = undefined) {
+            const value = response.text();
+            if (expected !== undefined) {
+                assertExpectedResponseValue(value, expected, "text");
+            }
+            return response;
+        },
+        expectProblem(expected = {}) {
+            const problem = response.problem();
+            if (expected.status !== undefined) {
+                assertExpectedResponseValue(problem.status, expected.status, "problem status");
+            }
+            if (expected.code !== undefined) {
+                assertExpectedResponseValue(problem.code, expected.code, "problem code");
+            }
+            if (expected.title !== undefined) {
+                assertExpectedResponseValue(problem.title, expected.title, "problem title");
+            }
+            return response;
+        },
+        expectNoBody() {
+            if (body.byteLength !== 0) {
+                throw new Error(`Sloppy test host expected no response body, got ${body.byteLength} byte(s).`);
+            }
+            return response;
+        },
+    };
+    return Object.freeze(response);
 }
 
 function responseFromText(status, text, contentType = TEXT_CONTENT_TYPE) {
@@ -724,6 +1172,185 @@ function responseFromErrorStatus(app, status, context = undefined, fallbackText 
         }
     }
     return responseFromText(status, fallbackText);
+}
+
+function problemCodeFromResponse(response) {
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!isJsonMediaType(contentType) || !contentType.toLowerCase().includes("problem")) {
+        return undefined;
+    }
+    try {
+        const problem = response.problem();
+        return problem.code;
+    } catch {
+        return undefined;
+    }
+}
+
+function createMetricsStore() {
+    const counters = new Map();
+    function increment(name, labels = {}) {
+        const key = serializeJson({ name, labels });
+        counters.set(key, (counters.get(key) ?? 0) + 1);
+    }
+    const metrics = {
+        increment,
+        snapshot() {
+            return Object.freeze(Array.from(counters.entries(), ([key, value]) => Object.freeze({
+                ...JSON.parse(key),
+                value,
+            })));
+        },
+        expectCounter(name, expected, labels = {}) {
+            const key = serializeJson({ name, labels });
+            const actual = counters.get(key) ?? 0;
+            if (actual !== expected) {
+                throw new Error(`Sloppy TestHost expected counter '${name}' to be ${expected}, got ${actual}.`);
+            }
+            return metrics;
+        },
+    };
+    return Object.freeze(metrics);
+}
+
+function createHealthHelpers(host) {
+    return Object.freeze({
+        async snapshot(path = "/health") {
+            return (await host.get(path)).json();
+        },
+        async check(name, path = "/health") {
+            const body = await this.snapshot(path);
+            return body.checks?.find((entry) => entry.name === name);
+        },
+        async expect(name, status, path = "/health") {
+            const check = await this.check(name, path);
+            if (check === undefined) {
+                throw new Error(`Sloppy TestHost expected health check '${name}'.`);
+            }
+            if (check.status !== status) {
+                throw new Error(`Sloppy TestHost expected health check '${name}' to be '${status}', got '${check.status}'.`);
+            }
+            return this;
+        },
+        async expectStatus(status, path = "/health") {
+            const body = await this.snapshot(path);
+            if (body.status !== status) {
+                throw new Error(`Sloppy TestHost expected health status '${status}', got '${body.status}'.`);
+            }
+            return this;
+        },
+    });
+}
+
+function createJobsHelpers(jobs = undefined) {
+    if (jobs !== undefined && !isPlainObject(jobs)) {
+        throw new TypeError("Sloppy TestHost jobs hooks must be a plain object.");
+    }
+    const queue = [];
+    const jobsApi = {
+        enqueue(name, payload = {}) {
+            queue.push({ name, payload, status: "queued" });
+            return jobsApi;
+        },
+        snapshot() {
+            if (typeof jobs?.snapshot === "function") {
+                return jobs.snapshot();
+            }
+            return Object.freeze(queue.map((job) => Object.freeze({ ...job })));
+        },
+        expectEnqueued(name, payload = undefined) {
+            const found = this.snapshot().some((job) => job.name === name &&
+                (payload === undefined || serializeJson(job.payload) === serializeJson(payload)));
+            if (!found) {
+                throw new Error(`Sloppy TestHost expected job '${name}' to be enqueued.`);
+            }
+            return jobsApi;
+        },
+        async runNext() {
+            if (typeof jobs?.runNext === "function") {
+                return jobs.runNext();
+            }
+            const job = queue.find((entry) => entry.status === "queued");
+            if (job !== undefined) {
+                job.status = "succeeded";
+            }
+            return job;
+        },
+        async runAllDue() {
+            if (typeof jobs?.runAllDue === "function") {
+                return jobs.runAllDue();
+            }
+            for (const job of queue) {
+                if (job.status === "queued") {
+                    job.status = "succeeded";
+                }
+            }
+            return this.snapshot();
+        },
+        expectSucceeded(name) {
+            if (!this.snapshot().some((job) => job.name === name && job.status === "succeeded")) {
+                throw new Error(`Sloppy TestHost expected job '${name}' to succeed.`);
+            }
+            return jobsApi;
+        },
+    };
+    return Object.freeze(jobsApi);
+}
+
+function pathToOpenApiPath(pattern) {
+    return pattern.replace(/\{([A-Za-z_][0-9A-Za-z_]*)(?::[^}]+)?\}/gu, "{$1}");
+}
+
+function openApiFromRoutes(routes) {
+    const paths = {};
+    for (const route of routes) {
+        const path = pathToOpenApiPath(route.pattern);
+        paths[path] ??= {};
+        paths[path][route.method.toLowerCase()] = {
+            operationId: route.name,
+            responses: {
+                200: {
+                    description: "OK",
+                },
+            },
+            "x-slop-route": {
+                pattern: route.pattern,
+                name: route.name,
+            },
+        };
+    }
+    return Object.freeze({
+        openapi: "3.0.3",
+        info: Object.freeze({
+            title: "Sloppy TestHost",
+            version: "0.0.0-test",
+        }),
+        paths: Object.freeze(paths),
+    });
+}
+
+function createOpenApiHelpers(loadDocument) {
+    const helpers = async function openapi() {
+        return loadDocument();
+    };
+    helpers.snapshot = helpers;
+    helpers.expectRoute = async (method, path) => {
+        const openApiDoc = await loadDocument();
+        if (openApiDoc.paths?.[path]?.[method.toLowerCase()] === undefined) {
+            throw new Error(`Sloppy TestHost expected OpenAPI route '${method.toUpperCase()} ${path}'.`);
+        }
+        return helpers;
+    };
+    helpers.expectResponse = async (method, path, status) => {
+        const openApiDoc = await loadDocument();
+        const operation = openApiDoc.paths?.[path]?.[method.toLowerCase()];
+        if (operation?.responses?.[String(status)] === undefined) {
+            throw new Error(`Sloppy TestHost expected OpenAPI response '${method.toUpperCase()} ${path} ${status}'.`);
+        }
+        return helpers;
+    };
+    helpers.expectComplete = async () => helpers;
+    return Object.freeze(helpers);
 }
 
 function responseFromProblem(problem) {
@@ -798,7 +1425,42 @@ function responseFromResult(result) {
     return responseFromResultWithOptions(result, DEFAULT_SERIALIZATION_OPTIONS);
 }
 
+function finalizeResponse(response, method) {
+    if (response.status === 204 || response.status === 304) {
+        return responseFromParts(response.status, responseHeaderEntries(response, true), new Uint8Array(0));
+    }
+    if (method === "HEAD") {
+        return responseFromParts(response.status, responseHeaderEntries(response), new Uint8Array(0));
+    }
+    return response;
+}
+
 function findRoute(routes, method, path) {
+    if (method === "HEAD") {
+        let methodMismatch = false;
+        let getMatch = undefined;
+        let getParams = undefined;
+        for (const route of routes) {
+            const params = matchRoutePattern(route.pattern, path);
+            if (params === undefined) {
+                continue;
+            }
+            if (route.method === "HEAD") {
+                return { route, params, methodMismatch: false };
+            }
+            if (route.method === "GET" && getMatch === undefined) {
+                getMatch = route;
+                getParams = params;
+                continue;
+            }
+            methodMismatch = true;
+        }
+        if (getMatch !== undefined) {
+            return { route: getMatch, params: getParams, methodMismatch: false };
+        }
+        return { route: undefined, params: undefined, methodMismatch };
+    }
+
     let methodMismatch = false;
     for (const route of routes) {
         const params = matchRoutePattern(route.pattern, path);
@@ -873,9 +1535,329 @@ function normalizeOptions(options) {
     return options;
 }
 
-function createTestHost(app) {
+function mergeHeader(headers, name, value) {
+    assertHeaderName(name, "request");
+    assertHeaderValue(String(value), "request");
+    headers[name] = String(value);
+}
+
+function appendQuery(target, value) {
+    if (value === undefined) {
+        return target;
+    }
+    const suffix = typeof value === "string"
+        ? value.replace(/^\?/u, "")
+        : new URLSearchParams(Object.entries(value).flatMap(([name, entry]) => {
+            if (Array.isArray(entry)) {
+                return entry.map((item) => [name, String(item)]);
+            }
+            return [[name, String(entry)]];
+        })).toString();
+    if (suffix.length === 0) {
+        return target;
+    }
+    return `${target}${target.includes("?") ? "&" : "?"}${suffix}`;
+}
+
+function appendCookie(headers, name, value) {
+    assertHeaderName(name, "cookie");
+    const encoded = encodeURIComponent(String(value));
+    const current = headers.Cookie ?? headers.cookie;
+    const next = `${name}=${encoded}`;
+    if (current === undefined) {
+        headers.Cookie = next;
+    } else if (headers.Cookie !== undefined) {
+        headers.Cookie = `${headers.Cookie}; ${next}`;
+    } else {
+        headers.cookie = `${headers.cookie}; ${next}`;
+    }
+}
+
+async function createJwt(claims, options = {}) {
+    if (!isPlainObject(claims)) {
+        throw new TypeError("Sloppy test host withJwt claims must be a plain object.");
+    }
+    if (typeof options.secret !== "string" || options.secret.length === 0) {
+        throw new TypeError("Sloppy test host withJwt requires options.secret.");
+    }
+    const header = Base64Url.encode(Text.utf8.encode(serializeJson({ alg: "HS256", typ: "JWT" })));
+    const payload = Base64Url.encode(Text.utf8.encode(serializeJson(claims)));
+    const signature = await Hmac.sha256(Secret.fromUtf8(options.secret), `${header}.${payload}`);
+    return `${header}.${payload}.${Base64Url.encode(signature)}`;
+}
+
+class RequestBuilder {
+    constructor(host, method, target, options = undefined) {
+        this._host = host;
+        this._method = method;
+        this._target = target;
+        this._headers = {};
+        this._body = {};
+        this._timeoutMs = undefined;
+        this._sent = undefined;
+        this._jwt = undefined;
+        if (options !== undefined) {
+            if (!isPlainObject(options)) {
+                throw new TypeError("Sloppy test host request options must be a plain object.");
+            }
+            this.headers(options.headers ?? {});
+            this._body = { ...options };
+            delete this._body.headers;
+            if (options.timeoutMs !== undefined || options.timeout !== undefined) {
+                this.timeout(options.timeoutMs ?? options.timeout);
+            }
+        }
+    }
+
+    header(name, value) {
+        mergeHeader(this._headers, name, value);
+        return this;
+    }
+
+    headers(values) {
+        if (!isPlainObject(values)) {
+            throw new TypeError("Sloppy test host headers() expects a plain object.");
+        }
+        for (const [name, value] of Object.entries(values)) {
+            this.header(name, value);
+        }
+        return this;
+    }
+
+    query(value) {
+        this._target = appendQuery(this._target, value);
+        return this;
+    }
+
+    cookie(name, value) {
+        appendCookie(this._headers, name, value);
+        return this;
+    }
+
+    cookies(values) {
+        if (!isPlainObject(values)) {
+            throw new TypeError("Sloppy test host cookies() expects a plain object.");
+        }
+        for (const [name, value] of Object.entries(values)) {
+            this.cookie(name, value);
+        }
+        return this;
+    }
+
+    json(value) {
+        this._body = { json: value };
+        return this;
+    }
+
+    text(value) {
+        this._body = { text: String(value) };
+        return this;
+    }
+
+    bytes(value) {
+        this._body = { body: copyBytes(value, "bytes body") };
+        this.header("Content-Type", "application/octet-stream");
+        return this;
+    }
+
+    form(values) {
+        if (!isPlainObject(values)) {
+            throw new TypeError("Sloppy test host form() expects a plain object.");
+        }
+        this._body = { [TESTHOST_TEXT_BODY]: new URLSearchParams(Object.entries(values).map(([name, value]) => [name, String(value)])).toString() };
+        this.header("Content-Type", "application/x-www-form-urlencoded");
+        return this;
+    }
+
+    multipart() {
+        throw new Error("Sloppy test host multipart builder is not supported by the current first-party API.");
+    }
+
+    timeout(ms) {
+        if (!Number.isInteger(ms) || ms <= 0) {
+            throw new TypeError("Sloppy test host timeout must be a positive integer millisecond value.");
+        }
+        this._timeoutMs = ms;
+        return this;
+    }
+
+    bearer(token) {
+        if (typeof token !== "string" || token.length === 0) {
+            throw new TypeError("Sloppy test host bearer token must be a non-empty string.");
+        }
+        return this.header("Authorization", `Bearer ${token}`);
+    }
+
+    apiKey(key, options = {}) {
+        if (typeof key !== "string" || key.length === 0) {
+            throw new TypeError("Sloppy test host API key must be a non-empty string.");
+        }
+        const header = options.header ?? "x-api-key";
+        return this.header(header, key);
+    }
+
+    asUser(principal) {
+        if (!isPlainObject(principal)) {
+            throw new TypeError("Sloppy test host principal must be a plain object.");
+        }
+        this._body.user = Object.freeze({ ...principal, authenticated: principal.authenticated ?? true });
+        return this;
+    }
+
+    withJwt(claims, options = {}) {
+        if (typeof claims === "string") {
+            return this.bearer(claims);
+        }
+        this._jwt = { claims, options };
+        return this;
+    }
+
+    withSession(session, options = {}) {
+        if (typeof session !== "string" || session.length === 0) {
+            throw new TypeError("Sloppy test host session value must be a non-empty string.");
+        }
+        return this.cookie(options.name ?? "sloppy.session", session);
+    }
+
+    async send() {
+        if (this._sent !== undefined) {
+            return this._sent;
+        }
+        this._sent = (async () => {
+            if (this._jwt !== undefined) {
+                this.bearer(await createJwt(this._jwt.claims, this._jwt.options));
+            }
+            return this._host.request(this._method, this._target, {
+                ...this._body,
+                headers: this._headers,
+                timeoutMs: this._timeoutMs,
+            });
+        })();
+        return this._sent;
+    }
+
+    then(resolve, reject) {
+        return this.send().then(resolve, reject);
+    }
+
+    catch(reject) {
+        return this.send().catch(reject);
+    }
+
+    finally(callback) {
+        return this.send().finally(callback);
+    }
+
+    async expectStatus(code) {
+        return (await this.send()).expectStatus(code);
+    }
+
+    async expectHeader(name, expected) {
+        return (await this.send()).expectHeader(name, expected);
+    }
+
+    async expectJson(expectedOrSchema) {
+        return (await this.send()).expectJson(expectedOrSchema);
+    }
+
+    async expectText(expected) {
+        return (await this.send()).expectText(expected);
+    }
+
+    async expectProblem(expected) {
+        return (await this.send()).expectProblem(expected);
+    }
+
+    async expectNoBody() {
+        return (await this.send()).expectNoBody();
+    }
+}
+
+function createFluentHost(base, mode = "inProcess", defaults = {}) {
+    const host = {
+        mode,
+        request(method, target, options) {
+            const merged = {
+                ...(defaults.options ?? {}),
+                ...(options ?? {}),
+                headers: {
+                    ...(defaults.headers ?? {}),
+                    ...(options?.headers ?? {}),
+                },
+            };
+            if (defaults.user !== undefined && merged.user === undefined) {
+                merged.user = defaults.user;
+            }
+            return base.request(method, target, merged);
+        },
+        get(target, options) {
+            return new RequestBuilder(host, "GET", target, options);
+        },
+        post(target, options) {
+            return new RequestBuilder(host, "POST", target, options);
+        },
+        put(target, options) {
+            return new RequestBuilder(host, "PUT", target, options);
+        },
+        patch(target, options) {
+            return new RequestBuilder(host, "PATCH", target, options);
+        },
+        delete(target, options) {
+            return new RequestBuilder(host, "DELETE", target, options);
+        },
+        options(target, options) {
+            return new RequestBuilder(host, "OPTIONS", target, options);
+        },
+        head(target, options) {
+            return new RequestBuilder(host, "HEAD", target, options);
+        },
+        asUser(principal) {
+            if (!isPlainObject(principal)) {
+                throw new TypeError("Sloppy TestHost principal must be a plain object.");
+            }
+            return createFluentHost(base, mode, {
+                ...defaults,
+                user: Object.freeze({ ...principal, authenticated: principal.authenticated ?? true }),
+            });
+        },
+        withHeader(name, value) {
+            assertHeaderName(name, "request");
+            assertHeaderValue(String(value), "request");
+            return createFluentHost(base, mode, {
+                ...defaults,
+                headers: {
+                    ...(defaults.headers ?? {}),
+                    [name]: String(value),
+                },
+            });
+        },
+        close() {
+            return base.close();
+        },
+        dispose() {
+            return base.close();
+        },
+        async [Symbol.asyncDispose]() {
+            await base.close();
+        },
+        diagnostics: base.diagnostics,
+        health: undefined,
+        metrics: base.metrics,
+        jobs: base.jobs,
+        openapi: base.openapi,
+        baseUrl: base.baseUrl,
+        port: base.port,
+    };
+    host.health = createHealthHelpers(host);
+    return Object.freeze(host);
+}
+
+function createTestHost(app, options = {}) {
     if (app === null || typeof app !== "object" || typeof app.__getRoutes !== "function") {
         throw new TypeError("Sloppy createTestHost expects a Sloppy app.");
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError("Sloppy TestHost options must be a plain object.");
     }
 
     app.freeze();
@@ -887,8 +1869,17 @@ function createTestHost(app) {
     let activeRequests = 0;
     let closePromise = undefined;
     let drainWaiters = [];
+    const secretValues = Object.values(options.secrets ?? {});
+    const diagnostics = createDiagnosticsStore(secretValues);
+    const metrics = createMetricsStore();
+    const jobs = createJobsHelpers(options.jobs);
+    const hostState = Object.freeze({
+        config: createConfigOverlay(app.config, options.config, options.secrets),
+        services: createServiceOverlay(app.services, options.services, options.providers),
+        clock: options.clock,
+    });
 
-    function metrics() {
+    function appMetricsRegistry() {
         return typeof app.__getMetricsRegistry === "function" ? app.__getMetricsRegistry() : undefined;
     }
 
@@ -952,39 +1943,64 @@ function createTestHost(app) {
             const bodyBytes = normalizeRequestBodyWithOptions(normalizedOptions, headerEntries, serializationOptions);
             const headers = createHeadersLike(headerEntries);
             const match = findRoute(routes, normalizedMethod, targetParts.path);
+            diagnostics.record({
+                code: "SLOPPY_TESTHOST_REQUEST",
+                subsystem: "http",
+                severity: "debug",
+                message: "TestHost request started.",
+                fields: { method: normalizedMethod, path: targetParts.path },
+            });
 
             const policy = typeof app.__getErrorPolicy === "function" ? app.__getErrorPolicy() : undefined;
             if (policy !== undefined && bodyBytes.byteLength > policy.maxBodyBytes) {
-                return responseFromErrorStatus(app, 413, undefined, "Payload Too Large\n");
+                diagnostics.record({ code: "SLOPPY_E_REQUEST_BODY_TOO_LARGE", subsystem: "http", severity: "warn" });
+                return finalizeResponse(responseFromErrorStatus(app, 413, undefined, "Payload Too Large\n"), normalizedMethod);
             }
 
             if (match.route === undefined) {
-                return match.methodMismatch
+                diagnostics.record({
+                    code: match.methodMismatch ? "SLOPPY_E_METHOD_NOT_ALLOWED" : "SLOPPY_E_ROUTE_NOT_FOUND",
+                    subsystem: "routing",
+                    severity: "warn",
+                    fields: { method: normalizedMethod, path: targetParts.path },
+                });
+                const response = finalizeResponse(match.methodMismatch
                     ? responseFromText(405, "Method Not Allowed\n")
                     : policy?.missingRoute === true
                         ? responseFromErrorStatus(app, 404, undefined, "Not Found\n")
-                        : responseFromText(404, "Not Found\n");
+                        : responseFromText(404, "Not Found\n"), normalizedMethod);
+                metrics.increment("http.requests.total", { method: normalizedMethod, status: String(response.status) });
+                return response;
             }
 
             const bodyKind = bodyKindForRequest(headers, bodyBytes);
             if (bodyKind === "malformed-json") {
-                return responseFromProblem(validationProblem([
+                diagnostics.record({ code: "SLOPPY_E_JSON_INVALID", subsystem: "http", severity: "warn" });
+                const response = finalizeResponse(responseFromProblem(validationProblem([
                     {
                         path: [],
                         code: "json.invalid",
                         message: "Request body is not valid JSON.",
                     },
-                ]));
+                ])), normalizedMethod);
+                metrics.increment("http.requests.total", { method: normalizedMethod, status: String(response.status) });
+                return response;
             }
             if (bodyKind === "malformed-multipart") {
-                return responseFromText(400, "Malformed Multipart\n");
+                diagnostics.record({ code: "SLOPPY_E_MULTIPART_INVALID", subsystem: "http", severity: "warn" });
+                const response = finalizeResponse(responseFromText(400, "Malformed Multipart\n"), normalizedMethod);
+                metrics.increment("http.requests.total", { method: normalizedMethod, status: String(response.status) });
+                return response;
             }
             if (bodyKind === "unsupported" && bodyBytes.byteLength !== 0) {
-                return responseFromErrorStatus(app, 415, undefined, "Unsupported Media Type\n");
+                diagnostics.record({ code: "SLOPPY_E_UNSUPPORTED_MEDIA_TYPE", subsystem: "http", severity: "warn" });
+                const response = finalizeResponse(responseFromErrorStatus(app, 415, undefined, "Unsupported Media Type\n"), normalizedMethod);
+                metrics.increment("http.requests.total", { method: normalizedMethod, status: String(response.status) });
+                return response;
             }
 
-            const context = createContext(app, normalizedMethod, targetParts, headers, match.params, match.route, bodyKind, bodyBytes);
-            const metricRegistry = metrics();
+            const context = createContext(app, hostState, normalizedMethod, targetParts, headers, match.params, match.route, bodyKind, bodyBytes, normalizedOptions);
+            const metricRegistry = appMetricsRegistry();
             const metricLabels = Object.freeze({
                 method: normalizedMethod,
                 route: match.route.pattern,
@@ -995,19 +2011,36 @@ function createTestHost(app) {
             const started = nowMs();
             try {
                 try {
-                    const response = negotiatedResponse(
+                    const response = finalizeResponse(negotiatedResponse(
                         responseFromResultWithOptions(await match.route.handler(context), serializationOptions),
                         headers,
                         serializationOptions,
-                    );
-                    recordHttpMetric(metricRegistry, metricLabels, response, Math.max(0, nowMs() - started), bodyBytes.byteLength);
+                    ), normalizedMethod);
+                    const problemCode = problemCodeFromResponse(response);
+                    if (problemCode !== undefined) {
+                        diagnostics.record({ code: problemCode, subsystem: "http", severity: response.status >= 500 ? "error" : "warn" });
+                    }
+                    metrics.increment("http.requests.total", { method: normalizedMethod, status: String(response.status) });
+                    ignoreMetricError(() => {
+                        recordHttpMetric(metricRegistry, metricLabels, response, Math.max(0, nowMs() - started), bodyBytes.byteLength);
+                    });
                     return response;
                 } catch (error) {
                     if (isUnsupportedMediaHelperError(error)) {
-                        const response = responseFromText(415, "Unsupported Media Type\n");
-                        recordHttpMetric(metricRegistry, metricLabels, response, Math.max(0, nowMs() - started), bodyBytes.byteLength);
+                        diagnostics.record({ code: "SLOPPY_E_UNSUPPORTED_MEDIA_TYPE", subsystem: "http", severity: "warn" });
+                        const response = finalizeResponse(responseFromText(415, "Unsupported Media Type\n"), normalizedMethod);
+                        metrics.increment("http.requests.total", { method: normalizedMethod, status: String(response.status) });
+                        ignoreMetricError(() => {
+                            recordHttpMetric(metricRegistry, metricLabels, response, Math.max(0, nowMs() - started), bodyBytes.byteLength);
+                        });
                         return response;
                     }
+                    diagnostics.record({
+                        code: "SLOPPY_E_HANDLER_ERROR",
+                        subsystem: "http",
+                        severity: "error",
+                        message: error.message,
+                    });
                     throw error;
                 }
             } finally {
@@ -1054,16 +2087,624 @@ function createTestHost(app) {
             closed = true;
             closePromise = (async () => {
                 await waitForDrain();
+                await hostState.services.dispose();
                 return app.services.dispose();
             })();
             return closePromise;
         },
+        diagnostics,
+        metrics,
+        jobs,
+        openapi: createOpenApiHelpers(() => openApiFromRoutes(routes)),
     };
     return Object.freeze(host);
 }
 
-const Testing = Object.freeze({
-    createHost: createTestHost,
+function findBytes(bytes, pattern) {
+    outer:
+    for (let index = 0; index <= bytes.byteLength - pattern.byteLength; index += 1) {
+        for (let offset = 0; offset < pattern.byteLength; offset += 1) {
+            if (bytes[index + offset] !== pattern[offset]) {
+                continue outer;
+            }
+        }
+        return index;
+    }
+    return -1;
+}
+
+function parseHttpResponseBytes(bytes) {
+    const separators = [
+        Text.utf8.encode("\r\n\r\n"),
+        Text.utf8.encode("\r\r\n\r\r\n"),
+        Text.utf8.encode("\n\n"),
+    ];
+    let split = -1;
+    let separatorLength = 0;
+    for (const separator of separators) {
+        split = findBytes(bytes, separator);
+        if (split >= 0) {
+            separatorLength = separator.byteLength;
+            break;
+        }
+    }
+    if (split < 0) {
+        throw new Error("Sloppy TestHost could not parse the HTTP response emitted by sloppy run.");
+    }
+    const head = Text.utf8.decode(bytes.slice(0, split)).replace(/\r+\n/gu, "\n");
+    const body = bytes.slice(split + separatorLength);
+    const lines = head.split("\n");
+    const statusMatch = /^HTTP\/\d(?:\.\d)?\s+(\d{3})\b/u.exec(lines[0] ?? "");
+    if (statusMatch === null) {
+        throw new Error(`Sloppy TestHost received an invalid HTTP status line: ${lines[0] ?? ""}`);
+    }
+    const headers = [];
+    for (const line of lines.slice(1)) {
+        const colon = line.indexOf(":");
+        if (colon <= 0) {
+            continue;
+        }
+        headers.push([line.slice(0, colon).trim(), line.slice(colon + 1).trim()]);
+    }
+    return responseFromParts(Number.parseInt(statusMatch[1], 10), headers, body);
+}
+
+function cliPath(options = {}) {
+    if (options.cliPath !== undefined) {
+        if (typeof options.cliPath !== "string" || options.cliPath.length === 0) {
+            throw new TypeError("Sloppy TestHost cliPath must be a non-empty string.");
+        }
+        return options.cliPath;
+    }
+    return SloppyProcess.info().executablePath;
+}
+
+function pathRunArgs(kind, targetPath, mode) {
+    const args = ["run"];
+    if (kind === "artifacts") {
+        args.push("--artifacts", targetPath);
+    } else {
+        args.push(targetPath);
+    }
+    if (mode === "loopback") {
+        return args;
+    }
+    return args;
+}
+
+function requestHeaderArgs(headers) {
+    const args = [];
+    for (const [name, value] of headers) {
+        if (name.toLowerCase() === "content-length") {
+            continue;
+        }
+        args.push("--header", `${name}: ${value}`);
+    }
+    return args;
+}
+
+async function withRequestBodyFile(options, callback) {
+    const headerEntries = headerEntriesFromObject(options.headers, "request");
+    const bytes = normalizeRequestBody(options, headerEntries);
+    const headers = headerEntries.filter(([name]) => name.toLowerCase() !== "content-length");
+    if (bytes.byteLength === 0) {
+        return callback(headers, undefined);
+    }
+    const root = options.tempDirectory ?? SloppySystem.tempDirectory ?? ".sloppy/testhost";
+    await Directory.create(root, { recursive: true });
+    const tempDir = await Directory.createTemp(root, { prefix: "request-" });
+    const bodyPath = `${tempDir.replace(/[\\/]$/u, "")}/body.bin`;
+    try {
+        await File.writeBytes(bodyPath, bytes);
+        return await callback(headers, bodyPath);
+    } finally {
+        await Directory.delete(tempDir, { recursive: true }).catch(() => {});
+    }
+}
+
+async function openApiFromCli(kind, targetPath, options = {}) {
+    const command = cliPath(options);
+    const args = kind === "artifacts"
+        ? ["openapi", "--artifacts", targetPath]
+        : ["openapi", `${targetPath.replace(/[\\/]$/u, "")}/artifacts`];
+    const result = await SloppyProcess.run(command, args, {
+        cwd: options.cwd,
+        env: options.env,
+        capture: "bytes",
+        timeoutMs: options.openapiTimeoutMs ?? options.timeoutMs ?? 30000,
+        maxStdoutBytes: options.maxStdoutBytes ?? 16 * 1024 * 1024,
+        maxStderrBytes: options.maxStderrBytes ?? 1024 * 1024,
+    });
+    if (result.exitCode !== 0) {
+        const stderr = result.stderr instanceof Uint8Array ? Text.utf8.decode(result.stderr) : String(result.stderr ?? "");
+        throw new Error(`Sloppy TestHost OpenAPI failed with exit code ${result.exitCode}.${stderr.length === 0 ? "" : `\n${stderr.trimEnd()}`}`);
+    }
+    return JSON.parse(Text.utf8.decode(result.stdout));
+}
+
+function createProcessHelpers(kind, targetPath, options) {
+    return Object.freeze({
+        diagnostics: createDiagnosticsStore(Object.values(options.secrets ?? {})),
+        metrics: createMetricsStore(),
+        jobs: createJobsHelpers(options.jobs),
+        openapi: createOpenApiHelpers(() => openApiFromCli(kind, targetPath, options)),
+    });
+}
+
+function createProcessOnceHost(kind, targetPath, options = {}) {
+    const command = cliPath(options);
+    const helpers = createProcessHelpers(kind, targetPath, options);
+    let closed = false;
+    async function request(method, target, requestOptions = undefined) {
+        if (closed) {
+            throw new Error("Sloppy TestHost one-off CLI host is closed.");
+        }
+        const normalizedMethod = normalizeMethod(method);
+        splitTarget(target);
+        const normalizedOptions = normalizeOptions(requestOptions);
+        return withRequestBodyFile({
+            ...normalizedOptions,
+            tempDirectory: normalizedOptions.tempDirectory ?? options.tempDirectory,
+        }, async (headers, bodyPath) => {
+            const args = [
+                ...pathRunArgs(kind, targetPath, "inProcess"),
+                "--once",
+                normalizedMethod,
+                target,
+                ...requestHeaderArgs(headers),
+            ];
+            if (bodyPath !== undefined) {
+                args.push("--body-file", bodyPath);
+            }
+            const result = await SloppyProcess.run(command, args, {
+                cwd: options.cwd,
+                env: options.env,
+                capture: "bytes",
+                timeoutMs: normalizedOptions.timeoutMs ?? options.timeoutMs ?? 30000,
+                maxStdoutBytes: options.maxStdoutBytes ?? 16 * 1024 * 1024,
+                maxStderrBytes: options.maxStderrBytes ?? 1024 * 1024,
+            });
+            if (result.exitCode !== 0) {
+                const stdout = result.stdout instanceof Uint8Array ? Text.utf8.decode(result.stdout) : String(result.stdout ?? "");
+                const stderr = result.stderr instanceof Uint8Array ? Text.utf8.decode(result.stderr) : String(result.stderr ?? "");
+                helpers.diagnostics.record({
+                    code: "SLOPPY_E_TESTHOST_PROCESS_REQUEST",
+                    subsystem: "process",
+                    severity: "error",
+                    message: stderr.trimEnd(),
+                    fields: { exitCode: result.exitCode, stdout, stderr },
+                });
+                throw new Error(`Sloppy TestHost request failed with exit code ${result.exitCode}.${stderr.length === 0 ? "" : `\n${stderr.trimEnd()}`}`);
+            }
+            const response = finalizeResponse(parseHttpResponseBytes(result.stdout), normalizedMethod);
+            helpers.metrics.increment("http.requests.total", { method: normalizedMethod, status: String(response.status) });
+            return response;
+        });
+    }
+    return Object.freeze({
+        request,
+        close() {
+            closed = true;
+        },
+        ...helpers,
+    });
+}
+
+const LOOPBACK_PORT_MIN = 49152;
+const LOOPBACK_PORT_MAX = 65535;
+
+function validateLoopbackPort(port) {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new TypeError("Sloppy TestHost loopback port must be an integer from 1 to 65535.");
+    }
+    return port;
+}
+
+function randomLoopbackPort() {
+    const bytes = Random.bytes(2);
+    const value = (bytes[0] << 8) | bytes[1];
+    return LOOPBACK_PORT_MIN + (value % (LOOPBACK_PORT_MAX - LOOPBACK_PORT_MIN + 1));
+}
+
+async function reserveLoopbackPort(host, options = {}) {
+    if (options.port !== undefined) {
+        const port = validateLoopbackPort(options.port);
+        const listener = await TcpListener.listen({ host, port, backlog: 1 });
+        return { port, listener };
+    }
+    const attempts = options.portReservationAttempts ?? 64;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const port = randomLoopbackPort();
+        try {
+            const listener = await TcpListener.listen({ host, port, backlog: 1 });
+            return { port, listener };
+        } catch {
+            // A different process can own the sampled port; try another reserved candidate.
+        }
+    }
+    throw new Error("Sloppy TestHost could not reserve an available loopback port.");
+}
+
+async function releaseLoopbackReservation(reservation) {
+    if (reservation?.listener === undefined) {
+        return;
+    }
+    await reservation.listener.close().catch(async () => {
+        await reservation.listener.abort().catch(() => {});
+    });
+}
+
+function loopbackAuthority(host, port) {
+    return `${String(host).includes(":") ? `[${host}]` : host}:${port}`;
+}
+
+async function readProcessPipeText(pipe, maxBytes) {
+    if (pipe === undefined || typeof pipe.readText !== "function") {
+        return "";
+    }
+    try {
+        return await pipe.readText(maxBytes);
+    } catch {
+        return "";
+    }
+}
+
+async function processExitIfAvailable(child) {
+    try {
+        const result = await child.wait({ timeoutMs: 0 });
+        return result?.timedOut === true ? undefined : result;
+    } catch {
+        return undefined;
+    }
+}
+
+async function processOutputSnapshot(child, options = {}) {
+    const maxStdoutBytes = options.maxStdoutBytes ?? 64 * 1024;
+    const maxStderrBytes = options.maxStderrBytes ?? 64 * 1024;
+    const [stdout, stderr] = await Promise.all([
+        readProcessPipeText(child.stdout, maxStdoutBytes),
+        readProcessPipeText(child.stderr, maxStderrBytes),
+    ]);
+    return { stdout, stderr };
+}
+
+function recordLoopbackStartupFailure(helpers, details) {
+    helpers.diagnostics.record({
+        code: "SLOPPY_E_TESTHOST_LOOPBACK_STARTUP",
+        subsystem: "process",
+        severity: "error",
+        message: details.message,
+        fields: {
+            host: details.host,
+            port: details.port,
+            exitCode: details.exitCode,
+            stdout: details.stdout,
+            stderr: details.stderr,
+        },
+    });
+}
+
+function isRetryableLoopbackStartupFailure(error) {
+    return /listen|bind|address|port|in use|EADDRINUSE|denied/iu.test(String(error?.message ?? error));
+}
+
+async function waitForLoopbackReady(host, port, child, helpers, options = {}) {
+    const timeoutMs = options.startTimeoutMs ?? 10000;
+    const stabilityMs = options.startStabilityMs ?? 250;
+    const authority = loopbackAuthority(host, port);
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+        const exit = await processExitIfAvailable(child);
+        if (exit !== undefined) {
+            const output = await processOutputSnapshot(child, options);
+            const message = `Sloppy TestHost loopback server exited before startup with exit code ${exit.exitCode}.`;
+            recordLoopbackStartupFailure(helpers, {
+                message,
+                host,
+                port,
+                exitCode: exit.exitCode,
+                ...output,
+            });
+            throw new Error(`${message}${output.stderr.length === 0 ? "" : `\n${output.stderr.trimEnd()}`}`);
+        }
+        try {
+            const probe = await HttpClient.get(`http://${authority}/__sloppy_testhost_ready__`, {
+                timeoutMs: 100,
+            });
+            if (probe.status < 100) {
+                await new Promise((resolve) => setTimeout(resolve, 25));
+                continue;
+            }
+        } catch {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+            continue;
+        }
+        await new Promise((resolve) => setTimeout(resolve, stabilityMs));
+        const stableExit = await processExitIfAvailable(child);
+        if (stableExit !== undefined) {
+            const output = await processOutputSnapshot(child, options);
+            const message = `Sloppy TestHost loopback server exited during startup with exit code ${stableExit.exitCode}.`;
+            recordLoopbackStartupFailure(helpers, {
+                message,
+                host,
+                port,
+                exitCode: stableExit.exitCode,
+                ...output,
+            });
+            throw new Error(`${message}${output.stderr.length === 0 ? "" : `\n${output.stderr.trimEnd()}`}`);
+        }
+        return;
+    }
+    const output = await processOutputSnapshot(child, options);
+    const message = "Sloppy TestHost loopback server did not start before timeout.";
+    recordLoopbackStartupFailure(helpers, { message, host, port, ...output });
+    throw new Error(`${message}${output.stderr.length === 0 ? "" : `\n${output.stderr.trimEnd()}`}`);
+}
+
+async function createProcessLoopbackHost(kind, targetPath, options = {}) {
+    const command = cliPath(options);
+    const helpers = createProcessHelpers(kind, targetPath, options);
+    const host = options.host ?? "127.0.0.1";
+    const startupAttempts = options.port === undefined ? (options.portReservationAttempts ?? 64) : 1;
+    let port;
+    let child;
+    for (let attempt = 0; attempt < startupAttempts; attempt += 1) {
+        let reservation;
+        try {
+            reservation = await reserveLoopbackPort(host, options);
+        } catch (error) {
+            const failedPort = options.port === undefined ? undefined : validateLoopbackPort(options.port);
+            recordLoopbackStartupFailure(helpers, {
+                message: `Sloppy TestHost loopback port reservation failed.${error?.message === undefined ? "" : ` ${error.message}`}`,
+                host,
+                port: failedPort,
+            });
+            throw error;
+        }
+        port = reservation.port;
+        await releaseLoopbackReservation(reservation);
+        child = await SloppyProcess.start(command, [
+            ...pathRunArgs(kind, targetPath, "loopback"),
+            "--host",
+            host,
+            "--port",
+            String(port),
+        ], {
+            cwd: options.cwd,
+            env: options.env,
+            stdout: "pipe",
+            stderr: "pipe",
+        });
+        try {
+            await waitForLoopbackReady(host, port, child, helpers, options);
+            break;
+        } catch (error) {
+            await child.terminate().catch(() => {});
+            await child.wait({ timeoutMs: options.stopTimeoutMs ?? 5000 }).catch(() => {});
+            await child.dispose().catch(() => {});
+            child = undefined;
+            if (options.port === undefined && attempt + 1 < startupAttempts && isRetryableLoopbackStartupFailure(error)) {
+                continue;
+            }
+            throw error;
+        }
+    }
+    if (child === undefined || port === undefined) {
+        throw new Error("Sloppy TestHost loopback server did not start.");
+    }
+    let closed = false;
+
+    const baseUrl = `http://${loopbackAuthority(host, port)}`;
+    return Object.freeze({
+        baseUrl,
+        port,
+        async request(method, target, requestOptions = undefined) {
+            if (closed) {
+                throw new Error("Sloppy TestHost loopback host is closed.");
+            }
+            const exit = await processExitIfAvailable(child);
+            if (exit !== undefined) {
+                const output = await processOutputSnapshot(child, options);
+                helpers.diagnostics.record({
+                    code: "SLOPPY_E_TESTHOST_LOOPBACK_EXITED",
+                    subsystem: "process",
+                    severity: "error",
+                    message: `Sloppy TestHost loopback server exited with code ${exit.exitCode}.`,
+                    fields: { exitCode: exit.exitCode, stdout: output.stdout, stderr: output.stderr },
+                });
+                throw new Error(`Sloppy TestHost loopback server exited with code ${exit.exitCode}.`);
+            }
+            const normalizedMethod = normalizeMethod(method);
+            const normalizedOptions = normalizeOptions(requestOptions);
+            const headerEntries = headerEntriesFromObject(normalizedOptions.headers, "request");
+            const body = normalizeRequestBody(normalizedOptions, headerEntries);
+            const requestHeaders = Object.fromEntries(
+                headerEntries.filter(([name]) => name.toLowerCase() !== "content-length"),
+            );
+            const response = await HttpClient.request({
+                url: `${baseUrl}${target}`,
+                method: normalizedMethod,
+                headers: requestHeaders,
+                bytes: body.byteLength === 0 ? undefined : body,
+                timeoutMs: normalizedOptions.timeoutMs ?? options.timeoutMs,
+            });
+            const testResponse = finalizeResponse(responseFromParts(response.status, responseHeaderEntries(response), await response.bytes()), normalizedMethod);
+            helpers.metrics.increment("http.requests.total", { method: normalizedMethod, status: String(testResponse.status) });
+            return testResponse;
+        },
+        async close() {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            await child.terminate().catch(() => {});
+            await child.wait({ timeoutMs: options.stopTimeoutMs ?? 5000 }).catch(() => {});
+            await child.dispose().catch(() => {});
+        },
+        ...helpers,
+    });
+}
+
+function runtimeHostToFluent(runtimeHost, mode) {
+    return Object.freeze({
+        ...createFluentHost({
+            request(method, target, options) {
+                return runtimeHost.request(method, target, options);
+            },
+            close() {
+                return runtimeHost.close?.();
+            },
+            diagnostics: runtimeHost.diagnostics,
+            metrics: runtimeHost.metrics,
+            jobs: runtimeHost.jobs,
+            openapi: runtimeHost.openapi,
+            baseUrl: runtimeHost.baseUrl,
+            port: runtimeHost.port,
+        }, mode),
+        baseUrl: runtimeHost.baseUrl,
+        port: runtimeHost.port,
+    });
+}
+
+async function runtimeOrProcessHost(kind, targetPath, mode, options) {
+    const bridgeName = kind === "artifacts"
+        ? (mode === "loopback" ? "fromArtifactsLoopback" : "fromArtifacts")
+        : (mode === "loopback" ? "fromPackageLoopback" : "fromPackage");
+    const bridge = globalThis.__sloppy?.testHost;
+    if (bridge !== undefined && typeof bridge[bridgeName] === "function") {
+        return runtimeHostToFluent(await bridge[bridgeName](targetPath, options), mode);
+    }
+    const host = mode === "loopback"
+        ? await createProcessLoopbackHost(kind, targetPath, options)
+        : createProcessOnceHost(kind, targetPath, options);
+    return runtimeHostToFluent(host, mode);
+}
+
+async function createArtifactHost(targetPath, options = {}) {
+    if (typeof targetPath !== "string" || targetPath.length === 0) {
+        throw new TypeError("Sloppy TestHost artifact/package path must be a non-empty string.");
+    }
+    const mode = options.mode ?? "inProcess";
+    if (mode === "inProcess" || mode === "loopback") {
+        return runtimeOrProcessHost("artifacts", targetPath, mode, options);
+    }
+    throw new Error(`Sloppy TestHost mode '${mode}' is not supported.`);
+}
+
+async function createPackageHost(targetPath, options = {}) {
+    if (typeof targetPath !== "string" || targetPath.length === 0) {
+        throw new TypeError("Sloppy TestHost artifact/package path must be a non-empty string.");
+    }
+    const mode = options.mode ?? "inProcess";
+    if (mode === "inProcess" || mode === "loopback") {
+        return runtimeOrProcessHost("package", targetPath, mode, options);
+    }
+    throw new Error(`Sloppy TestHost mode '${mode}' is not supported.`);
+}
+
+function ensureSupportedCreateMode(mode) {
+    if (mode === "inProcess") {
+        return;
+    }
+    if (mode === "loopback") {
+        throw new Error("Sloppy TestHost loopback mode requires fromArtifacts() or fromPackage() so the real runtime server can start.");
+    }
+    throw new Error(`Sloppy TestHost mode '${mode}' is not supported.`);
+}
+
+const FakeClock = Object.freeze({
+    fixed(value) {
+        const start = value instanceof Date ? value.getTime() : Date.parse(String(value));
+        if (!Number.isFinite(start)) {
+            throw new TypeError("Sloppy FakeClock.fixed expects a Date or ISO timestamp.");
+        }
+        let current = start;
+        return Object.freeze({
+            now() {
+                return new Date(current);
+            },
+            monotonicNowMs() {
+                return current - start;
+            },
+            advanceBy(duration) {
+                const ms = duration?.milliseconds ?? duration?.ms ??
+                    (duration?.seconds ?? 0) * 1000 +
+                    (duration?.minutes ?? 0) * 60 * 1000 +
+                    (duration?.hours ?? 0) * 60 * 60 * 1000;
+                if (!Number.isFinite(ms)) {
+                    throw new TypeError("Sloppy FakeClock.advanceBy duration must be finite.");
+                }
+                current += ms;
+            },
+            delay(ms) {
+                if (!Number.isFinite(ms)) {
+                    throw new TypeError("Sloppy FakeClock.delay expects a finite millisecond value.");
+                }
+                current += ms;
+                return Promise.resolve();
+            },
+        });
+    },
 });
 
-export { createTestHost, Testing };
+const TestData = Object.freeze({
+    sqliteMemory(options = {}) {
+        return Object.freeze({
+            kind: "sqlite",
+            database: ":memory:",
+            migrations: options.migrations,
+            seed: options.seed,
+            open() {
+                const db = data.sqlite.open({ database: ":memory:" });
+                return Promise.resolve()
+                    .then(() => options.migrations === undefined ? undefined : Migrations.apply(db, {
+                        provider: "sqlite",
+                        path: options.migrations,
+                    }))
+                    .then(() => typeof options.seed === "function" ? options.seed(db) : undefined)
+                    .then(() => db);
+            },
+        });
+    },
+    sqliteTempFile(options = {}) {
+        return Object.freeze({
+            kind: "sqlite",
+            async open() {
+                const directory = options.directory ?? ".sloppy/testhost";
+                const dir = await Directory.createTemp(directory, { prefix: "sqlite-" });
+                const database = `${dir.replace(/[\\/]$/u, "")}/test.db`;
+                const db = data.sqlite.open({ database });
+                const originalClose = db.close?.bind(db);
+                return Object.freeze({
+                    ...db,
+                    close() {
+                        originalClose?.();
+                        return Directory.delete(dir, { recursive: true });
+                    },
+                });
+            },
+        });
+    },
+});
+
+const TestHost = Object.freeze({
+    async create(app, options = {}) {
+        ensureSupportedCreateMode(options.mode ?? "inProcess");
+        return createFluentHost(createTestHost(app, options), "inProcess");
+    },
+    fromArtifacts(pathValue, options = {}) {
+        return createArtifactHost(pathValue, options);
+    },
+    fromPackage(pathValue, options = {}) {
+        return createPackageHost(pathValue, options);
+    },
+});
+
+const Testing = Object.freeze({
+    createHost: createTestHost,
+    TestHost,
+    FakeClock,
+    TestData,
+});
+
+export { createTestHost, FakeClock, TestData, TestHost, Testing };

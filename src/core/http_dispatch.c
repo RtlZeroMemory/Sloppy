@@ -3415,6 +3415,12 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     request_context.route_name = validation_route == NULL ? sl_str_empty() : validation_route->name;
     request_context.native_json_validated = false;
     if (validation_route != NULL &&
+        validation_route->json_request.mode == SL_PLAN_JSON_REQUEST_NATIVE_SCHEMA)
+    {
+        request_context.request_schema =
+            sl_http_dispatch_find_schema(plan, validation_route->json_request.schema);
+    }
+    if (validation_route != NULL &&
         validation_route->json_response.mode == SL_PLAN_JSON_RESPONSE_NATIVE_SCHEMA &&
         validation_route->json_response.writer == SL_PLAN_JSON_WRITER_BOUNDED)
     {

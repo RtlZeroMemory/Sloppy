@@ -183,10 +183,11 @@ Native JSON benchmark rows are intentionally scoped:
   native-schema rows use the same JSON payload shape; the static row starts from
   preencoded JSON bytes.
 - The native schema response rows pre-emit fixed schema field-name fragments and
-  fast-path strings that need no escaping. They still use the shared checked
-  string-builder and scalar formatting helpers for values, so the row exposes
-  remaining writer overhead instead of replacing it with a bespoke unchecked
-  byte-copy routine.
+  fast-path strings that need no escaping. The payload row uses Sloppy's bounded
+  JSON writer for checked direct writes, string escaping, and scalar formatting.
+  The HTTP response row uses the same known write-plan length to write headers
+  and body into one bounded output buffer, so it measures native JSON emission
+  plus HTTP framing without an extra body copy.
 - `json.response.native_static.head_http_response_write` writes response
   metadata with body suppression, modeling `HEAD` after normal dispatch.
 - `json.response.large_list.http_response_write` covers a larger preencoded
@@ -216,6 +217,19 @@ Native JSON benchmark rows are intentionally scoped:
 - `json.dispatch.native_schema_static_response.full_inprocess` combines native
   request validation with native static JSON response writing and still excludes
   sockets and user handler execution.
+
+Set `SLOPPY_JSON_PROFILE=1` to add a `jsonProfile` object to each JSON-family
+`sloppy_bench --format json` result. The profiler is disabled by default so
+normal benchmark rows keep their existing output shape and timing. Profile
+output is machine-readable evidence for phase attribution and counters; it is
+not a cross-runtime score. Request-side phases include body-size checks,
+yyjson parsing, schema lookup, object field iteration, field lookup, required
+field tracking, scalar/string/integer validation, unknown-field policy, path
+construction, issue recording, problem-details construction, materialize-once
+handoff, and generic fallback markers. Response-side phases include write-plan
+lookup, output-size estimation, response field iteration, field value access,
+string escaping, scalar formatting, literal writes, builder grow/copy events,
+HTTP response header writing, native fallback, and capacity failure markers.
 
 All JSON route-scale rows currently target the first generated static route in
 the table. The target is intentionally fixed so route-count changes are not

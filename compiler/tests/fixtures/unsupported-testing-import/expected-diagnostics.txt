@@ -1,6 +1,6 @@
-<compiler>/tests/fixtures/unsupported-testing-import/input.js:1:27: SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT: Testing is a JavaScript app-host test helper and cannot be imported by compiled app source
+<compiler>/tests/fixtures/unsupported-testing-import/input.js:1:27: SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT: Sloppy testing helpers cannot be imported by compiled app source
   --> <compiler>/tests/fixtures/unsupported-testing-import/input.js:1:27
    |
 1 | import { Sloppy, Results, Testing } from "sloppy";
    |                           ^^^^^^^
-hint: Use Testing from JavaScript tests around the generated app, not inside compiler input.
+hint: Use Sloppy testing helpers from JavaScript tests around the generated app, not inside compiler input.

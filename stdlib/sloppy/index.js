@@ -26,7 +26,7 @@ export { RequestLogging } from "./request-logging.js";
 export { Results } from "./results.js";
 export { Schema } from "./schema.js";
 export { schema } from "./schema.js";
-export { Testing } from "./testing.js";
+export { FakeClock, TestData, TestHost, Testing } from "./testing.js";
 export {
     CancelledError,
     CancellationController,

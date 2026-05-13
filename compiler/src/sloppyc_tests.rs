@@ -7332,6 +7332,30 @@ export default app;
 "#,
             "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
         ),
+        (
+            r#"import { Sloppy, Results, TestHost } from "sloppy";
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+        ),
+        (
+            r#"import { Sloppy, Results, FakeClock } from "sloppy";
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+        ),
+        (
+            r#"import { Sloppy, Results, TestData } from "sloppy";
+const app = Sloppy.create();
+app.get("/", () => Results.ok({ ok: true }));
+export default app;
+"#,
+            "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
+        ),
     ] {
         let diagnostic = extract(std::path::Path::new("app.ts"), source)
             .expect_err("recognized unsupported framework surface should fail");

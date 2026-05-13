@@ -24,6 +24,7 @@ configuration, services, validation, or data access.
 - [ProblemDetails](problem-details.md) — problem response descriptor options
 - [Request IDs](request-id.md) — request ID middleware and response header behavior
 - [Request logging](request-logging.md) — structured request completion logs
+- [TestHost](testhost.md) — first-party app, artifact, package, and loopback API testing
 - [App test host](testing.md) — in-memory app-host dispatch for tests
 - [Request context](request-context.md) — what's on `ctx` inside a handler
 - [Results](results.md) — every response helper

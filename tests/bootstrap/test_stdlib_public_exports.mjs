@@ -66,10 +66,13 @@ import {
     Auth,
     BackgroundService as RootBackgroundService,
     Config,
+    FakeClock,
     Health,
     Metrics,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
+    TestData,
+    TestHost,
     unsafeFfi as RootUnsafeFfi,
     WorkQueue as RootWorkQueue,
     Worker as RootWorker,
@@ -124,6 +127,11 @@ assert.equal(typeof Config.boolean, "function");
 assert.equal(typeof Config.required, "function");
 assert.equal(typeof Health.createRegistry, "function");
 assert.equal(typeof Metrics.createRegistry, "function");
+assert.equal(typeof TestHost.create, "function");
+assert.equal(typeof TestHost.fromArtifacts, "function");
+assert.equal(typeof TestHost.fromPackage, "function");
+assert.equal(typeof FakeClock.fixed, "function");
+assert.equal(typeof TestData.sqliteMemory, "function");
 assert.equal(RootBackgroundService, BackgroundService);
 assert.equal(RootFfiTypes, t);
 assert.equal(RootUnsafeFfi, unsafeFfi);
