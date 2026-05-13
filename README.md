@@ -5,7 +5,6 @@
 # Sloppy
 
 [![CI](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/RtlZeroMemory/Slop/actions/workflows/codeql.yml/badge.svg)](https://github.com/RtlZeroMemory/Slop/actions/workflows/codeql.yml)
 [![npm alpha](https://img.shields.io/npm/v/@slopware/sloppy/alpha?label=npm%20alpha)](https://www.npmjs.com/package/@slopware/sloppy)
 ![public alpha](https://img.shields.io/badge/status-public%20alpha-yellow)
 ![license](https://img.shields.io/badge/license-see%20LICENSE-blue)
