@@ -638,11 +638,19 @@ static SlStatus sl_sqlsrv_diag_from_handle(SlArena* arena, SlDiag* out_diag, SlD
         }
     }
     if (!sl_str_is_empty(safe_config)) {
-        return sl_sqlsrv_diag(arena, out_diag, code, message, operation, safe_config, detail, sql,
-                              status);
+        return sl_sqlsrv_diag(
+            arena, out_diag, code, message, operation, safe_config, detail,
+            sl_str_is_empty(sql)
+                ? sl_str_empty()
+                : sl_sqlsrv_literal("statement: redacted", sizeof("statement: redacted") - 1U),
+            status);
     }
-    return sl_sqlsrv_diag(arena, out_diag, code, message, operation, detail, sql, sl_str_empty(),
-                          status);
+    return sl_sqlsrv_diag(
+        arena, out_diag, code, message, operation, detail,
+        sl_str_is_empty(sql)
+            ? sl_str_empty()
+            : sl_sqlsrv_literal("statement: redacted", sizeof("statement: redacted") - 1U),
+        sl_str_empty(), status);
 }
 
 static SlStatus sl_sqlsrv_invalid_state_diag(SlArena* arena, SlDiag* out_diag, SlStr operation)
@@ -1013,7 +1021,9 @@ static SlStatus sl_sqlsrv_bind_params(SlArena* arena, SQLHSTMT stmt, const SlSql
             arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
             sl_sqlsrv_literal("sqlserver provider parameter count mismatch",
                               sizeof("sqlserver provider parameter count mismatch") - 1U),
-            operation, sql, sl_str_empty(), sl_str_empty(),
+            operation,
+            sl_sqlsrv_literal("statement: redacted", sizeof("statement: redacted") - 1U),
+            sl_str_empty(), sl_str_empty(),
             sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
     for (size_t index = 0U; index < param_count; index += 1U) {
@@ -1155,7 +1165,9 @@ static SlStatus sl_sqlsrv_bind_params(SlArena* arena, SQLHSTMT stmt, const SlSql
                 arena, out_diag, SL_DIAG_DATABASE_UNSUPPORTED_VALUE,
                 sl_sqlsrv_literal("unsupported sqlserver parameter value",
                                   sizeof("unsupported sqlserver parameter value") - 1U),
-                operation, sql, sl_str_empty(), sl_str_empty(),
+                operation,
+                sl_sqlsrv_literal("statement: redacted", sizeof("statement: redacted") - 1U),
+                sl_str_empty(), sl_str_empty(),
                 sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
         }
         if (!sl_sqlsrv_success(rc)) {
@@ -1726,7 +1738,9 @@ static SlStatus sl_sqlsrv_materialize_rows(SlArena* arena, SQLHSTMT stmt, size_t
                 arena, out_diag, SL_DIAG_SQLSERVER_PROVIDER_ERROR,
                 sl_sqlsrv_literal("sqlserver provider query exceeded max rows",
                                   sizeof("sqlserver provider query exceeded max rows") - 1U),
-                operation, sql, sl_str_empty(), sl_str_empty(),
+                operation,
+                sl_sqlsrv_literal("statement: redacted", sizeof("statement: redacted") - 1U),
+                sl_str_empty(), sl_str_empty(),
                 sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED));
         }
         rows[row_count].values = column_count == 0U ? NULL : cells + (row_count * column_count);

@@ -98,10 +98,10 @@ app.post("/logout", (ctx) => Auth.signOut(ctx));
 | `secret` | `string \| Config.required(...)` | Session signing secret. Compiler extraction requires `Config.required(...)`. |
 | `secure` | `boolean?` | Defaults to `true`. |
 | `httpOnly` | `boolean?` | Defaults to `true`. |
-| `sameSite` | `"lax" \| "strict" \| "none"?` | Defaults to `lax`. |
+| `sameSite` | `"lax" \| "strict" \| "none"?` | Defaults to `lax`. `none` requires `secure: true`. |
 | `path` | `string?` | Defaults to `/`. |
-| `maxAgeSeconds` | `number?` | Adds session expiry and `Max-Age` when set. |
-| `csrf` | `boolean \| object?` | Enables double-submit CSRF for unsafe methods. |
+| `maxAgeSeconds` | `number?` | Sets signed-cookie session expiry and `Max-Age`. Defaults to 24 hours for signed-cookie sessions. Store-backed sessions use absolute/idle timeouts instead unless set. |
+| `csrf` | `boolean \| object?` | Enables double-submit CSRF for unsafe methods. `__Host-` CSRF cookies require `secure: true` and `path: "/"`. |
 
 `Auth.signIn(ctx, claims)` returns `200` with `Set-Cookie`. `Auth.signOut(ctx)`
 returns `204` and clears the cookie. Session secrets are not written to Plan

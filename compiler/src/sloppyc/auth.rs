@@ -114,12 +114,26 @@ pub(super) fn app_use_auth_provider_call(
             let http_only = object_bool_property_value(options, "httpOnly").unwrap_or(true);
             let same_site = object_string_property_value(options, "sameSite")
                 .unwrap_or("lax")
-                .to_string();
+                .to_ascii_lowercase();
+            if !matches!(same_site.as_str(), "lax" | "strict" | "none") {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_AUTH",
+                    "Auth.cookieSession sameSite must be lax, strict, or none for compiler extraction",
+                )
+                .with_path(path)
+                .with_span(call.span));
+            }
+            if same_site == "none" && !secure {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_AUTH",
+                    "Auth.cookieSession sameSite none requires secure cookies",
+                )
+                .with_path(path)
+                .with_span(call.span));
+            }
             let cookie_path = object_string_property_value(options, "path")
                 .unwrap_or("/")
                 .to_string();
-            let max_age_seconds = object_integer_property_value(options, "maxAgeSeconds")
-                .or_else(|| object_integer_property_value(options, "maxAge"));
             let store = if let Some(store_expr) = object_property_expression(options, "store") {
                 if cookie_session_store_kind(store_expr) == Some("memory") {
                     Some("memory".to_string())
@@ -134,6 +148,9 @@ pub(super) fn app_use_auth_provider_call(
             } else {
                 None
             };
+            let max_age_seconds = object_integer_property_value(options, "maxAgeSeconds")
+                .or_else(|| object_integer_property_value(options, "maxAge"))
+                .or_else(|| if store.is_none() { Some(86_400) } else { None });
             let idle_timeout_ms = object_integer_property_value(options, "idleTimeoutMs")
                 .or_else(|| object_integer_property_value(options, "idleTimeout"));
             let absolute_timeout_ms = object_integer_property_value(options, "absoluteTimeoutMs")
@@ -141,6 +158,25 @@ pub(super) fn app_use_auth_provider_call(
             let rotation = object_bool_property_value(options, "rotation")
                 .or_else(|| object_bool_property_value(options, "rotate"))
                 .unwrap_or(false);
+            let csrf = object_bool_property_value(options, "csrf").unwrap_or(false);
+            if object_property_expression(options, "csrf").is_some()
+                && object_bool_property_value(options, "csrf").is_none()
+            {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_AUTH",
+                    "Auth.cookieSession compiler extraction supports csrf: true or csrf: false; custom CSRF options remain stdlib runtime objects",
+                )
+                .with_path(path)
+                .with_span(call.span));
+            }
+            if csrf && (!secure || cookie_path != "/") {
+                return Err(Diagnostic::new(
+                    "SLOPPYC_E_UNSUPPORTED_AUTH",
+                    "Auth.cookieSession csrf: true uses a __Host- CSRF cookie and requires secure: true with path '/'",
+                )
+                .with_path(path)
+                .with_span(call.span));
+            }
             let secret_config_key = object_property_expression(options, "secret")
                 .and_then(config_required_key_from_expression)
                 .ok_or_else(|| {
@@ -172,6 +208,7 @@ pub(super) fn app_use_auth_provider_call(
                 idle_timeout_ms,
                 absolute_timeout_ms,
                 rotation,
+                csrf,
                 secret_config_key: Some(secret_config_key),
             });
         }

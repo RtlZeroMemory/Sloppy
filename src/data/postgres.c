@@ -167,7 +167,10 @@ static SlStatus sl_pg_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code, Sl
         }
     }
     else if (!sl_str_is_empty(sql)) {
-        diag_status = sl_diag_builder_add_hint(&builder, sql);
+        (void)sql;
+        diag_status = sl_diag_builder_add_hint(
+            &builder,
+            sl_pg_literal("statement: redacted", sizeof("statement: redacted") - 1U));
         if (!sl_status_is_ok(diag_status)) {
             return diag_status;
         }
@@ -185,6 +188,80 @@ static SlStatus sl_pg_invalid_state_diag(SlArena* arena, SlDiag* out_diag, SlStr
         arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
         sl_pg_literal("postgres provider resource is closed or inactive",
                       sizeof("postgres provider resource is closed or inactive") - 1U),
+        operation, NULL, sl_str_empty(), sl_str_empty(),
+        sl_status_from_code(SL_STATUS_INVALID_STATE));
+}
+
+static bool sl_pg_has_case_insensitive_at(SlStr text, size_t index, const char* word);
+
+static bool sl_pg_statement_keyword_is(SlStr sql, const char* keyword)
+{
+    size_t index = 0U;
+    size_t offset = 0U;
+
+    if (!sl_pg_str_valid(sql) || keyword == NULL) {
+        return false;
+    }
+    while (index < sql.length && (sql.ptr[index] == ' ' || sql.ptr[index] == '\t' ||
+                                  sql.ptr[index] == '\r' || sql.ptr[index] == '\n'))
+    {
+        index += 1U;
+    }
+    while (keyword[offset] != '\0') {
+        char actual;
+        char expected = keyword[offset];
+        if (index + offset >= sql.length) {
+            return false;
+        }
+        actual = sql.ptr[index + offset];
+        if (actual >= 'a' && actual <= 'z') {
+            actual = (char)(actual - 'a' + 'A');
+        }
+        if (expected >= 'a' && expected <= 'z') {
+            expected = (char)(expected - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+        offset += 1U;
+    }
+    return index + offset == sql.length ||
+           !(sql.ptr[index + offset] == '_' ||
+             (sql.ptr[index + offset] >= '0' && sql.ptr[index + offset] <= '9') ||
+             (sql.ptr[index + offset] >= 'A' && sql.ptr[index + offset] <= 'Z') ||
+             (sql.ptr[index + offset] >= 'a' && sql.ptr[index + offset] <= 'z'));
+}
+
+static bool sl_pg_read_only_query_allowed(SlStr sql)
+{
+    return sl_pg_statement_keyword_is(sql, "SELECT") || sl_pg_statement_keyword_is(sql, "SHOW");
+}
+
+static bool sl_pg_statement_contains_ci(SlStr sql, const char* word)
+{
+    for (size_t index = 0U; index < sql.length; index += 1U) {
+        if (sl_pg_has_case_insensitive_at(sql, index, word)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool sl_pg_read_only_exec_allowed(SlStr sql)
+{
+    return (sl_pg_statement_keyword_is(sql, "BEGIN") &&
+            !sl_pg_statement_contains_ci(sql, "write")) ||
+           sl_pg_statement_keyword_is(sql, "COMMIT") ||
+           sl_pg_statement_keyword_is(sql, "ROLLBACK");
+}
+
+static SlStatus sl_pg_read_only_rejected_diag(SlArena* arena, SlDiag* out_diag, SlStr operation)
+{
+    return sl_pg_diag(
+        arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
+        sl_pg_literal("postgres read-only connection rejected a write-capable operation",
+                      sizeof("postgres read-only connection rejected a write-capable operation") -
+                          1U),
         operation, NULL, sl_str_empty(), sl_str_empty(),
         sl_status_from_code(SL_STATUS_INVALID_STATE));
 }
@@ -209,6 +286,36 @@ static bool sl_pg_has_case_insensitive_at(SlStr text, size_t index, const char* 
         }
         offset += 1U;
     }
+    return true;
+}
+
+static bool sl_pg_secret_keyword_at(SlStr text, size_t index, size_t* out_value_start)
+{
+    size_t cursor;
+
+    if (out_value_start == NULL || !sl_pg_has_case_insensitive_at(text, index, "password")) {
+        return false;
+    }
+    if (index > 0U) {
+        const char previous = text.ptr[index - 1U];
+        if (previous != ' ' && previous != '\t' && previous != '\r' && previous != '\n' &&
+            previous != '&' && previous != '?' && previous != ';')
+        {
+            return false;
+        }
+    }
+    cursor = index + sizeof("password") - 1U;
+    while (cursor < text.length && (text.ptr[cursor] == ' ' || text.ptr[cursor] == '\t')) {
+        cursor += 1U;
+    }
+    if (cursor >= text.length || text.ptr[cursor] != '=') {
+        return false;
+    }
+    cursor += 1U;
+    while (cursor < text.length && (text.ptr[cursor] == ' ' || text.ptr[cursor] == '\t')) {
+        cursor += 1U;
+    }
+    *out_value_start = cursor;
     return true;
 }
 
@@ -274,9 +381,9 @@ SlStatus sl_postgres_redact_connection_string(SlArena* arena, SlStr connection_s
     dst[connection_string.length] = '\0';
 
     for (index = 0U; index < connection_string.length; index += 1U) {
-        if (sl_pg_has_case_insensitive_at(connection_string, index, "password=")) {
-            index = sl_pg_redact_keyword_value(dst, connection_string.length,
-                                               index + sizeof("password=") - 1U);
+        size_t value_start = 0U;
+        if (sl_pg_secret_keyword_at(connection_string, index, &value_start)) {
+            index = sl_pg_redact_keyword_value(dst, connection_string.length, value_start);
         }
         if (index + 3U < connection_string.length && connection_string.ptr[index] == ':' &&
             connection_string.ptr[index + 1U] == '/' && connection_string.ptr[index + 2U] == '/')
@@ -385,6 +492,7 @@ SlStatus sl_postgres_open(SlArena* diag_arena, const SlPostgresOpenOptions* opti
 {
     char* connection_string = NULL;
     PGconn* conn = NULL;
+    PGresult* setup_result = NULL;
     SlStr safe = sl_str_empty();
     SlStatus status;
 
@@ -448,8 +556,38 @@ SlStatus sl_postgres_open(SlArena* diag_arena, const SlPostgresOpenOptions* opti
                           message_copy, safe, sl_str_empty(),
                           sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
     }
+    if (options->access == SL_POSTGRES_ACCESS_READ) {
+        setup_result = PQexec(conn, "SET default_transaction_read_only = on");
+        if (setup_result == NULL || PQresultStatus(setup_result) != PGRES_COMMAND_OK) {
+            const char* message = setup_result == NULL ? PQerrorMessage(conn)
+                                                       : PQresultErrorMessage(setup_result);
+            char* message_copy = NULL;
+            if (message != NULL && message[0] != '\0') {
+                status = sl_pg_copy_cstr(diag_arena, sl_str_from_cstr(message), &message_copy);
+                if (!sl_status_is_ok(status)) {
+                    if (setup_result != NULL) {
+                        PQclear(setup_result);
+                    }
+                    PQfinish(conn);
+                    return status;
+                }
+            }
+            if (setup_result != NULL) {
+                PQclear(setup_result);
+            }
+            PQfinish(conn);
+            return sl_pg_diag(
+                diag_arena, out_diag, SL_DIAG_POSTGRES_PROVIDER_ERROR,
+                sl_pg_literal("postgres provider read-only setup failed",
+                              sizeof("postgres provider read-only setup failed") - 1U),
+                sl_pg_literal("operation: open", sizeof("operation: open") - 1U), message_copy,
+                safe, sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
+        }
+        PQclear(setup_result);
+    }
 
     out_connection->handle = conn;
+    out_connection->access = options->access;
     out_connection->open = true;
     out_connection->transaction_active = false;
     return sl_status_ok();
@@ -639,7 +777,7 @@ static SlStatus sl_pg_exec_params(SlArena* arena, SlPostgresConnection* connecti
                                   SlStr operation, ExecStatusType expected, PGresult** out_result,
                                   SlDiag* out_diag)
 {
-    PGconn* conn = sl_pg_conn(connection);
+    PGconn* conn = NULL;
     char* sql_cstr = NULL;
     const char* values[SL_POSTGRES_MAX_PARAMS] = {0};
     Oid types[SL_POSTGRES_MAX_PARAMS] = {0};
@@ -654,13 +792,24 @@ static SlStatus sl_pg_exec_params(SlArena* arena, SlPostgresConnection* connecti
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out_result = NULL;
-    if (conn == NULL) {
+    if (connection == NULL || !connection->open) {
         return sl_pg_invalid_state_diag(arena, out_diag, operation);
     }
     if (!sl_pg_str_valid(sql) || sl_str_is_empty(sql) || param_count > SL_POSTGRES_MAX_PARAMS ||
         (param_count > 0U && params == NULL))
     {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (connection->access == SL_POSTGRES_ACCESS_READ) {
+        if ((expected == PGRES_TUPLES_OK && !sl_pg_read_only_query_allowed(sql)) ||
+            (expected == PGRES_COMMAND_OK && !sl_pg_read_only_exec_allowed(sql)))
+        {
+            return sl_pg_read_only_rejected_diag(arena, out_diag, operation);
+        }
+    }
+    conn = sl_pg_conn(connection);
+    if (conn == NULL) {
+        return sl_pg_invalid_state_diag(arena, out_diag, operation);
     }
     status = sl_pg_copy_cstr(arena, sql, &sql_cstr);
     if (!sl_status_is_ok(status)) {
@@ -927,7 +1076,7 @@ SlStatus sl_postgres_exec(SlArena* arena, SlPostgresConnection* connection, SlSt
 SlStatus sl_postgres_exec_batch(SlArena* arena, SlPostgresConnection* connection, SlStr sql,
                                 SlPostgresExecResult* out_result, SlDiag* out_diag)
 {
-    PGconn* conn = sl_pg_conn(connection);
+    PGconn* conn = NULL;
     char* sql_cstr = NULL;
     PGresult* result = NULL;
     const char* tuples = NULL;
@@ -938,13 +1087,24 @@ SlStatus sl_postgres_exec_batch(SlArena* arena, SlPostgresConnection* connection
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
     *out_result = (SlPostgresExecResult){0};
-    if (conn == NULL) {
+    if (connection == NULL || !connection->open) {
         return sl_pg_invalid_state_diag(
             arena, out_diag,
             sl_pg_literal("operation: execBatch", sizeof("operation: execBatch") - 1U));
     }
     if (!sl_pg_str_valid(sql) || sl_str_is_empty(sql)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (connection->access == SL_POSTGRES_ACCESS_READ) {
+        return sl_pg_read_only_rejected_diag(
+            arena, out_diag,
+            sl_pg_literal("operation: execBatch", sizeof("operation: execBatch") - 1U));
+    }
+    conn = sl_pg_conn(connection);
+    if (conn == NULL) {
+        return sl_pg_invalid_state_diag(
+            arena, out_diag,
+            sl_pg_literal("operation: execBatch", sizeof("operation: execBatch") - 1U));
     }
     status = sl_pg_copy_cstr(arena, sql, &sql_cstr);
     if (!sl_status_is_ok(status)) {
@@ -1113,8 +1273,12 @@ SlStatus sl_postgres_transaction_begin(SlArena* arena, SlPostgresConnection* con
                           sizeof("operation: transaction.begin") - 1U),
             NULL, sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
     }
-    status = sl_postgres_exec(arena, connection, sl_pg_literal("BEGIN", sizeof("BEGIN") - 1U), NULL,
-                              0U, &result, out_diag);
+    status = sl_postgres_exec(
+        arena, connection,
+        connection->access == SL_POSTGRES_ACCESS_READ
+            ? sl_pg_literal("BEGIN READ ONLY", sizeof("BEGIN READ ONLY") - 1U)
+            : sl_pg_literal("BEGIN", sizeof("BEGIN") - 1U),
+        NULL, 0U, &result, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }

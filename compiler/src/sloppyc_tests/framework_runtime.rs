@@ -655,6 +655,18 @@ app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), stor
 app.get("/", () => Results.ok({ ok: true })).requireAuth();
 export default app;
 "#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), secure: false, csrf: true }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), path: "/app", csrf: true }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
     ] {
         let diagnostic = extract(std::path::Path::new("app.ts"), source)
             .expect_err("unsupported static auth metadata should fail closed");
@@ -675,7 +687,8 @@ app.use(Auth.cookieSession({
   store: Auth.sessionStore.memory(),
   idleTimeoutMs: 30000,
   absoluteTimeoutMs: 60000,
-  rotation: true
+  rotation: true,
+  csrf: true
 }));
 app.get("/me", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
 export default app;
@@ -696,6 +709,7 @@ export default app;
             idle_timeout_ms,
             absolute_timeout_ms,
             rotation,
+            csrf,
             secret_config_key,
         } => {
             assert_eq!(name, "cookieSessionAuth");
@@ -709,6 +723,7 @@ export default app;
             assert_eq!(*idle_timeout_ms, Some(30000));
             assert_eq!(*absolute_timeout_ms, Some(60000));
             assert!(*rotation);
+            assert!(*csrf);
             assert_eq!(secret_config_key.as_deref(), Some("Auth:SessionSecret"));
         }
         other => panic!("expected cookie session scheme, got {other:?}"),
@@ -722,6 +737,7 @@ export default app;
     assert!(plan.contains("\"idleTimeoutMs\": 30000"));
     assert!(plan.contains("\"absoluteTimeoutMs\": 60000"));
     assert!(plan.contains("\"rotation\": true"));
+    assert!(plan.contains("\"csrf\": true"));
     assert!(plan.contains("\"configKey\": \"Auth:SessionSecret\""));
     assert!(plan.contains("\"secret\": \"<redacted>\""));
     let emitted_js = super::emit_app_js(&app);
@@ -730,6 +746,9 @@ export default app;
     assert!(emitted_js
         .source
         .contains("\"secretEnvKey\":\"Auth__SessionSecret\""));
+    assert!(emitted_js.source.contains("\"csrf\":true"));
+    assert!(emitted_js.source.contains("x-csrf-token"));
+    assert!(emitted_js.source.contains("__sloppy_auth_csrf_failure"));
     assert!(emitted_js.source.contains("__sloppy_auth_memory_sessions"));
     assert!(emitted_js
         .source

@@ -339,6 +339,50 @@ SlCapabilityOperation sqlsrv_v8_request_capability(SqlSrvV8Operation operation)
     }
 }
 
+bool sqlsrv_v8_sql_keyword_is(const std::string& sql, const char* keyword)
+{
+    size_t index = 0U;
+    size_t offset = 0U;
+
+    while (index < sql.size() &&
+           (sql[index] == ' ' || sql[index] == '\t' || sql[index] == '\r' || sql[index] == '\n'))
+    {
+        index += 1U;
+    }
+    while (keyword[offset] != '\0') {
+        if (index + offset >= sql.size()) {
+            return false;
+        }
+        char actual = sql[index + offset];
+        char expected = keyword[offset];
+        if (actual >= 'a' && actual <= 'z') {
+            actual = static_cast<char>(actual - 'a' + 'A');
+        }
+        if (expected >= 'a' && expected <= 'z') {
+            expected = static_cast<char>(expected - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+        offset += 1U;
+    }
+    return index + offset == sql.size() ||
+           !(sql[index + offset] == '_' || (sql[index + offset] >= '0' && sql[index + offset] <= '9') ||
+             (sql[index + offset] >= 'A' && sql[index + offset] <= 'Z') ||
+             (sql[index + offset] >= 'a' && sql[index + offset] <= 'z'));
+}
+
+SlCapabilityOperation sqlsrv_v8_effective_request_capability(SqlSrvV8Operation operation,
+                                                             const std::string& sql)
+{
+    SlCapabilityOperation capability = sqlsrv_v8_request_capability(operation);
+    if (capability != SL_CAPABILITY_OPERATION_READ) {
+        return capability;
+    }
+    return sqlsrv_v8_sql_keyword_is(sql, "SELECT") ? SL_CAPABILITY_OPERATION_READ
+                                                   : SL_CAPABILITY_OPERATION_WRITE;
+}
+
 bool sqlsrv_v8_access_allows(SlSqlServerAccess access, SlCapabilityOperation operation)
 {
     if (operation == SL_CAPABILITY_OPERATION_READ) {
@@ -1297,6 +1341,16 @@ bool sqlsrv_v8_allocate_connection(SqlSrvV8ConnectionResource* resource,
         return false;
     }
     SQLSetConnectAttr(connection->dbc, SQL_ATTR_LOGIN_TIMEOUT, (SQLPOINTER)15, 0);
+    if (resource->access == SL_SQLSERVER_ACCESS_READ) {
+        rc = SQLSetConnectAttr(connection->dbc, SQL_ATTR_ACCESS_MODE, (SQLPOINTER)SQL_MODE_READ_ONLY,
+                               0);
+        if (!SQL_SUCCEEDED(rc)) {
+            request->error =
+                sqlsrv_v8_diag(SQL_HANDLE_DBC, connection->dbc,
+                               "sqlserver ODBC read-only access setup failed");
+            return false;
+        }
+    }
     return true;
 }
 
@@ -2378,7 +2432,8 @@ void sqlsrv_v8_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
     if (!sl_status_is_ok(status) ||
         !sqlsrv_v8_check_capability(isolate, backend, &arena, resource,
-                                    sqlsrv_v8_request_capability(operation)))
+                                    sqlsrv_v8_effective_request_capability(operation,
+                                                                           request->sql)))
     {
         return;
     }

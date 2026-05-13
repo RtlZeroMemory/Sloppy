@@ -947,6 +947,97 @@ fn program_mode_reports_missing_package_with_install_hint() {
 }
 
 #[test]
+fn program_mode_rejects_relative_imports_outside_source_root() {
+    let root = fixture_temp_dir("program-relative-source-escape");
+    let app_dir = root.join("app");
+    let input = app_dir.join("main.ts");
+    let out_dir = app_dir.join(".sloppy");
+    fs::create_dir_all(&app_dir).expect("app directory should be created");
+    fs::write(root.join("secret.ts"), "export const secret = \"super-secret\";\n")
+        .expect("secret should write");
+    fs::write(
+        &input,
+        r#"import { secret } from "../secret"; export function main() { return secret; }"#,
+    )
+    .expect("entry should write");
+
+    let failure = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("relative source-root escape should fail");
+    assert_eq!(failure.diagnostic.code, "SLOPPYC_E_SOURCE_ESCAPE");
+    if out_dir.join("app.js.map").exists() {
+        let map = fs::read_to_string(out_dir.join("app.js.map")).expect("source map should read");
+        assert!(!map.contains("super-secret"));
+    }
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_rejects_package_entries_outside_package_root() {
+    let root = fixture_temp_dir("program-package-root-escape");
+    let package_dir = root.join("node_modules").join("bad-pkg");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&package_dir).expect("package directory should be created");
+    fs::write(
+        package_dir.join("package.json"),
+        r#"{"name":"bad-pkg","main":"../outside.js"}"#,
+    )
+    .expect("package.json should write");
+    fs::write(
+        root.join("node_modules").join("outside.js"),
+        r#"export default "super-secret";"#,
+    )
+    .expect("outside module should write");
+    fs::write(
+        &input,
+        r#"import value from "bad-pkg"; export function main() { return value; }"#,
+    )
+    .expect("entry should write");
+
+    let failure = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("package root escape should fail");
+    assert_eq!(failure.diagnostic.code, "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED");
+    assert!(failure
+        .diagnostic
+        .message
+        .contains("package main must stay inside the package root"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_rejects_package_subpath_traversal() {
+    let root = fixture_temp_dir("program-package-subpath-escape");
+    let package_dir = root.join("node_modules").join("bad-pkg");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::create_dir_all(&package_dir).expect("package directory should be created");
+    fs::write(package_dir.join("package.json"), r#"{"name":"bad-pkg"}"#)
+        .expect("package.json should write");
+    fs::write(
+        root.join("node_modules").join("outside.js"),
+        r#"export default "super-secret";"#,
+    )
+    .expect("outside module should write");
+    fs::write(
+        &input,
+        r#"import value from "bad-pkg/../outside.js"; export function main() { return value; }"#,
+    )
+    .expect("entry should write");
+
+    let failure = super::build(&input, &out_dir, &CompileOptions::new())
+        .expect_err("package subpath traversal should fail");
+    assert_eq!(failure.diagnostic.code, "SLOPPYC_E_PACKAGE_EXPORT_UNSUPPORTED");
+    assert!(failure
+        .diagnostic
+        .message
+        .contains("package subpaths must stay inside the package root"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
 fn program_mode_resolves_installed_package_and_emits_dependency_graph() {
     let root = fixture_temp_dir("program-installed-package");
     let package_dir = root.join("node_modules").join("tiny-pkg");

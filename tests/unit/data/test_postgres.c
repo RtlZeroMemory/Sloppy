@@ -166,6 +166,24 @@ static int test_redaction_and_doctor(void)
         return 16;
     }
     status = sl_postgres_redact_connection_string(
+        &arena, sl_str_from_cstr("host=localhost password = 'secret value' user=ada"), &redacted);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        expect_str_equal(redacted, "host=localhost password = ************** user=ada") != 0)
+    {
+        return 17;
+    }
+    status = sl_postgres_redact_connection_string(
+        &arena,
+        sl_str_from_cstr("postgres://ada@localhost/db?password = 'secret value'&sslmode=require"),
+        &redacted);
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        expect_str_equal(redacted,
+                         "postgres://ada@localhost/db?password = **************&sslmode=require") !=
+            0)
+    {
+        return 18;
+    }
+    status = sl_postgres_redact_connection_string(
         &arena, sl_str_from_cstr("postgres://ada:secret@localhost/sloppy_test"), &redacted);
     if (expect_status(status, SL_STATUS_OK) != 0 ||
         expect_str_equal(redacted, "postgres://ada:******@localhost/sloppy_test") != 0)
@@ -437,6 +455,56 @@ static int test_unsupported_parameter_without_live_connection(void)
                               &result, &diag);
     if (expect_status(status, SL_STATUS_INVALID_STATE) != 0) {
         return 31;
+    }
+
+    return 0;
+}
+
+static int test_read_only_access_rejects_write_before_libpq(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlPostgresConnection connection = {
+        .handle = NULL,
+        .access = SL_POSTGRES_ACCESS_READ,
+        .open = true,
+        .transaction_active = false,
+    };
+    SlPostgresExecResult exec = {0};
+    SlPostgresResult rows = {0};
+    SlDiag diag = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 35;
+    }
+    status = sl_postgres_exec(&arena, &connection, sl_str_from_cstr("insert into users values (1)"),
+                              NULL, 0U, &exec, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        !diag_contains_text(&diag, "read-only connection rejected") ||
+        diag_contains_text(&diag, "insert into users"))
+    {
+        return 36;
+    }
+    diag = (SlDiag){0};
+    status = sl_postgres_query(&arena, &connection,
+                               sl_str_from_cstr("insert into users values (1) returning id"), NULL,
+                               0U, NULL, &rows, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        !diag_contains_text(&diag, "read-only connection rejected") ||
+        diag_contains_text(&diag, "insert into users"))
+    {
+        return 37;
+    }
+    diag = (SlDiag){0};
+    status = sl_postgres_exec_batch(
+        &arena, &connection, sl_str_from_cstr("select 1; insert into users values (1)"), &exec,
+        &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        !diag_contains_text(&diag, "read-only connection rejected") ||
+        diag_contains_text(&diag, "insert into users"))
+    {
+        return 38;
     }
 
     return 0;
@@ -747,6 +815,10 @@ static int run_default_tests(void)
         return result;
     }
     result = test_unsupported_parameter_without_live_connection();
+    if (result != 0) {
+        return result;
+    }
+    result = test_read_only_access_rejects_write_before_libpq();
     if (result != 0) {
         return result;
     }

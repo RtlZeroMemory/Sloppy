@@ -297,6 +297,20 @@ fn resolve_package_import(
     import_mode: bool,
 ) -> Option<ImportKind> {
     let (package_name, subpath) = split_package_specifier(specifier)?;
+    if !package_subpath_safe(subpath) {
+        let subpath_label = if subpath.is_empty() {
+            ".".to_string()
+        } else {
+            format!("./{subpath}")
+        };
+        return Some(ImportKind::PackageExportUnsupported(
+            PackageExportFailure::exports(
+                package_name,
+                subpath_label,
+                "package subpaths must stay inside the package root",
+            ),
+        ));
+    }
     let (package_root, source) = find_self_package_root(from_path, &package_name)
         .map(|root| (root, "self"))
         .or_else(|| find_package_root(from_path, &package_name).map(|root| (root, "installed")))?;
@@ -338,6 +352,15 @@ fn resolve_package_import(
                 .and_then(|value| value.get("main"))
                 .and_then(Value::as_str)
             {
+                if !package_main_path_safe(main) {
+                    return Some(ImportKind::PackageExportUnsupported(
+                        PackageExportFailure::exports(
+                            package_name,
+                            subpath_label,
+                            "package main must stay inside the package root",
+                        ),
+                    ));
+                }
                 package_root.join(main)
             } else {
                 package_root.join("index.js")
@@ -354,11 +377,22 @@ fn resolve_package_import(
             ),
         ));
     };
+    let canonical_package_root =
+        fs::canonicalize(package_root.clone()).unwrap_or(package_root.clone());
+    if !entry.starts_with(&canonical_package_root) {
+        return Some(ImportKind::PackageExportUnsupported(
+            PackageExportFailure::exports(
+                package_name,
+                subpath_label,
+                "package entry escaped the package root",
+            ),
+        ));
+    }
     let format = module_format_for_path(&entry, package_type);
     let package = PackageResolution {
         name: package_name,
         version,
-        root: fs::canonicalize(package_root.clone()).unwrap_or(package_root),
+        root: canonical_package_root,
         package_json: package_json.exists().then_some(package_json),
         entry,
         format,
@@ -408,6 +442,17 @@ fn resolve_package_imports(
             ),
         ));
     };
+    let canonical_package_root =
+        fs::canonicalize(package_root.clone()).unwrap_or(package_root.clone());
+    if !entry.starts_with(&canonical_package_root) {
+        return Some(ImportKind::PackageExportUnsupported(
+            PackageExportFailure::imports(
+                specifier,
+                specifier,
+                "imports target escaped the package root",
+            ),
+        ));
+    }
     let package_type = package_json_value
         .get("type")
         .and_then(Value::as_str)
@@ -422,7 +467,7 @@ fn resolve_package_imports(
             .get("version")
             .and_then(Value::as_str)
             .map(ToOwned::to_owned),
-        root: fs::canonicalize(package_root.clone()).unwrap_or(package_root),
+        root: canonical_package_root,
         package_json: Some(package_json),
         entry: entry.clone(),
         format: module_format_for_path(&entry, package_type),
@@ -449,6 +494,22 @@ fn split_package_specifier(specifier: &str) -> Option<(String, &str)> {
     }
     let (name, subpath) = specifier.split_once('/').unwrap_or((specifier, ""));
     (!name.is_empty()).then(|| (name.to_string(), subpath))
+}
+
+fn package_subpath_safe(subpath: &str) -> bool {
+    subpath.is_empty()
+        || subpath
+            .split('/')
+            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+}
+
+fn package_main_path_safe(path: &str) -> bool {
+    let path = path.strip_prefix("./").unwrap_or(path);
+    !path.is_empty()
+        && !path.starts_with('/')
+        && !path.contains(':')
+        && !path.contains('\\')
+        && package_subpath_safe(path)
 }
 
 fn find_package_root(from_path: &Path, package_name: &str) -> Option<PathBuf> {
@@ -651,8 +712,10 @@ fn resolve_exports_value_with_star(
 ) -> Result<PathBuf, &'static str> {
     if let Some(path) = value.as_str() {
         let path = star.map_or_else(|| path.to_string(), |star| path.replace('*', star));
-        if path.starts_with("./") && !path.contains("..") {
-            return Ok(package_root.join(path));
+        if let Some(target) = path.strip_prefix("./") {
+            if package_subpath_safe(target) {
+                return Ok(package_root.join(path));
+            }
         }
         return Err("package exports target must be a \"./\"-relative path without \"..\"");
     }
@@ -757,6 +820,12 @@ pub fn stays_within_source_root(resolved: &Path, source_root: &Path) -> bool {
     };
     fs::canonicalize(source_root)
         .map(|root| resolved.starts_with(root))
+        .unwrap_or(false)
+}
+
+pub(crate) fn stays_within_nearest_package_scope(from_path: &Path, resolved: &Path) -> bool {
+    find_nearest_package_scope(from_path)
+        .map(|root| stays_within_source_root(resolved, &root))
         .unwrap_or(false)
 }
 

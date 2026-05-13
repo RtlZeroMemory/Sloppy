@@ -47,9 +47,11 @@ app.use(Auth.cookieSession({
 }));
 ```
 
-The data-provider store creates and uses `sloppy_auth_sessions` with redacted
-JSON claim storage, `created_at_ms`, `last_seen_at_ms`, `expires_at_ms`,
-`idle_expires_at_ms`, `revoked_at_ms`, CSRF, and metadata columns.
+The data-provider store creates and uses `sloppy_auth_sessions` with JSON claim
+storage, `created_at_ms`, `last_seen_at_ms`, `expires_at_ms`,
+`idle_expires_at_ms`, `revoked_at_ms`, CSRF, and metadata columns. Claims are
+stored as supplied; do not put passwords, tokens, connection strings, or other
+secrets in session claims unless your application adds its own encryption.
 
 Defaults:
 

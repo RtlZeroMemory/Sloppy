@@ -3318,6 +3318,63 @@ static int test_promise_rejection_returns_diagnostic(void)
     return 0;
 }
 
+static int test_promise_rejection_redacts_secret_text(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[1024];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 70;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 71;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-promise-secret-reject.js"),
+                sl_str_from_cstr("globalThis.sloppy_reject_secret = async function () { throw new "
+                                 "Error('password=hunter2 token=abc Authorization: Bearer "
+                                 "bearer-secret'); };"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 72;
+    }
+
+    if (expect_status(sl_engine_call_function0(engine, &result_arena,
+                                               sl_str_from_cstr("sloppy_reject_secret"), &result,
+                                               &diag),
+                      SL_STATUS_INVALID_STATE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 73;
+    }
+
+    if (diag.code != SL_DIAG_V8_UNHANDLED_REJECTION ||
+        expect_str_contains(diag.message, sl_str_from_cstr("[REDACTED]")) != 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("hunter2")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("token=abc")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("bearer-secret")) == 0)
+    {
+        sl_engine_destroy(engine);
+        return 74;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_pending_promise_returns_deadline_diagnostic(void)
 {
     unsigned char engine_storage[8192];
@@ -8429,6 +8486,11 @@ int main(int argc, char** argv)
     }
 
     result = test_promise_rejection_returns_diagnostic();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_promise_rejection_redacts_secret_text();
     if (result != 0) {
         return result;
     }

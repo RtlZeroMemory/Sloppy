@@ -21,6 +21,7 @@ const SAFE_CSRF_METHODS = new Set(["GET", "HEAD", "OPTIONS", "TRACE"]);
 const STANDARD_JWT_CLAIMS = new Set(["iss", "sub", "aud", "exp", "nbf", "iat", "jti", "name", "role", "roles", "scope", "scp", "scopes"]);
 const DEFAULT_SESSION_IDLE_TIMEOUT_MS = 30 * 60_000;
 const DEFAULT_SESSION_ABSOLUTE_TIMEOUT_MS = 24 * 60 * 60_000;
+const DEFAULT_SIGNED_SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
 
 function validateHeaderName(name, subject) {
     requireHttpToken(name, `Sloppy ${subject} header must be an HTTP token string.`);
@@ -1473,6 +1474,20 @@ function cookieSession(options) {
     );
     const name = options.name ?? DEFAULT_SESSION_COOKIE;
     requireHttpToken(name, "Sloppy Auth.cookieSession name must be a safe HTTP token.");
+    const secure = booleanOption(options.secure, "Auth.cookieSession secure", true);
+    const sameSite = normalizeSameSiteOption(options.sameSite);
+    if (sameSite === "none" && secure !== true) {
+        throw new TypeError("Sloppy Auth.cookieSession sameSite none requires secure cookies.");
+    }
+    const path = stringOption(options.path ?? "/", "Auth.cookieSession path");
+    const maxAgeSeconds = integerOption(
+        options.maxAgeSeconds ?? options.maxAge ?? (store === undefined ? DEFAULT_SIGNED_SESSION_MAX_AGE_SECONDS : undefined),
+        "Auth.cookieSession maxAgeSeconds",
+    );
+    const csrf = normalizeCsrfOptions(options.csrf);
+    if (csrf.enabled && csrf.cookieName.startsWith("__Host-") && (secure !== true || path !== "/")) {
+        throw new TypeError("Sloppy Auth.cookieSession __Host- CSRF cookies require secure true and path '/'.");
+    }
     return Object.freeze({
         __sloppyAuth: true,
         kind: "cookieSession",
@@ -1480,16 +1495,16 @@ function cookieSession(options) {
         principalScheme: stringOption(options.scheme ?? options.schemeName ?? "cookieSession", "cookie session auth principal scheme"),
         cookieName: name,
         secret: options.secret,
-        secure: booleanOption(options.secure, "Auth.cookieSession secure", true),
+        secure,
         httpOnly: booleanOption(options.httpOnly, "Auth.cookieSession httpOnly", true),
-        sameSite: normalizeSameSiteOption(options.sameSite),
-        path: stringOption(options.path ?? "/", "Auth.cookieSession path"),
-        maxAgeSeconds: integerOption(options.maxAgeSeconds ?? options.maxAge, "Auth.cookieSession maxAgeSeconds"),
+        sameSite,
+        path,
+        maxAgeSeconds,
         idleTimeoutMs,
         absoluteTimeoutMs,
         rotation: store === undefined ? false : booleanOption(options.rotation ?? options.rotate, "Auth.cookieSession rotation", false),
         clock: options.clock,
-        csrf: normalizeCsrfOptions(options.csrf),
+        csrf,
         store,
     });
 }
@@ -1506,10 +1521,12 @@ function normalizeCsrfOptions(options) {
     }
     const header = (options.header ?? DEFAULT_CSRF_HEADER).toLowerCase();
     validateHeaderName(header, "CSRF");
+    const cookieName = stringOption(options.cookieName ?? DEFAULT_CSRF_COOKIE, "CSRF cookie name");
+    requireHttpToken(cookieName, "Sloppy Auth CSRF cookie name must be a safe HTTP token.");
     return Object.freeze({
         enabled: true,
         header,
-        cookieName: stringOption(options.cookieName ?? DEFAULT_CSRF_COOKIE, "CSRF cookie name"),
+        cookieName,
     });
 }
 
@@ -1530,9 +1547,7 @@ async function signIn(ctx, claims, options = undefined) {
     const sessionClaims = normalizeSessionClaims(claims);
     const currentMs = nowMilliseconds(scheme.clock);
     const current = Math.floor(currentMs / 1000);
-    const csrf = scheme.csrf.enabled
-        ? Base64Url.encode(await Hmac.sha256(scheme.secret, `${sessionClaims.sub ?? ""}:${currentMs}`))
-        : undefined;
+    const csrf = scheme.csrf.enabled ? Random.token(32) : undefined;
     if (scheme.store !== undefined) {
         const sessionId = Random.token(32);
         const record = {

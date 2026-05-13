@@ -150,11 +150,13 @@ class IncrementalHasher {
     }
 }
 
+const SECRET_VALUE_BYTES = new WeakMap();
+const SECRET_VALUE_DISPOSED = new WeakSet();
+
 class SecretValue {
     constructor(bytes) {
-        this._bytes = cloneBytes(bytes);
-        this._disposed = false;
-        Object.seal(this);
+        SECRET_VALUE_BYTES.set(this, cloneBytes(bytes));
+        Object.freeze(this);
     }
 
     static fromUtf8(value) {
@@ -172,16 +174,16 @@ class SecretValue {
     }
 
     bytes() {
-        if (this._disposed) {
+        if (SECRET_VALUE_DISPOSED.has(this)) {
             throw new Error("SLOPPY_E_CRYPTO_SECRET_DISPOSED: secret has been disposed");
         }
-        return cloneBytes(this._bytes);
+        return cloneBytes(SECRET_VALUE_BYTES.get(this));
     }
 
     dispose() {
-        if (!this._disposed) {
-            this._bytes.fill(0);
-            this._disposed = true;
+        if (!SECRET_VALUE_DISPOSED.has(this)) {
+            SECRET_VALUE_BYTES.get(this).fill(0);
+            SECRET_VALUE_DISPOSED.add(this);
         }
     }
 

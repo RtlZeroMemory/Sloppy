@@ -911,6 +911,7 @@ pub(crate) fn emit_plan_with_route_artifact(
                 idle_timeout_ms,
                 absolute_timeout_ms,
                 rotation,
+                csrf,
                 secret_config_key,
             } => json!({
                 "kind": "cookieSession",
@@ -926,6 +927,7 @@ pub(crate) fn emit_plan_with_route_artifact(
                 "idleTimeoutMs": idle_timeout_ms,
                 "absoluteTimeoutMs": absolute_timeout_ms,
                 "rotation": rotation,
+                "csrf": csrf,
                 "configKey": secret_config_key,
                 "secret": "<redacted>"
             }),

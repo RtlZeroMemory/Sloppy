@@ -476,6 +476,32 @@ pub(super) fn program_module_id(
     resolver::normalized_artifact_id(path, &graph.entry_dir)
 }
 
+fn validate_program_relative_module(
+    importer: &Path,
+    resolved: &Path,
+    graph: &ModuleGraph,
+    package: Option<&str>,
+    span: Span,
+) -> Result<PathBuf, Diagnostic> {
+    let allowed = if package.is_some() {
+        resolver::stays_within_nearest_package_scope(importer, resolved)
+    } else {
+        resolver::stays_within_source_root(resolved, &graph.entry_dir)
+    };
+    if allowed {
+        return Ok(resolved.to_path_buf());
+    }
+    Err(Diagnostic::new(
+        "SLOPPYC_E_SOURCE_ESCAPE",
+        "program relative imports must stay inside the source root or package root",
+    )
+    .with_path(resolved)
+    .with_span(span)
+    .with_hint(
+        "Move the imported module under the entry directory or expose it through a package-internal path.",
+    ))
+}
+
 fn transform_program_source(
     path: &Path,
     source: &str,
@@ -883,6 +909,13 @@ fn analyze_program_import(
     let from_id = program_module_id(graph, path, package.as_deref());
     match import_kind {
         resolver::ImportKind::Relative(resolved) => {
+            let resolved = validate_program_relative_module(
+                path,
+                &resolved,
+                graph,
+                package.as_deref(),
+                import.source.span,
+            )?;
             let source = fs::read_to_string(&resolved).map_err(|error| {
                 Diagnostic::new(
                     "SLOPPYC_E_INPUT",
@@ -1468,6 +1501,8 @@ fn resolve_program_dependency(
     let from_id = program_module_id(graph, path, package.as_deref());
     match resolver::classify_import_with_mode(path, specifier, request.import_mode) {
         resolver::ImportKind::Relative(resolved) => {
+            let resolved =
+                validate_program_relative_module(path, &resolved, graph, package.as_deref(), span)?;
             let source = fs::read_to_string(&resolved).map_err(|error| {
                 Diagnostic::new(
                     "SLOPPYC_E_INPUT",

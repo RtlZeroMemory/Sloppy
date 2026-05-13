@@ -328,6 +328,7 @@ SlStatus ws_write_exception_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCode 
             message.assign(*exception_text, static_cast<size_t>(exception_text.length()));
         }
     }
+    message = sl_v8_redact_diagnostic_text(message);
 
     return ws_write_diag(engine->arena, out_diag, code, failure_code,
                          sl_str_from_parts(message.data(), message.size()), sl_str_empty(), hint);

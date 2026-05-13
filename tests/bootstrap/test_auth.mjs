@@ -264,6 +264,32 @@ try {
 }
 
 {
+    const signed = Auth.cookieSession({ secret: "signed-session-secret" });
+    assert.equal(signed.maxAgeSeconds, 86400);
+    const stored = Auth.cookieSession({
+        secret: "stored-session-secret",
+        store: Auth.sessionStore.memory(),
+    });
+    assert.equal(stored.maxAgeSeconds, undefined);
+    assert.throws(
+        () => Auth.cookieSession({ secret: "signed-session-secret", sameSite: "none", secure: false }),
+        /sameSite none requires secure cookies/,
+    );
+    assert.throws(
+        () => Auth.cookieSession({ secret: "signed-session-secret", csrf: { cookieName: "bad;name" } }),
+        /CSRF cookie name must be a safe HTTP token/,
+    );
+    assert.throws(
+        () => Auth.cookieSession({ secret: "signed-session-secret", csrf: true, secure: false }),
+        /__Host- CSRF cookies require secure true and path/,
+    );
+    assert.throws(
+        () => Auth.cookieSession({ secret: "signed-session-secret", csrf: true, path: "/app" }),
+        /__Host- CSRF cookies require secure true and path/,
+    );
+}
+
+{
     const builder = Sloppy.createBuilder();
     builder.config.addObject({
         Auth: {
