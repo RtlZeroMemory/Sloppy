@@ -16922,6 +16922,170 @@ Reason:
     })();
     const DockerCliBackend = __sloppyTestServices.DockerCliBackend;
     const TestServices = __sloppyTestServices.TestServices;
+    class SloppyWebhookError extends Error {
+        constructor(code, message, options = undefined) {
+            super(`${code}: ${message}`);
+            this.name = "SloppyWebhookError";
+            this.code = code;
+            if (options?.cause !== undefined) {
+                this.cause = options.cause;
+            }
+        }
+    }
+    function __sloppyWebhookError(code, message, options = undefined) {
+        return new SloppyWebhookError(code, message, options);
+    }
+    function __sloppyWebhookEvent(name, options) {
+        if (typeof name !== "string" || !/^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)+$/u.test(name)) {
+            throw new TypeError("Sloppy Webhooks event name must be a stable dotted identifier.");
+        }
+        if (!options || typeof options !== "object" || !Number.isInteger(options.version) || options.version <= 0) {
+            throw new TypeError("Sloppy Webhooks.event requires a positive integer version.");
+        }
+        if (!options.schema || typeof options.schema.validate !== "function") {
+            throw new TypeError("Sloppy Webhooks event schema must be a Sloppy schema.");
+        }
+        const descriptor = {
+            __sloppyWebhookEvent: true,
+            name,
+            version: options.version,
+            schema: options.schema,
+            validate(payload) {
+                const result = options.schema.validate(payload);
+                if (!result.ok) {
+                    throw __sloppyWebhookError("SLOPPY_E_WEBHOOK_EVENT_VALIDATION_FAILED", `Webhook event '${name}' payload failed validation.`);
+                }
+                return result.value;
+            },
+        };
+        return Object.freeze(descriptor);
+    }
+    function __sloppyWebhookRetryPositiveInteger(value, fallback, subject) {
+        const resolved = value ?? fallback;
+        if (!Number.isInteger(resolved) || resolved < 1) {
+            throw new TypeError(`Sloppy Webhooks ${subject} must be an integer greater than or equal to 1.`);
+        }
+        return resolved;
+    }
+    function __sloppyWebhookRetryNonNegativeInteger(value, fallback, subject) {
+        const resolved = value ?? fallback;
+        if (!Number.isInteger(resolved) || resolved < 0) {
+            throw new TypeError(`Sloppy Webhooks ${subject} must be a non-negative integer.`);
+        }
+        return resolved;
+    }
+    function __sloppyWebhookRetryStatusCodes(value) {
+        const codes = value ?? [408, 425, 429, 500, 502, 503, 504];
+        if (!Array.isArray(codes) || codes.length === 0 ||
+            !codes.every((code) => Number.isInteger(code) && code >= 100 && code <= 599)) {
+            throw new TypeError("Sloppy Webhooks retryOnStatus must be a non-empty array of HTTP status codes.");
+        }
+        return Object.freeze([...codes]);
+    }
+    function __sloppyWebhookRetryJitter(value) {
+        if (value !== undefined && typeof value !== "boolean") {
+            throw new TypeError("Sloppy Webhooks retry jitter must be a boolean when provided.");
+        }
+        return value !== false;
+    }
+    function __sloppyWebhookRetryExponential(options = {}) {
+        const maxAttempts = __sloppyWebhookRetryPositiveInteger(options.maxAttempts, 8, "exponential retry maxAttempts");
+        const initialDelayMs = __sloppyWebhookRetryNonNegativeInteger(options.initialDelayMs, 1000, "exponential retry initialDelayMs");
+        const maxDelayMs = __sloppyWebhookRetryNonNegativeInteger(options.maxDelayMs, 300000, "exponential retry maxDelayMs");
+        if (maxDelayMs < initialDelayMs) {
+            throw new TypeError("Sloppy Webhooks exponential retry maxDelayMs must be at least initialDelayMs.");
+        }
+        return Object.freeze({
+            kind: "exponential",
+            maxAttempts,
+            initialDelayMs,
+            maxDelayMs,
+            retryOnStatus: __sloppyWebhookRetryStatusCodes(options.retryOnStatus),
+            jitter: __sloppyWebhookRetryJitter(options.jitter),
+        });
+    }
+    function __sloppyWebhookRetryFixed(options = {}) {
+        const maxAttempts = __sloppyWebhookRetryPositiveInteger(options.maxAttempts, 3, "fixed retry maxAttempts");
+        const delayMs = __sloppyWebhookRetryNonNegativeInteger(options.delayMs, 1000, "fixed retry delayMs");
+        return Object.freeze({
+            kind: "fixed",
+            maxAttempts,
+            delayMs,
+            retryOnStatus: __sloppyWebhookRetryStatusCodes(options.retryOnStatus),
+            jitter: __sloppyWebhookRetryJitter(options.jitter),
+        });
+    }
+    async function __sloppyWebhookSign(payload, options) {
+        let body;
+        if (typeof payload === "string") {
+            body = payload;
+        } else {
+            try {
+                body = JSON.stringify(payload);
+            } catch (cause) {
+                throw __sloppyWebhookError(
+                    "SLOPPY_E_WEBHOOK_EVENT_VALIDATION_FAILED",
+                    "Webhook signing payload must be JSON-serializable.",
+                    { cause },
+                );
+            }
+            if (typeof body !== "string") {
+                throw __sloppyWebhookError(
+                    "SLOPPY_E_WEBHOOK_EVENT_VALIDATION_FAILED",
+                    "Webhook signing payload must be a string or JSON-serializable value.",
+                );
+            }
+        }
+        const timestamp = String(options?.timestamp ?? Math.floor(Date.now() / 1000));
+        const id = options?.id ?? `whdel_${Random.uuid()}`;
+        const eventName = options?.event ?? options?.eventName;
+        let ownedSecret;
+        const secret = typeof options?.secret === "string" ? (ownedSecret = Secret.fromUtf8(options.secret)) : options?.secret;
+        if (secret === undefined) {
+            throw __sloppyWebhookError("SLOPPY_E_WEBHOOK_SECRET_UNAVAILABLE", "Webhook signing secret is required.");
+        }
+        try {
+            const digest = await Hmac.sha256(secret, `${timestamp}.${body}`);
+            const signature = `v1=${Hex.encode(digest)}`;
+            return Object.freeze({
+                id,
+                event: eventName,
+                timestamp,
+                attempt: options?.attempt ?? 1,
+                signature,
+                headers: Object.freeze({
+                    "Sloppy-Webhook-Id": id,
+                    "Sloppy-Webhook-Event": eventName,
+                    "Sloppy-Webhook-Timestamp": timestamp,
+                    "Sloppy-Webhook-Signature": signature,
+                    "Sloppy-Webhook-Attempt": String(options?.attempt ?? 1),
+                }),
+            });
+        } finally {
+            ownedSecret?.dispose();
+        }
+    }
+    const Webhooks = Object.freeze({
+        event: __sloppyWebhookEvent,
+        sign: __sloppyWebhookSign,
+        outbox(options) {
+            return Object.freeze({
+                __sloppyWebhooksOutboxRegistration: true,
+                token: "webhooks",
+                provider: options?.provider ?? "main",
+                createService() {
+                    throw __sloppyWebhookError("SLOPPY_E_WEBHOOK_OUTBOX_UNAVAILABLE", "Webhook service registration requires the bootstrap module service runtime.");
+                },
+            });
+        },
+        token(name = undefined) {
+            return name === undefined || name === "" ? "webhooks" : `webhooks.${name}`;
+        },
+        retry: Object.freeze({
+            fixed: __sloppyWebhookRetryFixed,
+            exponential: __sloppyWebhookRetryExponential,
+        }),
+    });
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
         Cache,
@@ -16977,6 +17141,8 @@ Reason:
         Process,
         DockerCliBackend,
         TestServices,
+        Webhooks,
+        SloppyWebhookError,
         Signals,
         OsError,
         BackgroundService,

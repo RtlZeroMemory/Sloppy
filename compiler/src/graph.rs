@@ -197,6 +197,7 @@ pub(crate) struct AppGraph {
     pub(crate) uses_net_runtime: bool,
     pub(crate) uses_os_runtime: bool,
     pub(crate) uses_http_client_runtime: bool,
+    pub(crate) uses_webhooks_runtime: bool,
     pub(crate) uses_realtime_runtime: bool,
     pub(crate) uses_workers_runtime: bool,
     pub(crate) uses_ffi_runtime: bool,

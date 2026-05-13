@@ -77,7 +77,8 @@ resolve configuration later:
 
 | Helper | Behavior |
 | --- | --- |
-| `Config.required(key)` | Required secret-safe config reference used by auth and metadata extraction. |
+| `Config.required(key)` | Required secret-safe config reference used by auth, webhooks, and metadata extraction. |
+| `Config.requiredSecret(key)` | Alias for `Config.required(key)` when call sites are explicitly secret-bearing. |
 | `Config.boolean(key, fallback?)` | Boolean config reference for policy options such as `app.useErrors({ includeDetails })`. |
 
 `ctx.config` and `app.config` both expose:

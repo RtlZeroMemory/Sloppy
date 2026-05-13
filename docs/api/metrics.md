@@ -126,6 +126,12 @@ status classes, and bounded bypass reasons. They do not include raw cache keys,
 raw URLs, user IDs, cookies, authorization headers, SQL parameters, or cached
 values.
 
+## Webhook metrics
+
+Webhook metrics should use event name, outcome, status class, attempt bucket,
+and storage provider labels. Do not use full endpoint URLs, payload fields,
+secrets, tenants, or user identifiers as metric labels.
+
 ## HTTP client metrics
 
 Named clients created through `Http.client(...)` expose a client-local metrics

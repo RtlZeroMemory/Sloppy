@@ -77,8 +77,23 @@ function validateAbsoluteBaseUrl(value, subject) {
 }
 
 function validateEndpointPath(path, subject) {
-    if (typeof path !== "string" || !path.startsWith("/") || path.includes("#")) {
-        throw new TypeError(`${subject} path must start with '/' and must not contain a fragment.`);
+    if (typeof path !== "string" || path.length === 0 || path.includes("#")) {
+        throw new TypeError(`${subject} path must be a relative path or absolute http:// or https:// URL without a fragment.`);
+    }
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+        let parsed;
+        try {
+            parsed = new URL(path);
+        } catch {
+            throw new TypeError(`${subject} path must be a relative path or absolute http:// or https:// URL without a fragment.`);
+        }
+        if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.hash.length !== 0) {
+            throw new TypeError(`${subject} path must be a relative path or absolute http:// or https:// URL without a fragment.`);
+        }
+        return parsed.toString();
+    }
+    if (!path.startsWith("/")) {
+        throw new TypeError(`${subject} path must start with '/' or be an absolute http:// or https:// URL.`);
     }
     if (/[\x00-\x1F\x7F]/u.test(path)) {
         throw new TypeError(`${subject} path must not contain control characters.`);
@@ -1457,7 +1472,10 @@ class TestHttpMock {
     delete(path) { return this._route("DELETE", path); }
 
     async _dispatchRaw({ method, url, json, text, bytes, headers, signal }) {
-        const [path] = String(url).split("?");
+        const rawUrl = String(url);
+        const path = rawUrl.startsWith("http://") || rawUrl.startsWith("https://")
+            ? new URL(rawUrl).pathname
+            : rawUrl.split("?")[0];
         const route = this._routes.find((candidate) => candidate.method === method && candidate.pattern.test(path));
         const call = Object.freeze({ method, path, url, json, text, bytes, headers: redactHeaders(headers) });
         this._calls.push(call);

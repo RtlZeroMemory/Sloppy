@@ -150,7 +150,10 @@ use `app.health()`.
 
 ## HTTP client checks
 
-Named HTTP clients expose a lightweight `health()` snapshot:
+Named HTTP clients expose a lightweight `health()` snapshot. Webhook services
+also expose `health()` for storage initialization checks. Backlog and
+dead-letter thresholds should be modeled as application-owned health checks
+because acceptable limits are product-specific:
 
 ```ts
 import { Http } from "sloppy/http";

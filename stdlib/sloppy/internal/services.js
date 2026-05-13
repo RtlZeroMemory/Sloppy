@@ -34,6 +34,20 @@ function validateCacheInstance(cache) {
     }
 }
 
+function validateWebhooksDescriptor(descriptor) {
+    if (
+        descriptor === null ||
+        typeof descriptor !== "object" ||
+        descriptor.__sloppyWebhooksOutboxRegistration !== true ||
+        typeof descriptor.token !== "string" ||
+        descriptor.token.length === 0 ||
+        typeof descriptor.createService !== "function"
+    ) {
+        throw new TypeError("Sloppy services.addWebhooks expects Webhooks.outbox(...).");
+    }
+    return descriptor;
+}
+
 function createServicesBuilder(guard) {
     const registrations = new Map();
     let currentModule = null;
@@ -137,6 +151,22 @@ function createServicesBuilder(guard) {
             }
 
             return services;
+        },
+
+        addWebhooks(descriptor) {
+            guard.assertMutable();
+
+            const registration = validateWebhooksDescriptor(descriptor);
+            return addRegistration(registration.token, {
+                lifetime: "singleton",
+                initialized: false,
+                factory(scope) {
+                    return registration.createService(scope);
+                },
+                webhooks: typeof registration.__sloppyPlanMetadata === "function"
+                    ? registration.__sloppyPlanMetadata()
+                    : undefined,
+            });
         },
 
         __snapshot() {
@@ -488,8 +518,30 @@ function createServiceProvider(registrations, capabilities, config = undefined) 
         return provider;
     }
 
+    function addWebhooks(descriptor) {
+        if (providerDisposed) {
+            throw new Error("Sloppy service provider is disposed.");
+        }
+        const registration = validateWebhooksDescriptor(descriptor);
+        if (registrations.has(registration.token)) {
+            throw new Error(`Sloppy service '${registration.token}' is already registered.`);
+        }
+        registrations.set(registration.token, {
+            lifetime: "singleton",
+            initialized: false,
+            factory(scope) {
+                return registration.createService(scope);
+            },
+            webhooks: typeof registration.__sloppyPlanMetadata === "function"
+                ? registration.__sloppyPlanMetadata()
+                : undefined,
+        });
+        return provider;
+    }
+
     const provider = Object.freeze({
         addHttpClient,
+        addWebhooks,
 
         get(token) {
             validateServiceToken(token);

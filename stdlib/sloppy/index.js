@@ -17,6 +17,7 @@ export {
     SloppyHttpClientError,
     TestHttp,
 } from "./http.js";
+export { SloppyWebhookError, TestWebhooks, Webhooks } from "./webhooks.js";
 export {
     HttpClient,
     LocalEndpoint,

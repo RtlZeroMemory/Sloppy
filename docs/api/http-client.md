@@ -173,6 +173,9 @@ not retried because they may not be replayable.
 ## Services And TestHost
 
 Register named or typed clients through `app.services.addHttpClient(...)`.
+Webhook delivery uses this same named-client path. Configure the webhook
+delivery client with `Http.retry.none()` when the webhook retry policy owns
+all delivery retry and backoff decisions.
 Named clients are available under `http.<name>`. Typed clients are resolved by
 the typed client object.
 

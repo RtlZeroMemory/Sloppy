@@ -415,6 +415,7 @@ struct AppState {
     net_imported: bool,
     os_imported: bool,
     http_client_imported: bool,
+    webhooks_imported: bool,
     realtime_imported: bool,
     workers_imported: bool,
     ffi_imported: bool,
@@ -485,6 +486,7 @@ impl AppState {
             net_imported: false,
             os_imported: false,
             http_client_imported: false,
+            webhooks_imported: false,
             realtime_imported: false,
             workers_imported: false,
             ffi_imported: false,
@@ -1052,6 +1054,7 @@ struct ModuleGraph {
     uses_net_runtime: bool,
     uses_os_runtime: bool,
     uses_http_client_runtime: bool,
+    uses_webhooks_runtime: bool,
     uses_realtime_runtime: bool,
     uses_workers_runtime: bool,
     dependency_graph: DependencyGraph,
@@ -1104,6 +1107,7 @@ impl ModuleGraph {
             uses_net_runtime: false,
             uses_os_runtime: false,
             uses_http_client_runtime: false,
+            uses_webhooks_runtime: false,
             uses_realtime_runtime: false,
             uses_workers_runtime: false,
             dependency_graph: DependencyGraph::default(),
@@ -1597,6 +1601,7 @@ fn extract_program_with_metrics(
         uses_net_runtime: graph.uses_net_runtime,
         uses_os_runtime: graph.uses_os_runtime,
         uses_http_client_runtime: graph.uses_http_client_runtime,
+        uses_webhooks_runtime: graph.uses_webhooks_runtime,
         uses_realtime_runtime: graph.uses_realtime_runtime,
         uses_workers_runtime: graph.uses_workers_runtime,
         uses_ffi_runtime: graph.uses_ffi_runtime,
@@ -2413,6 +2418,7 @@ fn analyze_program_import(
         | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
+        | resolver::ImportKind::SlopWebhooks
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
@@ -3108,6 +3114,7 @@ fn validate_program_stdlib_import(
         resolver::ImportKind::SlopCache => validate_module_sloppy_cache_import(path, import),
         resolver::ImportKind::SlopNet => validate_module_sloppy_net_import(path, import),
         resolver::ImportKind::SlopHttp => validate_module_sloppy_http_import(path, import),
+        resolver::ImportKind::SlopWebhooks => validate_module_sloppy_webhooks_import(path, import),
         resolver::ImportKind::SlopOs => validate_module_sloppy_os_import(path, import),
         resolver::ImportKind::SlopOrm => validate_module_sloppy_orm_import(path, import),
         resolver::ImportKind::SlopWorkers => validate_module_sloppy_workers_import(path, import),
@@ -3609,6 +3616,7 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
+        | resolver::ImportKind::SlopWebhooks
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
@@ -3878,6 +3886,7 @@ fn program_reexport_require_expr(
         | resolver::ImportKind::SlopCache
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopHttp
+        | resolver::ImportKind::SlopWebhooks
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopOrm
         | resolver::ImportKind::SlopWorkers
@@ -4073,6 +4082,13 @@ fn mark_program_import(
             }
         }
         resolver::ImportKind::SlopHttp => graph.uses_http_client_runtime = true,
+        resolver::ImportKind::SlopWebhooks => {
+            graph.uses_data_runtime = true;
+            graph.uses_crypto_runtime = true;
+            graph.uses_http_client_runtime = true;
+            graph.uses_workers_runtime = true;
+            graph.uses_webhooks_runtime = true;
+        }
         resolver::ImportKind::SlopOs => graph.uses_os_runtime = true,
         resolver::ImportKind::SlopOrm => {
             graph.uses_orm_runtime = true;
@@ -4494,6 +4510,7 @@ fn extract_entry(
             || framework_needs_os_runtime
             || !state.auth.schemes.is_empty(),
         uses_http_client_runtime: state.http_client_imported || graph.uses_http_client_runtime,
+        uses_webhooks_runtime: state.webhooks_imported || graph.uses_webhooks_runtime,
         uses_realtime_runtime,
         uses_workers_runtime,
         uses_ffi_runtime: state.ffi_imported || graph.uses_ffi_runtime,
@@ -4813,6 +4830,10 @@ fn sloppy_http_import_name_supported(name: &str) -> bool {
     )
 }
 
+fn sloppy_webhooks_import_name_supported(name: &str) -> bool {
+    matches!(name, "Webhooks" | "SloppyWebhookError")
+}
+
 fn sloppy_os_import_name_supported(name: &str) -> bool {
     matches!(
         name,
@@ -4837,6 +4858,7 @@ enum SloppyStdlibImport {
     Cache,
     Net,
     Http,
+    Webhooks,
     Os,
     Orm,
     Workers,
@@ -4853,6 +4875,7 @@ impl SloppyStdlibImport {
             "sloppy/cache" => Some(Self::Cache),
             "sloppy/net" => Some(Self::Net),
             "sloppy/http" => Some(Self::Http),
+            "sloppy/webhooks" => Some(Self::Webhooks),
             "sloppy/os" => Some(Self::Os),
             "sloppy/orm" => Some(Self::Orm),
             "sloppy/workers" => Some(Self::Workers),
@@ -4870,6 +4893,7 @@ impl SloppyStdlibImport {
             Self::Cache => sloppy_cache_import_name_supported(name),
             Self::Net => sloppy_net_import_name_supported(name),
             Self::Http => sloppy_http_import_name_supported(name),
+            Self::Webhooks => sloppy_webhooks_import_name_supported(name),
             Self::Os => sloppy_os_import_name_supported(name),
             Self::Orm => sloppy_orm_import_name_supported(name),
             Self::Workers => sloppy_workers_import_name_supported(name),
@@ -5019,6 +5043,13 @@ fn mark_sloppy_root_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclar
             "Http" | "HttpClientFactory" | "HttpError" | "SloppyHttpClientError" | "TestHttp" => {
                 graph.uses_http_client_runtime = true;
             }
+            "Webhooks" | "SloppyWebhookError" => {
+                graph.uses_data_runtime = true;
+                graph.uses_crypto_runtime = true;
+                graph.uses_http_client_runtime = true;
+                graph.uses_workers_runtime = true;
+                graph.uses_webhooks_runtime = true;
+            }
             _ => {}
         }
     }
@@ -5136,6 +5167,18 @@ fn validate_module_sloppy_http_import(
         import,
         "sloppy/http",
         sloppy_http_import_name_supported,
+    )
+}
+
+fn validate_module_sloppy_webhooks_import(
+    path: &Path,
+    import: &ImportDeclaration<'_>,
+) -> Result<(), Diagnostic> {
+    validate_module_sloppy_import(
+        path,
+        import,
+        "sloppy/webhooks",
+        sloppy_webhooks_import_name_supported,
     )
 }
 
@@ -5957,6 +6000,13 @@ fn mark_sloppy_stdlib_runtime_import(state: &mut AppState, kind: SloppyStdlibImp
         SloppyStdlibImport::Cache => state.cache_imported = true,
         SloppyStdlibImport::Net => state.net_imported = true,
         SloppyStdlibImport::Http => state.http_client_imported = true,
+        SloppyStdlibImport::Webhooks => {
+            state.data_imported = true;
+            state.crypto_imported = true;
+            state.http_client_imported = true;
+            state.workers_imported = true;
+            state.webhooks_imported = true;
+        }
         SloppyStdlibImport::Os => state.os_imported = true,
         SloppyStdlibImport::Orm => {
             state.orm_imported = true;
@@ -6278,6 +6328,15 @@ fn extract_import(
                 }
                 ("schema", "schema") => state.schema_imported = true,
                 ("Schema", "Schema") => state.schema_imported = true,
+                ("Webhooks", "Webhooks") | ("SloppyWebhookError", "SloppyWebhookError") => {
+                    if import_specifier_is_runtime_value(import, specifier) {
+                        state.data_imported = true;
+                        state.crypto_imported = true;
+                        state.http_client_imported = true;
+                        state.workers_imported = true;
+                        state.webhooks_imported = true;
+                    }
+                }
                 _ if sloppy_root_import_name_supported(imported) && imported == local => {}
                 _ if sloppy_root_import_name_supported(imported) => {}
                 _ => {
@@ -6358,6 +6417,8 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "HttpError"
             | "SloppyHttpClientError"
             | "TestHttp"
+            | "Webhooks"
+            | "SloppyWebhookError"
             | "Testing"
             | "TestHost"
             | "TestServices"
@@ -21950,6 +22011,9 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     }
     if app.uses_workers_runtime {
         runtime_exports.extend(WORKER_EXPORTS.iter().copied());
+    }
+    if app.uses_webhooks_runtime {
+        runtime_exports.extend(["Webhooks", "SloppyWebhookError"]);
     }
     if app.uses_ffi_runtime || !app.ffi.is_empty() || !app.ffi_structs.is_empty() {
         runtime_exports.extend(["unsafeFfi", "t"]);

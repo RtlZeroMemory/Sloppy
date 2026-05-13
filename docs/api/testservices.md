@@ -4,6 +4,8 @@
 dependency-backed tests. It starts real Docker containers through the Docker
 CLI, waits for the matching Sloppy data provider to prove readiness, and gives
 `TestHost` a provider or environment map.
+Webhook outbox tests should use TestServices provider connections when proving
+PostgreSQL or SQL Server persistence beyond bootstrap fake-provider tests.
 
 It is experimental and opt-in. Default CI must not depend on Docker.
 

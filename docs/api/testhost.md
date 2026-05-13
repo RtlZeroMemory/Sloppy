@@ -24,6 +24,9 @@ await response.expectJson({ email: "ada@example.com" });
 
 The API works from `node:test`, Vitest, Bun tests, or plain scripts. Assertions
 throw normal JavaScript errors.
+When `services.addWebhooks(Webhooks.outbox(...))` is registered, TestHost route
+contexts expose `ctx.webhooks` so tests can prove publish/rollback behavior
+without delivering inside the request transaction.
 
 ## Creation
 
