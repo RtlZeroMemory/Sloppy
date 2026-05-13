@@ -33,7 +33,7 @@ configuration, services, validation, or data access.
 - [Logging](logging.md) — levels, sinks
 - [Capabilities](capabilities.md) — declaring database/provider capabilities
 - [Data](data.md) — `data.sqlite`, `data.postgres`, `data.sqlserver`, `sql\`…\`` templates
-- [Jobs](jobs.md) — durable jobs, delayed jobs, recurring jobs, workers, locks
+- [Jobs](jobs.md) — durable jobs, delayed jobs, recurring jobs, workers, locks (Experimental)
 - [Workers](workers.md) — background services, work queues, cancellation
 - [Schema](schema.md) — value validation
 - [Filesystem](filesystem.md) — `sloppy/fs` files, directories, handles, watchers

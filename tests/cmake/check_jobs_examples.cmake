@@ -31,7 +31,7 @@ foreach(case_name IN ITEMS jobs-basic jobs-recurring jobs-postgres-worker jobs-s
     require_match("${readme_md}" "Jobs" "${case_name} README names Jobs")
 endforeach()
 
-foreach(case_name IN ITEMS jobs-basic jobs-recurring jobs-postgres-worker jobs-sqlserver-worker jobs-stress)
+foreach(case_name IN ITEMS jobs-basic jobs-recurring jobs-postgres-worker jobs-sqlserver-worker jobs-stress jobs-concurrency jobs-concurrency-sqlite jobs-concurrency-step)
     require_file("${example_root}/${case_name}/main.ts")
     file(READ "${example_root}/${case_name}/main.ts" program_ts)
     require_match("${program_ts}" "export async function main" "${case_name} Program Mode main")

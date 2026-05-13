@@ -24,6 +24,11 @@ The compiler recognizes imports from `sloppy/jobs` and emits
 `requiredFeatures: ["stdlib.jobs"]`, `features.jobs: true`, and
 `strongPlan.evidence.jobs: true`.
 
+Job definitions are runtime dynamic. The compiler marks the jobs runtime
+feature, but it does not statically extract `Jobs.define(...)` definitions into
+the Plan; scheduler definition metadata comes from runtime calls such as
+`jobs.__sloppyPlanMetadata()`.
+
 ## Storage Adapter
 
 `SchedulerStorage` is provider-neutral at the API boundary and provider-aware
@@ -69,8 +74,11 @@ Handlers receive:
 | `signal` | Cancellation signal for shutdown/timeout |
 | `extendLease(ms?)` | Extend the database lease |
 
-Timeouts use a linked cancellation controller and fail the job with
-`SLOPPY_E_JOBS_TIMEOUT`.
+Timeouts use a linked cancellation controller, abort `ctx.signal`, and fail the
+job with `SLOPPY_E_JOBS_TIMEOUT`. Cancellation is cooperative: handlers must
+observe the signal to stop their own side effects. Late handler completion
+after a timeout is ignored by the worker and must not create a second terminal
+transition.
 
 ## Retry And Dead Letter
 
@@ -99,7 +107,8 @@ The tick is bounded by a page size and reads due schedules in next-run order.
 ## Admin Backend
 
 The admin service is intentionally a backend object, not a public HTTP
-surface. It exposes the operations needed by CLI tooling and a dashboard:
+surface. It exposes the operations needed by CLI tooling and operator
+interfaces:
 
 - overview counts
 - jobs list/detail
@@ -111,6 +120,14 @@ surface. It exposes the operations needed by CLI tooling and a dashboard:
 
 Payload previews are redacted. The admin service does not expose raw payload
 inspection.
+
+The native `sloppy jobs` command currently operates the SQLite scheduler tables
+directly. PostgreSQL and SQL Server live validation uses Sloppy Program Mode
+admin workloads against those providers. SQL Server race validation is
+process-level: the live script starts multiple `sloppy run` Program Mode
+processes against the same database so duplicate enqueue, lock, claim, and
+lease recovery assertions exercise SQL Server locking instead of one V8 bridge
+instance.
 
 ## Diagnostics
 

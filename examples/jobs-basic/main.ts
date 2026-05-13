@@ -1,23 +1,19 @@
-import { Jobs, Schema, data } from "sloppy";
+import { data } from "sloppy";
+import { Jobs } from "sloppy/jobs";
 
 export async function main(args) {
     const database = args[0] ?? "jobs-basic.db";
     const db = data.sqlite.open({
         database,
-        capability: "data.jobs",
+        capability: "data.sqlite.program",
         access: "readwrite",
     });
     const jobs = Jobs.create({ storage: Jobs.storage.sqlite(db) });
     await jobs.storage.init();
 
-    const EmailPayload = Schema.object({
-        to: Schema.string().email(),
-        token: Schema.string().min(1),
-    });
     const delivered = [];
 
     jobs.define("send-email", {
-        input: EmailPayload,
         queue: "emails",
         retries: { maxAttempts: 2, backoff: "fixed", initialDelayMs: 1 },
         timeoutMs: 30000,

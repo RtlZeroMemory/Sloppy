@@ -1,4 +1,5 @@
-import { Jobs, data } from "sloppy";
+import { data } from "sloppy";
+import { Jobs } from "sloppy/jobs";
 import { Environment } from "sloppy/os";
 
 function requireEnvironment(name) {
@@ -16,6 +17,14 @@ const db = data.postgres.open({
 
 const jobs = Jobs.create({ storage: Jobs.storage.postgres(db) });
 await jobs.storage.init();
+await db.exec(`
+    create table if not exists search_reindex_log (
+        id bigserial primary key,
+        job_name text not null,
+        requested_by text not null,
+        created_at timestamptz not null default now()
+    )
+`);
 
 jobs.define("reindex-search", {
     queue: "maintenance",

@@ -1,4 +1,5 @@
-import { Jobs, data } from "sloppy";
+import { data } from "sloppy";
+import { Jobs } from "sloppy/jobs";
 import { Environment } from "sloppy/os";
 
 function requireEnvironment(name) {
@@ -12,16 +13,17 @@ function requireEnvironment(name) {
 export async function main() {
     const db = data.sqlserver.open({
         connectionString: requireEnvironment("SLOPPY_JOBS_SQLSERVER_CONNECTION_STRING"),
+        capability: "data.sqlserver.program",
         access: "readwrite",
     });
-    await db.exec`
+    await db.exec(`
         if object_id(N'dbo.sloppy_jobs_live_log', N'U') is null
         create table dbo.sloppy_jobs_live_log (
             id bigint identity(1,1) primary key,
             job_name nvarchar(256) not null,
             requested_by nvarchar(256) not null
         )
-    `;
+    `);
 
     const jobs = Jobs.create({ storage: Jobs.storage.sqlserver(db) });
     await jobs.storage.init();
@@ -31,10 +33,13 @@ export async function main() {
         retries: { maxAttempts: 2, backoff: "fixed", initialDelayMs: 1 },
         timeoutMs: 30000,
     }, async (ctx, input) => {
-        await db.exec`
+        await db.exec(
+            `
             insert into dbo.sloppy_jobs_live_log(job_name, requested_by)
-            values (${ctx.name}, ${input.requestedBy ?? "system"})
-        `;
+            values (?, ?)
+        `,
+            [ctx.name, input.requestedBy ?? "system"],
+        );
     });
 
     await jobs.enqueue("reindex-search", { requestedBy: "live-sqlserver" }, {

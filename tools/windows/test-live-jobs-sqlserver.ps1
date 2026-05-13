@@ -31,11 +31,151 @@ function Resolve-SloppyCli {
     return Join-Path $buildDir "sloppy.exe"
 }
 
+function Convert-LastJsonLine {
+    param([string[]]$Lines)
+
+    for ($index = $Lines.Count - 1; $index -ge 0; $index -= 1) {
+        $line = $Lines[$index]
+        if ($line -match '^\s*\{') {
+            return $line | ConvertFrom-Json
+        }
+    }
+    throw "FAIL: Sloppy jobs concurrency step did not emit JSON."
+}
+
+function Invoke-JobsStep {
+    param(
+        [string]$Cli,
+        [string]$Source,
+        [string[]]$StepArgs,
+        [int]$ExpectedExitCode = 0
+    )
+
+    $output = & $Cli run $Source --kind program -- @StepArgs
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne $ExpectedExitCode) {
+        $joined = $output -join "`n"
+        throw "FAIL: jobs concurrency step '$($StepArgs -join ' ')' exited $exitCode, expected $ExpectedExitCode. Output:`n$joined"
+    }
+    return Convert-LastJsonLine -Lines $output
+}
+
+function Invoke-ConcurrentJobsStep {
+    param(
+        [string]$Cli,
+        [string]$Source,
+        [string[][]]$StepArgsList
+    )
+
+    $jobs = @()
+    foreach ($stepArgs in $StepArgsList) {
+        $jobs += Start-Job -ScriptBlock {
+            param($CliPath, $SourcePath, [string[]]$RunArgs)
+            & $CliPath run $SourcePath --kind program -- @RunArgs
+            exit $LASTEXITCODE
+        } -ArgumentList $Cli, $Source, $stepArgs
+    }
+
+    $results = @()
+    foreach ($job in $jobs) {
+        Wait-Job $job | Out-Null
+        $output = Receive-Job $job
+        $exitCode = $job.ChildJobs[0].JobStateInfo.State
+        $nativeExitCode = $job.ChildJobs[0].JobStateInfo.Reason
+        if ($job.State -ne "Completed") {
+            $joined = $output -join "`n"
+            Remove-Job $job -Force
+            throw "FAIL: concurrent jobs step failed. Output:`n$joined`nReason: $nativeExitCode"
+        }
+        $results += Convert-LastJsonLine -Lines $output
+        Remove-Job $job -Force
+        $null = $exitCode
+    }
+    return $results
+}
+
+function Assert-JobsSqlServerConcurrency {
+    param(
+        [string]$Cli,
+        [string]$RepoRoot
+    )
+
+    $source = Join-Path $RepoRoot "examples\jobs-concurrency-step\main.ts"
+    Invoke-JobsStep -Cli $Cli -Source $source -StepArgs @("sqlserver", "init") | Out-Null
+
+    $duplicateRuns = @()
+    for ($index = 0; $index -lt 4; $index += 1) {
+        $duplicateRuns += ,@("sqlserver", "enqueue-duplicate", "sqlserver:duplicate")
+    }
+    $duplicates = Invoke-ConcurrentJobsStep -Cli $Cli -Source $source -StepArgsList $duplicateRuns
+    $duplicateIds = @($duplicates | ForEach-Object { $_.jobId } | Sort-Object -Unique)
+    if ($duplicateIds.Count -ne 1) {
+        throw "FAIL: SQL Server duplicate enqueue returned more than one durable job."
+    }
+
+    $lockRuns = @(
+        @("sqlserver", "acquire-lock", "sqlserver:single-owner", "owner-a", "1000"),
+        @("sqlserver", "acquire-lock", "sqlserver:single-owner", "owner-b", "1000"),
+        @("sqlserver", "acquire-lock", "sqlserver:single-owner", "owner-c", "1000")
+    )
+    $locks = Invoke-ConcurrentJobsStep -Cli $Cli -Source $source -StepArgsList $lockRuns
+    $acceptedLocks = @($locks | Where-Object { $_.acquired -eq $true })
+    if ($acceptedLocks.Count -ne 1) {
+        throw "FAIL: SQL Server lock acquire allowed $($acceptedLocks.Count) owners."
+    }
+
+    $expired = Invoke-JobsStep -Cli $Cli -Source $source -StepArgs @("sqlserver", "acquire-lock", "sqlserver:expired", "owner-old", "1")
+    if ($expired.acquired -ne $true) {
+        throw "FAIL: SQL Server expired lock fixture was not acquired."
+    }
+    Start-Sleep -Milliseconds 50
+    $takeover = Invoke-JobsStep -Cli $Cli -Source $source -StepArgs @("sqlserver", "acquire-lock", "sqlserver:expired", "owner-new", "1000")
+    if ($takeover.acquired -ne $true) {
+        throw "FAIL: SQL Server expired lock was not taken over."
+    }
+    $releaseConflict = Invoke-JobsStep -Cli $Cli -Source $source -StepArgs @("sqlserver", "release-lock", "sqlserver:expired", "owner-not-current") -ExpectedExitCode 2
+    if ($releaseConflict.code -ne "SLOPPY_E_JOBS_LOCK_CONFLICT") {
+        throw "FAIL: SQL Server non-owner lock release did not fail with lock conflict."
+    }
+
+    Invoke-JobsStep -Cli $Cli -Source $source -StepArgs @("sqlserver", "enqueue-claims", "0", "20") | Out-Null
+    $claimRuns = @(
+        @("sqlserver", "claim", "sqlserver-worker-1", "8", "5000"),
+        @("sqlserver", "claim", "sqlserver-worker-2", "8", "5000"),
+        @("sqlserver", "claim", "sqlserver-worker-3", "8", "5000")
+    )
+    $claims = Invoke-ConcurrentJobsStep -Cli $Cli -Source $source -StepArgsList $claimRuns
+    $claimedIds = @($claims | ForEach-Object { $_.jobIds } | Where-Object { $_ })
+    $uniqueClaimedIds = @($claimedIds | Sort-Object -Unique)
+    if ($claimedIds.Count -ne $uniqueClaimedIds.Count) {
+        throw "FAIL: SQL Server workers claimed the same job more than once."
+    }
+    if ($claimedIds.Count -eq 0) {
+        throw "FAIL: SQL Server claim concurrency did not claim any jobs."
+    }
+
+    Invoke-JobsStep -Cli $Cli -Source $source -StepArgs @("sqlserver", "enqueue-duplicate", "sqlserver:lease-reclaim", "leases") | Out-Null
+    $leased = Invoke-JobsStep -Cli $Cli -Source $source -StepArgs @("sqlserver", "claim", "sqlserver-lease-worker-1", "1", "1", "leases")
+    if ($leased.jobIds.Count -ne 1) {
+        throw "FAIL: SQL Server initial lease claim failed."
+    }
+    Start-Sleep -Milliseconds 50
+    $reclaimed = Invoke-JobsStep -Cli $Cli -Source $source -StepArgs @("sqlserver", "claim", "sqlserver-lease-worker-2", "1", "5000", "leases")
+    if ($reclaimed.jobIds.Count -ne 1 -or $reclaimed.jobIds[0] -ne $leased.jobIds[0]) {
+        throw "FAIL: SQL Server expired processing lease was not reclaimed."
+    }
+
+    Write-Host "PASS: SQL Server jobs concurrency used Sloppy Program Mode processes and data.sqlserver."
+}
+
 function Assert-DockerAvailable {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
         throw "UNAVAILABLE: Docker CLI is required for the SQL Server jobs live lane."
     }
     docker info | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "UNAVAILABLE: Docker daemon is not reachable."
+    }
 }
 
 function Invoke-SqlServerContainerQuery {
@@ -91,6 +231,9 @@ function Wait-SqlServerHostConnection {
 if (-not $NoDocker) {
     Assert-DockerAvailable
     docker compose -f $composeFile up -d
+    if ($LASTEXITCODE -ne 0) {
+        throw "FAIL: SQL Server docker compose up failed."
+    }
 
     $ready = $false
     for ($attempt = 0; $attempt -lt 90; $attempt += 1) {
@@ -115,6 +258,9 @@ if (-not $NoDocker) {
 try {
     if (-not $NoBuild) {
         & (Join-Path $PSScriptRoot "dev.ps1") build -Preset $Preset
+        if ($LASTEXITCODE -ne 0) {
+            throw "FAIL: build step failed for preset $Preset."
+        }
     }
 
     $cli = Resolve-SloppyCli
@@ -122,15 +268,20 @@ try {
         throw "UNAVAILABLE: sloppy CLI was not found at $cli"
     }
 
-    & $cli run (Join-Path $repoRoot "examples\jobs-sqlserver-worker\main.ts")
+    & $cli run (Join-Path $repoRoot "examples\jobs-sqlserver-worker\main.ts") --kind program
     if ($LASTEXITCODE -ne 0) {
         throw "FAIL: SQL Server jobs Sloppy Program Mode smoke failed."
     }
+
+    Assert-JobsSqlServerConcurrency -Cli $cli -RepoRoot $repoRoot
 
     Write-Host "PASS: SQL Server jobs live lane used Sloppy Program Mode and data.sqlserver."
 }
 finally {
     if (-not $NoDocker) {
         docker compose -f $composeFile down -v
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "FAIL: SQL Server docker compose down failed."
+        }
     }
 }

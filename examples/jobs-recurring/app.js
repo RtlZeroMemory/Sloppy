@@ -1,4 +1,5 @@
-import { Jobs, Schema, data } from "sloppy";
+import { Schema, data } from "sloppy";
+import { Jobs } from "sloppy/jobs";
 import { Environment } from "sloppy/os";
 
 const db = data.sqlite.open({

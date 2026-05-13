@@ -23,17 +23,17 @@ class FakeJobsDb {
         return await callback(this);
     }
 
-    async exec(sql, params = []) {
-        this.queries.push({ kind: "exec", sql, params });
-        return await this.query(sql, params);
+    async exec(sql, params = [], options = undefined) {
+        this.queries.push({ kind: "exec", sql, params, options });
+        return await this.query(sql, params, options);
     }
 
-    async queryOne(sql, params = []) {
-        return (await this.query(sql, params))[0] ?? null;
+    async queryOne(sql, params = [], options = undefined) {
+        return (await this.query(sql, params, options))[0] ?? null;
     }
 
-    async query(sql, params = []) {
-        this.queries.push({ kind: "query", sql, params });
+    async query(sql, params = [], options = undefined) {
+        this.queries.push({ kind: "query", sql, params, options });
         const text = sql.toLowerCase();
         if (text.startsWith("create ") || text.startsWith("if ")) {
             return [];
@@ -45,7 +45,15 @@ class FakeJobsDb {
             this.schema.push({ version: params[0], updated_at: params[1] });
             return [];
         }
-        if (text.startsWith("insert into sloppy_jobs")) {
+        if (text.startsWith("insert into sloppy_jobs") || text.startsWith("insert or ignore into sloppy_jobs")) {
+            if (
+                (text.startsWith("insert or ignore") || text.includes("on conflict")) &&
+                params[20] !== null &&
+                params[20] !== undefined &&
+                this.jobs.some((job) => job.idempotency_key === params[20])
+            ) {
+                return [];
+            }
             this.jobs.push({
                 id: params[0],
                 name: params[1],
@@ -135,7 +143,13 @@ class FakeJobsDb {
             });
             return [];
         }
-        if (text.startsWith("insert into sloppy_job_locks")) {
+        if (text.startsWith("insert into sloppy_job_locks") || text.startsWith("insert or ignore into sloppy_job_locks")) {
+            if (
+                (text.startsWith("insert or ignore") || text.includes("on conflict")) &&
+                this.locks.some((lock) => lock.name === params[0])
+            ) {
+                return [];
+            }
             this.locks.push({
                 name: params[0],
                 owner: params[1],
@@ -242,11 +256,11 @@ class FakeJobsDb {
             return [];
         }
         if (text.startsWith("update sloppy_jobs set status = ?, locked_by = null")) {
-            const [status, updatedAt, nextRetryAt, runAt, code, message, diagnosticId, id] = params.length === 8
+            const [status, updatedAt, nextRetryAt, runAt, code, message, diagnosticId, id, worker] = params.length >= 8
                 ? params
                 : [params[0], params[1], null, null, null, null, null, params[2]];
             const job = this.jobs.find((current) => current.id === id);
-            if (job) {
+            if (job && (worker === undefined || job.locked_by === worker)) {
                 Object.assign(job, {
                     status,
                     locked_by: null,
@@ -339,24 +353,44 @@ class FakeJobsDb {
             }
             return [];
         }
-        if (text.includes("from sloppy_job_locks where name")) {
-            return this.locks.filter((lock) => lock.name === params[0]);
+        if (text.startsWith("delete from sloppy_job_locks") || (text.startsWith("if exists") && text.includes("delete from sloppy_job_locks"))) {
+            const name = params.length >= 4 ? params[2] : params[0];
+            const owner = params.length >= 4 ? params[3] : params[1];
+            this.locks = this.locks.filter((lock) => !(lock.name === name && lock.owner === owner));
+            return [];
         }
-        if (text.includes("from sloppy_job_locks")) {
-            return [...this.locks];
-        }
-        if (text.startsWith("update sloppy_job_locks")) {
+        if (text.startsWith("update sloppy_job_locks") || (text.startsWith("if exists") && text.includes("update sloppy_job_locks"))) {
+            if (text.startsWith("if exists")) {
+                const lock = this.locks.find((current) => current.name === params[4] && current.owner === params[5]);
+                if (lock) {
+                    Object.assign(lock, { locked_until: params[2], updated_at: params[3] });
+                }
+                return [];
+            }
             const [ownerOrUntil, lockedUntilOrUpdated, updatedOrName, maybeName] = params;
             const name = maybeName ?? updatedOrName;
             const lock = this.locks.find((current) => current.name === name);
             if (lock) {
                 if (maybeName === undefined) {
                     Object.assign(lock, { locked_until: ownerOrUntil, updated_at: lockedUntilOrUpdated });
+                } else if (
+                    text.includes("or locked_until <=") &&
+                    (lock.owner === params[4] || lock.locked_until <= params[5])
+                ) {
+                    Object.assign(lock, { owner: ownerOrUntil, locked_until: lockedUntilOrUpdated, updated_at: updatedOrName });
+                } else if (text.includes("or locked_until <=")) {
+                    return [];
                 } else {
                     Object.assign(lock, { owner: ownerOrUntil, locked_until: lockedUntilOrUpdated, updated_at: updatedOrName });
                 }
             }
             return [];
+        }
+        if (text.includes("from sloppy_job_locks where name")) {
+            return this.locks.filter((lock) => lock.name === params[0]);
+        }
+        if (text.includes("from sloppy_job_locks")) {
+            return [...this.locks];
         }
         if (text.startsWith("delete from sloppy_job_locks")) {
             this.locks = this.locks.filter((lock) => !(lock.name === params[0] && lock.owner === params[1]));
@@ -475,6 +509,43 @@ const catchUpEnqueues = await runtime.tickRecurring({ owner: "recurring-owner", 
 assert.equal(catchUpEnqueues.length, 2);
 assert.notEqual(catchUpEnqueues[0].idempotencyKey, catchUpEnqueues[1].idempotencyKey);
 
+const ignoreMisfireDb = new FakeJobsDb("sqlite");
+const ignoreMisfireRuntime = Jobs.create({ storage: Jobs.storage.sqlite(ignoreMisfireDb) });
+await ignoreMisfireRuntime.storage.init();
+ignoreMisfireRuntime.define("send-email", {}, async () => {});
+await ignoreMisfireRuntime.recurring("ignore-misfire-email", "send-email", {
+    to: "ignore@example.com",
+}, {
+    cron: "* * * * *",
+    queue: "emails",
+    timezone: "UTC",
+    misfirePolicy: "ignore",
+});
+ignoreMisfireDb.recurring.find((job) => job.name === "ignore-misfire-email").next_run_at = new Date(Date.now() - 60000).toISOString();
+assert.equal((await ignoreMisfireRuntime.tickRecurring({ owner: "ignore-owner", ttlMs: 1000, limit: 10 })).length, 0);
+const recurringRaceDb = new FakeJobsDb("sqlite");
+const recurringRaceStorage = Jobs.storage.sqlite(recurringRaceDb);
+await recurringRaceStorage.init();
+const recurringRaceRuntime = Jobs.create({ storage: recurringRaceStorage });
+const recurringRacePeer = Jobs.create({ storage: recurringRaceStorage });
+recurringRaceRuntime.define("race-recurring", {}, async () => {});
+recurringRacePeer.define("race-recurring", {}, async () => {});
+await recurringRaceRuntime.recurring("race-recurring-every-minute", "race-recurring", {}, {
+    cron: "* * * * *",
+    timezone: "UTC",
+    misfirePolicy: "run-once",
+});
+recurringRaceDb.recurring[0].next_run_at = "2026-05-12T12:00:00.000Z";
+const concurrentTicks = await Promise.all([
+    recurringRaceRuntime.tickRecurring({ owner: "concurrent-recurring-1", ttlMs: 1000, limit: 10 }),
+    recurringRacePeer.tickRecurring({ owner: "concurrent-recurring-2", ttlMs: 1000, limit: 10 }),
+]);
+assert.equal(concurrentTicks.flat().filter((job) => job.metadata.recurring === "race-recurring-every-minute").length, 1);
+await assert.rejects(
+    runtime.recurring("bad-cron", "send-email", {}, { cron: "not valid", timezone: "UTC" }),
+    (error) => assertJobsError(error, "SLOPPY_E_JOBS_RECURRING_INVALID_CRON"),
+);
+
 const locks = runtime.locks("owner-1");
 assert.equal(await locks.acquire("nightly-report", { ttlMs: 1000 }), true);
 assert.equal(await Jobs.create({ storage }).locks("owner-2").acquire("nightly-report", { ttlMs: 1000 }), false);
@@ -483,11 +554,35 @@ await assert.rejects(
     (error) => assertJobsError(error, "SLOPPY_E_JOBS_LOCK_CONFLICT"),
 );
 assert.equal(await locks.release("nightly-report"), true);
+const lockRaceRuntime = Jobs.create({ storage });
+const lockRace = await Promise.all([
+    runtime.locks("race-owner-1").acquire("single-owner", { ttlMs: 1000 }),
+    lockRaceRuntime.locks("race-owner-2").acquire("single-owner", { ttlMs: 1000 }),
+]);
+assert.equal(lockRace.filter(Boolean).length, 1);
+db.locks.find((lock) => lock.name === "single-owner").locked_until = new Date(Date.now() - 1000).toISOString();
+assert.equal(await lockRaceRuntime.locks("race-owner-2").acquire("single-owner", { ttlMs: 1000 }), true);
+await assert.rejects(
+    runtime.locks("race-owner-1").release("single-owner"),
+    (error) => assertJobsError(error, "SLOPPY_E_JOBS_LOCK_CONFLICT"),
+);
 
-runtime.define("times-out", { timeoutMs: 1, retries: { maxAttempts: 1 } }, async () => new Promise(() => {}));
+let timeoutSignalAborted = false;
+runtime.define("times-out", { timeoutMs: 1, retries: { maxAttempts: 1 } }, async (ctx) => {
+    await new Promise((resolve) => {
+        ctx.signal.addEventListener("abort", () => {
+            timeoutSignalAborted = true;
+            setTimeout(resolve, 5);
+        });
+    });
+    return "late";
+});
 const timeout = await runtime.enqueue("times-out", {}, { queue: "emails", priority: 100 });
 assert((await worker.runOnce()) >= 1);
 assert.equal((await storage.getJob(timeout.id)).lastErrorCode, "SLOPPY_E_JOBS_TIMEOUT");
+assert.equal(timeoutSignalAborted, true);
+await new Promise((resolve) => setTimeout(resolve, 10));
+assert.equal((await storage.events(timeout.id)).filter((event) => event.event_type === "succeeded").length, 0);
 
 const cleanup = await admin.cleanup({ keepSucceededMs: 0, keepDeadMs: 0, keepCancelledMs: 0, batchSize: 20 });
 assert(cleanup.deleted >= 1);
@@ -502,6 +597,27 @@ const delayedRuntime = Jobs.create({ storage: delayedStorage });
 delayedRuntime.define("later", {}, async () => {});
 await delayedRuntime.enqueueDelayed("later", {}, 60000);
 assert.equal(await delayedRuntime.createWorker({ id: "delayed-worker" }).runOnce(), 0);
+assert.equal((await delayedStorage.listWorkers()).length, 1);
+
+const terminalRaceDb = new FakeJobsDb("sqlite");
+const terminalRaceStorage = Jobs.storage.sqlite(terminalRaceDb);
+await terminalRaceStorage.init();
+const terminalRaceRuntime = Jobs.create({ storage: terminalRaceStorage });
+terminalRaceRuntime.define("terminal-race-fail", {}, async () => {
+    throw new Error("handler failed after lease moved");
+});
+await terminalRaceRuntime.enqueue("terminal-race-fail", {}, { queue: "terminal-race" });
+const terminalRaceWorker = terminalRaceRuntime.createWorker({ id: "terminal-race-worker", queues: ["terminal-race"] });
+const [terminalRaceFailJob] = await terminalRaceStorage.claim(terminalRaceWorker, { leaseMs: 1 });
+terminalRaceDb.jobs.find((job) => job.id === terminalRaceFailJob.id).status = "cancelled";
+await terminalRaceWorker._executeInner(terminalRaceFailJob);
+
+terminalRaceRuntime.define("terminal-race-complete", {}, async () => "late");
+await terminalRaceRuntime.enqueue("terminal-race-complete", {}, { queue: "terminal-race-complete" });
+const terminalRaceCompleteWorker = terminalRaceRuntime.createWorker({ id: "terminal-race-complete-worker", queues: ["terminal-race-complete"] });
+const [terminalRaceCompleteJob] = await terminalRaceStorage.claim(terminalRaceCompleteWorker, { leaseMs: 1 });
+terminalRaceDb.jobs.find((job) => job.id === terminalRaceCompleteJob.id).locked_by = "other-worker";
+await terminalRaceCompleteWorker._executeInner(terminalRaceCompleteJob);
 
 const leaseDb = new FakeJobsDb("sqlite");
 const leaseStorage = Jobs.storage.sqlite(leaseDb);
@@ -515,11 +631,104 @@ leaseDb.jobs[0].locked_until = new Date(Date.now() - 1000).toISOString();
 const [claimedBySecond] = await leaseStorage.claim({ id: "lease-worker-2", queues: ["leases"], concurrency: 1 }, { leaseMs: 1000 });
 assert.equal(claimedBySecond.lockedBy, "lease-worker-2");
 
+const manyDb = new FakeJobsDb("sqlite");
+const manyStorage = Jobs.storage.sqlite(manyDb);
+await manyStorage.init();
+const manyRuntime = Jobs.create({ storage: manyStorage });
+manyRuntime.define("many", {}, async () => {});
+for (let index = 0; index < 130; index += 1) {
+    await manyRuntime.enqueue("many", { index }, { idempotencyKey: `many:${index}` });
+}
+manyDb.events.push(...Array.from({ length: 130 }, (_, index) => ({
+    id: `extra-event-${index}`,
+    job_id: manyDb.jobs[0].id,
+    event_type: "extra",
+    from_status: null,
+    to_status: null,
+    created_at: new Date(Date.now() + index).toISOString(),
+    worker_id: null,
+    message: null,
+    data_json: "{}",
+})));
+manyDb.attempts.push(...Array.from({ length: 130 }, (_, index) => ({
+    id: `extra-attempt-${index}`,
+    job_id: manyDb.jobs[0].id,
+    worker_id: "worker",
+    attempt_number: index + 1,
+    started_at: new Date(Date.now() + index).toISOString(),
+    finished_at: null,
+    status: "processing",
+    duration_ms: null,
+    error_code: null,
+    error_message: null,
+    diagnostic_id: null,
+})));
+manyDb.workers.push(...Array.from({ length: 130 }, (_, index) => ({
+    id: `worker-${index}`,
+    worker_name: `worker-${index}`,
+    host: null,
+    pid: null,
+    queues: "[\"default\"]",
+    started_at: new Date(Date.now() + index).toISOString(),
+    last_heartbeat_at: new Date(Date.now() + index).toISOString(),
+    status: "running",
+})));
+manyDb.locks.push(...Array.from({ length: 130 }, (_, index) => ({
+    name: `lock-${index}`,
+    owner: "owner",
+    locked_until: new Date(Date.now() + 60000).toISOString(),
+    updated_at: new Date(Date.now() + index).toISOString(),
+})));
+manyDb.recurring.push(...Array.from({ length: 130 }, (_, index) => ({
+    id: `recurring-${index}`,
+    name: `recurring-${index}`,
+    job_name: "many",
+    queue: "default",
+    cron: "* * * * *",
+    timezone: "UTC",
+    payload_json: "{}",
+    enabled: 1,
+    misfire_policy: "run-once",
+    last_run_at: null,
+    next_run_at: new Date(Date.now() + 60000 + index).toISOString(),
+    created_at: new Date(Date.now() + index).toISOString(),
+    updated_at: new Date(Date.now() + index).toISOString(),
+    metadata_json: "{}",
+})));
+assert.equal((await manyStorage.listJobs({ pageSize: 130 })).length, 130);
+assert.equal((await manyStorage.events(manyDb.jobs[0].id)).length, 131);
+assert.equal((await manyStorage.attempts(manyDb.jobs[0].id)).length, 130);
+assert.equal((await manyStorage.listWorkers()).length, 130);
+assert.equal((await manyStorage.listLocks()).length, 130);
+assert.equal((await manyStorage.listRecurring()).length, 130);
+for (const job of manyDb.jobs) {
+    Object.assign(job, {
+        status: "succeeded",
+        updated_at: "2026-01-01T00:00:00.000Z",
+    });
+}
+assert.equal((await manyStorage.cleanup({ batchSize: 130, keepSucceededMs: 0 })).deleted, 130);
+for (const fragment of [
+    "from sloppy_jobs",
+    "from sloppy_job_events",
+    "from sloppy_job_attempts",
+    "from sloppy_job_workers",
+    "from sloppy_job_locks",
+    "from sloppy_recurring_jobs",
+]) {
+    assert(manyDb.queries.some((entry) =>
+        entry.kind === "query" &&
+        entry.sql.toLowerCase().includes(fragment) &&
+        entry.options?.maxRows !== undefined &&
+        entry.options.maxRows > 128));
+}
+
 const pg = new FakeJobsDb("postgres");
 const pgStorage = Jobs.storage.postgres(pg);
 await pgStorage.init();
 const pgRuntime = Jobs.create({ storage: pgStorage });
 pgRuntime.define("pg-job", {}, async () => {});
+await pgRuntime.enqueue("pg-job", {}, { queue: "default", idempotencyKey: "pg:1" });
 await pgRuntime.enqueue("pg-job", {}, { queue: "default", idempotencyKey: "pg:1" });
 await pgStorage.claim({ id: "pg-worker", queues: ["default"], concurrency: 1 }, { leaseMs: 1000 });
 assert(pg.queries.some((entry) =>

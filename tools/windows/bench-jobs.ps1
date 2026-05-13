@@ -1,6 +1,7 @@
 param(
     [string]$Preset = "windows-relwithdebinfo",
     [string]$SloppyCli = "",
+    [ValidateRange(1, [int]::MaxValue)]
     [int]$JobCount = 1000,
     [switch]$NoBuild
 )
@@ -32,9 +33,14 @@ Remove-Item -LiteralPath $caseRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $caseRoot | Out-Null
 
 try {
-    & $cli run (Join-Path $repoRoot "examples\jobs-stress\main.ts") -- $dbPath $JobCount
-    if ($LASTEXITCODE -ne 0) {
-        throw "FAIL: jobs benchmark Sloppy Program Mode workload failed."
+    $chunkSize = 10
+    for ($offset = 0; $offset -lt $JobCount; $offset += $chunkSize) {
+        $remaining = $JobCount - $offset
+        $current = [Math]::Min($chunkSize, $remaining)
+        & $cli run (Join-Path $repoRoot "examples\jobs-stress\main.ts") --kind program -- $dbPath $current $offset
+        if ($LASTEXITCODE -ne 0) {
+            throw "FAIL: jobs benchmark Sloppy Program Mode workload failed at offset $offset."
+        }
     }
 }
 finally {

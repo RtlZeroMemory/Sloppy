@@ -791,6 +791,10 @@ mod tests {
             ImportKind::SlopWorkers
         );
         assert_eq!(
+            classify_import(Path::new("app.js"), "sloppy/jobs"),
+            ImportKind::SlopJobs
+        );
+        assert_eq!(
             classify_import(Path::new("app.js"), "sloppy/ffi"),
             ImportKind::SlopFfi
         );

@@ -26,16 +26,25 @@ function Assert-DockerAvailable {
         throw "UNAVAILABLE: Docker CLI is required for the PostgreSQL jobs live lane."
     }
     docker info | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "UNAVAILABLE: Docker daemon is not reachable."
+    }
 }
 
 if (-not $NoDocker) {
     Assert-DockerAvailable
     docker compose -f $composeFile up -d --wait
+    if ($LASTEXITCODE -ne 0) {
+        throw "FAIL: PostgreSQL docker compose up failed."
+    }
 }
 
 try {
     if (-not $NoBuild) {
         & (Join-Path $PSScriptRoot "dev.ps1") build -Preset $Preset
+        if ($LASTEXITCODE -ne 0) {
+            throw "FAIL: build step failed for preset $Preset."
+        }
     }
 
     $cli = Resolve-SloppyCli
@@ -43,9 +52,14 @@ try {
         throw "UNAVAILABLE: sloppy CLI was not found at $cli"
     }
 
-    & $cli run (Join-Path $repoRoot "examples\jobs-postgres-worker\main.ts")
+    & $cli run (Join-Path $repoRoot "examples\jobs-postgres-worker\main.ts") --kind program
     if ($LASTEXITCODE -ne 0) {
         throw "FAIL: PostgreSQL jobs Sloppy Program Mode smoke failed."
+    }
+
+    & $cli run (Join-Path $repoRoot "examples\jobs-concurrency\main.ts") --kind program -- postgres
+    if ($LASTEXITCODE -ne 0) {
+        throw "FAIL: PostgreSQL jobs concurrency Sloppy Program Mode workload failed."
     }
 
     Write-Host "PASS: PostgreSQL jobs live lane used Sloppy Program Mode and data.postgres."
@@ -53,5 +67,8 @@ try {
 finally {
     if (-not $NoDocker) {
         docker compose -f $composeFile down -v
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "FAIL: PostgreSQL docker compose down failed."
+        }
     }
 }

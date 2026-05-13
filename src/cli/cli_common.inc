@@ -386,6 +386,10 @@ static void sl_cli_print_help(void)
            "text|json] [--dispatch] [--report]\n");
     printf("  sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> [--format "
            "text|json]\n");
+    printf("  sloppy jobs init|status|list|show|retry|cancel|delete|workers|locks "
+           "[--provider sqlite] [--database <path>]\n");
+    printf("  sloppy jobs recurring list|pause|resume|trigger [name] [--provider sqlite] "
+           "[--database <path>]\n");
     printf("  sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format "
            "text|json]\n");
     printf("  sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--output "
@@ -490,6 +494,16 @@ static void sl_cli_print_command_help(const char* command)
     if (strcmp(command, "db") == 0) {
         printf("Usage: sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> "
                "[--format text|json]\n");
+        return;
+    }
+    if (strcmp(command, "jobs") == 0) {
+        printf("Usage: sloppy jobs init|status|list|show <id>|retry <id>|cancel <id>|delete <id>\n");
+        printf("                   sloppy jobs workers|locks\n");
+        printf("                   sloppy jobs recurring list|pause <name>|resume <name>|trigger <name>\n");
+        printf("                   [--provider sqlite] [--database <path>] [--format text|json]\n");
+        printf("\n");
+        printf("SQLite admin backend for the durable scheduler tables. PostgreSQL and SQL Server "
+               "jobs validation runs through Sloppy Program Mode live lanes.\n");
         return;
     }
     if (strcmp(command, "audit") == 0) {
@@ -1230,6 +1244,51 @@ static int sl_cli_parse_common_option(int argc, char** argv, int* index, SlCliOp
     return 0;
 }
 
+static int sl_cli_parse_jobs_option(int argc, char** argv, int* index, SlCliOptions* out)
+{
+    if (out == NULL || out->command == NULL || strcmp(out->command, "jobs") != 0) {
+        return 0;
+    }
+    if (strcmp(argv[*index], "--provider") == 0) {
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy jobs: --provider requires sqlite\n");
+            return -1;
+        }
+        out->jobs_provider = argv[*index + 1];
+        *index += 2;
+        return 1;
+    }
+    if (strcmp(argv[*index], "--database") == 0) {
+        if (*index + 1 >= argc) {
+            sl_cli_write_cstr(stderr, "sloppy jobs: --database requires a path\n");
+            return -1;
+        }
+        out->jobs_database = argv[*index + 1];
+        *index += 2;
+        return 1;
+    }
+    if (argv[*index][0] == '-') {
+        return 0;
+    }
+    if (out->jobs_action == NULL) {
+        out->jobs_action = argv[*index];
+        *index += 1;
+        return 1;
+    }
+    if (strcmp(out->jobs_action, "recurring") == 0 && out->jobs_subaction == NULL) {
+        out->jobs_subaction = argv[*index];
+        *index += 1;
+        return 1;
+    }
+    if (out->jobs_target == NULL) {
+        out->jobs_target = argv[*index];
+        *index += 1;
+        return 1;
+    }
+    sl_cli_write_cstr(stderr, "sloppy jobs: too many positional arguments\n");
+    return -1;
+}
+
 static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
 {
     int index = 2;
@@ -1303,6 +1362,14 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
             continue;
         }
 
+        run_parse = sl_cli_parse_jobs_option(argc, argv, &index, out);
+        if (run_parse < 0) {
+            return 1;
+        }
+        if (run_parse > 0) {
+            continue;
+        }
+
         run_parse = sl_cli_parse_metadata_path_option(argv, &index, out);
         if (run_parse < 0) {
             return 1;
@@ -1351,6 +1418,46 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
         }
         if (out->db_target_path == NULL) {
             out->db_target_path = ".sloppy";
+        }
+    }
+
+    if (!out->help && strcmp(out->command, "jobs") == 0) {
+        if (out->jobs_action == NULL) {
+            sl_cli_write_cstr(stderr, "sloppy jobs: expected an action\n");
+            return 1;
+        }
+        if (out->jobs_provider == NULL) {
+            out->jobs_provider = "sqlite";
+        }
+        if (strcmp(out->jobs_provider, "sqlite") != 0) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy jobs: native admin commands currently support --provider sqlite\n");
+            return 1;
+        }
+        if (out->jobs_database == NULL) {
+            out->jobs_database = ".sloppy/jobs.db";
+        }
+        if (strcmp(out->jobs_action, "show") == 0 || strcmp(out->jobs_action, "retry") == 0 ||
+            strcmp(out->jobs_action, "cancel") == 0 || strcmp(out->jobs_action, "delete") == 0)
+        {
+            if (out->jobs_target == NULL) {
+                sl_cli_write_cstr(stderr, "sloppy jobs: action requires a job id\n");
+                return 1;
+            }
+        }
+        if (strcmp(out->jobs_action, "recurring") == 0) {
+            if (out->jobs_subaction == NULL) {
+                sl_cli_write_cstr(stderr, "sloppy jobs recurring: expected list, pause, resume, or trigger\n");
+                return 1;
+            }
+            if ((strcmp(out->jobs_subaction, "pause") == 0 ||
+                 strcmp(out->jobs_subaction, "resume") == 0 ||
+                 strcmp(out->jobs_subaction, "trigger") == 0) &&
+                out->jobs_target == NULL)
+            {
+                sl_cli_write_cstr(stderr, "sloppy jobs recurring: action requires a recurring name\n");
+                return 1;
+            }
         }
     }
 

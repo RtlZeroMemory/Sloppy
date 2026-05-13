@@ -22,5 +22,7 @@ Usage:
   sloppy deps [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json] [--explain]
   sloppy doctor [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json] [--dispatch]
   sloppy db status|migrate [artifacts-dir|package-dir] --provider <name> [--format text|json]
+  sloppy jobs init|status|list|show|retry|cancel|delete|workers|locks [--provider sqlite] [--database <path>]
+  sloppy jobs recurring list|pause|resume|trigger [name] [--provider sqlite] [--database <path>]
   sloppy audit [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--format text|json]
   sloppy openapi [artifacts-dir|plan.json|--plan <path>|--artifacts <dir>] [--output <path>]

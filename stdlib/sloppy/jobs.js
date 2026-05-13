@@ -45,6 +45,9 @@ const REDACT_KEYS = Object.freeze([
     "cookie",
     "key",
 ]);
+
+let stableIdCounter = 0;
+let jitterCounter = 0;
 const PROVIDERS = Object.freeze({
     sqlite: true,
     postgres: true,
@@ -65,6 +68,11 @@ class SloppyJobsError extends Error {
 
 function jobsError(code, message, details = undefined) {
     return new SloppyJobsError(code, message, details);
+}
+
+function terminalPersistenceRace(error) {
+    return error instanceof SloppyJobsError &&
+        (error.code === "SLOPPY_E_JOBS_TRANSITION_INVALID" || error.code === "SLOPPY_E_JOBS_STALE_LEASE");
 }
 
 function isPlainObject(value) {
@@ -152,8 +160,8 @@ function toIso(value, subject) {
 }
 
 function stableId(prefix = "job") {
-    const random = Math.random().toString(36).slice(2, 10);
-    return `${prefix}_${Date.now().toString(36)}_${random}`;
+    stableIdCounter = (stableIdCounter + 1) % Number.MAX_SAFE_INTEGER;
+    return `${prefix}_${Date.now().toString(36)}_${stableIdCounter.toString(36)}`;
 }
 
 function sleep(ms, signal = undefined) {
@@ -164,10 +172,23 @@ function sleep(ms, signal = undefined) {
         return Promise.resolve();
     }
     return new Promise((resolve) => {
-        const timer = setTimeout(resolve, ms);
+        let timer;
+        let onAbort;
+        const cleanup = () => {
+            if (signal && typeof signal.removeEventListener === "function" && onAbort !== undefined) {
+                signal.removeEventListener("abort", onAbort);
+            }
+        };
+        timer = setTimeout(() => {
+            cleanup();
+            resolve();
+        }, ms);
         if (signal && typeof signal.addEventListener === "function") {
-            const onAbort = () => {
-                clearTimeout(timer);
+            onAbort = () => {
+                if (typeof clearTimeout === "function") {
+                    clearTimeout(timer);
+                }
+                cleanup();
                 resolve();
             };
             signal.addEventListener("abort", onAbort);
@@ -176,7 +197,7 @@ function sleep(ms, signal = undefined) {
 }
 
 async function runWithTimeout(handler, context, input, timeoutMs, parentSignal) {
-    if (timeoutMs === null || timeoutMs === undefined) {
+    if (timeoutMs === null || timeoutMs === undefined || typeof setTimeout !== "function") {
         return await handler(context, input);
     }
     const controller = new CancellationController({ signal: parentSignal });
@@ -201,7 +222,9 @@ async function runWithTimeout(handler, context, input, timeoutMs, parentSignal) 
             timeout,
         ]);
     } finally {
-        clearTimeout(timer);
+        if (typeof clearTimeout === "function") {
+            clearTimeout(timer);
+        }
         controller.dispose();
     }
 }
@@ -286,74 +309,53 @@ function placeholders(provider, count, start = 1) {
     return Array.from({ length: count }, (_, index) => placeholder(provider, start + index));
 }
 
-function sqlForProvider(provider, sql) {
-    if (provider !== "postgres" || typeof sql !== "string" || !sql.includes("?")) {
-        return sql;
-    }
-    let parameter = 1;
-    let inSingleQuote = false;
-    let text = "";
-    for (let index = 0; index < sql.length; index += 1) {
-        const ch = sql[index];
-        if (ch === "'") {
-            text += ch;
-            if (inSingleQuote && sql[index + 1] === "'") {
-                text += sql[index + 1];
-                index += 1;
-            } else {
-                inSingleQuote = !inSingleQuote;
-            }
-            continue;
-        }
-        if (ch === "?" && !inSingleQuote) {
-            text += `$${parameter}`;
-            parameter += 1;
-            continue;
-        }
-        text += ch;
-    }
-    return text;
+function uniqueConflict(error) {
+    const code = String(error?.code ?? error?.number ?? error?.sqlState ?? "");
+    const message = String(error?.message ?? error ?? "").toLowerCase();
+    return code === "23505" ||
+        code === "2627" ||
+        code === "2601" ||
+        code === "SQLITE_CONSTRAINT" ||
+        message.includes("unique constraint") ||
+        message.includes("duplicate key") ||
+        message.includes("unique index");
 }
 
-function adaptProvider(db, provider) {
-    if (db?.__sloppyJobsProvider === provider) {
-        return db;
+function busyConflict(error) {
+    const message = String(error?.message ?? error ?? "").toLowerCase();
+    return message.includes("database is locked") ||
+        message.includes("database table is locked") ||
+        message.includes("busy");
+}
+
+async function retryBusy(operation) {
+    let attempts = 0;
+    for (;;) {
+        try {
+            return await operation();
+        } catch (error) {
+            attempts += 1;
+            if (attempts >= 25 || !busyConflict(error)) {
+                throw error;
+            }
+            await sleep(0);
+        }
     }
-    if (db === null || typeof db !== "object") {
-        throw new TypeError("Sloppy Jobs storage requires a data connection object.");
+}
+
+function insertOrIgnoreSql(provider, table, columns, conflictColumns = undefined) {
+    const values = placeholders(provider, columns.length).join(", ");
+    const columnList = columns.join(", ");
+    if (provider === "sqlite") {
+        return `insert or ignore into ${table} (${columnList}) values (${values})`;
     }
-    return Object.freeze({
-        __sloppyJobsProvider: provider,
-        query(sql, params = [], options = undefined) {
-            return db.query(sqlForProvider(provider, sql), params, options);
-        },
-        queryOne(sql, params = [], options = undefined) {
-            if (typeof db.queryOne === "function") {
-                return db.queryOne(sqlForProvider(provider, sql), params, options);
-            }
-            return Promise.resolve(db.query(sqlForProvider(provider, sql), params, options)).then((rows) =>
-                compactRows(rows)[0] ?? null);
-        },
-        exec(sql, params = [], options = undefined) {
-            const text = sqlForProvider(provider, sql);
-            if (typeof db.exec === "function") {
-                return db.exec(text, params, options);
-            }
-            return db.query(text, params, options);
-        },
-        transaction(callback) {
-            if (typeof db.transaction !== "function") {
-                return callback(adaptProvider(db, provider));
-            }
-            return db.transaction((tx) => callback(adaptProvider(tx, provider)));
-        },
-        __debug() {
-            if (typeof db.__debug === "function") {
-                return db.__debug();
-            }
-            return Object.freeze({ kind: `${provider}-connection` });
-        },
-    });
+    if (provider === "postgres") {
+        const conflict = Array.isArray(conflictColumns) && conflictColumns.length > 0
+            ? ` on conflict (${conflictColumns.join(", ")})${conflictColumns.includes("idempotency_key") ? " where idempotency_key is not null" : ""} do nothing`
+            : " on conflict do nothing";
+        return `insert into ${table} (${columnList}) values (${values})${conflict}`;
+    }
+    return `insert into ${table} (${columnList}) values (${values})`;
 }
 
 function compactRows(rows) {
@@ -366,19 +368,35 @@ function compactRows(rows) {
     return [];
 }
 
+function rowField(row, ...names) {
+    for (const name of names) {
+        if (Object.prototype.hasOwnProperty.call(row, name)) {
+            return row[name];
+        }
+    }
+    const entries = Object.entries(row);
+    for (const name of names) {
+        const match = entries.find(([key]) => key.toLowerCase() === name.toLowerCase());
+        if (match !== undefined) {
+            return match[1];
+        }
+    }
+    return undefined;
+}
+
 async function queryOne(db, sql, params = []) {
     if (typeof db.queryOne === "function") {
-        return await db.queryOne(sql, params);
+        return await retryBusy(() => db.queryOne(sql, params));
     }
-    const rows = compactRows(await db.query(sql, params));
+    const rows = compactRows(await retryBusy(() => db.query(sql, params, { maxRows: 1 })));
     return rows[0] ?? null;
 }
 
 async function execSql(db, sql, params = []) {
     if (typeof db.exec === "function") {
-        return await db.exec(sql, params);
+        return await retryBusy(() => db.exec(sql, params));
     }
-    return await db.query(sql, params);
+    return await retryBusy(() => db.query(sql, params));
 }
 
 async function inTransaction(db, callback) {
@@ -462,7 +480,7 @@ function schemaSql(provider) {
     return Object.freeze([...schema, ...indexes]);
 }
 
-function claimSelectSql(provider, queueCount) {
+function claimSelectSql(provider, queueCount, limit = undefined) {
     const queuePlaceholders = placeholders(provider, queueCount);
     const timestampPlaceholder = placeholder(provider, queueCount + 1);
     const limitPlaceholder = placeholder(provider, queueCount + 2);
@@ -474,16 +492,20 @@ function claimSelectSql(provider, queueCount) {
         return `select * from sloppy_jobs ${where} ${order} for update skip locked limit ${limitPlaceholder}`;
     }
     if (provider === "sqlserver") {
-        return `select top (${limitPlaceholder}) * from sloppy_jobs with (updlock, readpast, rowlock) ${where} ${order}`;
+        return `select top (${positiveInteger(limit, "Sloppy Jobs claim limit", DEFAULT_PAGE_SIZE)}) * from sloppy_jobs with (updlock, readpast, rowlock) ${where} ${order}`;
     }
     return `select * from sloppy_jobs ${where} ${order} limit ${limitPlaceholder}`;
 }
 
-function limitSql(provider, sql, limitPlaceholder) {
+function limitSql(provider, sql, limitPlaceholder, limit = undefined) {
     if (provider === "sqlserver") {
-        return sql.replace(/^select /iu, `select top (${limitPlaceholder}) `);
+        return sql.replace(/^select /iu, `select top (${positiveInteger(limit, "Sloppy Jobs query limit", MAX_PAGE_SIZE)}) `);
     }
     return `${sql} limit ${limitPlaceholder}`;
+}
+
+function limitParams(provider, params, limit) {
+    return provider === "sqlserver" ? params : [...params, limit];
 }
 
 function transitionAllowed(from, to) {
@@ -514,7 +536,9 @@ function retryDelayMs(policy, attempt) {
     if (!policy.jitter || capped <= 1) {
         return capped;
     }
-    return Math.max(1, Math.floor(capped * (0.5 + Math.random() * 0.5)));
+    jitterCounter = (jitterCounter + 1) % 997;
+    const spread = 0.5 + (jitterCounter / 1994);
+    return Math.max(1, Math.floor(capped * spread));
 }
 
 function validatePayload(schema, payload, operation, jobName) {
@@ -581,9 +605,20 @@ class SchedulerStorage {
     constructor(db, options = undefined) {
         const opts = options === undefined ? {} : requirePlainObject(options, "Sloppy Jobs storage options");
         this.provider = providerFromConnection(db, opts.provider);
-        this.db = adaptProvider(db, this.provider);
+        if (db === null || typeof db !== "object") {
+            throw new TypeError("Sloppy Jobs storage requires a data connection object.");
+        }
+        this.db = db;
         this.clock = opts.clock;
         Object.freeze(this);
+    }
+
+    p(index) {
+        return placeholder(this.provider, index);
+    }
+
+    ps(count, start = 1) {
+        return placeholders(this.provider, count, start);
     }
 
     async init() {
@@ -593,7 +628,7 @@ class SchedulerStorage {
             }
             const row = await queryOne(tx, "select version from sloppy_job_schema");
             if (row === null || row === undefined) {
-                await execSql(tx, "insert into sloppy_job_schema (version, updated_at) values (?, ?)", [
+                await execSql(tx, `insert into sloppy_job_schema (version, updated_at) values (${this.p(1)}, ${this.p(2)})`, [
                     SCHEMA_VERSION,
                     nowIso(this.clock),
                 ]);
@@ -608,51 +643,91 @@ class SchedulerStorage {
 
     async enqueue(record) {
         return await inTransaction(this.db, async (tx) => {
-            if (record.idempotencyKey !== undefined) {
-                const existing = await queryOne(tx, "select * from sloppy_jobs where idempotency_key = ?", [record.idempotencyKey]);
-                if (existing !== null && existing !== undefined) {
-                    return normalizeJob(existing);
+            const columns = [
+                "id",
+                "name",
+                "queue",
+                "status",
+                "payload_json",
+                "payload_schema",
+                "priority",
+                "run_at",
+                "created_at",
+                "updated_at",
+                "locked_by",
+                "locked_until",
+                "attempt_count",
+                "max_attempts",
+                "retry_policy_json",
+                "next_retry_at",
+                "last_error_code",
+                "last_error_message",
+                "diagnostic_id",
+                "correlation_id",
+                "idempotency_key",
+                "timeout_ms",
+                "metadata_json",
+            ];
+            const params = [
+                record.id,
+                record.name,
+                record.queue,
+                record.status,
+                record.payloadJson,
+                record.payloadSchema ?? null,
+                record.priority,
+                record.runAt,
+                record.createdAt,
+                record.updatedAt,
+                null,
+                null,
+                0,
+                record.maxAttempts,
+                jsonStringify(record.retryPolicy, "retry policy"),
+                null,
+                null,
+                null,
+                null,
+                record.correlationId ?? null,
+                record.idempotencyKey ?? null,
+                record.timeoutMs ?? null,
+                jsonStringify(record.metadata, "job metadata"),
+            ];
+            try {
+                if (record.idempotencyKey !== undefined && this.provider === "sqlserver") {
+                    await execSql(
+                        tx,
+                        `if not exists (select 1 from sloppy_jobs with (updlock, holdlock) where idempotency_key = ${this.p(1)}) insert into sloppy_jobs (${columns.join(", ")}) values (${this.ps(columns.length, 2).join(", ")})`,
+                        [record.idempotencyKey, ...params],
+                    );
+                } else {
+                    const sql = record.idempotencyKey === undefined
+                        ? `insert into sloppy_jobs (${columns.join(", ")}) values (${this.ps(columns.length).join(", ")})`
+                        : insertOrIgnoreSql(this.provider, "sloppy_jobs", columns, ["idempotency_key"]);
+                    await execSql(tx, sql, params);
+                }
+            } catch (error) {
+                if (record.idempotencyKey === undefined || !uniqueConflict(error)) {
+                    throw error;
                 }
             }
-            await execSql(
-                tx,
-                "insert into sloppy_jobs (id, name, queue, status, payload_json, payload_schema, priority, run_at, created_at, updated_at, locked_by, locked_until, attempt_count, max_attempts, retry_policy_json, next_retry_at, last_error_code, last_error_message, diagnostic_id, correlation_id, idempotency_key, timeout_ms, metadata_json) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    record.id,
-                    record.name,
-                    record.queue,
-                    record.status,
-                    record.payloadJson,
-                    record.payloadSchema ?? null,
-                    record.priority,
-                    record.runAt,
-                    record.createdAt,
-                    record.updatedAt,
-                    null,
-                    null,
-                    0,
-                    record.maxAttempts,
-                    jsonStringify(record.retryPolicy, "retry policy"),
-                    null,
-                    null,
-                    null,
-                    null,
-                    record.correlationId ?? null,
-                    record.idempotencyKey ?? null,
-                    record.timeoutMs ?? null,
-                    jsonStringify(record.metadata, "job metadata"),
-                ],
-            );
-            await this.addEvent(tx, record.id, "enqueued", null, record.status, record.createdAt, null, "job enqueued", {
-                queue: record.queue,
-                runAt: record.runAt,
-            });
-            return normalizeJob(await queryOne(tx, "select * from sloppy_jobs where id = ?", [record.id]));
+            const inserted = normalizeJob(await queryOne(tx, `select * from sloppy_jobs where id = ${this.p(1)}`, [record.id]));
+            if (inserted !== null) {
+                await this.addEvent(tx, record.id, "enqueued", null, record.status, record.createdAt, null, "job enqueued", {
+                    queue: record.queue,
+                    runAt: record.runAt,
+                });
+                return inserted;
+            }
+            if (record.idempotencyKey !== undefined) {
+                return normalizeJob(await queryOne(tx, `select * from sloppy_jobs where idempotency_key = ${this.p(1)}`, [record.idempotencyKey]));
+            }
+            return null;
         });
     }
 
     async getJob(id) {
-        return normalizeJob(await queryOne(this.db, "select * from sloppy_jobs where id = ?", [id]));
+        return normalizeJob(await queryOne(this.db, `select * from sloppy_jobs where id = ${this.p(1)}`, [id]));
     }
 
     async listJobs(filters = undefined) {
@@ -668,7 +743,7 @@ class SchedulerStorage {
             ["worker", "locked_by"],
         ]) {
             if (current[field] !== undefined) {
-                where.push(`${column} = ?`);
+                where.push(`${column} = ${this.p(params.length + 1)}`);
                 params.push(current[field]);
             }
         }
@@ -676,55 +751,80 @@ class SchedulerStorage {
             where.push("status in ('failed', 'dead')");
         }
         if (current.createdFrom !== undefined) {
-            where.push("created_at >= ?");
+            where.push(`created_at >= ${this.p(params.length + 1)}`);
             params.push(toIso(current.createdFrom, "createdFrom"));
         }
         if (current.createdTo !== undefined) {
-            where.push("created_at <= ?");
+            where.push(`created_at <= ${this.p(params.length + 1)}`);
             params.push(toIso(current.createdTo, "createdTo"));
         }
         if (current.runAtFrom !== undefined) {
-            where.push("run_at >= ?");
+            where.push(`run_at >= ${this.p(params.length + 1)}`);
             params.push(toIso(current.runAtFrom, "runAtFrom"));
         }
         if (current.runAtTo !== undefined) {
-            where.push("run_at <= ?");
+            where.push(`run_at <= ${this.p(params.length + 1)}`);
             params.push(toIso(current.runAtTo, "runAtTo"));
         }
         const clause = where.length === 0 ? "" : ` where ${where.join(" and ")}`;
+        const listSql = this.provider === "sqlserver"
+            ? `select * from sloppy_jobs${clause} order by created_at desc, id desc offset ${offset} rows fetch next ${pageSize} rows only`
+            : `select * from sloppy_jobs${clause} order by created_at desc, id desc limit ${this.p(params.length + 1)} offset ${this.p(params.length + 2)}`;
         const rows = compactRows(await this.db.query(
-            `select * from sloppy_jobs${clause} order by created_at desc, id desc limit ? offset ?`,
-            [...params, pageSize, offset],
+            listSql,
+            this.provider === "sqlserver" ? params : [...params, pageSize, offset],
+            { maxRows: pageSize },
         ));
         return Object.freeze(rows.map(normalizeJob));
     }
 
     async statusCounts() {
-        const rows = compactRows(await this.db.query("select status, count(*) as count from sloppy_jobs group by status", []));
+        const rows = compactRows(await this.db.query(
+            "select status, count(*) as count from sloppy_jobs group by status",
+            [],
+            { maxRows: Object.keys(JOB_STATUSES).length },
+        ));
         const counts = {};
         for (const status of Object.keys(JOB_STATUSES)) {
             counts[status] = 0;
         }
         for (const row of rows) {
-            if (JOB_STATUSES[row.status] === true) {
-                counts[row.status] = Number(row.count ?? row["count(*)"] ?? 0);
+            const status = rowField(row, "status");
+            if (JOB_STATUSES[status] === true) {
+                counts[status] = Number(rowField(row, "count", "count(*)") ?? 0);
             }
         }
         return Object.freeze(counts);
     }
 
     async attempts(jobId) {
+        const limit = MAX_PAGE_SIZE;
+        const sql = limitSql(
+            this.provider,
+            `select * from sloppy_job_attempts where job_id = ${this.p(1)} order by attempt_number`,
+            this.p(2),
+            limit,
+        );
         const rows = compactRows(await this.db.query(
-            "select * from sloppy_job_attempts where job_id = ? order by attempt_number",
-            [jobId],
+            sql,
+            limitParams(this.provider, [jobId], limit),
+            { maxRows: limit },
         ));
         return Object.freeze(rows.map((row) => Object.freeze({ ...row })));
     }
 
     async events(jobId) {
+        const limit = MAX_PAGE_SIZE;
+        const sql = limitSql(
+            this.provider,
+            `select * from sloppy_job_events where job_id = ${this.p(1)} order by created_at, id`,
+            this.p(2),
+            limit,
+        );
         const rows = compactRows(await this.db.query(
-            "select * from sloppy_job_events where job_id = ? order by created_at, id",
-            [jobId],
+            sql,
+            limitParams(this.provider, [jobId], limit),
+            { maxRows: limit },
         ));
         return Object.freeze(rows.map((row) => Object.freeze({ ...row, data: jsonParse(row.data_json, {}) })));
     }
@@ -735,7 +835,7 @@ class SchedulerStorage {
             throw jobsError("SLOPPY_E_JOBS_TRANSITION_INVALID", "target job status is invalid", { to });
         }
         return await inTransaction(this.db, async (tx) => {
-            const job = normalizeJob(await queryOne(tx, "select * from sloppy_jobs where id = ?", [id]));
+            const job = normalizeJob(await queryOne(tx, `select * from sloppy_jobs where id = ${this.p(1)}`, [id]));
             if (job === null) {
                 throw jobsError("SLOPPY_E_JOBS_UNKNOWN_JOB", "job was not found", { id });
             }
@@ -750,19 +850,23 @@ class SchedulerStorage {
                 });
             }
             const timestamp = nowIso(this.clock);
-            await execSql(tx, "update sloppy_jobs set status = ?, updated_at = ? where id = ?", [to, timestamp, id]);
+            await execSql(
+                tx,
+                `update sloppy_jobs set status = ${this.p(1)}, updated_at = ${this.p(2)} where id = ${this.p(3)}`,
+                [to, timestamp, id],
+            );
             await this.addEvent(tx, id, ctx.eventType ?? "transition", job.status, to, timestamp, ctx.workerId ?? null, ctx.message ?? null, ctx.data ?? {});
-            return normalizeJob(await queryOne(tx, "select * from sloppy_jobs where id = ?", [id]));
+            return normalizeJob(await queryOne(tx, `select * from sloppy_jobs where id = ${this.p(1)}`, [id]));
         });
     }
 
     async registerWorker(worker) {
         const timestamp = nowIso(this.clock);
-        const existing = await queryOne(this.db, "select * from sloppy_job_workers where id = ?", [worker.id]);
+        const existing = await queryOne(this.db, `select * from sloppy_job_workers where id = ${this.p(1)}`, [worker.id]);
         if (existing !== null && existing !== undefined) {
             await execSql(
                 this.db,
-                "update sloppy_job_workers set worker_name = ?, host = ?, pid = ?, queues = ?, started_at = ?, last_heartbeat_at = ?, status = ? where id = ?",
+                `update sloppy_job_workers set worker_name = ${this.p(1)}, host = ${this.p(2)}, pid = ${this.p(3)}, queues = ${this.p(4)}, started_at = ${this.p(5)}, last_heartbeat_at = ${this.p(6)}, status = ${this.p(7)} where id = ${this.p(8)}`,
                 [
                     worker.name,
                     worker.host ?? null,
@@ -778,7 +882,7 @@ class SchedulerStorage {
         }
         await execSql(
             this.db,
-            "insert into sloppy_job_workers (id, worker_name, host, pid, queues, started_at, last_heartbeat_at, status) values (?, ?, ?, ?, ?, ?, ?, ?)",
+            `insert into sloppy_job_workers (id, worker_name, host, pid, queues, started_at, last_heartbeat_at, status) values (${this.ps(8).join(", ")})`,
             [
                 worker.id,
                 worker.name,
@@ -793,23 +897,47 @@ class SchedulerStorage {
     }
 
     async heartbeat(workerId) {
-        await execSql(this.db, "update sloppy_job_workers set last_heartbeat_at = ?, status = ? where id = ?", [
-            nowIso(this.clock),
+        const timestamp = nowIso(this.clock);
+        if (this.provider === "sqlserver") {
+            await execSql(this.db, `if exists (select 1 from sloppy_job_workers where id = ${this.p(1)}) update sloppy_job_workers set last_heartbeat_at = ${this.p(2)}, status = ${this.p(3)} where id = ${this.p(4)}`, [
+                workerId,
+                timestamp,
+                "running",
+                workerId,
+            ]);
+            return;
+        }
+        await execSql(this.db, `update sloppy_job_workers set last_heartbeat_at = ${this.p(1)}, status = ${this.p(2)} where id = ${this.p(3)}`, [
+            timestamp,
             "running",
             workerId,
         ]);
     }
 
     async stopWorker(workerId) {
-        await execSql(this.db, "update sloppy_job_workers set last_heartbeat_at = ?, status = ? where id = ?", [
-            nowIso(this.clock),
+        const timestamp = nowIso(this.clock);
+        if (this.provider === "sqlserver") {
+            await execSql(this.db, `if exists (select 1 from sloppy_job_workers where id = ${this.p(1)}) update sloppy_job_workers set last_heartbeat_at = ${this.p(2)}, status = ${this.p(3)} where id = ${this.p(4)}`, [
+                workerId,
+                timestamp,
+                "stopped",
+                workerId,
+            ]);
+            return;
+        }
+        await execSql(this.db, `update sloppy_job_workers set last_heartbeat_at = ${this.p(1)}, status = ${this.p(2)} where id = ${this.p(3)}`, [
+            timestamp,
             "stopped",
             workerId,
         ]);
     }
 
     async listWorkers() {
-        const rows = compactRows(await this.db.query("select * from sloppy_job_workers order by started_at desc"));
+        const rows = compactRows(await this.db.query(
+            limitSql(this.provider, "select * from sloppy_job_workers order by started_at desc", this.p(1), MAX_PAGE_SIZE),
+            limitParams(this.provider, [], MAX_PAGE_SIZE),
+            { maxRows: MAX_PAGE_SIZE },
+        ));
         return Object.freeze(rows.map((row) => Object.freeze({
             ...row,
             queues: jsonParse(row.queues, []),
@@ -823,34 +951,50 @@ class SchedulerStorage {
         const timestamp = nowIso(this.clock);
         const lockedUntil = addMsIso(timestamp, positiveInteger(opts.leaseMs, "Sloppy Jobs leaseMs", DEFAULT_WORKER.leaseMs));
         return await inTransaction(this.db, async (tx) => {
-            await execSql(tx, "update sloppy_jobs set status = 'queued', locked_by = null, locked_until = null, updated_at = ? where status = 'processing' and locked_until <= ?", [
-                timestamp,
-                timestamp,
-            ]);
-            await execSql(tx, "update sloppy_jobs set status = 'queued', updated_at = ? where status in ('scheduled', 'retrying') and run_at <= ?", [
-                timestamp,
-                timestamp,
-            ]);
+            if (this.provider === "sqlserver") {
+                await execSql(tx, `if exists (select 1 from sloppy_jobs where status = 'processing' and locked_until <= ${this.p(1)}) update sloppy_jobs set status = 'queued', locked_by = null, locked_until = null, updated_at = ${this.p(2)} where status = 'processing' and locked_until <= ${this.p(3)}`, [
+                    timestamp,
+                    timestamp,
+                    timestamp,
+                ]);
+                await execSql(tx, `if exists (select 1 from sloppy_jobs where status in ('scheduled', 'retrying') and run_at <= ${this.p(1)}) update sloppy_jobs set status = 'queued', updated_at = ${this.p(2)} where status in ('scheduled', 'retrying') and run_at <= ${this.p(3)}`, [
+                    timestamp,
+                    timestamp,
+                    timestamp,
+                ]);
+            } else {
+                await execSql(tx, `update sloppy_jobs set status = 'queued', locked_by = null, locked_until = null, updated_at = ${this.p(1)} where status = 'processing' and locked_until <= ${this.p(2)}`, [
+                    timestamp,
+                    timestamp,
+                ]);
+                await execSql(tx, `update sloppy_jobs set status = 'queued', updated_at = ${this.p(1)} where status in ('scheduled', 'retrying') and run_at <= ${this.p(2)}`, [
+                    timestamp,
+                    timestamp,
+                ]);
+            }
             const rows = compactRows(await tx.query(
-                claimSelectSql(this.provider, queues.length),
-                [...queues, timestamp, limit],
+                claimSelectSql(this.provider, queues.length, limit),
+                this.provider === "sqlserver" ? [...queues, timestamp] : [...queues, timestamp, limit],
+                { maxRows: limit },
             ));
             const claimed = [];
             for (const row of rows) {
                 const job = normalizeJob(row);
                 const attemptNumber = job.attemptCount + 1;
-                const result = await execSql(
-                    tx,
-                    "update sloppy_jobs set status = 'processing', locked_by = ?, locked_until = ?, attempt_count = ?, updated_at = ? where id = ? and status = 'queued'",
-                    [worker.id, lockedUntil, attemptNumber, timestamp, job.id],
-                );
+                const claimSql = this.provider === "sqlserver"
+                    ? `if exists (select 1 from sloppy_jobs where id = ${this.p(1)} and status = 'queued') update sloppy_jobs set status = 'processing', locked_by = ${this.p(2)}, locked_until = ${this.p(3)}, attempt_count = ${this.p(4)}, updated_at = ${this.p(5)} where id = ${this.p(6)} and status = 'queued'`
+                    : `update sloppy_jobs set status = 'processing', locked_by = ${this.p(1)}, locked_until = ${this.p(2)}, attempt_count = ${this.p(3)}, updated_at = ${this.p(4)} where id = ${this.p(5)} and status = 'queued'`;
+                const claimParams = this.provider === "sqlserver"
+                    ? [job.id, worker.id, lockedUntil, attemptNumber, timestamp, job.id]
+                    : [worker.id, lockedUntil, attemptNumber, timestamp, job.id];
+                const result = await execSql(tx, claimSql, claimParams);
                 void result;
-                const refreshed = normalizeJob(await queryOne(tx, "select * from sloppy_jobs where id = ?", [job.id]));
+                const refreshed = normalizeJob(await queryOne(tx, `select * from sloppy_jobs where id = ${this.p(1)}`, [job.id]));
                 if (refreshed?.status === "processing" && refreshed.lockedBy === worker.id) {
                     const attemptId = stableId("attempt");
                     await execSql(
                         tx,
-                        "insert into sloppy_job_attempts (id, job_id, worker_id, attempt_number, started_at, finished_at, status, duration_ms, error_code, error_message, diagnostic_id) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        `insert into sloppy_job_attempts (id, job_id, worker_id, attempt_number, started_at, finished_at, status, duration_ms, error_code, error_message, diagnostic_id) values (${this.ps(11).join(", ")})`,
                         [attemptId, job.id, worker.id, attemptNumber, timestamp, null, "processing", null, null, null, null],
                     );
                     await this.addEvent(tx, job.id, "claimed", "queued", "processing", timestamp, worker.id, "job claimed", {
@@ -872,7 +1016,7 @@ class SchedulerStorage {
         const code = typeof error?.code === "string" ? error.code : "SLOPPY_E_JOBS_HANDLER_FAILED";
         const message = String(error?.message ?? error ?? "job failed");
         return await inTransaction(this.db, async (tx) => {
-            const job = normalizeJob(await queryOne(tx, "select * from sloppy_jobs where id = ?", [jobId]));
+            const job = normalizeJob(await queryOne(tx, `select * from sloppy_jobs where id = ${this.p(1)}`, [jobId]));
             if (job === null) {
                 throw jobsError("SLOPPY_E_JOBS_UNKNOWN_JOB", "job was not found", { jobId });
             }
@@ -882,6 +1026,13 @@ class SchedulerStorage {
                     status: job.status,
                 });
             }
+            if (job.lockedBy !== workerId) {
+                throw jobsError("SLOPPY_E_JOBS_TRANSITION_INVALID", "job failure lost ownership", {
+                    jobId,
+                    workerId,
+                    lockedBy: job.lockedBy,
+                });
+            }
             const timestamp = nowIso(this.clock);
             const policy = retryPolicy ?? jsonParse(job.retryPolicyJson, { maxAttempts: job.maxAttempts, backoff: "none", initialDelayMs: 0, maxDelayMs: 0 });
             const exhausted = job.attemptCount >= job.maxAttempts;
@@ -889,12 +1040,20 @@ class SchedulerStorage {
             const nextRunAt = exhausted ? null : addMsIso(timestamp, retryDelayMs(policy, job.attemptCount));
             await execSql(
                 tx,
-                "update sloppy_jobs set status = ?, locked_by = null, locked_until = null, updated_at = ?, next_retry_at = ?, run_at = coalesce(?, run_at), last_error_code = ?, last_error_message = ?, diagnostic_id = ? where id = ?",
-                [next, timestamp, nextRunAt, nextRunAt, code, message, stableId("diag"), jobId],
+                `update sloppy_jobs set status = ${this.p(1)}, locked_by = null, locked_until = null, updated_at = ${this.p(2)}, next_retry_at = ${this.p(3)}, run_at = coalesce(${this.p(4)}, run_at), last_error_code = ${this.p(5)}, last_error_message = ${this.p(6)}, diagnostic_id = ${this.p(7)} where id = ${this.p(8)} and locked_by = ${this.p(9)} and status = 'processing'`,
+                [next, timestamp, nextRunAt, nextRunAt, code, message, stableId("diag"), jobId, workerId],
             );
+            const failed = normalizeJob(await queryOne(tx, `select * from sloppy_jobs where id = ${this.p(1)}`, [jobId]));
+            if (failed?.status !== next || failed.lockedBy !== null) {
+                throw jobsError("SLOPPY_E_JOBS_TRANSITION_INVALID", "job failure lost ownership", {
+                    jobId,
+                    workerId,
+                    status: failed?.status,
+                });
+            }
             await execSql(
                 tx,
-                "update sloppy_job_attempts set finished_at = ?, status = ?, error_code = ?, error_message = ?, diagnostic_id = ? where job_id = ? and attempt_number = ?",
+                `update sloppy_job_attempts set finished_at = ${this.p(1)}, status = ${this.p(2)}, error_code = ${this.p(3)}, error_message = ${this.p(4)}, diagnostic_id = ${this.p(5)} where job_id = ${this.p(6)} and attempt_number = ${this.p(7)}`,
                 [timestamp, next, code, message, stableId("diag"), jobId, job.attemptCount],
             );
             await this.addEvent(tx, jobId, exhausted ? "dead" : "retrying", "processing", next, timestamp, workerId, message, {
@@ -902,13 +1061,13 @@ class SchedulerStorage {
                 exhausted,
                 nextRunAt,
             });
-            return normalizeJob(await queryOne(tx, "select * from sloppy_jobs where id = ?", [jobId]));
+            return failed;
         });
     }
 
     async finishProcessing(jobId, workerId, status, error = undefined, result = undefined) {
         return await inTransaction(this.db, async (tx) => {
-            const job = normalizeJob(await queryOne(tx, "select * from sloppy_jobs where id = ?", [jobId]));
+            const job = normalizeJob(await queryOne(tx, `select * from sloppy_jobs where id = ${this.p(1)}`, [jobId]));
             if (job === null) {
                 throw jobsError("SLOPPY_E_JOBS_UNKNOWN_JOB", "job was not found", { jobId });
             }
@@ -921,12 +1080,20 @@ class SchedulerStorage {
             const timestamp = nowIso(this.clock);
             await execSql(
                 tx,
-                "update sloppy_jobs set status = ?, locked_by = null, locked_until = null, updated_at = ? where id = ?",
-                [status, timestamp, jobId],
+                `update sloppy_jobs set status = ${this.p(1)}, locked_by = null, locked_until = null, updated_at = ${this.p(2)} where id = ${this.p(3)} and locked_by = ${this.p(4)} and status = 'processing'`,
+                [status, timestamp, jobId, workerId],
             );
+            const completed = normalizeJob(await queryOne(tx, `select * from sloppy_jobs where id = ${this.p(1)}`, [jobId]));
+            if (completed?.status !== status || completed.lockedBy !== null) {
+                throw jobsError("SLOPPY_E_JOBS_TRANSITION_INVALID", "job completion lost ownership", {
+                    jobId,
+                    workerId,
+                    status: completed?.status,
+                });
+            }
             await execSql(
                 tx,
-                "update sloppy_job_attempts set finished_at = ?, status = ?, duration_ms = ?, error_code = ?, error_message = ? where job_id = ? and attempt_number = ?",
+                `update sloppy_job_attempts set finished_at = ${this.p(1)}, status = ${this.p(2)}, duration_ms = ${this.p(3)}, error_code = ${this.p(4)}, error_message = ${this.p(5)} where job_id = ${this.p(6)} and attempt_number = ${this.p(7)}`,
                 [
                     timestamp,
                     status,
@@ -940,23 +1107,32 @@ class SchedulerStorage {
             await this.addEvent(tx, jobId, status, "processing", status, timestamp, workerId, status, {
                 result: result === undefined ? null : result,
             });
-            return normalizeJob(await queryOne(tx, "select * from sloppy_jobs where id = ?", [jobId]));
+            return completed;
         });
     }
 
     async extendLease(jobId, workerId, leaseMs) {
-        const lockedUntil = addMsIso(nowIso(this.clock), positiveInteger(leaseMs, "Sloppy Jobs leaseMs"));
+        const timestamp = nowIso(this.clock);
+        const lockedUntil = addMsIso(timestamp, positiveInteger(leaseMs, "Sloppy Jobs leaseMs"));
         await execSql(
             this.db,
-            "update sloppy_jobs set locked_until = ?, updated_at = ? where id = ? and locked_by = ? and status = 'processing'",
-            [lockedUntil, nowIso(this.clock), jobId, workerId],
+            `update sloppy_jobs set locked_until = ${this.p(1)}, updated_at = ${this.p(2)} where id = ${this.p(3)} and locked_by = ${this.p(4)} and status = 'processing'`,
+            [lockedUntil, timestamp, jobId, workerId],
         );
+        const job = normalizeJob(await queryOne(this.db, `select * from sloppy_jobs where id = ${this.p(1)}`, [jobId]));
+        if (job === null || job.lockedBy !== workerId || job.lockedUntil !== lockedUntil || job.status !== "processing") {
+            throw jobsError("SLOPPY_E_JOBS_TRANSITION_INVALID", "job lease extension lost ownership", {
+                jobId,
+                workerId,
+                status: job?.status,
+            });
+        }
         return lockedUntil;
     }
 
     async manualRetry(jobId) {
         return await inTransaction(this.db, async (tx) => {
-            const job = normalizeJob(await queryOne(tx, "select * from sloppy_jobs where id = ?", [jobId]));
+            const job = normalizeJob(await queryOne(tx, `select * from sloppy_jobs where id = ${this.p(1)}`, [jobId]));
             if (job === null || !["dead", "failed"].includes(job.status)) {
                 throw jobsError("SLOPPY_E_JOBS_TRANSITION_INVALID", "only failed or dead jobs can be manually retried", {
                     jobId,
@@ -964,13 +1140,13 @@ class SchedulerStorage {
                 });
             }
             const timestamp = nowIso(this.clock);
-            await execSql(tx, "update sloppy_jobs set status = 'queued', locked_by = null, locked_until = null, run_at = ?, updated_at = ? where id = ?", [
+            await execSql(tx, `update sloppy_jobs set status = 'queued', locked_by = null, locked_until = null, run_at = ${this.p(1)}, updated_at = ${this.p(2)} where id = ${this.p(3)}`, [
                 timestamp,
                 timestamp,
                 jobId,
             ]);
             await this.addEvent(tx, jobId, "manual-retry", job.status, "queued", timestamp, null, "job manually retried", {});
-            return normalizeJob(await queryOne(tx, "select * from sloppy_jobs where id = ?", [jobId]));
+            return normalizeJob(await queryOne(tx, `select * from sloppy_jobs where id = ${this.p(1)}`, [jobId]));
         });
     }
 
@@ -999,18 +1175,18 @@ class SchedulerStorage {
     async addEvent(tx, jobId, eventType, from, to, createdAt, workerId, message, data) {
         await execSql(
             tx,
-            "insert into sloppy_job_events (id, job_id, event_type, from_status, to_status, created_at, worker_id, message, data_json) values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            `insert into sloppy_job_events (id, job_id, event_type, from_status, to_status, created_at, worker_id, message, data_json) values (${this.ps(9).join(", ")})`,
             [stableId("event"), jobId, eventType, from, to, createdAt, workerId, message, jsonStringify(data ?? {}, "job event data")],
         );
     }
 
     async upsertRecurring(config) {
         const timestamp = nowIso(this.clock);
-        const existing = await queryOne(this.db, "select * from sloppy_recurring_jobs where name = ?", [config.name]);
+        const existing = await queryOne(this.db, `select * from sloppy_recurring_jobs where name = ${this.p(1)}`, [config.name]);
         if (existing === null || existing === undefined) {
             await execSql(
                 this.db,
-                "insert into sloppy_recurring_jobs (id, name, job_name, queue, cron, timezone, payload_json, enabled, misfire_policy, last_run_at, next_run_at, created_at, updated_at, metadata_json) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                `insert into sloppy_recurring_jobs (id, name, job_name, queue, cron, timezone, payload_json, enabled, misfire_policy, last_run_at, next_run_at, created_at, updated_at, metadata_json) values (${this.ps(14).join(", ")})`,
                 [
                     stableId("recurring"),
                     config.name,
@@ -1031,7 +1207,7 @@ class SchedulerStorage {
         } else {
             await execSql(
                 this.db,
-                "update sloppy_recurring_jobs set job_name = ?, queue = ?, cron = ?, timezone = ?, payload_json = ?, enabled = ?, misfire_policy = ?, next_run_at = ?, updated_at = ?, metadata_json = ? where name = ?",
+                `update sloppy_recurring_jobs set job_name = ${this.p(1)}, queue = ${this.p(2)}, cron = ${this.p(3)}, timezone = ${this.p(4)}, payload_json = ${this.p(5)}, enabled = ${this.p(6)}, misfire_policy = ${this.p(7)}, next_run_at = ${this.p(8)}, updated_at = ${this.p(9)}, metadata_json = ${this.p(10)} where name = ${this.p(11)}`,
                 [
                     config.jobName,
                     config.queue,
@@ -1051,11 +1227,15 @@ class SchedulerStorage {
     }
 
     async getRecurring(name) {
-        return normalizeRecurring(await queryOne(this.db, "select * from sloppy_recurring_jobs where name = ?", [name]));
+        return normalizeRecurring(await queryOne(this.db, `select * from sloppy_recurring_jobs where name = ${this.p(1)}`, [name]));
     }
 
     async listRecurring() {
-        const rows = compactRows(await this.db.query("select * from sloppy_recurring_jobs order by name"));
+        const rows = compactRows(await this.db.query(
+            limitSql(this.provider, "select * from sloppy_recurring_jobs order by name", this.p(1), MAX_PAGE_SIZE),
+            limitParams(this.provider, [], MAX_PAGE_SIZE),
+            { maxRows: MAX_PAGE_SIZE },
+        ));
         return Object.freeze(rows.map(normalizeRecurring));
     }
 
@@ -1068,14 +1248,16 @@ class SchedulerStorage {
                 this.provider,
                 `select * from sloppy_recurring_jobs where enabled = 1 and next_run_at <= ${nowPlaceholder} order by next_run_at asc, name asc`,
                 limitPlaceholder,
+                pageSize,
             ),
-            [now, pageSize],
+            limitParams(this.provider, [now], pageSize),
+            { maxRows: pageSize },
         ));
         return Object.freeze(rows.map(normalizeRecurring));
     }
 
     async markRecurringTicked(name, lastRunAt, nextRunAt) {
-        await execSql(this.db, "update sloppy_recurring_jobs set last_run_at = ?, next_run_at = ?, updated_at = ? where name = ?", [
+        await execSql(this.db, `update sloppy_recurring_jobs set last_run_at = ${this.p(1)}, next_run_at = ${this.p(2)}, updated_at = ${this.p(3)} where name = ${this.p(4)}`, [
             lastRunAt,
             nextRunAt,
             nowIso(this.clock),
@@ -1085,7 +1267,7 @@ class SchedulerStorage {
     }
 
     async setRecurringEnabled(name, enabled) {
-        await execSql(this.db, "update sloppy_recurring_jobs set enabled = ?, updated_at = ? where name = ?", [
+        await execSql(this.db, `update sloppy_recurring_jobs set enabled = ${this.p(1)}, updated_at = ${this.p(2)} where name = ${this.p(3)}`, [
             enabled ? 1 : 0,
             nowIso(this.clock),
             name,
@@ -1097,58 +1279,94 @@ class SchedulerStorage {
         const now = nowIso(this.clock);
         const lockedUntil = addMsIso(now, ttlMs);
         return await inTransaction(this.db, async (tx) => {
-            const existing = await queryOne(tx, "select * from sloppy_job_locks where name = ?", [name]);
-            if (existing !== null && existing !== undefined && existing.locked_until > now && existing.owner !== owner) {
-                return false;
+            try {
+                if (this.provider === "sqlserver") {
+                    await execSql(
+                        tx,
+                        `if not exists (select 1 from sloppy_job_locks with (updlock, holdlock) where name = ${this.p(1)}) insert into sloppy_job_locks (name, owner, locked_until, updated_at) values (${this.ps(4, 2).join(", ")})`,
+                        [name, name, owner, lockedUntil, now],
+                    );
+                } else {
+                    await execSql(
+                        tx,
+                        insertOrIgnoreSql(this.provider, "sloppy_job_locks", ["name", "owner", "locked_until", "updated_at"], ["name"]),
+                        [name, owner, lockedUntil, now],
+                    );
+                }
+            } catch (error) {
+                if (!uniqueConflict(error)) {
+                    throw error;
+                }
             }
-            if (existing === null || existing === undefined) {
-                await execSql(tx, "insert into sloppy_job_locks (name, owner, locked_until, updated_at) values (?, ?, ?, ?)", [
-                    name,
-                    owner,
-                    lockedUntil,
-                    now,
-                ]);
+            if (this.provider === "sqlserver") {
+                await execSql(
+                    tx,
+                    `if exists (select 1 from sloppy_job_locks where name = ${this.p(1)} and (owner = ${this.p(2)} or locked_until <= ${this.p(3)})) update sloppy_job_locks set owner = ${this.p(4)}, locked_until = ${this.p(5)}, updated_at = ${this.p(6)} where name = ${this.p(7)} and (owner = ${this.p(8)} or locked_until <= ${this.p(9)})`,
+                    [name, owner, now, owner, lockedUntil, now, name, owner, now],
+                );
             } else {
-                await execSql(tx, "update sloppy_job_locks set owner = ?, locked_until = ?, updated_at = ? where name = ?", [
-                    owner,
-                    lockedUntil,
-                    now,
-                    name,
-                ]);
+                await execSql(
+                    tx,
+                    `update sloppy_job_locks set owner = ${this.p(1)}, locked_until = ${this.p(2)}, updated_at = ${this.p(3)} where name = ${this.p(4)} and (owner = ${this.p(5)} or locked_until <= ${this.p(6)})`,
+                    [owner, lockedUntil, now, name, owner, now],
+                );
             }
-            return true;
+            const current = await queryOne(tx, `select * from sloppy_job_locks where name = ${this.p(1)}`, [name]);
+            return current?.owner === owner && current.locked_until === lockedUntil;
         });
     }
 
     async releaseLock(name, owner) {
-        const existing = await queryOne(this.db, "select * from sloppy_job_locks where name = ?", [name]);
-        if (existing === null || existing === undefined) {
+        return await inTransaction(this.db, async (tx) => {
+            const existing = await queryOne(tx, `select * from sloppy_job_locks where name = ${this.p(1)}`, [name]);
+            if (existing === null || existing === undefined) {
+                return false;
+            }
+            if (existing.owner !== owner) {
+                throw jobsError("SLOPPY_E_JOBS_LOCK_CONFLICT", "lock is owned by another owner", { name });
+            }
+            const sql = this.provider === "sqlserver"
+                ? `if exists (select 1 from sloppy_job_locks where name = ${this.p(1)} and owner = ${this.p(2)}) delete from sloppy_job_locks where name = ${this.p(3)} and owner = ${this.p(4)}`
+                : `delete from sloppy_job_locks where name = ${this.p(1)} and owner = ${this.p(2)}`;
+            await execSql(tx, sql, this.provider === "sqlserver" ? [name, owner, name, owner] : [name, owner]);
+            const current = await queryOne(tx, `select * from sloppy_job_locks where name = ${this.p(1)}`, [name]);
+            if (current === null || current === undefined) {
+                return true;
+            }
+            if (current.owner !== owner) {
+                throw jobsError("SLOPPY_E_JOBS_LOCK_CONFLICT", "lock is owned by another owner", { name });
+            }
             return false;
-        }
-        if (existing.owner !== owner) {
-            throw jobsError("SLOPPY_E_JOBS_LOCK_CONFLICT", "lock is owned by another owner", { name });
-        }
-        await execSql(this.db, "delete from sloppy_job_locks where name = ? and owner = ?", [name, owner]);
-        return true;
+        });
     }
 
     async extendLock(name, owner, ttlMs = DEFAULT_LOCK_TTL_MS) {
-        const lockedUntil = addMsIso(nowIso(this.clock), ttlMs);
-        const existing = await queryOne(this.db, "select * from sloppy_job_locks where name = ?", [name]);
-        if (existing === null || existing === undefined || existing.owner !== owner) {
-            throw jobsError("SLOPPY_E_JOBS_LOCK_CONFLICT", "lock is not owned by caller", { name });
-        }
-        await execSql(this.db, "update sloppy_job_locks set locked_until = ?, updated_at = ? where name = ? and owner = ?", [
-            lockedUntil,
-            nowIso(this.clock),
-            name,
-            owner,
-        ]);
-        return lockedUntil;
+        return await inTransaction(this.db, async (tx) => {
+            const now = nowIso(this.clock);
+            const lockedUntil = addMsIso(now, ttlMs);
+            const sql = this.provider === "sqlserver"
+                ? `if exists (select 1 from sloppy_job_locks where name = ${this.p(1)} and owner = ${this.p(2)}) update sloppy_job_locks set locked_until = ${this.p(3)}, updated_at = ${this.p(4)} where name = ${this.p(5)} and owner = ${this.p(6)}`
+                : `update sloppy_job_locks set locked_until = ${this.p(1)}, updated_at = ${this.p(2)} where name = ${this.p(3)} and owner = ${this.p(4)}`;
+            await execSql(tx, sql, this.provider === "sqlserver" ? [name, owner, lockedUntil, now, name, owner] : [
+                lockedUntil,
+                now,
+                name,
+                owner,
+            ]);
+            const current = await queryOne(tx, `select * from sloppy_job_locks where name = ${this.p(1)}`, [name]);
+            if (current === null || current === undefined || current.owner !== owner || current.locked_until !== lockedUntil) {
+                throw jobsError("SLOPPY_E_JOBS_LOCK_CONFLICT", "lock is not owned by caller", { name });
+            }
+            return lockedUntil;
+        });
     }
 
     async listLocks() {
-        const rows = compactRows(await this.db.query("select * from sloppy_job_locks order by name"));
+        const rows = compactRows(await this.db.query(
+            limitSql(this.provider, "select * from sloppy_job_locks order by name", this.p(1), MAX_PAGE_SIZE),
+            limitParams(this.provider, [], MAX_PAGE_SIZE),
+            { maxRows: MAX_PAGE_SIZE },
+        ));
         return Object.freeze(rows.map((row) => Object.freeze({ ...row })));
     }
 
@@ -1169,8 +1387,10 @@ class SchedulerStorage {
                 this.provider,
                 `select * from sloppy_jobs where ${statusSql} order by updated_at asc, id asc`,
                 placeholder(this.provider, 4),
+                batchSize,
             ),
-            [succeededBefore, deadBefore, cancelledBefore, batchSize],
+            limitParams(this.provider, [succeededBefore, deadBefore, cancelledBefore], batchSize),
+            { maxRows: batchSize },
         ));
         const deleted = [];
         for (const job of rows.map(normalizeJob)) {
@@ -1500,14 +1720,23 @@ class SchedulerWorker {
         this._running = false;
         this._inFlight = new Set();
         this._loop = null;
+        this._registered = false;
         Object.seal(this);
+    }
+
+    async _ensureRegistered() {
+        if (this._registered) {
+            return;
+        }
+        await this.runtime.storage.registerWorker(this);
+        this._registered = true;
     }
 
     async start() {
         if (this._running) {
             return this;
         }
-        await this.runtime.storage.registerWorker(this);
+        await this._ensureRegistered();
         this._running = true;
         this._loop = this._run();
         return this;
@@ -1524,10 +1753,12 @@ class SchedulerWorker {
             await this._loop.catch(() => {});
         }
         await this.runtime.storage.stopWorker(this.id);
+        this._registered = false;
         return this;
     }
 
     async runOnce() {
+        await this._ensureRegistered();
         await this.runtime.storage.heartbeat(this.id);
         const jobs = await this.runtime.storage.claim(this, {
             queues: this.queues,
@@ -1558,14 +1789,14 @@ class SchedulerWorker {
     async _executeInner(job) {
         const definition = this.runtime.definition(job.name);
         if (definition === undefined) {
-            await this.runtime.storage.fail(job.id, this.id, jobsError("SLOPPY_E_JOBS_UNKNOWN_JOB", "job definition is missing at worker runtime"), job.retryPolicy);
+            await this._persistFailure(job, jobsError("SLOPPY_E_JOBS_UNKNOWN_JOB", "job definition is missing at worker runtime"));
             return;
         }
         let input;
         try {
             input = validatePayload(definition.input, job.payload, "execute", job.name);
         } catch (error) {
-            await this.runtime.storage.fail(job.id, this.id, error, job.retryPolicy);
+            await this._persistFailure(job, error);
             return;
         }
         try {
@@ -1584,9 +1815,29 @@ class SchedulerWorker {
                 job.timeoutMs,
                 this._controller.signal,
             );
+            await this._persistCompletion(job, result);
+        } catch (error) {
+            await this._persistFailure(job, error);
+        }
+    }
+
+    async _persistCompletion(job, result) {
+        try {
             await this.runtime.storage.complete(job.id, this.id, result);
         } catch (error) {
+            if (!terminalPersistenceRace(error)) {
+                throw error;
+            }
+        }
+    }
+
+    async _persistFailure(job, error) {
+        try {
             await this.runtime.storage.fail(job.id, this.id, error, job.retryPolicy);
+        } catch (failureError) {
+            if (!terminalPersistenceRace(failureError)) {
+                throw failureError;
+            }
         }
     }
 }

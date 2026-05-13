@@ -43,9 +43,10 @@ await jobs.enqueue("send-email", {
 });
 ```
 
-The public exports are available from both `"sloppy"` and `"sloppy/jobs"`.
-Compiler source input should import from `"sloppy/jobs"` so the Plan records
-the `stdlib.jobs` required feature.
+The bootstrap package re-exports jobs from both `"sloppy"` and `"sloppy/jobs"`.
+Compiler source input should import runtime jobs APIs from `"sloppy/jobs"` so
+the Plan records the `stdlib.jobs` required feature and Program Mode binds the
+jobs stdlib module.
 
 ## Storage
 
@@ -85,7 +86,7 @@ Definitions support:
 | `input` | Optional schema with `validate(value)` used at enqueue and execution |
 | `queue` | Default queue for this job definition |
 | `retries` / `retry` | Retry policy: `maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`, `jitter` |
-| `timeoutMs` | Handler timeout; timed-out jobs fail with `SLOPPY_E_JOBS_TIMEOUT` |
+| `timeoutMs` | Cooperative handler timeout; timed-out jobs receive an aborted `ctx.signal` and fail with `SLOPPY_E_JOBS_TIMEOUT` |
 | `payloadRedactionKeys` | Extra payload keys redacted from admin views |
 | `metadata` | Definition metadata for tools and admin backends |
 
@@ -140,6 +141,11 @@ Workers register in `sloppy_job_workers`, heartbeat while active, claim due
 jobs using provider-specific locking, and create attempt/history rows. A
 graceful stop stops claiming new jobs, waits for in-flight jobs until the
 shutdown timeout, then marks the worker stopped.
+
+Timeouts are cooperative. The worker aborts `ctx.signal` and records
+`SLOPPY_E_JOBS_TIMEOUT`; handlers should listen to the signal and stop side
+effects promptly. A handler that completes after the timeout does not complete
+the job a second time.
 
 For deterministic tests and one-shot worker commands, use `worker.runOnce()`.
 
@@ -212,6 +218,29 @@ await admin.cleanup({ keepSucceededMs: 86400000, batchSize: 100 });
 Admin payload views use redacted previews by default. Raw payload access is not
 part of the admin service.
 
+## CLI
+
+SQLite scheduler tables can be operated with native admin commands:
+
+```powershell
+sloppy jobs init --provider sqlite --database .sloppy/jobs.db
+sloppy jobs status --provider sqlite --database .sloppy/jobs.db
+sloppy jobs list --provider sqlite --database .sloppy/jobs.db
+sloppy jobs show <id> --provider sqlite --database .sloppy/jobs.db
+sloppy jobs retry <id> --provider sqlite --database .sloppy/jobs.db
+sloppy jobs cancel <id> --provider sqlite --database .sloppy/jobs.db
+sloppy jobs delete <id> --provider sqlite --database .sloppy/jobs.db
+sloppy jobs workers --provider sqlite --database .sloppy/jobs.db
+sloppy jobs recurring list --provider sqlite --database .sloppy/jobs.db
+sloppy jobs recurring pause <name> --provider sqlite --database .sloppy/jobs.db
+sloppy jobs recurring resume <name> --provider sqlite --database .sloppy/jobs.db
+sloppy jobs recurring trigger <name> --provider sqlite --database .sloppy/jobs.db
+sloppy jobs locks --provider sqlite --database .sloppy/jobs.db
+```
+
+PostgreSQL and SQL Server scheduler validation uses Sloppy Program Mode live
+lanes rather than native C admin clients.
+
 ## Live Validation
 
 The optional jobs live lanes run Sloppy source through `sloppy run` and use
@@ -224,10 +253,14 @@ Sloppy provider APIs:
 .\tools\windows\test-live-jobs.ps1 -Provider all
 ```
 
-SQLite uses `examples/jobs-basic/main.ts` and
-`examples/jobs-recurring/main.ts`. PostgreSQL and SQL Server use
-`examples/jobs-postgres-worker/main.ts` and
-`examples/jobs-sqlserver-worker/main.ts` with live provider connections.
+SQLite uses `examples/jobs-basic/main.ts`, `examples/jobs-recurring/main.ts`,
+`examples/jobs-concurrency-sqlite/main.ts`, and process-level claim checks via
+`examples/jobs-concurrency-step/main.ts`. PostgreSQL uses
+`examples/jobs-postgres-worker/main.ts` and `examples/jobs-concurrency/main.ts`.
+SQL Server uses `examples/jobs-sqlserver-worker/main.ts` plus multiple
+`sloppy run` processes running `examples/jobs-concurrency-step/main.ts` against
+the same live database, so idempotency, lock, claim, and lease races happen in
+SQL Server rather than in a Node harness.
 
 The optional benchmark lane also uses Sloppy Program Mode:
 

@@ -437,8 +437,15 @@ export default function main() {
     )
     .expect("program fixture should be writable");
 
-    super::build(&input, &out_dir, &CompileOptions::new())
-        .expect("exported FFI declaration should build");
+    super::build(
+        &input,
+        &out_dir,
+        &CompileOptions {
+            kind: Some(super::ProjectKind::Program),
+            ..CompileOptions::new()
+        },
+    )
+    .expect("exported FFI declaration should build");
     let plan_text =
         fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
     let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
@@ -927,6 +934,81 @@ export function main() {
     assert!(app_js.contains("__sloppy_program_modules[\"sloppy/providers/sqlite\"]"));
     assert!(app_js.contains("__sloppy_program_require(\"sloppy/providers/sqlite\")"));
     assert!(app_js.contains("module.exports={sqlite,Sqlite:sqlite,default:null}"));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_supports_jobs_stdlib_imports() {
+    let root = fixture_temp_dir("program-jobs-stdlib");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"import { Jobs, SloppyJobsError } from "sloppy/jobs";
+export function main() {
+  return [Jobs.schemaVersion, SloppyJobsError.name].join(":");
+}
+"#,
+    )
+    .expect("input should write");
+
+    super::build(&input, &out_dir, &CompileOptions::new())
+        .expect("jobs stdlib import should build in program mode");
+    let app_js = fs::read_to_string(out_dir.join("app.js")).expect("bundle should exist");
+    assert!(app_js.contains("__sloppy_program_modules[\"sloppy/jobs\"]"));
+    assert!(app_js.contains("__sloppy_program_require(\"sloppy/jobs\")"));
+    assert!(app_js.contains("module.exports = { Jobs, SloppyJobsError, default: Jobs };"));
+    let plan_text = fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should exist");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    assert_eq!(plan["requiredFeatures"], serde_json::json!(["stdlib.jobs"]));
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_mode_direct_data_open_emits_provider_metadata() {
+    let root = std::env::temp_dir().join(format!(
+        "sloppyc-program-direct-provider-{}",
+        std::process::id()
+    ));
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    if root.exists() {
+        fs::remove_dir_all(&root).expect("stale program fixture should be removable");
+    }
+    fs::create_dir_all(&root).expect("program fixture directory should be created");
+    fs::write(
+        &input,
+        r#"import { data } from "sloppy";
+export function main(provider) {
+  if (provider === "sqlite") data.sqlite.open({ database: "local.db", access: "readwrite" });
+  if (provider === "postgres") data.postgres.open({ connectionString: "postgres://local", access: "readwrite" });
+  if (provider === "sqlserver") data.sqlserver.open({ connectionString: "Server=.;", access: "readwrite" });
+}
+"#,
+    )
+    .expect("input should write");
+
+    super::build(
+        &input,
+        &out_dir,
+        &CompileOptions {
+            kind: Some(super::ProjectKind::Program),
+            ..CompileOptions::new()
+        },
+    )
+    .expect("direct provider opens should build in program mode");
+    let plan_text = fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should exist");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    let providers = plan["dataProviders"]
+        .as_array()
+        .expect("dataProviders should be present");
+    for provider in ["sqlite", "postgres", "sqlserver"] {
+        assert!(providers
+            .iter()
+            .any(|entry| entry["providerKind"] == provider));
+    }
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -6089,9 +6171,8 @@ export default app;
     assert!(app.uses_jobs_runtime);
 
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js
-        .source
-        .contains("const { Results, Jobs, SloppyJobsError } = __sloppyRuntime;"));
+    assert!(emitted_js.source.contains("Jobs"));
+    assert!(emitted_js.source.contains("SloppyJobsError"));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,

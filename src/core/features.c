@@ -32,6 +32,7 @@
      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |                                             \
      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO))
 #define SL_FEATURE_DEPS_WORKERS SL_FEATURE_DEPS_NET
+#define SL_FEATURE_DEPS_JOBS (SL_FEATURE_DEPS_TIME | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_TIME))
 #define SL_FEATURE_DEPS_NODE_COMPAT                                                                \
     (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8))
 #define SL_FEATURE_DEPS_FFI                                                                        \
@@ -343,6 +344,13 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_http_client_descriptor(id, http_client);
     case SL_RUNTIME_FEATURE_STDLIB_WORKERS:
         return sl_feature_workers_descriptor(id, workers);
+    case SL_RUNTIME_FEATURE_STDLIB_JOBS:
+        return sl_feature_descriptor_make(
+            id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+            sl_feature_literal("stdlib.jobs", sizeof("stdlib.jobs") - 1U),
+            sl_feature_literal("jobs stdlib", sizeof("jobs stdlib") - 1U),
+            sl_feature_literal("sloppy/jobs", sizeof("sloppy/jobs") - 1U), sl_str_empty(),
+            SL_FEATURE_DEPS_JOBS, true, false, true);
     case SL_RUNTIME_FEATURE_STDLIB_FFI:
         return sl_feature_ffi_descriptor(id, ffi);
     case SL_RUNTIME_FEATURE_STDLIB_FS:
@@ -567,6 +575,9 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
          SL_FEATURE_STR("stdlib.workers"), SL_FEATURE_STR("workers stdlib"),
          SL_FEATURE_STR("sloppy/workers"), SL_FEATURE_STR("__sloppy.workers"),
          SL_FEATURE_DEPS_WORKERS, true, true, true},
+        {SL_RUNTIME_FEATURE_STDLIB_JOBS, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.jobs"), SL_FEATURE_STR("jobs stdlib"),
+         SL_FEATURE_STR("sloppy/jobs"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_JOBS, true, false, true},
         {SL_RUNTIME_FEATURE_NODE_COMPAT_PATH, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("node.compat.path"), SL_FEATURE_STR("node:path compatibility shim"),
          SL_FEATURE_STR("sloppy/node/path"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_NODE_COMPAT, true,

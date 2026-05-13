@@ -210,16 +210,26 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_NODE_COMPAT_STREAM);
     const SlRuntimeFeatureDescriptor* ffi =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FFI);
+    const SlRuntimeFeatureDescriptor* jobs =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_JOBS);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 45) {
+    if (SL_RUNTIME_FEATURE_COUNT != 46) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || sqlserver == NULL || data == NULL || time == NULL ||
         crypto == NULL || codec == NULL || net == NULL || os == NULL || http_client == NULL ||
         fs == NULL || config == NULL || node_path == NULL || node_fs_promises == NULL ||
-        node_assert == NULL || node_stream == NULL || ffi == NULL)
+        node_assert == NULL || node_stream == NULL || ffi == NULL || jobs == NULL)
     {
         return 61;
+    }
+    if (!sl_str_equal(jobs->stable_id, sl_str_from_cstr("stdlib.jobs")) ||
+        !sl_str_equal(jobs->stdlib_import, sl_str_from_cstr("sloppy/jobs")) ||
+        !sl_str_is_empty(jobs->v8_intrinsic_namespace) || jobs->requires_v8_intrinsics ||
+        (jobs->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_V8)) == 0U ||
+        (jobs->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_TIME)) == 0U)
+    {
+        return 80;
     }
     if (!sl_str_equal(sqlite->stdlib_import, sl_str_from_cstr("sloppy/providers/sqlite")) ||
         !sl_str_equal(sqlite->v8_intrinsic_namespace, sl_str_from_cstr("__sloppy.data.sqlite")) ||
@@ -877,6 +887,39 @@ static int test_codec_dependents_fail_closed_when_codec_unavailable(void)
     return 0;
 }
 
+static int test_jobs_required_feature_activates_time_dependency(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.jobs")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 1;
+    }
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_CORE) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_V8) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_TIME) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_JOBS))
+    {
+        return 2;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 3;
+    }
+    return 0;
+}
+
 static int test_explicit_net_required_feature_activates_when_available(void)
 {
     unsigned char diag_storage[2048];
@@ -1449,6 +1492,7 @@ int main(void)
         test_explicit_codec_required_feature_activates_when_available,
         test_codec_required_feature_fails_when_runtime_unavailable,
         test_codec_dependents_fail_closed_when_codec_unavailable,
+        test_jobs_required_feature_activates_time_dependency,
         test_explicit_net_required_feature_activates_when_available,
         test_net_required_feature_activates_by_default_after_tcp_client_backend,
         test_explicit_os_required_feature_activates_when_available,

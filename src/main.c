@@ -44,6 +44,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <time.h>
 #include <yyjson.h>
 
 #define SL_CLI_MAX_ROUTES 1024U
@@ -119,6 +120,7 @@
 #include "cli/cli_package.inc"
 #include "cli/cli_lookup.inc"
 #include "cli/cli_db.inc"
+#include "cli/cli_jobs.inc"
 #include "cli/cli_routes.inc"
 #include "cli/cli_deps.inc"
 #include "cli/cli_doctor.inc"
@@ -178,6 +180,9 @@ int main(int argc, char** argv)
     }
     if (strcmp(options.command, "db") == 0) {
         return sl_cli_command_db(&options);
+    }
+    if (strcmp(options.command, "jobs") == 0) {
+        return sl_cli_command_jobs(&options);
     }
     if (strcmp(options.command, "audit") == 0) {
         return sl_cli_command_audit(&options);

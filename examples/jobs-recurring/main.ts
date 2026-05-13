@@ -1,17 +1,17 @@
-import { Jobs, Schema, data } from "sloppy";
+import { data } from "sloppy";
+import { Jobs } from "sloppy/jobs";
 
 export async function main(args) {
     const database = args[0] ?? "jobs-recurring.db";
     const db = data.sqlite.open({
         database,
-        capability: "data.jobs",
+        capability: "data.sqlite.program",
         access: "readwrite",
     });
     const jobs = Jobs.create({ storage: Jobs.storage.sqlite(db) });
     await jobs.storage.init();
 
     jobs.define("sync-users", {
-        input: Schema.object({ tenantId: Schema.string().min(1) }),
         queue: "sync",
         retries: { maxAttempts: 3, backoff: "exponential", initialDelayMs: 1, maxDelayMs: 10 },
         timeoutMs: 30000,

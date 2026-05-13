@@ -1,4 +1,5 @@
-import { Jobs, data } from "sloppy";
+import { data } from "sloppy";
+import { Jobs } from "sloppy/jobs";
 import { Environment } from "sloppy/os";
 
 function requireEnvironment(name) {
@@ -12,15 +13,16 @@ function requireEnvironment(name) {
 export async function main() {
     const db = data.postgres.open({
         connectionString: requireEnvironment("SLOPPY_JOBS_POSTGRES_URL"),
+        capability: "data.postgres.program",
         access: "readwrite",
     });
-    await db.exec`
+    await db.exec(`
         create table if not exists sloppy_jobs_live_log (
             id bigserial primary key,
             job_name text not null,
             requested_by text not null
         )
-    `;
+    `);
 
     const jobs = Jobs.create({ storage: Jobs.storage.postgres(db) });
     await jobs.storage.init();
@@ -30,10 +32,13 @@ export async function main() {
         retries: { maxAttempts: 2, backoff: "fixed", initialDelayMs: 1 },
         timeoutMs: 30000,
     }, async (ctx, input) => {
-        await db.exec`
+        await db.exec(
+            `
             insert into sloppy_jobs_live_log(job_name, requested_by)
-            values (${ctx.name}, ${input.requestedBy ?? "system"})
-        `;
+            values ($1, $2)
+        `,
+            [ctx.name, input.requestedBy ?? "system"],
+        );
     });
 
     await jobs.enqueue("reindex-search", { requestedBy: "live-postgres" }, {

@@ -1005,6 +1005,7 @@ struct ModuleGraph {
     uses_realtime_runtime: bool,
     uses_workers_runtime: bool,
     uses_jobs_runtime: bool,
+    program_data_providers: BTreeSet<String>,
     dependency_graph: DependencyGraph,
     uses_ffi_runtime: bool,
     ffi_libraries: Vec<FfiLibraryMetadata>,
@@ -1056,6 +1057,7 @@ impl ModuleGraph {
             uses_realtime_runtime: false,
             uses_workers_runtime: false,
             uses_jobs_runtime: false,
+            program_data_providers: BTreeSet::new(),
             dependency_graph: DependencyGraph::default(),
             uses_ffi_runtime: false,
             ffi_libraries: Vec::new(),
@@ -1598,6 +1600,9 @@ fn program_inferred_capabilities(graph: &ModuleGraph) -> Vec<DatabaseCapability>
     if graph.uses_workers_runtime {
         push_program_inferred_capability(&mut capabilities, "workers");
     }
+    for provider in &graph.program_data_providers {
+        push_program_inferred_database_capability(&mut capabilities, provider);
+    }
     if graph.uses_ffi_runtime || !graph.ffi_libraries.is_empty() || !graph.ffi_structs.is_empty() {
         push_program_inferred_capability(&mut capabilities, "ffi");
     }
@@ -1621,6 +1626,36 @@ fn push_program_inferred_capability(capabilities: &mut Vec<DatabaseCapability>, 
         source: format!("import:{token}"),
         span: Span::new(0, 0),
         from_provider_use: false,
+    });
+}
+
+fn push_program_inferred_database_capability(
+    capabilities: &mut Vec<DatabaseCapability>,
+    provider: &str,
+) {
+    let token = format!("data.{provider}.program");
+    if capabilities.iter().any(|capability| {
+        capability.capability_kind == "database" && capability.provider == provider
+    }) {
+        return;
+    }
+    capabilities.push(DatabaseCapability {
+        token: token.clone(),
+        capability_kind: "database".to_string(),
+        provider: provider.to_string(),
+        config_name: None,
+        config_key: None,
+        access: "readwrite".to_string(),
+        database: if provider == "sqlite" {
+            Some(":memory:".to_string())
+        } else {
+            None
+        },
+        config_source: None,
+        source_name: "program provider".to_string(),
+        source: format!("data.{provider}.open"),
+        span: Span::new(0, 0),
+        from_provider_use: true,
     });
 }
 
@@ -1963,6 +1998,7 @@ fn transform_program_source(
 
     let mut program = parsed.program;
     let source_name = graph.record_source(path, source);
+    mark_program_direct_provider_usage(source, graph);
     extract_ffi_declarations_from_statements(
         path,
         source,
@@ -1981,6 +2017,19 @@ fn transform_program_source(
     )?;
     let transformed = transpile_program_typescript(path, &allocator, &mut program)?;
     rewrite_program_module_exports(path, &transformed, graph, package)
+}
+
+fn mark_program_direct_provider_usage(source: &str, graph: &mut ModuleGraph) {
+    for (needle, provider) in [
+        ("data.sqlite.open", "sqlite"),
+        ("data.postgres.open", "postgres"),
+        ("data.sqlserver.open", "sqlserver"),
+    ] {
+        if source.contains(needle) {
+            graph.uses_data_runtime = true;
+            graph.program_data_providers.insert(provider.to_string());
+        }
+    }
 }
 
 fn analyze_program_imports(
@@ -2350,6 +2399,13 @@ fn analyze_program_import(
                 resolved_package,
                 Some(from_id),
             )?;
+            Ok(())
+        }
+        resolver::ImportKind::SlopJobs => {
+            validate_program_stdlib_import(path, import, &import_kind)?;
+            mark_program_import(graph, &import_kind, import);
+            ensure_sloppy_jobs_module(graph, modules);
+            graph.add_dependency_import(&from_id, specifier, "sloppy/jobs", "sloppy-stdlib");
             Ok(())
         }
         resolver::ImportKind::SlopStdlib
@@ -2757,6 +2813,49 @@ fn ensure_node_compat_module(
 }
 
 const SLOPPY_SQLITE_PROVIDER_PROGRAM_MODULE: &str = r#"function validateSqliteProviderName(name){if(typeof name!=="string"||name.length===0){throw new TypeError("Sloppy sqlite provider name must be a non-empty string.");}if(name.trim()!==name||!/^[A-Za-z0-9_.-]+$/u.test(name)){throw new TypeError("Sloppy sqlite provider name must contain only letters, digits, dots, underscores, or hyphens.");}}function validateSqliteProviderOptions(options){if(options===undefined){return Object.freeze({});}if(options===null||typeof options!=="object"||Array.isArray(options)){throw new TypeError("Sloppy sqlite provider options must be a plain object.");}if(Object.prototype.hasOwnProperty.call(options,"database")&&typeof options.database!=="string"){throw new TypeError("Sloppy sqlite provider database option must be a string.");}return Object.freeze({...options});}function sqlite(name,options){validateSqliteProviderName(name);return Object.freeze({__sloppyProvider:true,kind:"sqlite",name,token:name.includes(".")?name:`data.${name}`,options:validateSqliteProviderOptions(options)});}module.exports={sqlite,Sqlite:sqlite,default:null};module.exports.default=module.exports;"#;
+const SLOPPY_JOBS_PROGRAM_MODULE_SOURCE: &str = include_str!("../../stdlib/sloppy/jobs.js");
+
+fn sloppy_jobs_program_module() -> String {
+    SLOPPY_JOBS_PROGRAM_MODULE_SOURCE
+        .replace(
+            "import { CancellationController } from \"./time.js\";\r\n\r\n",
+            "const { CancellationController } = globalThis.__sloppy_runtime;\n\n",
+        )
+        .replace(
+            "import { CancellationController } from \"./time.js\";\n\n",
+            "const { CancellationController } = globalThis.__sloppy_runtime;\n\n",
+        )
+        .replace(
+            "\r\nexport { Jobs, SloppyJobsError };\r\n",
+            "\nmodule.exports = { Jobs, SloppyJobsError, default: Jobs };\nmodule.exports.default = Jobs;\n",
+        )
+        .replace(
+            "\nexport { Jobs, SloppyJobsError };\n",
+            "\nmodule.exports = { Jobs, SloppyJobsError, default: Jobs };\nmodule.exports.default = Jobs;\n",
+        )
+}
+
+fn ensure_sloppy_jobs_module(graph: &mut ModuleGraph, modules: &mut Vec<ProgramModule>) {
+    if modules.iter().any(|module| module.id == "sloppy/jobs") {
+        return;
+    }
+    graph.dependency_graph.ensure_defaults();
+    graph.add_dependency_module(
+        "sloppy/jobs".to_string(),
+        "sloppy/jobs".to_string(),
+        ModuleFormat::CommonJs,
+        None,
+        Some("sloppy-stdlib".to_string()),
+    );
+    let source = sloppy_jobs_program_module();
+    modules.push(ProgramModule {
+        id: "sloppy/jobs".to_string(),
+        source_name: "sloppy/jobs".to_string(),
+        source: source.clone(),
+        emitted_source: source,
+        format: ModuleFormat::CommonJs,
+    });
+}
 
 fn ensure_sloppy_provider_module(
     backing: &str,
@@ -2973,6 +3072,11 @@ fn resolve_program_dependency(
                 "sloppy-provider",
             );
             Ok(Some("sloppy/providers/sqlite".to_string()))
+        }
+        resolver::ImportKind::SlopJobs => {
+            ensure_sloppy_jobs_module(graph, modules);
+            graph.add_dependency_import(&from_id, specifier, "sloppy/jobs", "sloppy-stdlib");
+            Ok(Some("sloppy/jobs".to_string()))
         }
         resolver::ImportKind::NodeBuiltin(builtin) => Err(Diagnostic::new(
             "SLOPPYC_E_UNSUPPORTED_NODE_BUILTIN",
@@ -3552,8 +3656,8 @@ fn program_import_replacement(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
-        | resolver::ImportKind::SlopJobs
         | resolver::ImportKind::SlopFfi => "globalThis.__sloppy_runtime".to_string(),
+        resolver::ImportKind::SlopJobs => "__sloppy_program_require(\"sloppy/jobs\")".to_string(),
         resolver::ImportKind::SqliteProvider => {
             "__sloppy_program_require(\"sloppy/providers/sqlite\")".to_string()
         }
@@ -3819,8 +3923,8 @@ fn program_reexport_require_expr(
         | resolver::ImportKind::SlopNet
         | resolver::ImportKind::SlopOs
         | resolver::ImportKind::SlopWorkers
-        | resolver::ImportKind::SlopJobs
         | resolver::ImportKind::SlopFfi => Ok("globalThis.__sloppy_runtime".to_string()),
+        resolver::ImportKind::SlopJobs => Ok("__sloppy_program_require(\"sloppy/jobs\")".to_string()),
         resolver::ImportKind::SqliteProvider => {
             Ok("__sloppy_program_require(\"sloppy/providers/sqlite\")".to_string())
         }
@@ -18894,7 +18998,7 @@ fn emit_dynamic_web_app_js(source: &str) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError } = __sloppyRuntime;\n");
+    output.push_str("const { Results, Jobs, SloppyJobsError, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError } = __sloppyRuntime;\n");
     output.push_str(
         r#"function __sloppy_create_dynamic_app() {
   const routes = [];

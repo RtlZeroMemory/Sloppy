@@ -285,6 +285,11 @@ typedef struct SlCliOptions
     const char* db_action;
     const char* db_provider;
     const char* db_target_path;
+    const char* jobs_action;
+    const char* jobs_subaction;
+    const char* jobs_target;
+    const char* jobs_provider;
+    const char* jobs_database;
     char** program_args;
     size_t program_arg_count;
     uint16_t port;
