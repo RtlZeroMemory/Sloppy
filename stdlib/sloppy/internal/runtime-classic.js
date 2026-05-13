@@ -19706,8 +19706,8 @@ function createRedisCache(nameOrRedis, maybeOptions = undefined) {
             throw new TypeError(`Sloppy ${subject} key must be a non-empty string.`);
         }
     }
-    function __sloppyRequiredConfigReference(key) {
-        __sloppyValidateConfigReferenceKey(key, "Config.required");
+    function __sloppyRequiredConfigReference(key, subject = "Config.required") {
+        __sloppyValidateConfigReferenceKey(key, subject);
         return Object.freeze({
             __sloppyConfigReference: true,
             key,
@@ -19723,6 +19723,9 @@ function createRedisCache(nameOrRedis, maybeOptions = undefined) {
                 };
             },
         });
+    }
+    function __sloppyRequiredSecretConfigReference(key) {
+        return __sloppyRequiredConfigReference(key, "Config.requiredSecret");
     }
     function __sloppyBooleanConfigReference(key, fallback = undefined) {
         __sloppyValidateConfigReferenceKey(key, "Config.boolean");
@@ -19749,7 +19752,7 @@ function createRedisCache(nameOrRedis, maybeOptions = undefined) {
     const Config = Object.freeze({
         boolean: __sloppyBooleanConfigReference,
         required: __sloppyRequiredConfigReference,
-        requiredSecret: __sloppyRequiredConfigReference,
+        requiredSecret: __sloppyRequiredSecretConfigReference,
     });
     globalThis.__sloppy_runtime = Object.freeze({
         Results,

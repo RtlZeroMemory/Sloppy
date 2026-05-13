@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
@@ -532,9 +532,11 @@ const app = Sloppy.create();
 const auth = app.config.bind("Auth", {
   jwtSecret: "secret",
   tokenTtlMinutes: { type: "number", default: 60, min: 1, max: 1440 },
+  claims: { type: "object", default: { issuer: "local" } },
   issuer: { key: "Jwt:Issuer", type: "string", required: true }
 });
 app.get("/", () => Results.json({
+  claims: auth.claims,
   issuer: auth.issuer,
   tokenTtlMinutes: auth.tokenTtlMinutes
 }));
@@ -542,7 +544,7 @@ export default app;
 "#;
     let mut app =
         extract(std::path::Path::new("app.js"), source).expect("bind descriptors should extract");
-    assert_eq!(app.config_reads.len(), 3);
+    assert_eq!(app.config_reads.len(), 4);
     assert!(app
         .config_reads
         .iter()
@@ -563,6 +565,15 @@ export default app;
         .apply_to_app(&mut app)
         .expect("bind metadata should apply without requiring dev values");
     let emitted_js = super::emit_app_js(&app);
+    let plain_object_offset = emitted_js
+        .source
+        .find("function __sloppy_is_plain_object")
+        .expect("config object bindings should emit plain-object helper");
+    let config_read_offset = emitted_js
+        .source
+        .find("function __sloppy_config_read")
+        .expect("config bind helper should emit config read");
+    assert!(plain_object_offset < config_read_offset);
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,
@@ -590,6 +601,11 @@ export default app;
         .iter()
         .any(|entry| entry["key"] == "Auth:TokenTtlMinutes"
             && entry["default"].as_f64() == Some(60.0)));
+    assert!(plan["configuration"]["packageManifest"]["optional"]
+        .as_array()
+        .expect("optional manifest should be an array")
+        .iter()
+        .any(|entry| entry["key"] == "Auth:Claims" && entry["default"]["issuer"] == "local"));
 }
 
 #[test]
@@ -4041,6 +4057,56 @@ export default app;
         .handler
         .emitted_source
         .contains("function auth"));
+}
+
+#[test]
+fn helper_dependency_selection_ignores_local_bindings_and_parameters() {
+    let helper_sources = BTreeMap::from([
+        (
+            "buildResponse".to_string(),
+            "function buildResponse(formatValue) { const normalizeUser = formatValue; return normalizeUser({ ok: true }); }".to_string(),
+        ),
+        (
+            "formatValue".to_string(),
+            "function formatValue(value) { return value; }".to_string(),
+        ),
+        (
+            "normalizeUser".to_string(),
+            "function normalizeUser(value) { return value; }".to_string(),
+        ),
+    ]);
+
+    let selected = super::helper_sources_referenced_by_handler(
+        "() => Results.json(buildResponse((value) => value))",
+        &helper_sources,
+    );
+
+    assert_eq!(selected.len(), 1);
+    assert!(selected[0].contains("function buildResponse"));
+    assert!(!selected[0].contains("function formatValue"));
+    assert!(!selected
+        .iter()
+        .any(|source| source.contains("function normalizeUser")));
+}
+
+#[test]
+fn helper_dependency_selection_orders_referenced_initializer_helpers() {
+    let helper_sources = BTreeMap::from([
+        (
+            "OrderCreated".to_string(),
+            "const OrderCreated = Webhooks.event(\"order.created\", { version: 1, schema: OrderSchema });".to_string(),
+        ),
+        (
+            "OrderSchema".to_string(),
+            "const OrderSchema = schema.object({ id: schema.string() });".to_string(),
+        ),
+    ]);
+
+    let selected = super::helper_sources_in_dependency_order(&helper_sources);
+
+    assert_eq!(selected.len(), 2);
+    assert!(selected[0].contains("const OrderSchema"));
+    assert!(selected[1].contains("const OrderCreated"));
 }
 
 #[test]

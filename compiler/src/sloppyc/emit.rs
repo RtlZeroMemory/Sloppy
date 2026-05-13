@@ -291,6 +291,22 @@ fn framework_queue_service_entries(app: &ExtractedApp) -> Vec<(String, String)> 
         .collect()
 }
 
+fn app_needs_config_bind_helper(app: &ExtractedApp) -> bool {
+    app.routes.iter().any(|route| {
+        route
+            .handler
+            .emitted_source
+            .contains("__sloppy_config_bind(")
+    }) || app
+        .helper_sources
+        .iter()
+        .any(|source| source.contains("__sloppy_config_bind("))
+        || app
+            .config_reads
+            .iter()
+            .any(|read| read.source.contains(".config.bind("))
+}
+
 pub(super) fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     if app.kind == ProjectKind::Program {
         return emit_program_app_js(app);
@@ -321,10 +337,7 @@ pub(super) fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             .iter()
             .any(|binding| binding.kind == "config")
     });
-    let needs_config_bind_helper = app
-        .helper_sources
-        .iter()
-        .any(|source| source.contains("__sloppy_config_bind("));
+    let needs_config_bind_helper = app_needs_config_bind_helper(app);
     let queue_service_entries = framework_queue_service_entries(app);
     let needs_output_cache_runtime = app.routes.iter().any(|route| route.output_cache.is_some());
     let needs_framework_services = needs_framework_arg_helper
@@ -604,6 +617,13 @@ pub(super) fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
                 ),
             );
         }
+    }
+    if needs_config_bind_helper {
+        push_generated_line(
+            &mut output,
+            &mut generated_line,
+            "function __sloppy_is_plain_object(value) { return value !== null && typeof value === \"object\" && !Array.isArray(value); }",
+        );
     }
     if needs_config_bind_helper {
         push_generated_line(
@@ -929,11 +949,13 @@ pub(super) fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         || needs_cors_helper
         || needs_auth_helper
     {
-        push_generated_line(
-            &mut output,
-            &mut generated_line,
-            "function __sloppy_is_plain_object(value) { return value !== null && typeof value === \"object\" && !Array.isArray(value); }",
-        );
+        if !needs_config_bind_helper {
+            push_generated_line(
+                &mut output,
+                &mut generated_line,
+                "function __sloppy_is_plain_object(value) { return value !== null && typeof value === \"object\" && !Array.isArray(value); }",
+            );
+        }
         push_generated_line(
             &mut output,
             &mut generated_line,
@@ -1334,6 +1356,7 @@ fn estimate_app_js_capacity(app: &ExtractedApp) -> usize {
 }
 
 fn emit_dynamic_web_app_js(source: &str, app: &ExtractedApp) -> EmittedAppJs {
+    let needs_config_bind_helper = app_needs_config_bind_helper(app);
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
@@ -1382,6 +1405,18 @@ function __sloppy_framework_injection(scope, binding) {
 }
 "#,
     );
+    if needs_config_bind_helper {
+        output.push_str(
+            r#"function __sloppy_is_plain_object(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
+function __sloppy_config_env_key(key) { return String(key).split(":").join("__"); }
+function __sloppy_config_raw(entry) { const value = Environment.get(__sloppy_config_env_key(entry.key)); if (value !== undefined) { return value; } if (entry.hasDefault) { return entry.default; } if (entry.required) { throw new Error(`sloppy: config key '${entry.key}' is required.`); } return undefined; }
+function __sloppy_config_duration(value, key) { if (typeof value === "number" && Number.isFinite(value) && value >= 0) { return value; } if (typeof value === "string") { const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)$/iu); if (match !== null) { const amount = Number(match[1]); const unit = match[2].toLowerCase(); const factors = { ms: 1, s: 1000, m: 60000, h: 3600000 }; return amount * factors[unit]; } } throw new TypeError(`sloppy: config key '${key}' must be a duration in ms, s, m, or h.`); }
+function __sloppy_config_size(value, key) { if (typeof value === "number" && Number.isInteger(value) && value >= 0) { return value; } if (typeof value === "string") { const match = value.trim().match(/^(\d+)\s*(b|kb|mb|gb|kib|mib|gib)$/iu); if (match !== null) { const amount = Number(match[1]); const unit = match[2].toLowerCase(); const factors = { b: 1, kb: 1000, mb: 1000000, gb: 1000000000, kib: 1024, mib: 1048576, gib: 1073741824 }; return amount * factors[unit]; } } throw new TypeError(`sloppy: config key '${key}' must be a size.`); }
+function __sloppy_config_read(entry) { const value = __sloppy_config_raw(entry); if (value === undefined) { return undefined; } switch (entry.type) { case "bool": case "boolean": if (typeof value === "boolean") return value; if (typeof value === "string" && /^(true|false)$/iu.test(value.trim())) return value.trim().toLowerCase() === "true"; throw new TypeError(`sloppy: config key '${entry.key}' must be a boolean.`); case "int": case "integer": { const number = typeof value === "number" ? value : Number(value); if (Number.isInteger(number)) return number; throw new TypeError(`sloppy: config key '${entry.key}' must be an integer.`); } case "number": { const number = typeof value === "number" ? value : Number(value); if (Number.isFinite(number)) return number; throw new TypeError(`sloppy: config key '${entry.key}' must be a number.`); } case "duration": return __sloppy_config_duration(value, entry.key); case "size": case "bytes": return __sloppy_config_size(value, entry.key); case "array": if (Array.isArray(value)) return Object.freeze([...value]); throw new TypeError(`sloppy: config key '${entry.key}' must be an array.`); case "object": if (__sloppy_is_plain_object(value)) return Object.freeze({ ...value }); throw new TypeError(`sloppy: config key '${entry.key}' must be an object.`); case "secret": case "string": default: return String(value); } }
+function __sloppy_config_bind(entries) { const bound = {}; for (const entry of entries) { const value = __sloppy_config_read(entry); if (value !== undefined) { bound[entry.property] = value; } } return Object.freeze(bound); }
+"#,
+        );
+    }
     output.push_str(
         r#"function __sloppy_create_dynamic_app() {
   const routes = [];
@@ -1442,6 +1477,12 @@ function __sloppy_framework_injection(scope, binding) {
 const Sloppy = Object.freeze({ create: __sloppy_create_dynamic_app, createBuilder() { return { build: __sloppy_create_dynamic_app }; } });
 "#,
     );
+    if needs_config_bind_helper {
+        output = output.replace(
+            "  return app;\n}\nconst Sloppy",
+            "  app.config = Object.freeze({ bind: __sloppy_config_bind });\n  return app;\n}\nconst Sloppy",
+        );
+    }
     output.push_str(source);
     output.push_str(
         r#"

@@ -39,13 +39,18 @@ await host.expectRateLimited("POST", "/json-clocked", {
 });
 
 const metrics = app.metrics.snapshot();
+const serializedMetrics = JSON.stringify(metrics);
 assert.equal(
     metrics.metrics.some((metric) => metric.name === "rate_limit.denied.total"),
     true,
     "rate-limit denied metric should be emitted",
 );
 assert.equal(
-    JSON.stringify(metrics).includes("192.0.2.1"),
+    ["192.0.2.1", "192.0.2.10", "192.0.2.11"].some((ip) => serializedMetrics.includes(ip)),
     false,
     "rate-limit metrics must not expose raw IP partitions",
+);
+assert.throws(
+    () => host.post("/json-clocked", { remoteAddress: "192.0.2.12", text: "x", json: { ok: true } }),
+    /one body source/,
 );

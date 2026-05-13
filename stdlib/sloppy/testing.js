@@ -1936,6 +1936,9 @@ class RequestBuilder {
             delete this._requestOptions.timeout;
             delete this._requestOptions.timeoutMs;
             this._body = {};
+            if (bodySourceCount(options) > 1) {
+                throw new TypeError("Sloppy test host request options must use one body source.");
+            }
             if (options.json !== undefined) {
                 this._body.json = options.json;
             } else if (options.text !== undefined) {

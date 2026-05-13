@@ -4,8 +4,8 @@ function validateConfigReferenceKey(key, subject = "Config.required") {
     }
 }
 
-function required(key) {
-    validateConfigReferenceKey(key, "Config.required");
+function requiredReference(key, subject = "Config.required") {
+    validateConfigReferenceKey(key, subject);
     return Object.freeze({
         __sloppyConfigReference: true,
         key,
@@ -21,6 +21,14 @@ function required(key) {
             };
         },
     });
+}
+
+function required(key) {
+    return requiredReference(key);
+}
+
+function requiredSecret(key) {
+    return requiredReference(key, "Config.requiredSecret");
 }
 
 function boolean(key, fallback = undefined) {
@@ -49,5 +57,5 @@ function boolean(key, fallback = undefined) {
 export const Config = Object.freeze({
     boolean,
     required,
-    requiredSecret: required,
+    requiredSecret,
 });

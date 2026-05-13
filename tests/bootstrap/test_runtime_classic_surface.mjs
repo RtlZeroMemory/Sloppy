@@ -93,6 +93,7 @@ assert.equal(response.status, 200);
 assert.deepEqual(runtime.schema.string().validate("ok"), schema.string().validate("ok"));
 assert.deepEqual(runtime.Text.utf8.decode(runtime.Text.utf8.encode("hello")), "hello");
 assert.equal(runtime.Config.requiredSecret("Auth:SessionSecret").key, "Auth:SessionSecret");
+assert.throws(() => runtime.Config.requiredSecret(""), /Config\.requiredSecret key/);
 const ratePolicy = runtime.RateLimit.fixedWindow({
     limit: 1,
     windowMs: 1000,

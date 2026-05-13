@@ -120,6 +120,7 @@ static SlRuntimeFeatureAvailability all_available(void)
     availability.stdlib_os = true;
     availability.stdlib_http_client = true;
     availability.stdlib_workers = true;
+    availability.stdlib_webhooks = true;
     availability.stdlib_ffi = true;
     return availability;
 }
@@ -497,6 +498,38 @@ static int test_webhooks_required_feature_is_known_and_activates_dependencies(vo
     }
     if (diag.code != SL_DIAG_NONE) {
         return 4;
+    }
+    return 0;
+}
+
+static int test_webhooks_required_feature_fails_when_runtime_unavailable(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.webhooks")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = all_available();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+
+    availability.stdlib_webhooks = false;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_UNSUPPORTED) != 0)
+    {
+        return 1;
+    }
+    if (diag.code != SL_DIAG_UNAVAILABLE_RUNTIME_FEATURE ||
+        !sl_str_equal(diag.related[0].message, sl_str_from_cstr("stdlib.webhooks")))
+    {
+        return 2;
+    }
+    if (sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_WEBHOOKS)) {
+        return 3;
     }
     return 0;
 }
@@ -1585,6 +1618,7 @@ int main(void)
         test_http_client_required_feature_activates_tcp_dependency,
         test_workers_required_feature_activates_runtime_dependencies,
         test_webhooks_required_feature_is_known_and_activates_dependencies,
+        test_webhooks_required_feature_fails_when_runtime_unavailable,
         test_workers_feature_diagnostic_golden,
         test_node_compat_required_features_activate_v8_dependency,
         test_node_compat_required_feature_fails_without_v8,

@@ -144,6 +144,7 @@ typedef struct SlRuntimeFeatureAvailability
     bool stdlib_os;
     bool stdlib_http_client;
     bool stdlib_workers;
+    bool stdlib_webhooks;
     bool stdlib_ffi;
 } SlRuntimeFeatureAvailability;
 

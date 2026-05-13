@@ -190,14 +190,15 @@ static SlRuntimeFeatureDescriptor sl_feature_workers_descriptor(SlRuntimeFeature
         SL_FEATURE_DEPS_WORKERS, available, true, true);
 }
 
-static SlRuntimeFeatureDescriptor sl_feature_webhooks_descriptor(SlRuntimeFeatureId id)
+static SlRuntimeFeatureDescriptor sl_feature_webhooks_descriptor(SlRuntimeFeatureId id,
+                                                                 bool available)
 {
     return sl_feature_descriptor_make(
         id, SL_RUNTIME_FEATURE_KIND_STDLIB,
         sl_feature_literal("stdlib.webhooks", sizeof("stdlib.webhooks") - 1U),
         sl_feature_literal("webhooks stdlib", sizeof("webhooks stdlib") - 1U),
         sl_feature_literal("sloppy/webhooks", sizeof("sloppy/webhooks") - 1U), sl_str_empty(),
-        SL_FEATURE_DEPS_WEBHOOKS, true, false, true);
+        SL_FEATURE_DEPS_WEBHOOKS, available, false, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_cache_descriptor(SlRuntimeFeatureId id)
@@ -299,6 +300,7 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
     const bool os = availability == NULL ? false : availability->stdlib_os;
     const bool http_client = availability == NULL ? false : availability->stdlib_http_client;
     const bool workers = availability == NULL ? false : availability->stdlib_workers;
+    const bool webhooks = availability == NULL ? false : availability->stdlib_webhooks;
     const bool ffi = availability == NULL ? false : availability->stdlib_ffi;
 
     switch (id) {
@@ -379,7 +381,7 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
     case SL_RUNTIME_FEATURE_STDLIB_WORKERS:
         return sl_feature_workers_descriptor(id, workers);
     case SL_RUNTIME_FEATURE_STDLIB_WEBHOOKS:
-        return sl_feature_webhooks_descriptor(id);
+        return sl_feature_webhooks_descriptor(id, webhooks);
     case SL_RUNTIME_FEATURE_STDLIB_CACHE:
         return sl_feature_cache_descriptor(id);
     case SL_RUNTIME_FEATURE_STDLIB_FFI:
@@ -523,6 +525,7 @@ SlRuntimeFeatureAvailability sl_runtime_feature_default_availability(void)
     availability.stdlib_os = true;
     availability.stdlib_http_client = true;
     availability.stdlib_workers = true;
+    availability.stdlib_webhooks = true;
     availability.stdlib_ffi = SL_FEATURE_FFI_AVAILABLE;
     return availability;
 }
