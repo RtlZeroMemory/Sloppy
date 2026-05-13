@@ -173,7 +173,9 @@ struct SlHttpTransportConnection
     size_t response_length;
     size_t head_length;
     size_t expected_body_length;
+    SlStr request_content_type;
     bool request_started;
+    bool request_is_chunked;
     bool body_reader_started;
     bool body_reader_finished;
     bool write_started;

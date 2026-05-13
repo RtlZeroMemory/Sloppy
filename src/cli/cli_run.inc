@@ -99,6 +99,15 @@ typedef struct SlRunApp
     bool has_dynamic_routes;
 } SlRunApp;
 
+static volatile sig_atomic_t sl_run_stop_requested = 0;
+
+static void sl_run_signal_handler(int signum)
+{
+    if (signum == SIGINT || signum == SIGTERM) {
+        sl_run_stop_requested = 1;
+    }
+}
+
 static SlRunApp sl_run_command_app_storage;
 static bool sl_run_diagnostics_json_enabled;
 
@@ -1752,7 +1761,7 @@ static int sl_run_load_engine(SlRunApp* app, const char* stdlib_root, const char
         return 1;
     }
 
-    if (app->plan.kind == SL_PLAN_KIND_WEB && !app->has_dynamic_routes) {
+    if (app->plan.kind == SL_PLAN_KIND_WEB) {
         status = sl_engine_validate_registered_handlers(app->engine, &app->plan, &diag);
         if (!sl_status_is_ok(status)) {
             sl_run_print_diag(
@@ -2013,6 +2022,84 @@ static SlHttpMethod sl_run_method_from_cstr(const char* method)
     return SL_HTTP_METHOD_UNKNOWN;
 }
 
+static const char* sl_run_method_to_cstr(SlHttpMethod method)
+{
+    switch (method) {
+        case SL_HTTP_METHOD_GET:
+            return "GET";
+        case SL_HTTP_METHOD_POST:
+            return "POST";
+        case SL_HTTP_METHOD_PUT:
+            return "PUT";
+        case SL_HTTP_METHOD_DELETE:
+            return "DELETE";
+        case SL_HTTP_METHOD_PATCH:
+            return "PATCH";
+        case SL_HTTP_METHOD_OPTIONS:
+            return "OPTIONS";
+        case SL_HTTP_METHOD_HEAD:
+            return "HEAD";
+        case SL_HTTP_METHOD_UNKNOWN:
+        default:
+            return NULL;
+    }
+}
+
+static SlStatus sl_run_append_js_string(SlStringBuilder* builder, SlStr value)
+{
+    static const char hex[] = "0123456789abcdef";
+    SlStatus status;
+
+    if (builder == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    status = sl_string_builder_append_char(builder, '"');
+    for (size_t index = 0U; sl_status_is_ok(status) && index < value.length; index += 1U) {
+        unsigned char ch = (unsigned char)value.ptr[index];
+        switch (ch) {
+            case '"':
+                status = sl_string_builder_append_cstr(builder, "\\\"");
+                break;
+            case '\\':
+                status = sl_string_builder_append_cstr(builder, "\\\\");
+                break;
+            case '\b':
+                status = sl_string_builder_append_cstr(builder, "\\b");
+                break;
+            case '\f':
+                status = sl_string_builder_append_cstr(builder, "\\f");
+                break;
+            case '\n':
+                status = sl_string_builder_append_cstr(builder, "\\n");
+                break;
+            case '\r':
+                status = sl_string_builder_append_cstr(builder, "\\r");
+                break;
+            case '\t':
+                status = sl_string_builder_append_cstr(builder, "\\t");
+                break;
+            default:
+                if (ch < 0x20U) {
+                    status = sl_string_builder_append_cstr(builder, "\\u00");
+                    if (sl_status_is_ok(status)) {
+                        status = sl_string_builder_append_char(builder, hex[(ch >> 4U) & 0x0FU]);
+                    }
+                    if (sl_status_is_ok(status)) {
+                        status = sl_string_builder_append_char(builder, hex[ch & 0x0FU]);
+                    }
+                }
+                else {
+                    status = sl_string_builder_append_char(builder, (char)ch);
+                }
+                break;
+        }
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_char(builder, '"');
+    }
+    return status;
+}
+
 static SlStr sl_run_target_path(const char* target)
 {
     size_t index = 0U;
@@ -2251,6 +2338,70 @@ static int sl_run_dispatch_head(SlRunApp* app, const SlHttpRequestHead* request,
 
     return sl_run_dispatch_head_with_storage(app, request, response, response_capacity,
                                              dispatch_storage, sizeof(dispatch_storage));
+}
+
+static SlStatus sl_run_dispatch_dynamic_response(SlRunApp* app, SlArena* arena,
+                                                 const SlHttpRequestHead* request,
+                                                 SlHttpResponse* out_response, SlDiag* out_diag)
+{
+    char eval_source[SL_RUN_RESPONSE_MAX_BYTES];
+    SlStringBuilder builder;
+    SlStr eval_view = {0};
+    SlEngineResult result = {0};
+    SlStatus status;
+    const char* method;
+    SlStr target;
+
+    if (app == NULL || arena == NULL || request == NULL || out_response == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    method = sl_run_method_to_cstr(request->method);
+    if (method == NULL) {
+        return sl_status_from_code(SL_STATUS_UNSUPPORTED);
+    }
+    target = request->raw_target.length != 0U ? request->raw_target : request->path;
+
+    status = sl_string_builder_init_fixed(&builder, eval_source, sizeof(eval_source));
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(
+            &builder, "globalThis.__sloppy_dynamic_transport = function() { return "
+                      "globalThis.__sloppy_dispatch_dynamic_result(");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_run_append_js_string(&builder, sl_str_from_cstr(method));
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, ", ");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_run_append_js_string(&builder, target);
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_append_cstr(&builder, "); };");
+    }
+    if (sl_status_is_ok(status)) {
+        status = sl_string_builder_view_with_nul(&builder, &eval_view);
+    }
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_engine_eval_source(app->engine, sl_str_from_cstr("sloppy:dynamic-transport"),
+                                   eval_view, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_engine_call_function0(app->engine, arena,
+                                      sl_str_from_cstr("__sloppy_dynamic_transport"), &result,
+                                      out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (result.payload_kind != SL_ENGINE_RESULT_PAYLOAD_RESPONSE) {
+        return sl_status_from_code(SL_STATUS_INVALID_STATE);
+    }
+    *out_response = result.response;
+    return sl_status_ok();
 }
 
 static bool sl_run_once_header_name_char(char ch)
@@ -2681,6 +2832,16 @@ static SlStatus sl_run_transport_dispatch(SlHttpTransportConnection* connection,
         return status;
     }
 
+    if (app->has_dynamic_routes && sl_status_code(status) == SL_STATUS_OUT_OF_RANGE &&
+        out_diag != NULL && out_diag->code == SL_DIAG_HTTP_ROUTE_NOT_FOUND)
+    {
+        status = sl_run_dispatch_dynamic_response(app, arena, &request->head, out_response,
+                                                  out_diag);
+        if (sl_status_is_ok(status)) {
+            return status;
+        }
+    }
+
     if (sl_status_code(status) == SL_STATUS_UNSUPPORTED && out_diag != NULL &&
         out_diag->code == SL_DIAG_HTTP_UNSUPPORTED_METHOD)
     {
@@ -2866,9 +3027,32 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
            host, (unsigned)port);
     printf("Development server: HTTP/1.1%s, local development only.\n",
            config.tls.enabled ? " over TLS" : "");
-    status = sl_http_transport_server_run(&server, &diag);
-    if (!sl_status_is_ok(status)) {
-        result = 1;
+    {
+        sl_run_stop_requested = 0;
+        void (*old_sigint)(int) = signal(SIGINT, sl_run_signal_handler);
+        void (*old_sigterm)(int) = signal(SIGTERM, sl_run_signal_handler);
+        while (!sl_run_stop_requested) {
+            status = sl_http_transport_server_poll(&server, &diag);
+            if (!sl_status_is_ok(status)) {
+                sl_run_print_diag("sloppy run: HTTP server poll failed: ", &transport_arena, &diag);
+                result = 1;
+                break;
+            }
+            sl_platform_sleep_ms(1U);
+        }
+        if (old_sigint != SIG_ERR) {
+            signal(SIGINT, old_sigint);
+        }
+        if (old_sigterm != SIG_ERR) {
+            signal(SIGTERM, old_sigterm);
+        }
+        if (result == 0 && sl_run_stop_requested) {
+            status = sl_http_transport_server_stop(&server, &diag);
+            if (!sl_status_is_ok(status)) {
+                sl_run_print_diag("sloppy run: HTTP server stop failed: ", &transport_arena, &diag);
+                result = 1;
+            }
+        }
     }
     sl_http_transport_server_dispose(&server, NULL);
     sl_heap_buffer_dispose(&transport_storage);

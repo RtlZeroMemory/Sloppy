@@ -11,6 +11,7 @@
 #include "sloppy/builder.h"
 #include "sloppy/container.h"
 #include "sloppy/fs.h"
+#include "sloppy/http_profile.h"
 #include "sloppy/json_profile.h"
 
 #include <algorithm>
@@ -3104,7 +3105,11 @@ SlStatus http_v8_copy_result_headers(v8::Isolate* isolate, v8::Local<v8::Context
 bool http_v8_stringify_json(v8::Local<v8::Context> context, v8::Local<v8::Value> value,
                             v8::Local<v8::String>* out)
 {
-    if (out == nullptr || !v8::JSON::Stringify(context, value).ToLocal(out)) {
+    uint64_t started_ns = sl_http_profile_now_ns();
+    bool ok = out != nullptr && v8::JSON::Stringify(context, value).ToLocal(out);
+    sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_JSON_STRINGIFY,
+                                 sl_http_profile_now_ns() - started_ns);
+    if (!ok) {
         return false;
     }
 
@@ -4101,8 +4106,13 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
             return status;
         }
 
-        out_result->kind = SL_ENGINE_RESULT_TEXT;
-        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_TEXT;
+        {
+            uint64_t started_ns = sl_http_profile_now_ns();
+            out_result->kind = SL_ENGINE_RESULT_TEXT;
+            out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_TEXT;
+            sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_RESULT_CONSTRUCTION,
+                                         sl_http_profile_now_ns() - started_ns);
+        }
         return sl_status_ok();
     }
 
@@ -4373,13 +4383,18 @@ SlStatus sl_v8_convert_http_handler_result(v8::Isolate* isolate, v8::Local<v8::C
             }
         }
 
-        out_result->kind = is_json ? SL_ENGINE_RESULT_JSON : SL_ENGINE_RESULT_ERROR;
-        out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
-        out_result->response = is_json ? sl_http_response_json(status_code, bytes)
-                                       : sl_http_response_problem(status_code, bytes);
-        out_result->response.headers = response_headers;
-        out_result->response.header_count = response_header_count;
-        out_result->response.content_type = content_type;
+        {
+            uint64_t started_ns = sl_http_profile_now_ns();
+            out_result->kind = is_json ? SL_ENGINE_RESULT_JSON : SL_ENGINE_RESULT_ERROR;
+            out_result->payload_kind = SL_ENGINE_RESULT_PAYLOAD_RESPONSE;
+            out_result->response = is_json ? sl_http_response_json(status_code, bytes)
+                                           : sl_http_response_problem(status_code, bytes);
+            out_result->response.headers = response_headers;
+            out_result->response.header_count = response_header_count;
+            out_result->response.content_type = content_type;
+            sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_RESULT_CONSTRUCTION,
+                                         sl_http_profile_now_ns() - started_ns);
+        }
         return sl_status_ok();
     }
 
