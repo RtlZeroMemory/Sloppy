@@ -65,6 +65,10 @@ Rules:
 - Do not perform package-manager resolution.
 - Do not assume Node-style runtime behavior.
 - Do not use best-effort partial extraction that silently drops routes or handlers.
+- Do not claim auth, schema, OpenAPI, provider, config, dependency, or runtime feature
+  metadata unless the compiler can prove that metadata from supported source shapes.
+- Dynamic but runnable source should produce partial/dynamic metadata and explicit
+  findings instead of being rejected only because static metadata is incomplete.
 - Every supported syntax shape must have fixture tests.
 - Every rejected syntax shape should have diagnostics tests.
 
@@ -75,12 +79,19 @@ Keep compiler modules small and specific:
 - `cli`;
 - `diagnostics`;
 - parser/extractor;
+- Program Mode transforms;
 - plan writer;
 - artifact writer;
 - golden tests.
 
 Rules:
 
+- `sloppyc.rs` should stay an orchestration and compatibility entrypoint, not the
+  default home for new extraction, Program Mode lowering, generated JavaScript, or Plan
+  writer code.
+- Large files must be split by responsibility before adding adjacent behavior.
+- New compiler features should get a focused module once they are more than a small
+  local helper.
 - Do not create a generic compiler framework before needed.
 - Do not add a plugin system.
 - Do not use procedural macros.
@@ -114,6 +125,10 @@ Rules:
 - Add diagnostics tests for unsupported syntax.
 - Treat snapshot/golden updates as intentional contract changes.
 - Test names should describe intended behavior.
+- Every Program Mode wrapper or transform change needs smoke coverage.
+- Every Plan metadata change needs golden or semantic Plan coverage.
+- Unsupported dynamic shapes need tests that prove the diagnostic or partial finding is
+  honest.
 
 Rust gates:
 
