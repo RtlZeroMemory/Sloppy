@@ -92,8 +92,10 @@ import {
     SloppyHttpClientError as RootSloppyHttpClientError,
     Metrics,
     SloppyCacheError as RootSloppyCacheError,
+    Realtime,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
+    SloppyRealtimeError,
     TestHttp as RootTestHttp,
     TestData,
     TestHost,
@@ -172,6 +174,10 @@ assert.equal(typeof Config.boolean, "function");
 assert.equal(typeof Config.required, "function");
 assert.equal(typeof Health.createRegistry, "function");
 assert.equal(typeof Metrics.createRegistry, "function");
+assert.equal(typeof Realtime.channel, "function");
+assert.equal(typeof Realtime.event, "function");
+assert.equal(typeof Realtime.backplane.memory, "function");
+assert.equal(typeof SloppyRealtimeError, "function");
 assert.equal(typeof TestHost.create, "function");
 assert.equal(typeof TestHost.fromArtifacts, "function");
 assert.equal(typeof TestHost.fromPackage, "function");

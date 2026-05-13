@@ -7,6 +7,7 @@ import { createTestHttpServiceOverrides, TestHttp } from "./http.js";
 import { HttpClient, TcpListener } from "./net.js";
 import { Process as SloppyProcess, System as SloppySystem } from "./os.js";
 import { RAW_JSON_BODY, serializeJson } from "./results.js";
+import { isRealtimeChannel } from "./realtime.js";
 import { Schema, validationProblem } from "./schema.js";
 import { TestServices } from "./testservices.js";
 
@@ -1075,6 +1076,7 @@ function createContext(app, hostState, method, targetParts, headers, route, matc
         log: app.log,
         metrics: typeof app.__getMetricsRegistry === "function" ? app.__getMetricsRegistry() : undefined,
         diagnostics: hostState.diagnostics,
+        __sloppyTestHostMetrics: hostState.metrics,
         user: options?.user,
         requireUser() {
             if (this.user?.authenticated !== true) {
@@ -1145,6 +1147,25 @@ function assertDeepJsonEqual(actual, expected, subject) {
     const expectedText = serializeJson(expected);
     if (actualText !== expectedText) {
         throw new Error(`Sloppy test host expected ${subject} ${expectedText}, got ${actualText}.`);
+    }
+}
+
+function assertJsonIncludes(actual, expected, subject) {
+    if (expected === undefined) {
+        return;
+    }
+    if (expected === null || typeof expected !== "object" || Array.isArray(expected)) {
+        assertDeepJsonEqual(actual, expected, subject);
+        return;
+    }
+    if (actual === null || typeof actual !== "object" || Array.isArray(actual)) {
+        throw new Error(`Sloppy test host expected ${subject} to include ${serializeJson(expected)}, got ${serializeJson(actual)}.`);
+    }
+    for (const [key, value] of Object.entries(expected)) {
+        if (!Object.hasOwn(actual, key)) {
+            throw new Error(`Sloppy test host expected ${subject} to include key '${key}'.`);
+        }
+        assertJsonIncludes(actual[key], value, `${subject}.${key}`);
     }
 }
 
@@ -1252,23 +1273,45 @@ function problemCodeFromResponse(response) {
 
 function createMetricsStore() {
     const counters = new Map();
+    const gauges = new Map();
     function increment(name, labels = {}, amount = 1) {
         const key = serializeJson({ name, labels });
         counters.set(key, (counters.get(key) ?? 0) + amount);
     }
+    function gauge(name, labels = {}, value = 0) {
+        const key = serializeJson({ name, labels });
+        gauges.set(key, value);
+    }
     const metrics = {
         increment,
+        gauge,
         snapshot() {
-            return Object.freeze(Array.from(counters.entries(), ([key, value]) => Object.freeze({
-                ...JSON.parse(key),
-                value,
-            })));
+            return Object.freeze([
+                ...Array.from(counters.entries(), ([key, value]) => Object.freeze({
+                    ...JSON.parse(key),
+                    kind: "counter",
+                    value,
+                })),
+                ...Array.from(gauges.entries(), ([key, value]) => Object.freeze({
+                    ...JSON.parse(key),
+                    kind: "gauge",
+                    value,
+                })),
+            ]);
         },
         expectCounter(name, expected, labels = {}) {
             const key = serializeJson({ name, labels });
             const actual = counters.get(key) ?? 0;
             if (actual !== expected) {
                 throw new Error(`Sloppy TestHost expected counter '${name}' to be ${expected}, got ${actual}.`);
+            }
+            return metrics;
+        },
+        expectGauge(name, expected, labels = {}) {
+            const key = serializeJson({ name, labels });
+            const actual = gauges.get(key) ?? 0;
+            if (actual !== expected) {
+                throw new Error(`Sloppy TestHost expected gauge '${name}' to be ${expected}, got ${actual}.`);
             }
             return metrics;
         },
@@ -1376,6 +1419,14 @@ function openApiFromRoutes(routes) {
                     description: "OK",
                 },
             },
+            ...(route.metadata?.realtime === undefined ? {} : {
+                "x-slop-realtime": {
+                    kind: route.metadata.realtime.kind,
+                    channel: route.metadata.realtime.channel?.name,
+                    transport: "websocket",
+                },
+                "x-slop-transport": "websocket",
+            }),
             "x-slop-route": {
                 pattern: route.pattern,
                 name: route.name,
@@ -2072,6 +2123,18 @@ class TestWebSocket {
         return this;
     }
 
+    async receiveJson(options = {}) {
+        const message = await this._state.serverToClient.take(options.timeoutMs, "JSON message");
+        if (message.kind !== "json" && message.kind !== "text") {
+            throw new Error(`Sloppy TestHost expected WebSocket JSON message, got '${message.kind}'.`);
+        }
+        try {
+            return message.json();
+        } catch (error) {
+            throw new Error(`Sloppy TestHost expected WebSocket JSON message, got invalid text JSON: ${error.message}`);
+        }
+    }
+
     async expectBytes(expected, options = {}) {
         const message = await this._state.serverToClient.take(options.timeoutMs, "binary message");
         if (message.kind !== "binary") {
@@ -2268,6 +2331,151 @@ class WebSocketBuilder {
     }
 }
 
+class RealtimeTestClient {
+    constructor(channel, websocket) {
+        this._channel = channel;
+        this._websocket = websocket;
+    }
+
+    get closed() {
+        return this._websocket.closed;
+    }
+
+    get protocol() {
+        return this._websocket.protocol;
+    }
+
+    send(eventName, data, options = undefined) {
+        return this._websocket.sendJson(this._channel.serializeClientMessage(eventName, data, options));
+    }
+
+    async expect(eventName, expectedData = undefined, options = undefined) {
+        const envelope = this._channel.parseServerMessage(await this._websocket.receiveJson(options));
+        assertExpectedResponseValue(envelope.type, eventName, "Realtime event type");
+        assertJsonIncludes(envelope.data, expectedData, `Realtime event '${eventName}' data`);
+        return this;
+    }
+
+    async expectType(eventName, options = undefined) {
+        const envelope = this._channel.parseServerMessage(await this._websocket.receiveJson(options));
+        assertExpectedResponseValue(envelope.type, eventName, "Realtime event type");
+        return this;
+    }
+
+    async expectError(code, options = undefined) {
+        const envelope = await this._websocket.receiveJson(options);
+        assertExpectedResponseValue(envelope.type, "error", "Realtime error type");
+        assertExpectedResponseValue(envelope.error?.code, code, "Realtime error code");
+        return this;
+    }
+
+    expectClose(code = undefined, options = undefined) {
+        return this._websocket.expectClose(code, options).then(() => this);
+    }
+
+    close(code = 1000, reason = "") {
+        return this._websocket.close(code, reason);
+    }
+}
+
+class RealtimeConnectAttempt {
+    constructor(channel, websocketAttempt) {
+        this._channel = channel;
+        this._websocketAttempt = websocketAttempt;
+        this._promise = undefined;
+    }
+
+    _connect() {
+        if (this._promise === undefined) {
+            this._promise = Promise.resolve(this._websocketAttempt)
+                .then((websocket) => new RealtimeTestClient(this._channel, websocket));
+            this._promise.catch(() => {});
+        }
+        return this._promise;
+    }
+
+    then(resolve, reject) {
+        return this._connect().then(resolve, reject);
+    }
+
+    catch(reject) {
+        return this._connect().catch(reject);
+    }
+
+    finally(callback) {
+        return this._connect().finally(callback);
+    }
+
+    expectRejected(status) {
+        return this._websocketAttempt.expectRejected(status);
+    }
+}
+
+class RealtimeBuilder {
+    constructor(host, target, channel, options = undefined) {
+        if (!isRealtimeChannel(channel)) {
+            throw new TypeError("Sloppy TestHost realtime channel must come from Realtime.channel(...).");
+        }
+        this._channel = channel;
+        this._websocket = new WebSocketBuilder(host, target, options);
+        this._websocket.protocols([channel.metadata.protocol]);
+    }
+
+    header(name, value) {
+        this._websocket.header(name, value);
+        return this;
+    }
+
+    headers(values) {
+        this._websocket.headers(values);
+        return this;
+    }
+
+    origin(value) {
+        this._websocket.origin(value);
+        return this;
+    }
+
+    protocols(values) {
+        this._websocket.protocols(values);
+        return this;
+    }
+
+    timeout(ms) {
+        this._websocket.timeout(ms);
+        return this;
+    }
+
+    bearer(token) {
+        this._websocket.bearer(token);
+        return this;
+    }
+
+    apiKey(key, options = {}) {
+        this._websocket.apiKey(key, options);
+        return this;
+    }
+
+    withSession(session, options = {}) {
+        this._websocket.withSession(session, options);
+        return this;
+    }
+
+    withJwt(claims, options = {}) {
+        this._websocket.withJwt(claims, options);
+        return this;
+    }
+
+    asUser(principal) {
+        this._websocket.asUser(principal);
+        return this;
+    }
+
+    connect() {
+        return new RealtimeConnectAttempt(this._channel, this._websocket.connect());
+    }
+}
+
 function createFluentHost(base, mode = "inProcess", defaults = {}) {
     const host = {
         mode,
@@ -2322,6 +2530,9 @@ function createFluentHost(base, mode = "inProcess", defaults = {}) {
         },
         websocket(target, options) {
             return new WebSocketBuilder(host, target, options);
+        },
+        realtime(target, channel, options) {
+            return new RealtimeBuilder(host, target, channel, options);
         },
         asUser(principal) {
             return createFluentHost(base, mode, {
@@ -2388,6 +2599,7 @@ function createTestHost(app, options = {}) {
         services: createServiceOverlay(app.services, options.services, options.providers, options.caches, options.httpClients),
         clock: options.clock,
         diagnostics,
+        metrics,
     });
 
     function appMetricsRegistry() {

@@ -1175,6 +1175,7 @@ pub(crate) fn emit_plan_with_route_artifact(
                 || route.health.is_some()
                 || !route.middleware.is_empty()
                 || route.auth.is_some()
+                || route.realtime.is_some()
                 || route.cors.is_some()
         });
     let handlers = app
@@ -1244,6 +1245,16 @@ pub(crate) fn emit_plan_with_route_artifact(
             }
             if let Some(websocket) = &route.websocket {
                 route_json["websocket"] = websocket_options_json(websocket);
+            }
+            if let Some(realtime) = &route.realtime {
+                route_json["realtime"] = json!({
+                    "kind": "framework",
+                    "transport": "websocket",
+                    "metadataStatus": "partial",
+                    "partialReason": "channel and option expressions are preserved; static event and schema extraction is not complete in this alpha",
+                    "channelExpression": realtime.channel_source,
+                    "optionsExpression": realtime.options_source
+                });
             }
             if let Some(module) = &route.module {
                 route_json["module"] = json!(module);
@@ -1373,6 +1384,7 @@ pub(crate) fn emit_plan_with_route_artifact(
                 || !route.middleware.is_empty()
                 || route.auth.is_some()
                 || route.websocket.is_some()
+                || route.realtime.is_some()
                 || route.cors.is_some()
                 || route.summary.is_some()
                 || route.description.is_some()

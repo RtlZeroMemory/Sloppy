@@ -4,6 +4,10 @@ WebSocket routes are app-host primitives for long-lived bidirectional tests and
 early API design. They use normal Sloppy route matching, middleware, auth, route
 metadata, and TestHost diagnostics.
 
+Use [`Realtime`](./realtime.md) for application-level channels, validated
+client/server events, groups, presence, per-message authorization, and typed
+TestHost helpers. Use raw WebSockets when you need direct frame/message control.
+
 ```ts
 import { Sloppy, schema } from "sloppy";
 

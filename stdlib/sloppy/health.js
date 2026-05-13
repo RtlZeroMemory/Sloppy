@@ -530,6 +530,28 @@ function tcpCheck(host, port, options = undefined) {
     };
 }
 
+function realtimeCheck(backplane) {
+    if (backplane === undefined || typeof backplane.health !== "function") {
+        throw new TypeError("Health.realtime requires a Realtime backplane with health().");
+    }
+    return async () => {
+        const health = await backplane.health();
+        const status = health?.status === "ok" || health?.status === "healthy"
+            ? "healthy"
+            : health?.status === "unavailable" || health?.status === "unhealthy"
+                ? "unhealthy"
+                : "degraded";
+        return {
+            status,
+            message: status === "healthy" ? undefined : "Realtime backplane is not healthy",
+            data: redactValue({
+                kind: health?.kind,
+                status: health?.status,
+            }),
+        };
+    };
+}
+
 function unavailableCheck(feature) {
     return () => ({
         status: "degraded",
@@ -551,6 +573,7 @@ const Health = Object.freeze({
     memory: memoryCheck,
     http: httpCheck,
     tcp: tcpCheck,
+    realtime: realtimeCheck,
     openApi: () => unavailableCheck("openapi"),
     cache: (cache) => () => {
         if (cache === undefined || cache === null) {

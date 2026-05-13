@@ -479,6 +479,14 @@ static int sl_cli_parse_routes(yyjson_val* root, SlCliMetadata* metadata)
             route.deprecated =
                 deprecated != NULL && yyjson_is_bool(deprecated) && yyjson_get_bool(deprecated);
         }
+        {
+            yyjson_val* realtime = yyjson_obj_get(value, "realtime");
+            if (realtime != NULL && yyjson_is_obj(realtime)) {
+                route.realtime_kind = sl_cli_json_span(realtime, "kind");
+                route.realtime_transport = sl_cli_json_span(realtime, "transport");
+                route.realtime_channel = sl_cli_json_span(realtime, "channelExpression");
+            }
+        }
         if (sl_cli_parse_route_span_array(value, "consumes", route.consumes,
                                           &route.consume_count, SL_CLI_MAX_ROUTE_TAGS) != 0 ||
             sl_cli_parse_route_span_array(value, "produces", route.produces,

@@ -406,7 +406,6 @@ foreach(required_pattern IN ITEMS
         "delete(target, options)"
         "options(target, options)"
         "close()"
-        "const TestServices = Object.freeze"
         "const Testing = Object.freeze"
         "export { createTestHost, FakeClock, TestData, TestHost, TestHttp, TestServices, Testing }")
     require_substring("${testing_js}" "${required_pattern}" "testing.js is missing expected app test host pattern")

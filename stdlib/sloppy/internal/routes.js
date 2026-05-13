@@ -10,8 +10,10 @@ import { Cache, isCache, stableHash } from "../cache.js";
 import { Text } from "../codec.js";
 import {
     createSseRouteHandler,
+    createRealtimeRouteHandler,
     createWebSocketRouteHandler,
     normalizeWebSocketRouteOptions,
+    realtimeRouteMetadata,
     webSocketRouteOptions,
 } from "../realtime.js";
 import { Results } from "../results.js";
@@ -1439,7 +1441,7 @@ function createEndpointBuilder(route, assertAppMutable) {
             const current = route.metadata.realtime?.websocket ?? {};
             route.metadata.realtime = Object.freeze({
                 ...(route.metadata.realtime ?? {}),
-                kind: "websocket",
+                kind: route.metadata.realtime?.kind ?? "websocket",
                 websocket: normalizeWebSocketRouteOptions({
                     ...current,
                     origins,
@@ -1691,7 +1693,10 @@ function registerRoute(
     }
 
     const orderedMiddleware = orderedMiddlewareFunctions(middleware);
-    const realtimeMetadata = kind === "websocket"
+    const highLevelRealtimeMetadata = kind === "websocket" ? realtimeRouteMetadata(args.handler) : undefined;
+    const realtimeMetadata = highLevelRealtimeMetadata !== undefined
+        ? highLevelRealtimeMetadata
+        : kind === "websocket"
         ? { kind, websocket: webSocketRouteOptions(args.handler) ?? normalizeWebSocketRouteOptions() }
         : { kind };
     let metadata = {
@@ -2079,6 +2084,29 @@ function createRouteGroup(
         sse: createMapMethod("GET", "sse"),
         ws: createMapMethod("GET", "websocket"),
         websocket: createMapMethod("GET", "websocket"),
+        realtime(pattern, channel, handler, options = undefined) {
+            const fullPattern = composeRoutePattern(groupMetadata.prefix, pattern);
+            const routeHandler = createRealtimeRouteHandler(channel, handler, options);
+            return registerRoute(
+                routes,
+                host,
+                assertAppMutable,
+                getCurrentModule(),
+                "GET",
+                fullPattern,
+                routeHandler,
+                undefined,
+                {
+                    prefix: groupMetadata.prefix,
+                    tags: groupMetadata.tags,
+                    name: groupMetadata.name,
+                    auth: groupMetadata.auth,
+                },
+                [...getInheritedMiddleware(), ...groupMiddleware],
+                getCorsPolicy(),
+                "websocket",
+            );
+        },
         group(childPrefix) {
             assertAppMutable();
             const child = createRouteGroup(

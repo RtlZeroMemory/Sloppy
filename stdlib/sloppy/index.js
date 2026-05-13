@@ -29,7 +29,7 @@ export {
 } from "./net.js";
 export { Environment, OsError, Process, Signals, System } from "./os.js";
 export { ProblemDetails } from "./problem-details.js";
-export { Realtime } from "./realtime.js";
+export { Realtime, SloppyRealtimeError } from "./realtime.js";
 export { RequestId } from "./request-id.js";
 export { RequestLogging } from "./request-logging.js";
 export { Results } from "./results.js";

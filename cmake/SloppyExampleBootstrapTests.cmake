@@ -141,6 +141,14 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_app_host_foundation.mjs")
         add_test(
+            NAME bootstrap.stdlib.realtime_framework
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_realtime_framework.mjs")
+        add_test(
+            NAME bootstrap.stdlib.realtime_runtime_classic
+            COMMAND "${NODE_EXECUTABLE}"
+                    "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_realtime_runtime_classic.mjs")
+        add_test(
             NAME bootstrap.stdlib.testhost_process_modes
             COMMAND
                 "${CMAKE_COMMAND}" -E env "SLOPPY_TESTHOST_CLI=$<TARGET_FILE:sloppy>"
@@ -212,6 +220,7 @@
         set_tests_properties(
             bootstrap.stdlib.import_graph bootstrap.stdlib.public_exports
             bootstrap.stdlib.app_host_foundation bootstrap.stdlib.testhost_process_modes
+            bootstrap.stdlib.realtime_framework
             bootstrap.stdlib.prealpha_control_plane_dogfood
             bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.orm bootstrap.stdlib.orm_runtime_classic

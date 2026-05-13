@@ -8,6 +8,9 @@ pub(super) fn schema_declaration(
     expression: &Expression<'_>,
     known_schema_names: &BTreeSet<String>,
 ) -> Result<Option<SchemaMetadata>, Diagnostic> {
+    if expression_is_realtime_descriptor_root(expression) {
+        return Ok(None);
+    }
     if !expression_mentions_schema(expression) {
         return Ok(None);
     }
@@ -28,6 +31,59 @@ pub(super) fn schema_declaration(
         source: source.to_string(),
         span: expression.span(),
     }))
+}
+
+fn expression_is_realtime_descriptor_root(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::CallExpression(call) => {
+            if static_member_name(&call.callee).is_some_and(|(object, property)| {
+                object == "Realtime" && matches!(property, "channel" | "event")
+            }) {
+                return true;
+            }
+            if call
+                .arguments
+                .iter()
+                .any(argument_is_realtime_descriptor_root)
+            {
+                return true;
+            }
+            match &call.callee {
+                Expression::StaticMemberExpression(member) => {
+                    expression_is_realtime_descriptor_root(&member.object)
+                }
+                Expression::ParenthesizedExpression(parenthesized) => {
+                    expression_is_realtime_descriptor_root(&parenthesized.expression)
+                }
+                _ => false,
+            }
+        }
+        Expression::ParenthesizedExpression(parenthesized) => {
+            expression_is_realtime_descriptor_root(&parenthesized.expression)
+        }
+        Expression::TSAsExpression(node) => {
+            expression_is_realtime_descriptor_root(&node.expression)
+        }
+        Expression::TSSatisfiesExpression(node) => {
+            expression_is_realtime_descriptor_root(&node.expression)
+        }
+        Expression::TSTypeAssertion(node) => {
+            expression_is_realtime_descriptor_root(&node.expression)
+        }
+        Expression::TSNonNullExpression(node) => {
+            expression_is_realtime_descriptor_root(&node.expression)
+        }
+        Expression::TSInstantiationExpression(node) => {
+            expression_is_realtime_descriptor_root(&node.expression)
+        }
+        _ => false,
+    }
+}
+
+fn argument_is_realtime_descriptor_root(argument: &Argument<'_>) -> bool {
+    argument
+        .as_expression()
+        .is_some_and(expression_is_realtime_descriptor_root)
 }
 
 pub(super) fn typescript_type_alias_schema(
