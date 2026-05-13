@@ -53,6 +53,36 @@ static void sl_cli_doctor_emit(const SlCliOptions* options, SlArena* arena, SlCl
     sl_cli_doctor_emit_text(arena, id, status, message);
 }
 
+static SlCliSpan sl_cli_doctor_route_identity(const SlCliRoute* route)
+{
+    if (!sl_cli_span_empty(route->name)) {
+        return route->name;
+    }
+    if (!sl_cli_span_empty(route->pattern)) {
+        return route->pattern;
+    }
+    return sl_cli_span_cstr("<unknown>");
+}
+
+static SlCliSpan sl_cli_doctor_route_message(SlArena* arena, const char* prefix,
+                                             SlCliSpan route_identity)
+{
+    SlStringBuilder builder = {0};
+    SlStr message = sl_str_empty();
+
+    if (!sl_status_is_ok(sl_string_builder_init_arena(&builder, arena, 128U, 512U)) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, prefix)) ||
+        !sl_status_is_ok(sl_string_builder_append_cstr(&builder, " (route: ")) ||
+        !sl_status_is_ok(sl_string_builder_append_str(
+            &builder, sl_str_from_parts(route_identity.ptr, route_identity.length))) ||
+        !sl_status_is_ok(sl_string_builder_append_char(&builder, ')'))) {
+        return sl_cli_span_cstr(prefix);
+    }
+
+    message = sl_string_builder_view(&builder);
+    return sl_cli_span_from_str(message);
+}
+
 static void sl_cli_doctor_emit_fs_capabilities(const SlCliOptions* options, SlArena* arena,
                                                const SlCliMetadata* metadata, bool* emitted)
 {
@@ -519,7 +549,9 @@ static void sl_cli_doctor_emit_auth(const SlCliOptions* options, SlArena* arena,
                 sl_cli_doctor_emit(
                     options, arena, sl_cli_span_cstr("app.auth.route-scheme"),
                     sl_cli_span_cstr("error"),
-                    sl_cli_span_cstr("route references an auth scheme that is not configured"),
+                    sl_cli_doctor_route_message(
+                        arena, "route references an auth scheme that is not configured",
+                        sl_cli_doctor_route_identity(route)),
                     emitted);
             }
         }
@@ -537,7 +569,9 @@ static void sl_cli_doctor_emit_auth(const SlCliOptions* options, SlArena* arena,
                 sl_cli_doctor_emit(
                     options, arena, sl_cli_span_cstr("app.auth.route-policy"),
                     sl_cli_span_cstr("error"),
-                    sl_cli_span_cstr("route references an auth policy that is not configured"),
+                    sl_cli_doctor_route_message(
+                        arena, "route references an auth policy that is not configured",
+                        sl_cli_doctor_route_identity(route)),
                     emitted);
             }
         }

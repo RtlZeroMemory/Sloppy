@@ -32,6 +32,10 @@ app.use(Auth.cookieSession({
 }));
 ```
 
+`Auth.sessionStore.memory(...)` is process-local and non-durable. Use it for
+local development and tests; inspection tooling warns on it, and production apps
+should use a durable provider-backed store.
+
 For durable sessions, pass an opened Sloppy data connection:
 
 ```ts

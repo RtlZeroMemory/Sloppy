@@ -48,6 +48,9 @@ audience.
 
 ## Add Cookie Sessions
 
+`Auth.sessionStore.memory(...)` is an in-memory, non-durable session store for
+local development and tests. Use a provider-backed session store for production.
+
 ```ts
 app.use(Auth.cookieSession({
   name: "sloppy.session",

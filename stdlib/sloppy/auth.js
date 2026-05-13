@@ -396,11 +396,12 @@ function normalizeApiKeyUser(result, scheme) {
 }
 
 async function staticApiKeyUser(key, scheme) {
+    let keySha256 = undefined;
     for (const entry of scheme.keys) {
         let matched = false;
         if (entry.hash !== undefined) {
-            const digest = await Hash.sha256(key);
-            matched = constantTimeStringEquals(`sha256:${Hex.encode(digest)}`, entry.hash);
+            keySha256 ??= `sha256:${Hex.encode(await Hash.sha256(key))}`;
+            matched = constantTimeStringEquals(keySha256, entry.hash);
         } else if (entry.key !== undefined) {
             matched = constantTimeStringEquals(key, entry.key);
         }

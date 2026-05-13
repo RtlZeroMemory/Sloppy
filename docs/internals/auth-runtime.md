@@ -1,5 +1,8 @@
 # Auth Runtime
 
+Alpha / Experimental: provider middleware, `ctx.user`, and route `auth` metadata
+are pre-alpha runtime surfaces and may change between revisions.
+
 The app host runs auth as middleware plus route authorization metadata.
 Provider middleware authenticates credentials and assigns `ctx.user`. Route
 authorization then evaluates the matched route's `auth` metadata before the

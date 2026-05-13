@@ -7080,6 +7080,11 @@ export default app;
         .expect("plan should emit cookie auth metadata");
     assert!(plan.contains("\"kind\": \"cookieSession\""));
     assert!(plan.contains("\"cookie\": \"sloppy.session\""));
+    assert!(plan.contains("\"store\": \"memory\""));
+    assert!(plan.contains("\"maxAgeSeconds\": null"));
+    assert!(plan.contains("\"idleTimeoutMs\": 30000"));
+    assert!(plan.contains("\"absoluteTimeoutMs\": 60000"));
+    assert!(plan.contains("\"rotation\": true"));
     assert!(plan.contains("\"configKey\": \"Auth:SessionSecret\""));
     assert!(plan.contains("\"secret\": \"<redacted>\""));
     let emitted_js = super::emit_app_js(&app);
@@ -7177,6 +7182,8 @@ export default app;
         protected["auth"]["scopes"],
         serde_json::json!(["users:read"])
     );
+    assert_eq!(protected["auth"]["roles"], serde_json::json!(["admin"]));
+    assert_eq!(protected["auth"]["policy"], serde_json::json!("ops"));
     let reprotected = routes
         .iter()
         .find(|route| route["pattern"] == "/reprotected")
