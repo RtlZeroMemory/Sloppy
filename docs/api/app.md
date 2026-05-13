@@ -88,9 +88,10 @@ After construction, every app exposes:
 `app.get` and `app.mapGet` (and the equivalents for other verbs) are aliases —
 pick one style and stick with it.
 
-For in-memory app tests, build the app normally and pass it to
-`Testing.createHost(app)` or `createTestHost(app)` from `sloppy/testing`. See
-[App test host](testing.md) for request/response helpers and lifecycle rules.
+For tests, build the app normally and pass it to `TestHost.create(app)`.
+Use `TestHost.fromArtifacts(...)` or `TestHost.fromPackage(...)` when the
+test must exercise compiled artifacts and the native runtime path. See
+[TestHost](testhost.md).
 
 ## Modules
 
