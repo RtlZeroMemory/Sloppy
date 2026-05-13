@@ -35,6 +35,7 @@ import { createMutationGuard, isPlainObject } from "./internal/shared.js";
 import { Health, createHealthHandler as createOpsHealthHandler } from "./health.js";
 import { isCache } from "./cache.js";
 import { Metrics } from "./metrics.js";
+import { RateLimit, isRateLimitStore } from "./rate-limit.js";
 import { normalizeJsonOptions, Results } from "./results.js";
 import { createSseRouteHandler, createRealtimeRouteHandler, createWebSocketRouteHandler } from "./realtime.js";
 import { isValidationError, validationProblem } from "./schema.js";
@@ -1098,6 +1099,61 @@ function createApp(host) {
     const metricsRegistry = Metrics.createRegistry();
     const services = createMetricsAwareServices(host.services, metricsRegistry);
     const opsHealthRegistry = Health.createRegistry();
+    const defaultRateLimitStore = RateLimit.memory({ name: "default" });
+    const rateLimitStores = new Map([
+        ["default", defaultRateLimitStore],
+        ["memory", defaultRateLimitStore],
+    ]);
+    const rateLimitServices = Object.freeze({
+        ...services,
+        addRateLimitStore(nameOrStore, maybeStore = undefined) {
+            assertAppMutable();
+            const name = typeof nameOrStore === "string" ? nameOrStore : nameOrStore?.name;
+            const store = typeof nameOrStore === "string" ? maybeStore : nameOrStore;
+            if (typeof name !== "string" || name.length === 0) {
+                throw new TypeError("Sloppy services.addRateLimitStore name must be a non-empty string.");
+            }
+            if (!isRateLimitStore(store)) {
+                throw new TypeError("Sloppy services.addRateLimitStore expects a RateLimit store.");
+            }
+            if (rateLimitStores.has(name)) {
+                throw new Error(`Sloppy rate-limit store '${name}' is already registered.`);
+            }
+            rateLimitStores.set(name, store);
+            if (store.kind === "redis" && !rateLimitStores.has("redis")) {
+                rateLimitStores.set("redis", store);
+            }
+            return rateLimitServices;
+        },
+        __setRateLimitStore(name, store) {
+            assertAppMutable();
+            if (typeof name !== "string" || name.length === 0) {
+                throw new TypeError("Sloppy services.__setRateLimitStore name must be a non-empty string.");
+            }
+            if (!isRateLimitStore(store)) {
+                throw new TypeError("Sloppy services.__setRateLimitStore expects a RateLimit store.");
+            }
+            rateLimitStores.set(name, store);
+            if (name === "default") {
+                rateLimitStores.set("memory", store);
+            }
+            if (store.kind === "redis") {
+                rateLimitStores.set("redis", store);
+            }
+            return rateLimitServices;
+        },
+        __getRateLimitStore(name = "default") {
+            return rateLimitStores.get(name);
+        },
+        __getRateLimitStores() {
+            return new Map(rateLimitStores);
+        },
+        __resetRateLimitStores() {
+            for (const store of new Set(rateLimitStores.values())) {
+                store.reset?.();
+            }
+        },
+    });
     const lifecycleState = {
         startupComplete: false,
         shuttingDown: false,
@@ -1108,7 +1164,8 @@ function createApp(host) {
     let managementExposed = false;
     const routeHost = {
         ...host,
-        services,
+        services: rateLimitServices,
+        rateLimitStores,
         auth: authState,
         handleError(error, context) {
             if (errorPolicyState.policy === null) {
@@ -1214,7 +1271,7 @@ function createApp(host) {
     const app = {
         config: host.config,
         log: host.log,
-        services,
+        services: rateLimitServices,
         capabilities: host.capabilities,
         metrics: metricsRegistry,
         auth: Object.freeze({
@@ -1921,6 +1978,19 @@ function createApp(host) {
                     healthExposed: opsHealthExposed,
                     managementExposed,
                     metrics: metricsRegistry.snapshot(),
+                }),
+                rateLimit: Object.freeze({
+                    stores: Object.freeze([...rateLimitStores.entries()].map(([name, store]) => Object.freeze({
+                        name,
+                        kind: store.kind,
+                    }))),
+                    routes: Object.freeze(routes
+                        .filter((route) => Array.isArray(route.metadata?.rateLimit) && route.metadata.rateLimit.length !== 0)
+                        .map((route) => Object.freeze({
+                            method: route.method,
+                            pattern: route.pattern,
+                            policies: route.metadata.rateLimit.map((policy) => policy.metadata),
+                        }))),
                 }),
             });
         },

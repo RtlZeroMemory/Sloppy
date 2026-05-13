@@ -269,6 +269,7 @@ struct RouteMetadata {
     openapi_override: Option<Value>,
     output_cache: Option<Value>,
     cache_headers: Option<Value>,
+    rate_limits: Vec<RateLimitMetadata>,
     websocket: Option<WebSocketRouteOptionsMetadata>,
     realtime_channel_source: Option<String>,
     realtime_options_source: Option<String>,
@@ -6405,6 +6406,7 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "Auth"
             | "Cache"
             | "SloppyCacheError"
+            | "RateLimit"
             | "Realtime"
             | "SloppyRealtimeError"
             | "ProblemDetails"
@@ -7061,6 +7063,7 @@ fn extract_expression_statement(
         openapi_override: contract_metadata.openapi_override.clone(),
         output_cache: contract_metadata.output_cache.clone(),
         cache_headers: contract_metadata.cache_headers.clone(),
+        rate_limits: contract_metadata.rate_limits.clone(),
         docs: None,
         health: None,
         middleware: route_middleware_metadata(&route_middleware),
@@ -9406,6 +9409,7 @@ fn static_asset_route(
         openapi_override: None,
         output_cache: None,
         cache_headers: None,
+        rate_limits: Vec::new(),
         docs: None,
         health: None,
         middleware: route_middleware_metadata(context.middleware),
@@ -10743,6 +10747,7 @@ fn app_map_controller_call(
             openapi_override: contract_metadata.openapi_override.clone(),
             output_cache: contract_metadata.output_cache.clone(),
             cache_headers: contract_metadata.cache_headers.clone(),
+            rate_limits: contract_metadata.rate_limits.clone(),
             docs: None,
             health: None,
             middleware,
@@ -11120,6 +11125,7 @@ fn append_cors_preflight_routes(path: &Path, routes: &mut Vec<Route>) -> Result<
             openapi_override: None,
             output_cache: None,
             cache_headers: None,
+            rate_limits: Vec::new(),
             docs: None,
             health: None,
             middleware: route.middleware.clone(),
@@ -12604,6 +12610,7 @@ fn ops_route(
         openapi_override: None,
         output_cache: None,
         cache_headers: None,
+        rate_limits: Vec::new(),
         docs: None,
         health: None,
         middleware: route_middleware_metadata(context.middleware),
@@ -12679,6 +12686,7 @@ fn health_route(
         openapi_override: None,
         output_cache: None,
         cache_headers: None,
+        rate_limits: Vec::new(),
         docs: None,
         health: Some(HealthRouteMetadata {
             kind: spec.kind,
@@ -13025,6 +13033,7 @@ fn docs_route(input: DocsRouteInput<'_>) -> Result<Route, Diagnostic> {
         openapi_override: None,
         output_cache: None,
         cache_headers: None,
+        rate_limits: Vec::new(),
         docs: input.docs,
         health: None,
         middleware: route_middleware_metadata(input.middleware),
@@ -15108,6 +15117,7 @@ fn extract_module_function_routes(
                     openapi_override: contract_metadata.openapi_override.clone(),
                     output_cache: contract_metadata.output_cache.clone(),
                     cache_headers: contract_metadata.cache_headers.clone(),
+                    rate_limits: contract_metadata.rate_limits.clone(),
                     docs: None,
                     health: None,
                     middleware: Vec::new(),
@@ -16239,6 +16249,10 @@ fn route_metadata_chain<'a>(
                 }
                 current = &member.object;
             }
+            "rateLimit" => {
+                metadata.rate_limits.push(route_rate_limit_from_call(call)?);
+                current = &member.object;
+            }
             _ => break,
         }
     }
@@ -16278,6 +16292,96 @@ fn extend_unique(values: &mut Vec<String>, incoming: Vec<String>) {
             values.push(value);
         }
     }
+}
+
+fn route_rate_limit_from_call(call: &CallExpression<'_>) -> Result<RateLimitMetadata, Diagnostic> {
+    if call.arguments.len() != 1 {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_UNSUPPORTED_RATE_LIMIT",
+            "rateLimit requires exactly one RateLimit policy",
+        )
+        .with_span(call.span));
+    }
+    let Argument::CallExpression(policy_call) = &call.arguments[0] else {
+        return Ok(RateLimitMetadata {
+            name: None,
+            algorithm: "dynamic".to_string(),
+            store: None,
+            partition: None,
+            partial: true,
+        });
+    };
+    let Some(chain) = static_member_chain(&policy_call.callee) else {
+        return Ok(RateLimitMetadata {
+            name: None,
+            algorithm: "dynamic".to_string(),
+            store: None,
+            partition: None,
+            partial: true,
+        });
+    };
+    if chain.len() < 2 || chain[0] != "RateLimit" {
+        return Ok(RateLimitMetadata {
+            name: None,
+            algorithm: "dynamic".to_string(),
+            store: None,
+            partition: None,
+            partial: true,
+        });
+    }
+    let algorithm = chain[1].to_string();
+    let mut metadata = RateLimitMetadata {
+        name: None,
+        algorithm,
+        store: None,
+        partition: None,
+        partial: false,
+    };
+    let Some(options) = policy_call.arguments.first().and_then(object_argument) else {
+        metadata.partial = true;
+        return Ok(metadata);
+    };
+    for property in &options.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            metadata.partial = true;
+            continue;
+        };
+        if property.computed {
+            metadata.partial = true;
+            continue;
+        }
+        let Some(key) = property_key_name(&property.key) else {
+            metadata.partial = true;
+            continue;
+        };
+        match key {
+            "name" => {
+                metadata.name = expression_string_literal(&property.value).map(str::to_string);
+                metadata.partial = metadata.partial || metadata.name.is_none();
+            }
+            "store" => {
+                metadata.store = expression_string_literal(&property.value).map(str::to_string);
+                metadata.partial = metadata.partial || metadata.store.is_none();
+            }
+            "partitionBy" => {
+                metadata.partition = rate_limit_partition_name(&property.value);
+                metadata.partial = metadata.partial || metadata.partition.is_none();
+            }
+            _ => {}
+        }
+    }
+    Ok(metadata)
+}
+
+fn rate_limit_partition_name(expression: &Expression<'_>) -> Option<String> {
+    let Expression::CallExpression(call) = expression else {
+        return None;
+    };
+    let chain = static_member_chain(&call.callee)?;
+    if chain.len() >= 3 && chain[0] == "RateLimit" && chain[1] == "partition" {
+        return Some(chain[2].to_string());
+    }
+    None
 }
 
 fn merged_route_metadata(options: &RouteMetadata, fluent: &RouteMetadata) -> RouteMetadata {
@@ -16332,6 +16436,9 @@ fn merged_route_metadata(options: &RouteMetadata, fluent: &RouteMetadata) -> Rou
     }
     if fluent.cache_headers.is_some() {
         merged.cache_headers = fluent.cache_headers.clone();
+    }
+    if !fluent.rate_limits.is_empty() {
+        merged.rate_limits.extend(fluent.rate_limits.clone());
     }
     if let Some(fluent_websocket) = &fluent.websocket {
         let mut websocket = merged.websocket.unwrap_or_default();
@@ -22764,7 +22871,7 @@ fn emit_dynamic_web_app_js(source: &str, app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, Realtime, SloppyRealtimeError, schema, Schema, Environment, data, sql, orm, table, column, relation, SloppyOrmError, SloppyOrmConcurrencyError, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
+    output.push_str("const { Results, RateLimit, Realtime, SloppyRealtimeError, schema, Schema, Environment, data, sql, orm, table, column, relation, SloppyOrmError, SloppyOrmConcurrencyError, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
     output.push_str(
         r#"const __sloppy_framework_services = __createFrameworkServiceProvider();
 const __sloppy_framework_provider_configs = new Map([]);

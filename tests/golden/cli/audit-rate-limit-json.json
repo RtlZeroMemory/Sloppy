@@ -1,0 +1,8 @@
+{
+  "findings": [
+    { "severity": "note", "code": "SLOPPY_AUDIT_RATE_LIMIT_ROUTE", "message": "route rate-limit metadata is Plan-visible", "path": "rateLimit" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_RATE_LIMIT_ROUTE", "message": "route rate-limit metadata is Plan-visible", "path": "rateLimit" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_RATE_LIMIT_ROUTE", "message": "route rate-limit metadata is Plan-visible", "path": "rateLimit" },
+    { "severity": "warn", "code": "SLOPPY_AUDIT_RATE_LIMIT_PARTIAL", "message": "route rate-limit metadata is partial", "path": "rateLimit" }
+  ]
+}

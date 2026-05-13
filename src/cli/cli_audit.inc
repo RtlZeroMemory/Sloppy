@@ -56,6 +56,8 @@ static bool sl_cli_audit_auth_policy_known(const SlCliMetadata* metadata, SlCliS
     return false;
 }
 
+static bool sl_cli_audit_span_contains_ascii_ci(SlCliSpan span, const char* needle);
+
 static void sl_cli_audit_auth_metadata(const SlCliOptions* options, const SlCliMetadata* metadata,
                                        size_t* findings, size_t* errors)
 {
@@ -194,6 +196,32 @@ static void sl_cli_audit_routes(const SlCliOptions* options, const SlCliMetadata
         {
             sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_RESPONSE_UNKNOWN",
                               "route response metadata is unknown", "response", findings, errors);
+        }
+        if (metadata->routes[outer].rate_limit_count > 0U) {
+            bool emitted_partial = false;
+            sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_RATE_LIMIT_ROUTE",
+                              "route rate-limit metadata is Plan-visible", "rateLimit", findings,
+                              errors);
+            for (size_t rate_index = 0U;
+                 rate_index < metadata->routes[outer].rate_limit_count && !emitted_partial;
+                 rate_index += 1U)
+            {
+                if (metadata->routes[outer].rate_limit_partials[rate_index]) {
+                    sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_RATE_LIMIT_PARTIAL",
+                                      "route rate-limit metadata is partial", "rateLimit",
+                                      findings, errors);
+                    emitted_partial = true;
+                }
+            }
+        }
+        if (!metadata->routes[outer].auth_required &&
+            metadata->routes[outer].rate_limit_count == 0U &&
+            (sl_cli_audit_span_contains_ascii_ci(metadata->routes[outer].name, "login") ||
+             sl_cli_audit_span_contains_ascii_ci(metadata->routes[outer].pattern, "login")))
+        {
+            sl_cli_audit_emit(options, "warn", "SLOPPY_AUDIT_RATE_LIMIT_LOGIN_MISSING",
+                              "public login route has no rate-limit metadata", "rateLimit",
+                              findings, errors);
         }
         if (!sl_cli_span_empty(metadata->routes[outer].query_schema) &&
             sl_cli_find_schema(metadata, metadata->routes[outer].query_schema) == NULL)
@@ -395,6 +423,37 @@ static bool sl_cli_audit_span_starts_with(SlCliSpan span, const char* prefix)
         index += 1U;
     }
     return true;
+}
+
+static bool sl_cli_audit_span_contains_ascii_ci(SlCliSpan span, const char* needle)
+{
+    size_t needle_length = strlen(needle);
+
+    if (span.ptr == NULL || needle == NULL || needle_length == 0U ||
+        span.length < needle_length)
+    {
+        return false;
+    }
+    for (size_t index = 0U; index + needle_length <= span.length; index += 1U) {
+        size_t offset = 0U;
+        for (offset = 0U; offset < needle_length; offset += 1U) {
+            unsigned char left = (unsigned char)span.ptr[index + offset];
+            unsigned char right = (unsigned char)needle[offset];
+            if (left >= 'A' && left <= 'Z') {
+                left = (unsigned char)(left + ('a' - 'A'));
+            }
+            if (right >= 'A' && right <= 'Z') {
+                right = (unsigned char)(right + ('a' - 'A'));
+            }
+            if (left != right) {
+                break;
+            }
+        }
+        if (offset == needle_length) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static void sl_cli_audit_dependency_checks(const SlCliOptions* options,

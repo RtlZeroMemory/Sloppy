@@ -259,4 +259,6 @@ Real container starts belong in a V8/native-provider lane.
 - SQL Server images are large and startup can be slow.
 - Container tests are slower than app-host tests.
 - Docker Compose, Redis, S3/MinIO, SMTP, and Kubernetes abstractions are not
-  part of this API.
+  part of this API. Rate-limit Redis tests use the fail-closed
+  `RateLimit.redis(...)` adapter until a first-party Redis TestServices lane
+  exists.

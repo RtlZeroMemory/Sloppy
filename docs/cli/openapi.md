@@ -47,6 +47,9 @@ A minimal OpenAPI 3 document in JSON form:
 - Route summaries, descriptions, deprecation markers, request/response media
   types, header/query/parameter contracts, auth requirements, and response
   status metadata from the route builder.
+- Rate-limited routes get a deterministic `429` ProblemDetails response with
+  `Retry-After`, `RateLimit-Limit`, `RateLimit-Remaining`, and
+  `RateLimit-Reset` headers unless the route already declares status `429`.
 - Static `.openapi(object)` route overrides replace the generated operation
   for that route. Use them only when you want to own the complete operation
   object, including `responses`, `parameters`, `security`, and `tags`.
@@ -121,6 +124,10 @@ directly model:
 - `x-slop-auth` — route auth metadata from the Plan, including whether
   auth is required, `allowAnonymous`, schemes, scopes, roles, claims, and
   policy when present.
+- `x-slop-rate-limit` — route rate-limit metadata from the Plan: algorithm,
+  policy name, store, partition kind, and `partial` when extraction was not
+  fully static. It never includes raw IPs, user IDs, API keys, or header
+  values.
 - `x-slop-optimization-candidates` — Plan-derived hints surfaced for
   tooling.
 - `x-slop-partial` — a marker noting the field/section was emitted with
@@ -171,6 +178,9 @@ needs to refresh the docs `openapi.json` artifact.
 - Servers or external-docs metadata are not inferred.
 - Middleware, CORS, RequestId, RequestLogging, and controller behavior are
   reflected only to the extent they are visible in current Plan route metadata.
+- Rate-limit metadata reflects first-party `RateLimit.*` policies visible to
+  the compiler. Dynamic policy construction is marked partial rather than
+  guessed.
 - Dynamic routes with unknown paths are omitted rather than invented.
 
 This is enough for documentation and for sanity-checking that an API

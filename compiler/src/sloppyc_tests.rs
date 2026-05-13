@@ -8185,6 +8185,90 @@ export default app;
 }
 
 #[test]
+fn static_rate_limit_route_metadata_emits_plan_contract() {
+    let source = r#"import { Sloppy, Results, RateLimit } from "sloppy";
+const app = Sloppy.create();
+app.get("/search", () => Results.text("ok"))
+  .rateLimit(RateLimit.fixedWindow({
+    name: "search-ip",
+    limit: 10,
+    windowMs: 60000,
+    store: "default",
+    partitionBy: RateLimit.partition.ip()
+  }));
+app.get("/me", () => Results.ok({ ok: true }))
+  .rateLimit(RateLimit.tokenBucket({
+    name: "me-user",
+    capacity: 5,
+    refillPerSecond: 1,
+    partitionBy: RateLimit.partition.user()
+  }));
+app.get("/dynamic", () => Results.text("ok"))
+  .rateLimit(createPolicy());
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("rate-limit route metadata should extract");
+    let search = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/search")
+        .expect("search route should exist");
+    assert_eq!(search.rate_limits.len(), 1);
+    assert_eq!(search.rate_limits[0].name.as_deref(), Some("search-ip"));
+    assert_eq!(search.rate_limits[0].algorithm, "fixedWindow");
+    assert_eq!(search.rate_limits[0].store.as_deref(), Some("default"));
+    assert_eq!(search.rate_limits[0].partition.as_deref(), Some("ip"));
+    assert!(!search.rate_limits[0].partial);
+    let me = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/me")
+        .expect("me route should exist");
+    assert_eq!(me.rate_limits[0].algorithm, "tokenBucket");
+    assert_eq!(me.rate_limits[0].partition.as_deref(), Some("user"));
+    assert!(!me.rate_limits[0].partial);
+    let dynamic = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/dynamic")
+        .expect("dynamic route should exist");
+    assert_eq!(dynamic.rate_limits[0].algorithm, "dynamic");
+    assert!(dynamic.rate_limits[0].partial);
+
+    let plan = super::emit_plan(&app, "bundle-hash", "map-hash")
+        .expect("plan should emit rate-limit route metadata");
+    let plan: serde_json::Value =
+        serde_json::from_str(&plan).expect("plan output should be valid JSON");
+    let routes = plan["routes"]
+        .as_array()
+        .expect("plan routes should be an array");
+    let search = routes
+        .iter()
+        .find(|route| route["pattern"] == "/search")
+        .expect("search route should be emitted");
+    assert_eq!(
+        search["rateLimit"],
+        serde_json::json!([{
+            "name": "search-ip",
+            "algorithm": "fixedWindow",
+            "store": "default",
+            "partition": "ip",
+            "partial": false
+        }])
+    );
+    let dynamic = routes
+        .iter()
+        .find(|route| route["pattern"] == "/dynamic")
+        .expect("dynamic route should be emitted");
+    assert_eq!(
+        dynamic["rateLimit"][0]["algorithm"],
+        serde_json::json!("dynamic")
+    );
+    assert_eq!(dynamic["rateLimit"][0]["partial"], serde_json::json!(true));
+}
+
+#[test]
 fn static_auth_config_metadata_fails_closed() {
     for source in [
         r#"import { Sloppy, Results, Auth } from "sloppy";

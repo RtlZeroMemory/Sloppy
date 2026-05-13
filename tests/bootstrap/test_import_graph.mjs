@@ -23,6 +23,7 @@ const modules = [
     "webhooks.js",
     "workers.js",
     "providers/sqlite.js",
+    "rate-limit.js",
     "request-id.js",
     "request-logging.js",
     "internal/capabilities.js",

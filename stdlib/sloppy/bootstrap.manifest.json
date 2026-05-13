@@ -49,6 +49,7 @@
     "sloppy/node/zlib.js",
     "sloppy/providers/sqlite.js",
     "sloppy/problem-details.js",
+    "sloppy/rate-limit.js",
     "sloppy/realtime.js",
     "sloppy/request-id.js",
     "sloppy/request-logging.js",

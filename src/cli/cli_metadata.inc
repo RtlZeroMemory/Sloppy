@@ -315,6 +315,46 @@ static int sl_cli_parse_route_responses(yyjson_val* value, SlCliRoute* route)
     return 0;
 }
 
+static int sl_cli_parse_route_rate_limits(yyjson_val* value, SlCliRoute* route)
+{
+    yyjson_val* rate_limits = yyjson_obj_get(value, "rateLimit");
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter;
+
+    if (rate_limits == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(rate_limits)) {
+        sl_cli_write_cstr(stderr, "sloppy: malformed metadata: route rateLimit must be an array\n");
+        return 1;
+    }
+
+    yyjson_arr_iter_init(rate_limits, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        yyjson_val* partial = NULL;
+        if (!yyjson_is_obj(entry)) {
+            sl_cli_write_cstr(
+                stderr, "sloppy: malformed metadata: route rateLimit entries must be objects\n");
+            return 1;
+        }
+        if (route->rate_limit_count >= SL_CLI_MAX_ROUTE_RATE_LIMITS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many route rateLimit entries in metadata\n");
+            return 1;
+        }
+        route->rate_limit_names[route->rate_limit_count] = sl_cli_json_span(entry, "name");
+        route->rate_limit_algorithms[route->rate_limit_count] =
+            sl_cli_json_span(entry, "algorithm");
+        route->rate_limit_stores[route->rate_limit_count] = sl_cli_json_span(entry, "store");
+        route->rate_limit_partitions[route->rate_limit_count] =
+            sl_cli_json_span(entry, "partition");
+        partial = yyjson_obj_get(entry, "partial");
+        route->rate_limit_partials[route->rate_limit_count] =
+            partial != NULL && yyjson_is_bool(partial) && yyjson_get_bool(partial);
+        route->rate_limit_count += 1U;
+    }
+    return 0;
+}
+
 static int sl_cli_parse_route_health(yyjson_val* value, SlCliRoute* route)
 {
     yyjson_val* health = yyjson_obj_get(value, "health");
@@ -384,6 +424,9 @@ static int sl_cli_parse_route_strong_metadata(yyjson_val* value, SlCliRoute* rou
         route->response_status = sl_cli_json_uint_or_zero(response, "status");
     }
     if (sl_cli_parse_route_responses(value, route) != 0) {
+        return 1;
+    }
+    if (sl_cli_parse_route_rate_limits(value, route) != 0) {
         return 1;
     }
     if (sl_cli_parse_route_health(value, route) != 0) {

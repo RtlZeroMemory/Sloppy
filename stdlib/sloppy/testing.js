@@ -1101,6 +1101,7 @@ function createContext(app, hostState, method, targetParts, headers, route, matc
         capabilities: app.capabilities,
         config: hostState.config,
         log: app.log,
+        diagnostics: hostState.diagnostics,
         metrics: typeof app.__getMetricsRegistry === "function" ? app.__getMetricsRegistry() : undefined,
         diagnostics: hostState.diagnostics,
         __sloppyTestHostMetrics: hostState.metrics,
@@ -1129,6 +1130,7 @@ function createContext(app, hostState, method, targetParts, headers, route, matc
             protocol: "http",
             scheme: "test",
             secure: false,
+            remoteAddress: options?.remoteAddress ?? "test-host",
         }),
         signal: signalObject(),
         deadline: null,
@@ -1776,14 +1778,26 @@ function openApiFromRoutes(routes) {
     const paths = {};
     for (const route of routes) {
         const path = pathToOpenApiPath(route.pattern);
+        const rateLimit = route.metadata?.rateLimit;
+        const responses = {
+            200: {
+                description: "OK",
+            },
+        };
+        if (Array.isArray(rateLimit) && rateLimit.length !== 0) {
+            responses[429] = {
+                description: "Too Many Requests",
+                headers: {
+                    "Retry-After": {
+                        schema: { type: "string" },
+                    },
+                },
+            };
+        }
         paths[path] ??= {};
         paths[path][route.method.toLowerCase()] = {
             operationId: route.name,
-            responses: {
-                200: {
-                    description: "OK",
-                },
-            },
+            responses,
             ...(route.metadata?.realtime === undefined ? {} : {
                 "x-slop-realtime": {
                     kind: route.metadata.realtime.kind,
@@ -1796,6 +1810,9 @@ function openApiFromRoutes(routes) {
                 pattern: route.pattern,
                 name: route.name,
             },
+            ...(Array.isArray(rateLimit) && rateLimit.length !== 0
+                ? { "x-slop-rate-limit": rateLimit }
+                : {}),
         };
     }
     return Object.freeze({
@@ -2893,6 +2910,21 @@ function createFluentHost(base, mode = "inProcess", defaults = {}) {
         head(target, options) {
             return new RequestBuilder(host, "HEAD", target, options);
         },
+        async expectRateLimited(method, target, options = undefined) {
+            const response = await host.request(method, target, options);
+            response.expectStatus(429).expectProblem({
+                status: 429,
+                code: "SLOPPY_E_RATE_LIMIT_EXCEEDED",
+            });
+            return response;
+        },
+        advanceClock(duration) {
+            if (typeof base.clock?.advanceBy !== "function") {
+                throw new Error("Sloppy TestHost advanceClock requires a fake clock with advanceBy().");
+            }
+            base.clock.advanceBy(duration);
+            return host;
+        },
         websocket(target, options) {
             return new WebSocketBuilder(host, target, options);
         },
@@ -2930,6 +2962,7 @@ function createFluentHost(base, mode = "inProcess", defaults = {}) {
         metrics: base.metrics,
         jobs: base.jobs,
         openapi: base.openapi,
+        clock: base.clock,
         baseUrl: base.baseUrl,
         port: base.port,
     };
@@ -2945,6 +2978,27 @@ function createTestHost(app, options = {}) {
         throw new TypeError("Sloppy TestHost options must be a plain object.");
     }
 
+    const secretValues = Object.values(options.secrets ?? {});
+    const diagnostics = createDiagnosticsStore(secretValues);
+    const metrics = createMetricsStore();
+    const jobs = createJobsHelpers(options.jobs);
+    if (options.rateLimit !== undefined && !isPlainObject(options.rateLimit)) {
+        throw new TypeError("Sloppy TestHost rateLimit options must be a plain object.");
+    }
+    const rateLimitStores = options.rateLimit?.stores;
+    if (rateLimitStores !== undefined) {
+        if (!isPlainObject(rateLimitStores)) {
+            throw new TypeError("Sloppy TestHost rateLimit.stores must be a plain object.");
+        }
+        for (const [name, store] of Object.entries(rateLimitStores)) {
+            if ((name === "default" || name === "memory") && typeof app.services.__setRateLimitStore === "function") {
+                app.services.__setRateLimitStore(name, store);
+            } else {
+                app.services.addRateLimitStore(name, store);
+            }
+        }
+    }
+    app.services.__resetRateLimitStores?.();
     app.freeze();
     const routes = snapshotRoutes(app);
     const serializationOptions = typeof app.__getSerializationOptions === "function"
@@ -2955,10 +3009,6 @@ function createTestHost(app, options = {}) {
     const activeSockets = new Set();
     let closePromise = undefined;
     let drainWaiters = [];
-    const secretValues = Object.values(options.secrets ?? {});
-    const diagnostics = createDiagnosticsStore(secretValues);
-    const metrics = createMetricsStore();
-    const jobs = createJobsHelpers(options.jobs);
     const hostState = Object.freeze({
         config: createConfigOverlay(app.config, options.config, options.secrets),
         services: createServiceOverlay(app.services, options.services, options.providers, options.caches, options.httpClients),
@@ -3393,6 +3443,7 @@ function createTestHost(app, options = {}) {
                 protocol: "websocket",
                 scheme: "test",
                 secure: false,
+                remoteAddress: normalizedOptions.remoteAddress ?? "test-host",
             }),
         };
 
@@ -3490,6 +3541,9 @@ function createTestHost(app, options = {}) {
         options(target, options) {
             return request("OPTIONS", target, options);
         },
+        head(target, options) {
+            return request("HEAD", target, options);
+        },
         websocket(target, options) {
             return new WebSocketBuilder(host, target, options);
         },
@@ -3515,6 +3569,7 @@ function createTestHost(app, options = {}) {
         metrics,
         jobs,
         openapi: createOpenApiHelpers(() => openApiFromRoutes(routes)),
+        clock: hostState.clock,
     };
     return Object.freeze(host);
 }

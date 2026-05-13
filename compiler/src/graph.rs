@@ -48,6 +48,7 @@ pub(crate) struct Route {
     pub(crate) openapi_override: Option<Value>,
     pub(crate) output_cache: Option<Value>,
     pub(crate) cache_headers: Option<Value>,
+    pub(crate) rate_limits: Vec<RateLimitMetadata>,
     pub(crate) docs: Option<DocsRouteMetadata>,
     pub(crate) health: Option<HealthRouteMetadata>,
     pub(crate) middleware: Vec<RouteMiddlewareMetadata>,
@@ -85,6 +86,15 @@ pub(crate) struct WebSocketRouteOptionsMetadata {
 pub(crate) enum WebSocketOriginsMetadata {
     Any,
     List(Vec<String>),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RateLimitMetadata {
+    pub(crate) name: Option<String>,
+    pub(crate) algorithm: String,
+    pub(crate) store: Option<String>,
+    pub(crate) partition: Option<String>,
+    pub(crate) partial: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -165,6 +165,23 @@ app.get("/jobs", handler)
 app.get("/status", handler).allowAnonymous();
 ```
 
+Auth-aware rate limits compose with the same route builder:
+
+```ts
+app.get("/me", handler)
+  .requiresAuth()
+  .rateLimit(RateLimit.tokenBucket({
+    capacity: 100,
+    refillPerSecond: 10,
+    partitionBy: RateLimit.partition.user(),
+  }));
+```
+
+`RateLimit.partition.user()` and `RateLimit.partition.claim(name)` require an
+authenticated request. `RateLimit.partition.apiKey()` uses the authenticated
+API-key principal when present. Raw tokens, API keys, user IDs, and IPs are not
+emitted as metric labels or diagnostic fields.
+
 Groups can require auth for every child route:
 
 ```ts

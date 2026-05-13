@@ -157,6 +157,7 @@ set(
     os.js
     orm.js
     problem-details.js
+    rate-limit.js
     realtime.js
     request-id.js
     request-logging.js

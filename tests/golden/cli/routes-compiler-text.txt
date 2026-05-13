@@ -1,3 +1,3 @@
-ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  JSON  NAME  SUMMARY
-0      GET     http         /users/{id:int}      1        complete          input.js:6:1  -  200/json/json  req:none/none resp:native-static/preencoded  Users.Get
-1      GET     http         /{tenant}/users/{id:int}  2        complete          input.js:7:1  -  200/text/text  req:none/none resp:none/none  Tenant.Users.Get
+ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  JSON  RATE_LIMIT  NAME  SUMMARY
+0      GET     http         /users/{id:int}      1        complete          input.js:6:1  -  200/json/json  req:none/none resp:native-static/preencoded  -  Users.Get
+1      GET     http         /{tenant}/users/{id:int}  2        complete          input.js:7:1  -  200/text/text  req:none/none resp:none/none  -  Tenant.Users.Get

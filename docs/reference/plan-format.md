@@ -45,6 +45,9 @@ The compiler can emit route metadata for the supported source subset:
 - optional API contract metadata: `summary`, `description`, `deprecated`,
   `deprecatedReason`, `consumes`, `produces`, `headers`, `querySchema`,
   `paramsSchema`, and static `openapi` overrides;
+- optional `rateLimit` metadata for first-party `RateLimit.*` policies, with
+  policy name, algorithm, store name, partition kind, and a `partial` flag when
+  the policy was not fully static;
 - optional health metadata for compiler-extracted health endpoints;
 - source metadata;
 - direct handler IDs;
@@ -77,7 +80,9 @@ all route metadata is inferred. Unknown dynamic registrations appear in
 `dynamicRoutes[]`, and app-level metadata records route completeness counts.
 OpenAPI emitters include representable known routes and mark the document with
 `x-slop-openapi-policy.mode: "partial"` when route, schema, response, or auth
-metadata is incomplete. Strict OpenAPI generation fails instead of guessing.
+metadata is incomplete. Rate-limit metadata is emitted as operation extensions
+and `429` responses when available. Strict OpenAPI generation fails instead of
+guessing missing contract details.
 
 ## Route Dispatch
 

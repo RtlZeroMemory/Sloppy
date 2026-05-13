@@ -219,6 +219,26 @@ or cookies.
 `Health.realtime(backplane)` reports the configured backplane health through
 the same health-check shape as the rest of `Health`.
 
+## Rate Limiting
+
+WebSocket routes support `.rateLimit(...)`. The policy applies to upgrade
+attempts before the handler can accept the socket:
+
+```ts
+app.websocket("/rooms/{roomId}", async (socket) => {
+    await socket.accept();
+})
+    .requiresAuth()
+    .rateLimit(RateLimit.tokenBucket({
+        capacity: 30,
+        refillPerSecond: 5,
+        partitionBy: RateLimit.partition.user(),
+    }));
+```
+
+Denied app-host handshakes reject with status `429`. Per-message throttling is
+not exposed until the socket API has a route-level message policy hook.
+
 ## Plan Metadata
 
 Compiler and CLI metadata for `app.realtime(...)` is intentionally partial in

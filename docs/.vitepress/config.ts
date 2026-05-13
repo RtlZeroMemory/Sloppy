@@ -80,6 +80,7 @@ export default defineConfig({
           { text: "Auth", link: "/api/auth" },
           { text: "Sessions", link: "/api/sessions" },
           { text: "Security headers", link: "/api/security" },
+          { text: "Rate limiting", link: "/api/rate-limit" },
           { text: "Health checks", link: "/api/health" },
           { text: "ProblemDetails", link: "/api/problem-details" },
           { text: "Request IDs", link: "/api/request-id" },
@@ -139,6 +140,7 @@ export default defineConfig({
           { text: "Providers", link: "/reference/providers" },
           { text: "FFI", link: "/reference/ffi" },
           { text: "Diagnostics", link: "/reference/diagnostics" },
+          { text: "Rate limits", link: "/reference/rate-limit" },
           { text: "Release artifact contract", link: "/release/artifact-contract" }
         ]
       },
@@ -149,6 +151,7 @@ export default defineConfig({
           { text: "Compiler", link: "/internals/compiler" },
           { text: "Runtime", link: "/internals/runtime" },
           { text: "HTTP runtime", link: "/internals/http-runtime" },
+          { text: "Rate limit runtime", link: "/internals/rate-limit-runtime" },
           { text: "WebSocket runtime", link: "/internals/websocket-runtime" },
           { text: "V8 bridge", link: "/internals/v8-bridge" },
           { text: "Provider runtime", link: "/internals/provider-runtime" },

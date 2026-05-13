@@ -29,6 +29,7 @@ typedef struct SlCliRoute
     size_t auth_scope_count;
     size_t auth_role_count;
     size_t auth_claim_count;
+    size_t rate_limit_count;
     uint64_t source_line;
     uint64_t source_column;
     uint64_t response_status;
@@ -75,6 +76,10 @@ typedef struct SlCliRoute
     SlCliSpan auth_scopes[SL_CLI_MAX_ROUTE_AUTH_SCOPES];
     SlCliSpan auth_roles[SL_CLI_MAX_ROUTE_AUTH_ROLES];
     SlCliSpan auth_claims[SL_CLI_MAX_ROUTE_AUTH_CLAIMS];
+    SlCliSpan rate_limit_names[SL_CLI_MAX_ROUTE_RATE_LIMITS];
+    SlCliSpan rate_limit_algorithms[SL_CLI_MAX_ROUTE_RATE_LIMITS];
+    SlCliSpan rate_limit_stores[SL_CLI_MAX_ROUTE_RATE_LIMITS];
+    SlCliSpan rate_limit_partitions[SL_CLI_MAX_ROUTE_RATE_LIMITS];
     uint64_t response_statuses[SL_CLI_MAX_ROUTE_RESPONSES];
     SlCliSpan consumes[SL_CLI_MAX_ROUTE_TAGS];
     SlCliSpan produces[SL_CLI_MAX_ROUTE_TAGS];
@@ -101,6 +106,7 @@ typedef struct SlCliRoute
     bool auth_required;
     bool auth_allow_anonymous;
     bool dynamic_metadata;
+    bool rate_limit_partials[SL_CLI_MAX_ROUTE_RATE_LIMITS];
     bool header_required[SL_CLI_MAX_ROUTE_BINDINGS];
 } SlCliRoute;
 
