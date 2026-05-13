@@ -126,6 +126,8 @@ jobs:
           launcher="$temp_root/install/node_modules/@slopware/sloppy/bin/sloppy.js"
           node "$launcher" --version
           node "$launcher" doctor
+          root_tarball="$(realpath "${{ steps.tarballs.outputs.root }}")"
+          linux_tarball="$(realpath "${{ steps.tarballs.outputs.linux }}")"
           mkdir -p "$temp_root/work"
           for template in minimal-api api package-api; do
             app="${template}-app"
@@ -133,7 +135,7 @@ jobs:
             test -f "$temp_root/work/$app/.gitignore"
             test ! -e "$temp_root/work/$app/gitignore"
             if [[ "$template" == "package-api" ]]; then
-              (cd "$temp_root/work/$app" && npm install --ignore-scripts --no-audit "${{ steps.tarballs.outputs.root }}" "${{ steps.tarballs.outputs.linux }}")
+              (cd "$temp_root/work/$app" && npm install --ignore-scripts --no-audit "$root_tarball" "$linux_tarball")
             fi
             (cd "$temp_root/work/$app" && node "$launcher" build)
             (cd "$temp_root/work/$app" && node "$launcher" routes --artifacts .sloppy --format json >/tmp/${template}-routes.json)

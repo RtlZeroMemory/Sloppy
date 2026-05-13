@@ -96,9 +96,11 @@ function Test-ReleaseTemplates {
     }
     Assert-TextContains -Text $npmPublishWorkflow -Needle "slopware-sloppy-[0-9]*.tgz" -Message "npm publish workflow must consume @slopware root tarballs."
     Assert-TextContains -Text $npmPublishWorkflow -Needle "slopware-sloppy-linux-x64-*.tgz" -Message "npm publish workflow must consume @slopware platform tarballs."
+    Assert-TextContains -Text $npmPublishWorkflow -Needle 'root_tarball="$(realpath "${{ steps.tarballs.outputs.root }}")"' -Message "npm publish workflow must resolve local root tarball paths before template smoke."
+    Assert-TextContains -Text $npmPublishWorkflow -Needle 'linux_tarball="$(realpath "${{ steps.tarballs.outputs.linux }}")"' -Message "npm publish workflow must resolve local platform tarball paths before template smoke."
     Assert-TextContains -Text $npmPublishWorkflow -Needle "for template in minimal-api api package-api; do" -Message "npm publish workflow must smoke current API templates."
     Assert-TextContains -Text $npmPublishWorkflow -Needle 'if [[ "$template" == "package-api" ]]; then' -Message "npm publish workflow must install package-api local dependencies before build smoke."
-    Assert-TextContains -Text $npmPublishWorkflow -Needle 'npm install --ignore-scripts --no-audit "${{ steps.tarballs.outputs.root }}" "${{ steps.tarballs.outputs.linux }}"' -Message "npm publish workflow must install package-api from local release tarballs during first-alpha smoke."
+    Assert-TextContains -Text $npmPublishWorkflow -Needle 'npm install --ignore-scripts --no-audit "$root_tarball" "$linux_tarball"' -Message "npm publish workflow must install package-api from local release tarballs during first-alpha smoke."
     Assert-True (-not $npmPublishWorkflow.Contains("for template in minimal-api full-api dogfood; do")) "npm publish workflow must not smoke removed template names."
     Assert-True (-not $npmPublishWorkflow.Contains("registry-url:")) "npm publish workflow must not configure setup-node token auth."
     Assert-True (-not $npmPublishWorkflow.Contains("NODE_AUTH_TOKEN")) "npm publish workflow must not use token auth."
