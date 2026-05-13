@@ -9,6 +9,7 @@ set(required_bootstrap_assets
     data.js
     fs.js
     health.js
+    http.js
     metrics.js
     net.js
     os.js

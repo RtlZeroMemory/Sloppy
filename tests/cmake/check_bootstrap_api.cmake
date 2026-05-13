@@ -6,6 +6,7 @@ set(ffi_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/ffi.js")
 set(fs_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/fs.js")
 set(time_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/time.js")
 set(workers_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/workers.js")
+set(http_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/http.js")
 set(problem_details_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/problem-details.js")
 set(request_id_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/request-id.js")
 set(request_logging_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/request-logging.js")
@@ -24,7 +25,7 @@ set(services_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/services.js")
 set(shared_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/shared.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${time_source}" "${workers_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${testservices_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${time_source}" "${workers_source}" "${http_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${testservices_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -38,6 +39,7 @@ file(READ "${ffi_source}" ffi_js)
 file(READ "${fs_source}" fs_js)
 file(READ "${time_source}" time_js)
 file(READ "${workers_source}" workers_js)
+file(READ "${http_source}" http_js)
 file(READ "${problem_details_source}" problem_details_js)
 file(READ "${request_id_source}" request_id_js)
 file(READ "${request_logging_source}" request_logging_js)
@@ -310,6 +312,24 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "class HttpClientFactory"
+        "function createManagedClient(name, options"
+        "function createNamedClient(name, options = {}"
+        "function createTypedClient(name, options = {}"
+        "const TestHttp = Object.freeze"
+        "createTestHttpServiceOverrides"
+        "SLOPPY_E_HTTP_UNEXPECTED_STATUS"
+        "SLOPPY_E_HTTP_MOCK_UNEXPECTED_CALL"
+        "retry: Object.freeze"
+        "circuitBreaker"
+        "bulkhead"
+        "__sloppyHttpClientRegistration"
+        "__sloppyHttpClientToken"
+        "Object.freeze")
+    require_substring("${http_js}" "${required_pattern}" "http.js is missing expected HTTP client factory pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "function required(key)"
         "function boolean(key"
         "__sloppyConfigReference: true"
@@ -454,7 +474,7 @@ foreach(required_pattern IN ITEMS
         "addTransient(token, factory)"
         "addScoped(token, factory)"
         "createScope()"
-        "function createServiceProvider(registrations, capabilities)"
+        "function createServiceProvider(registrations, capabilities, config = undefined)"
         "function finishWithCleanup(result, cleanup)"
         "Sloppy service provider is disposed"
         "Object.freeze")

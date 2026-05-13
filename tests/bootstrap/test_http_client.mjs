@@ -1562,6 +1562,73 @@ await withNodeNetBridge(async () => {
 });
 
 await withNodeNetBridge(async () => {
+    let releaseHold;
+    const holdReleased = new Promise((resolve) => {
+        releaseHold = resolve;
+    });
+    let observedHold;
+    const holdObserved = new Promise((resolve) => {
+        observedHold = resolve;
+    });
+    const observed = [];
+    const server = await startPersistentHttpServer(async (request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        if (request.target === "/hold") {
+            observedHold();
+            await holdReleased;
+        }
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000, pendingQueueLimit: 1 },
+        });
+        const held = client.get("/hold");
+        await holdObserved;
+        const queued = client.get("/queued");
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        assert.equal(client.poolStats().queuedRequests, 1);
+        assert.equal(client.poolStats().poolWaitCount, 1);
+
+        releaseHold();
+        assert.equal(await (await held).text(), "ok");
+        assert.equal(await (await queued).text(), "ok");
+        assert.deepEqual(observed.map((request) => request.target), ["/hold", "/queued"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 1);
+        assert.equal(client.poolStats().connectionsReused, 1);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
+    const observed = [];
+    const server = await startPersistentHttpServer((request, context) => {
+        observed.push({ target: request.target, connectionId: context.connectionId });
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+
+    try {
+        const client = HttpClient.create({
+            baseUrl: server.url,
+            pool: { maxConnectionsPerOrigin: 1, idleTimeoutMs: 1000, connectionLifetimeMs: 0 },
+        });
+        assert.equal(await (await client.get("/lifetime-one")).text(), "ok");
+        assert.equal(await (await client.get("/lifetime-two")).text(), "ok");
+
+        assert.deepEqual(observed.map((request) => request.target), ["/lifetime-one", "/lifetime-two"]);
+        assert.equal(new Set(observed.map((request) => request.connectionId)).size, 2);
+        assert.equal(client.poolStats().connectionsCreated, 2);
+        assert.equal(client.poolStats().connectionsReused, 0);
+    } finally {
+        await server.close();
+    }
+});
+
+await withNodeNetBridge(async () => {
     let redirectedHeaders;
     const target = await startHttpServer((request) => {
         redirectedHeaders = request.headers;

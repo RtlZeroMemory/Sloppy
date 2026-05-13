@@ -14,6 +14,7 @@ const modules = [
     "ffi.js",
     "fs.js",
     "health.js",
+    "http.js",
     "metrics.js",
     "net.js",
     "os.js",

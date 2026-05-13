@@ -1,5 +1,201 @@
 # HTTP Client
 
+Sloppy has two outbound HTTP layers:
+
+- `Http` from `sloppy/http` is the application-facing factory for named
+  clients, typed clients, resilience policies, DI registration, metrics, and
+  TestHost mocks.
+- `HttpClient` from `sloppy/net` is the low-level transport client. It owns
+  protocol selection, bounded bodies, redirects, TLS options, and pooled
+  reusable connections.
+
+Use `Http` for repeated backend calls. Use `HttpClient` when you need direct
+transport control in a small script or a low-level runtime test.
+
+```ts
+import { Http } from "sloppy/http";
+
+const billing = Http.client("billing", {
+  baseUrl: "https://billing.internal",
+  timeoutMs: 2000,
+  retry: Http.retry.exponential({
+    maxAttempts: 3,
+    retryOnStatus: [408, 429, 500, 502, 503, 504],
+  }),
+  pool: {
+    maxConnectionsPerOrigin: 32,
+    idleTimeoutMs: 60000,
+    connectionLifetimeMs: 300000,
+  },
+});
+
+const invoice = await billing
+  .get("/invoices/{id}", { params: { id: "inv_1" } })
+  .json(InvoiceSchema);
+```
+
+Do not create ad-hoc clients per request for repeated outbound calls. Named
+clients centralize configuration and reuse the low-level `HttpClient.create`
+transport resources.
+
+## Named Clients
+
+`Http.client(name, options)` creates a reusable named client. Client names must
+start with a letter and contain only letters, digits, `.`, `_`, or `-`.
+
+```ts
+const github = Http.client("github", {
+  baseUrl: "https://api.github.com",
+  timeoutMs: 3000,
+  headers: {
+    "User-Agent": "sloppy-app",
+  },
+  bulkhead: Http.bulkhead({ maxConcurrent: 32, maxQueue: 128 }),
+});
+
+const repo = await github
+  .get("/repos/{owner}/{repo}", {
+    params: { owner: "RtlZeroMemory", repo: "Slop" },
+    query: { per_page: 1 },
+  })
+  .json(RepoSchema);
+```
+
+The request builder supports path params, query, headers, JSON/text/bytes
+bodies, timeout/deadline overrides, cancellation signals, per-request retry
+overrides, and correlation IDs.
+
+Response helpers include `text()`, `json(schema?)`, `bytes()`, `problem()`,
+`expectStatus()`, `expectHeader()`, `expectJson()`, `expectProblem()`, and
+`throwOnError()`.
+
+## Typed Clients
+
+`Http.typedClient(name, options)` validates outbound input and inbound output
+with Sloppy schemas.
+
+```ts
+const BillingInvoice = schema.object({
+  id: schema.string(),
+  status: schema.string(),
+  amount: schema.number(),
+});
+
+const Billing = Http.typedClient("billing", {
+  baseUrl: Config.required("Billing:BaseUrl"),
+  timeoutMs: 2000,
+  retry: Http.retry.exponential({ maxAttempts: 3 }),
+  endpoints: {
+    getInvoice: Http.get("/invoices/{id}")
+      .params(schema.object({ id: schema.string() }))
+      .returns(200, BillingInvoice),
+  },
+});
+
+const app = Sloppy.create();
+app.services.addHttpClient(Billing);
+
+app.get("/invoices/{id}", async (ctx) => {
+  const billing = ctx.services.get(Billing);
+  const invoice = await billing.getInvoice(
+    { id: ctx.route.id },
+    { signal: ctx.signal, correlationId: ctx.requestId },
+  );
+  return Results.json(invoice);
+});
+```
+
+Typed clients validate params, query, and body values before sending. Responses
+are selected by status code. Unknown statuses and schema mismatches throw
+`SloppyHttpClientError` with stable error codes.
+
+## Resilience Policies
+
+The factory includes first-party timeout, retry, circuit-breaker, and bulkhead
+policies. Unsafe methods are not retried by default.
+
+```ts
+const client = Http.client("orders", {
+  baseUrl: "https://orders.internal",
+  timeoutMs: 2000,
+  retry: Http.retry.exponential({
+    maxAttempts: 3,
+    initialDelayMs: 100,
+    maxDelayMs: 2000,
+    jitter: true,
+    retryOnStatus: [408, 429, 500, 502, 503, 504],
+    retryOnMethods: ["GET", "HEAD", "PUT", "DELETE"],
+  }),
+  circuitBreaker: Http.circuitBreaker({
+    failureRatio: 0.5,
+    minimumThroughput: 20,
+    samplingWindowMs: 30000,
+    breakDurationMs: 30000,
+  }),
+  bulkhead: Http.bulkhead({
+    maxConcurrent: 32,
+    maxQueue: 128,
+    queueTimeoutMs: 1000,
+  }),
+});
+```
+
+`POST` retries require explicit method configuration and should be paired with
+application idempotency, such as an `Idempotency-Key` header. Body streams are
+not retried because they may not be replayable.
+
+## Services And TestHost
+
+Register named or typed clients through `app.services.addHttpClient(...)`.
+Named clients are available under `http.<name>`. Typed clients are resolved by
+the typed client object.
+
+```ts
+app.services.addHttpClient(Http.client("billing", {
+  baseUrl: "https://billing.internal",
+}));
+
+const billing = ctx.services.get("http.billing");
+```
+
+Tests can replace outbound clients without external mocking packages:
+
+```ts
+const mock = TestHttp.mock()
+  .get("/invoices/inv_1")
+  .replyJson(200, { id: "inv_1", status: "paid", amount: 42 });
+
+const host = await TestHost.create(app, {
+  httpClients: { billing: mock },
+});
+
+await (await host.get("/invoices/inv_1").expectStatus(200))
+  .expectJson({ id: "inv_1", status: "paid", amount: 42 });
+
+mock.expectCalled("GET", "/invoices/inv_1").expectNoUnexpectedCalls();
+```
+
+## Metrics, Diagnostics, And Health
+
+Named clients expose snapshots:
+
+```ts
+client.metrics();
+client.diagnostics();
+client.health();
+```
+
+Metrics use bounded labels: client name, method, route template, status,
+status class, and outcome. Raw full URLs are not used as metric labels. Query
+values are redacted in diagnostics, and `Authorization`, `Cookie`,
+`Set-Cookie`, `x-api-key`, and `api-key` headers are redacted.
+
+Pool counters include connections created, reused, closed while idle, rejected
+pool acquisitions, active requests, idle connections, and queued requests where
+the active transport can observe them.
+
+## Low-Level Transport
+
 `HttpClient` is the experimental outbound HTTP client exposed from
 `sloppy` and `sloppy/net`. It uses HTTP/1.1 by default, can negotiate HTTP/2
 over HTTPS with ALPN in `auto` mode, and supports explicit HTTP/2 h2/h2c when

@@ -1160,6 +1160,8 @@ function normalizeHttpPoolOptions(value, operation) {
     const maxConnectionsPerOrigin =
         raw.maxConnectionsPerOrigin ?? HTTP_CLIENT_DEFAULT_MAX_CONNECTIONS_PER_ORIGIN;
     const idleTimeoutMs = raw.idleTimeoutMs ?? HTTP_CLIENT_DEFAULT_POOL_IDLE_TIMEOUT_MS;
+    const connectionLifetimeMs = raw.connectionLifetimeMs ?? undefined;
+    const pendingQueueLimit = raw.pendingQueueLimit ?? 0;
     if (!Number.isInteger(maxConnectionsPerOrigin) || maxConnectionsPerOrigin < 1 || maxConnectionsPerOrigin > 256) {
         throw httpClientError(
             "HttpClientInvalidOptionsError",
@@ -1174,7 +1176,28 @@ function normalizeHttpPoolOptions(value, operation) {
             `${operation} pool.idleTimeoutMs must be a non-negative integer.`,
         );
     }
-    return Object.freeze({ maxConnectionsPerOrigin, idleTimeoutMs });
+    if (connectionLifetimeMs !== undefined &&
+        (!Number.isInteger(connectionLifetimeMs) || connectionLifetimeMs < 0))
+    {
+        throw httpClientError(
+            "HttpClientInvalidOptionsError",
+            "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+            `${operation} pool.connectionLifetimeMs must be a non-negative integer.`,
+        );
+    }
+    if (!Number.isInteger(pendingQueueLimit) || pendingQueueLimit < 0 || pendingQueueLimit > 100000) {
+        throw httpClientError(
+            "HttpClientInvalidOptionsError",
+            "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+            `${operation} pool.pendingQueueLimit must be an integer from 0 to 100000.`,
+        );
+    }
+    return Object.freeze({
+        maxConnectionsPerOrigin,
+        idleTimeoutMs,
+        connectionLifetimeMs,
+        pendingQueueLimit,
+    });
 }
 
 function normalizeHttpTlsOptions(value, operation) {
@@ -1421,32 +1444,125 @@ class HttpConnectionPool {
         this._options = options;
         this._entries = new Map();
         this._http2Entries = new Map();
+        this._stats = {
+            connectionsCreated: 0,
+            connectionsReused: 0,
+            connectionsClosedIdle: 0,
+            connectionsClosed: 0,
+            poolWaitCount: 0,
+            poolRejectedCount: 0,
+        };
     }
 
     _entry(originKey) {
         let entry = this._entries.get(originKey);
         if (entry === undefined) {
-            entry = { idle: [], total: 0, inUse: 0 };
+            entry = { idle: [], total: 0, inUse: 0, queue: [] };
             this._entries.set(originKey, entry);
         }
         return entry;
     }
 
     _prune(originKey, entry) {
-        if (entry.total === 0 && entry.inUse === 0 && entry.idle.length === 0) {
+        if (entry.total === 0 && entry.inUse === 0 && entry.idle.length === 0 && entry.queue.length === 0) {
             this._entries.delete(originKey);
         }
     }
 
+    _isExpired(record) {
+        const lifetimeMs = this._options.connectionLifetimeMs;
+        return lifetimeMs !== undefined && Date.now() - record.createdAt >= lifetimeMs;
+    }
+
+    async _closeIdleRecord(originKey, entry, record, idleClose) {
+        const index = entry.idle.indexOf(record);
+        if (index >= 0) {
+            entry.idle.splice(index, 1);
+        }
+        if (record.timer !== undefined) {
+            clearTimeout(record.timer);
+        }
+        entry.total -= 1;
+        if (idleClose) {
+            this._stats.connectionsClosedIdle += 1;
+        }
+        this._stats.connectionsClosed += 1;
+        await record.connection.close().catch(() => {});
+        this._prune(originKey, entry);
+    }
+
+    async _openQueued(originKey, entry, waiter) {
+        entry.total += 1;
+        entry.inUse += 1;
+        try {
+            const connection = await waiter.connect();
+            this._stats.connectionsCreated += 1;
+            waiter.resolve({ connection, reused: false, createdAt: Date.now() });
+        } catch (error) {
+            entry.total -= 1;
+            entry.inUse -= 1;
+            waiter.reject(error);
+            this._prune(originKey, entry);
+        }
+    }
+
+    _settleNextQueued(originKey, entry, reusableRecord = undefined) {
+        const waiter = entry.queue.shift();
+        if (waiter === undefined) {
+            return false;
+        }
+        clearTimeout(waiter.timer);
+        if (reusableRecord !== undefined && !this._isExpired(reusableRecord)) {
+            this._stats.connectionsReused += 1;
+            entry.inUse += 1;
+            waiter.resolve({
+                connection: reusableRecord.connection,
+                reused: true,
+                createdAt: reusableRecord.createdAt,
+            });
+            return true;
+        }
+        this._openQueued(originKey, entry, waiter);
+        return false;
+    }
+
     async acquire(originKey, connect) {
         const entry = this._entry(originKey);
-        const idle = entry.idle.pop();
-        if (idle !== undefined) {
+        while (entry.idle.length > 0) {
+            const idle = entry.idle.pop();
             clearTimeout(idle.timer);
+            if (this._isExpired(idle)) {
+                entry.total -= 1;
+                this._stats.connectionsClosed += 1;
+                await idle.connection.close().catch(() => {});
+                this._prune(originKey, entry);
+                continue;
+            }
+            this._stats.connectionsReused += 1;
             entry.inUse += 1;
-            return { connection: idle.connection, reused: true };
+            return { connection: idle.connection, reused: true, createdAt: idle.createdAt };
         }
         if (entry.total >= this._options.maxConnectionsPerOrigin) {
+            if (entry.queue.length < this._options.pendingQueueLimit) {
+                this._stats.poolWaitCount += 1;
+                return await new Promise((resolve, reject) => {
+                    const waiter = { connect, resolve, reject, timer: undefined };
+                    waiter.timer = setTimeout(() => {
+                        const index = entry.queue.indexOf(waiter);
+                        if (index >= 0) {
+                            entry.queue.splice(index, 1);
+                        }
+                        this._stats.poolRejectedCount += 1;
+                        reject(httpClientError(
+                            "HttpClientPoolExhaustedError",
+                            "SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED",
+                            "HTTP client connection pool pending queue timed out for origin.",
+                        ));
+                    }, this._options.idleTimeoutMs);
+                    entry.queue.push(waiter);
+                });
+            }
+            this._stats.poolRejectedCount += 1;
             throw httpClientError(
                 "HttpClientPoolExhaustedError",
                 "SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED",
@@ -1456,7 +1572,9 @@ class HttpConnectionPool {
         entry.total += 1;
         entry.inUse += 1;
         try {
-            return { connection: await connect(), reused: false };
+            const connection = await connect();
+            this._stats.connectionsCreated += 1;
+            return { connection, reused: false, createdAt: Date.now() };
         } catch (error) {
             entry.total -= 1;
             entry.inUse -= 1;
@@ -1465,28 +1583,39 @@ class HttpConnectionPool {
         }
     }
 
-    async release(originKey, connection, reusable) {
+    async release(originKey, connection, reusable, createdAt = Date.now()) {
         const entry = this._entries.get(originKey);
         if (entry === undefined) {
             await connection.close().catch(() => {});
             return;
         }
         entry.inUse -= 1;
-        if (reusable && this._options.idleTimeoutMs > 0) {
+        const record = { connection, timer: undefined, createdAt };
+        if (reusable && !this._isExpired(record)) {
+            if (this._settleNextQueued(originKey, entry, record)) {
+                return;
+            }
+        }
+        if (reusable && !this._isExpired(record) && this._options.idleTimeoutMs > 0) {
             const timer = setTimeout(() => {
                 const index = entry.idle.findIndex((idle) => idle.connection === connection);
                 if (index >= 0) {
                     entry.idle.splice(index, 1);
                     entry.total -= 1;
+                    this._stats.connectionsClosedIdle += 1;
+                    this._stats.connectionsClosed += 1;
                     connection.close().catch(() => {});
                     this._prune(originKey, entry);
                 }
             }, this._options.idleTimeoutMs);
-            entry.idle.push({ connection, timer });
+            record.timer = timer;
+            entry.idle.push(record);
             return;
         }
         entry.total -= 1;
+        this._stats.connectionsClosed += 1;
         await connection.close().catch(() => {});
+        this._settleNextQueued(originKey, entry);
         this._prune(originKey, entry);
     }
 
@@ -1536,15 +1665,19 @@ class HttpConnectionPool {
         const entry = this._http2Entry(originKey);
         const reusable = this._findReusableHttp2Session(entry);
         if (reusable !== undefined) {
+            this._stats.connectionsReused += 1;
             return { session: reusable, reused: true };
         }
         if (entry.pending !== undefined) {
+            this._stats.poolWaitCount += 1;
             const session = await entry.pending;
             if (!session.closed && session.acceptsStreams) {
+                this._stats.connectionsReused += 1;
                 return { session, reused: true };
             }
         }
         if (entry.total >= this._options.maxConnectionsPerOrigin) {
+            this._stats.poolRejectedCount += 1;
             throw httpClientError(
                 "HttpClientPoolExhaustedError",
                 "SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED",
@@ -1556,6 +1689,7 @@ class HttpConnectionPool {
             const record = { session, timer: undefined };
             entry.sessions.push(record);
             session.onClose(() => this._dropHttp2Record(originKey, entry, record));
+            this._stats.connectionsCreated += 1;
             return session;
         });
         try {
@@ -1581,6 +1715,7 @@ class HttpConnectionPool {
     adoptHttp2(originKey, session) {
         const entry = this._http2Entry(originKey);
         if (entry.total >= this._options.maxConnectionsPerOrigin) {
+            this._stats.poolRejectedCount += 1;
             session.close().catch(() => {});
             throw httpClientError(
                 "HttpClientPoolExhaustedError",
@@ -1615,6 +1750,7 @@ class HttpConnectionPool {
         }
         if (this._options.idleTimeoutMs === 0) {
             this._dropHttp2Record(originKey, entry, record);
+            this._stats.connectionsClosed += 1;
             session.close().catch(() => {});
             return;
         }
@@ -1623,8 +1759,71 @@ class HttpConnectionPool {
         }
         record.timer = setTimeout(() => {
             this._dropHttp2Record(originKey, entry, record);
+            this._stats.connectionsClosedIdle += 1;
+            this._stats.connectionsClosed += 1;
             session.close().catch(() => {});
         }, this._options.idleTimeoutMs);
+    }
+
+    stats() {
+        let activeRequests = 0;
+        let idleConnections = 0;
+        let queuedRequests = 0;
+        for (const entry of this._entries.values()) {
+            activeRequests += entry.inUse;
+            idleConnections += entry.idle.length;
+            queuedRequests += entry.queue.length;
+        }
+        for (const entry of this._http2Entries.values()) {
+            for (const record of entry.sessions) {
+                activeRequests += record.session.activeStreamCount;
+                if (!record.session.closed && record.session.activeStreamCount === 0) {
+                    idleConnections += 1;
+                }
+            }
+        }
+        return Object.freeze({
+            connectionsCreated: this._stats.connectionsCreated,
+            connectionsReused: this._stats.connectionsReused,
+            connectionsClosedIdle: this._stats.connectionsClosedIdle,
+            connectionsClosed: this._stats.connectionsClosed,
+            poolWaitCount: this._stats.poolWaitCount,
+            poolRejectedCount: this._stats.poolRejectedCount,
+            activeRequests,
+            idleConnections,
+            queuedRequests,
+        });
+    }
+
+    async close() {
+        const pending = [];
+        for (const entry of this._entries.values()) {
+            for (const idle of entry.idle.splice(0)) {
+                clearTimeout(idle.timer);
+                this._stats.connectionsClosed += 1;
+                pending.push(idle.connection.close().catch(() => {}));
+            }
+            for (const waiter of entry.queue.splice(0)) {
+                clearTimeout(waiter.timer);
+                waiter.reject(httpClientError(
+                    "HttpClientPoolClosedError",
+                    "SLOPPY_E_HTTP_CLIENT_POOL_CLOSED",
+                    "HTTP client connection pool was closed.",
+                ));
+            }
+            entry.total = entry.inUse;
+        }
+        for (const entry of this._http2Entries.values()) {
+            for (const record of entry.sessions.splice(0)) {
+                if (record.timer !== undefined) {
+                    clearTimeout(record.timer);
+                }
+                this._stats.connectionsClosed += 1;
+                pending.push(record.session.close().catch(() => {}));
+            }
+            entry.total = 0;
+        }
+        await Promise.all(pending);
     }
 }
 
@@ -4506,6 +4705,7 @@ async function sendHttpRequestOnce(request, pool, lifecycle) {
         reusable = false;
         released = false;
         let reused = false;
+        let createdAt = Date.now();
         try {
             originKey = httpOriginKey(request.url);
             if (pool === undefined) {
@@ -4514,6 +4714,7 @@ async function sendHttpRequestOnce(request, pool, lifecycle) {
                 const lease = await pool.acquire(originKey, acquireConnection);
                 connection = lease.connection;
                 reused = lease.reused;
+                createdAt = lease.createdAt;
             }
             lifecycle.connection = connection;
             await connection.write(serializeHttpRequest(request, pool !== undefined));
@@ -4533,7 +4734,7 @@ async function sendHttpRequestOnce(request, pool, lifecycle) {
                 if (lifecycle.connection === connection) {
                     lifecycle.connection = undefined;
                 }
-                await pool.release(originKey, connection, false).catch(() => {});
+                await pool.release(originKey, connection, false, createdAt).catch(() => {});
                 continue;
             }
             throw error;
@@ -4546,7 +4747,7 @@ async function sendHttpRequestOnce(request, pool, lifecycle) {
                 if (pool === undefined) {
                     await connection.close().catch(() => {});
                 } else {
-                    await pool.release(originKey, connection, reusable).catch(() => {});
+                    await pool.release(originKey, connection, reusable, createdAt).catch(() => {});
                 }
             }
         }
@@ -4788,6 +4989,25 @@ function createHttpClientFacade(baseOptions = undefined) {
         },
         bytes(url, options = undefined) {
             return sendHttpBodyRequest(baseOptions, url, options, "bytes", pool);
+        },
+        poolStats() {
+            return pool?.stats() ?? Object.freeze({
+                connectionsCreated: 0,
+                connectionsReused: 0,
+                connectionsClosedIdle: 0,
+                connectionsClosed: 0,
+                poolWaitCount: 0,
+                poolRejectedCount: 0,
+                activeRequests: 0,
+                idleConnections: 0,
+                queuedRequests: 0,
+            });
+        },
+        close() {
+            return pool?.close();
+        },
+        dispose() {
+            return pool?.close();
         },
     };
     Object.defineProperty(client, "__sloppyHttpClientOptions", {

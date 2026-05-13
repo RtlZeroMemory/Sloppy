@@ -2,6 +2,7 @@ import { Base64Url, Text } from "./codec.js";
 import { Hmac, Random, Secret } from "./crypto.js";
 import { data, Migrations } from "./data.js";
 import { Directory, File } from "./fs.js";
+import { createTestHttpServiceOverrides, TestHttp } from "./http.js";
 import { HttpClient, TcpListener } from "./net.js";
 import { Process as SloppyProcess, System as SloppySystem } from "./os.js";
 import { RAW_JSON_BODY, serializeJson } from "./results.js";
@@ -731,8 +732,11 @@ function disposeOverrideValues(values) {
     return Promise.all(pending).then(() => undefined);
 }
 
-function createServiceOverlay(baseServices, serviceOverrides, providerOverrides) {
-    const serviceMap = normalizeOverrideMap(serviceOverrides, "service");
+function createServiceOverlay(baseServices, serviceOverrides, providerOverrides, httpClientOverrides) {
+    const serviceMap = {
+        ...normalizeOverrideMap(serviceOverrides, "service"),
+        ...createTestHttpServiceOverrides(httpClientOverrides),
+    };
     const providerMap = normalizeOverrideMap(providerOverrides, "provider");
     const merged = new Map(Object.entries(serviceMap));
     for (const [name, provider] of Object.entries(providerMap)) {
@@ -744,15 +748,32 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides)
     }
 
     function wrapScope(scope) {
+        function getHttpClientOverride(token) {
+            const registration = token?.__sloppyHttpClientRegistration;
+            if (registration?.kind === "typed" && merged.has(registration.namedToken)) {
+                return registration.createTyped(merged.get(registration.namedToken));
+            }
+            return undefined;
+        }
+
         return Object.freeze({
             capabilities: scope.capabilities,
+            config: scope.config,
             get(token) {
+                const httpClient = getHttpClientOverride(token);
+                if (httpClient !== undefined) {
+                    return httpClient;
+                }
                 if (merged.has(token)) {
                     return merged.get(token);
                 }
                 return scope.get(token);
             },
             tryGet(token) {
+                const httpClient = getHttpClientOverride(token);
+                if (httpClient !== undefined) {
+                    return httpClient;
+                }
                 if (merged.has(token)) {
                     return merged.get(token);
                 }
@@ -766,12 +787,20 @@ function createServiceOverlay(baseServices, serviceOverrides, providerOverrides)
 
     return Object.freeze({
         get(token) {
+            const registration = token?.__sloppyHttpClientRegistration;
+            if (registration?.kind === "typed" && merged.has(registration.namedToken)) {
+                return registration.createTyped(merged.get(registration.namedToken));
+            }
             if (merged.has(token)) {
                 return merged.get(token);
             }
             return baseServices.get(token);
         },
         tryGet(token) {
+            const registration = token?.__sloppyHttpClientRegistration;
+            if (registration?.kind === "typed" && merged.has(registration.namedToken)) {
+                return registration.createTyped(merged.get(registration.namedToken));
+            }
             if (merged.has(token)) {
                 return merged.get(token);
             }
@@ -2315,7 +2344,7 @@ function createTestHost(app, options = {}) {
     const jobs = createJobsHelpers(options.jobs);
     const hostState = Object.freeze({
         config: createConfigOverlay(app.config, options.config, options.secrets),
-        services: createServiceOverlay(app.services, options.services, options.providers),
+        services: createServiceOverlay(app.services, options.services, options.providers, options.httpClients),
         clock: options.clock,
     });
 
@@ -3477,6 +3506,7 @@ const Testing = Object.freeze({
     TestServices,
     FakeClock,
     TestData,
+    TestHttp,
 });
 
-export { createTestHost, FakeClock, TestData, TestHost, TestServices, Testing };
+export { createTestHost, FakeClock, TestData, TestHost, TestHttp, TestServices, Testing };

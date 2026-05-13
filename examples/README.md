@@ -80,6 +80,9 @@ sloppy create my-tool --template program
 | `fs-watch` | API-shape fixture | `ctest -R examples.fs.api_shape` | Directory watch shape | Static example check only. |
 | `hello` | hello fixture | `ctest -R examples.hello.api_shape` | Smallest app-host hello shape | Static example check only. |
 | `http-client-basic` | API-shape fixture | `ctest -R bootstrap.stdlib.http_client` | Outbound `HttpClient` helper shape | Bootstrap test uses local test bridge; runtime bridge lanes are separate. |
+| `http-client-typed` | documentation example | Read `examples/http-client-typed/README.md` | Typed outbound client registered through services | App-host shape is covered by `tests/bootstrap/test_http_client_factory.mjs`. |
+| `http-client-resilience` | documentation example | Read `examples/http-client-resilience/README.md` | Retry, circuit-breaker, bulkhead, and pool options | API shape is covered by `tests/bootstrap/test_http_client_factory.mjs`. |
+| `http-client-testhost` | documentation example | Read `examples/http-client-testhost/README.md` | `TestHttp.mock()` with `TestHost` outbound overrides | App-host mock path is covered by `tests/bootstrap/test_http_client_factory.mjs`. |
 | `modules-basic` | API-shape fixture | `ctest -R examples.modules_basic.api_shape` | Module phases and route contribution shape | Static example check only. |
 | `net-deadline-cancel` | API-shape fixture | `ctest -R examples.net.api_shape` | Network cancellation shape | Static example check only. |
 | `net-local-ipc` | API-shape fixture | `ctest -R examples.net.api_shape` | Local IPC shape | Static example check only. |

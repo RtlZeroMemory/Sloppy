@@ -181,6 +181,34 @@ requests. Service overrides are resolved before the app's service provider for
 matching tokens. Provider overrides are exposed under both the provider name
 and `data.<name>` service token.
 
+Outbound HTTP clients can be replaced with `TestHttp.mock()`:
+
+```ts
+import { TestHost, TestHttp } from "sloppy";
+
+const billing = TestHttp.mock()
+  .get("/invoices/inv_1")
+  .replyJson(200, { id: "inv_1", status: "paid", amount: 42 });
+
+const host = await TestHost.create(app, {
+    httpClients: {
+        billing,
+    },
+});
+```
+
+The `httpClients` keys are named-client names. They override the `http.<name>`
+service token and also work for typed clients registered through
+`app.services.addHttpClient(TypedClient)`.
+
+Mocks can return JSON, text, or bytes, provide a sequence of responses,
+simulate timeouts or connection errors, and assert calls:
+
+```ts
+billing.expectCalled("GET", "/invoices/inv_1");
+billing.expectNoUnexpectedCalls();
+```
+
 `FakeClock.fixed(...)` implements Sloppy's test clock shape for app-host code
 that accepts clock injection.
 

@@ -3048,9 +3048,7 @@ export default app;
     assert!(!app.uses_net_runtime);
 
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js
-        .source
-        .contains("const { Results, HttpClient } = __sloppyRuntime;"));
+    assert!(emitted_js.source.contains("HttpClient"));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,
@@ -6260,9 +6258,7 @@ export default app;
     assert!(!app.uses_net_runtime);
 
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js
-        .source
-        .contains("const { Results, HttpClient } = __sloppyRuntime;"));
+    assert!(emitted_js.source.contains("HttpClient"));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,
@@ -6285,6 +6281,121 @@ export default app;
         value["doctorChecks"][0]["id"],
         serde_json::json!("stdlib.httpclient.contract")
     );
+}
+
+#[test]
+fn sloppy_http_import_emits_http_client_required_feature() {
+    let source = r#"import { Sloppy, Results, schema } from "sloppy";
+import { Http, HttpClientFactory } from "sloppy/http";
+const ignored = "Http.client(\"from-string\", { baseUrl: \"https://string.invalid\" })";
+// Http.client("from-line-comment", { baseUrl: "https://line-comment.invalid" });
+/* Http.typedClient("from-block-comment", { baseUrl: "https://block-comment.invalid" }); */
+const Invoice = schema.object({ id: schema.string() });
+const Billing = Http.typedClient("billing", {
+  baseUrl: "https://billing.example.test",
+  endpoints: {
+    getInvoice: Http.get("/invoices/{id}")
+      .returns(200, Invoice),
+  },
+});
+const factory = HttpClientFactory.create({ clients: [Billing] });
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text(factory.get("billing").name));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("sloppy/http import should be recognized");
+    assert!(app.uses_http_client_runtime);
+    assert!(!app.uses_net_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    for expected_export in [
+        "HttpClient",
+        "Http",
+        "HttpClientFactory",
+        "HttpError",
+        "SloppyHttpClientError",
+    ] {
+        assert!(emitted_js.source.contains(expected_export));
+    }
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["requiredFeatures"],
+        serde_json::json!(["stdlib.httpclient"])
+    );
+    assert_eq!(value["features"]["httpClient"], serde_json::json!(true));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["httpClient"],
+        serde_json::json!(true)
+    );
+    assert_eq!(value["httpClients"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        value["httpClients"][0]["name"],
+        serde_json::json!("billing")
+    );
+    assert_eq!(
+        value["httpClients"][0]["target"],
+        serde_json::json!("static")
+    );
+    assert_eq!(
+        value["httpClients"][0]["baseUrl"],
+        serde_json::json!("https://billing.example.test")
+    );
+    assert_eq!(
+        value["httpClients"][0]["endpoints"][0]["method"],
+        serde_json::json!("GET")
+    );
+    assert_eq!(
+        value["httpClients"][0]["endpoints"][0]["path"],
+        serde_json::json!("/invoices/{id}")
+    );
+}
+
+#[test]
+fn dynamic_sloppy_http_client_emits_partial_plan_metadata() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { Http } from "sloppy/http";
+const clientName = "billing";
+const baseUrl = "https://billing.example.test";
+const billing = Http.client(clientName, { baseUrl });
+const app = Sloppy.create();
+app.mapGet("/", () => Results.text(billing.name));
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("dynamic sloppy/http client should still compile");
+    assert!(app.uses_http_client_runtime);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("valid plan JSON");
+
+    assert_eq!(
+        value["httpClients"][0]["target"],
+        serde_json::json!("dynamic")
+    );
+    assert_eq!(value["httpClients"][0]["kind"], serde_json::json!("named"));
+    assert!(value["doctorChecks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |check| check["id"] == "stdlib.httpclient.dynamic-targets" && check["status"] == "warn"
+        ));
 }
 
 #[test]
