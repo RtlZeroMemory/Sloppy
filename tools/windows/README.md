@@ -69,8 +69,8 @@ Windows x64 has a pinned, checksum-validated SDK artifact source. `fetch-v8.ps1`
 the downloaded archive under `.sdeps/v8/_downloads`, extracts the SDK into
 `.sdeps/v8/windows-x64`, validates `share/sloppy-v8-sdk.json`, and refuses checksum or
 layout mismatches. `dev.ps1 configure -EnableV8` also provisions the SDK when no
-compatible local SDK is found. Linux and macOS SDK artifact sources remain planned and
-must be reported under their own status.
+compatible local SDK is found. Release packaging restores the SDK before the
+V8-required package lane; it does not rebuild V8 inside `release-artifacts`.
 
 Validation uses the same helper without downloading:
 
@@ -105,8 +105,8 @@ package/test-package path:
 The dry-run writes ignored output under `artifacts/release-dry-run/`, verifies
 `SHA256SUMS.txt`, and does not require secrets or publish a GitHub release.
 
-npm package dry-runs generate `@rtlzeromemory/sloppy` and the matching Windows platform package
-from an already-built archive. macOS npm packages are not staged in this alpha:
+npm package dry-runs generate `@slopware/sloppy` and the matching platform
+package from an already-built archive:
 
 ```powershell
 .\tools\windows\dev.ps1 npm-dry-run -PackagePath artifacts\packages\sloppy-windows-x64.zip

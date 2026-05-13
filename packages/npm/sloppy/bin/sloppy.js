@@ -18,7 +18,7 @@ function main() {
   } catch {
     console.error(
       `Sloppy runtime platform package '${selected.packageName}' is not installed. ` +
-        "Install the matching @rtlzeromemory/sloppy platform package generated from a tested release archive."
+        "Install the matching @slopware/sloppy platform package generated from a tested release archive."
     );
     return 1;
   }

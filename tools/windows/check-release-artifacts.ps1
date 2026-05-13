@@ -71,8 +71,13 @@ function Get-Sha256Hex {
 
 function Test-ReleaseTemplates {
     $contractText = Read-RequiredText -Relative "docs/release/artifact-contract.md"
-    foreach ($needle in @("GitHub Release archives are the canonical artifacts", "@rtlzeromemory/sloppy", "Sloppy apps still run through Sloppy-managed artifacts")) {
+    foreach ($needle in @("GitHub Release archives are the canonical artifacts", "@slopware/sloppy", "Sloppy apps still run through Sloppy-managed artifacts")) {
         Assert-TextContains -Text $contractText -Needle $needle -Message "Artifact contract doc missing required wording: $needle"
+    }
+
+    $releaseInfraPlan = Read-RequiredText -Relative "RELEASE_INFRA_PLAN.md"
+    foreach ($needle in @("@slopware/sloppy", "0.1.0-alpha.0", "npm login --auth-type=web", "Trusted Publishing", "types/index.d.ts", "sloppy-v8-sdk-cache")) {
+        Assert-TextContains -Text $releaseInfraPlan -Needle $needle -Message "Release infrastructure plan missing required release detail: $needle"
     }
 
     $contract = Read-JsonFile -Relative "docs/release/artifact-contract.json"
@@ -81,7 +86,7 @@ function Test-ReleaseTemplates {
         $match = @($contract.archiveMatrix | Where-Object { $_.archiveName -eq $archiveName })
         Assert-True ($match.Count -eq 1) "Artifact contract missing archive '$archiveName'."
     }
-    Assert-True ($contract.npmPackages.root -eq "@rtlzeromemory/sloppy") "Artifact contract must name @rtlzeromemory/sloppy."
+    Assert-True ($contract.npmPackages.root -eq "@slopware/sloppy") "Artifact contract must name @slopware/sloppy."
     Assert-True ($contract.npmPackages.publishTag -eq "alpha") "Artifact contract npm publishTag must be alpha."
     Assert-True ($contract.npmPackages.publishWorkflow -eq ".github/workflows/npm-publish.yml") "Artifact contract must name the npm publish workflow."
 
@@ -89,8 +94,23 @@ function Test-ReleaseTemplates {
     foreach ($needle in @("id-token: write", "publish-alpha", "--registry https://registry.npmjs.org/", "npm publish", "Trusted Publishing", "--provenance")) {
         Assert-TextContains -Text $npmPublishWorkflow -Needle $needle -Message "npm publish workflow missing required publishing guard: $needle"
     }
+    Assert-TextContains -Text $npmPublishWorkflow -Needle "slopware-sloppy-[0-9]*.tgz" -Message "npm publish workflow must consume @slopware root tarballs."
+    Assert-TextContains -Text $npmPublishWorkflow -Needle "slopware-sloppy-linux-x64-*.tgz" -Message "npm publish workflow must consume @slopware platform tarballs."
     Assert-True (-not $npmPublishWorkflow.Contains("registry-url:")) "npm publish workflow must not configure setup-node token auth."
     Assert-True (-not $npmPublishWorkflow.Contains("NODE_AUTH_TOKEN")) "npm publish workflow must not use token auth."
+    Assert-TextContains -Text $contractText -Needle "npm login --auth-type=web" -Message "Artifact contract must document manual browser-auth publish path."
+    Assert-TextContains -Text $contractText -Needle "0.1.0-alpha.0" -Message "Artifact contract must name the first alpha version."
+    Assert-True ($contract.npmPackages.manualPublishAuth -eq "npm login --auth-type=web") "Artifact contract JSON must record manual browser-auth publish path."
+    Assert-True ($contract.npmPackages.types -eq "types/index.d.ts") "Artifact contract JSON must record root TypeScript declarations."
+
+    foreach ($template in @("api", "cli", "minimal-api", "package-api")) {
+        $templatePackage = Read-JsonFile -Relative "templates/$template/package.json"
+        $devDependency = $templatePackage.devDependencies.PSObject.Properties["@slopware/sloppy"]
+        Assert-True ($null -ne $devDependency) "Template $template must include @slopware/sloppy as a dev dependency for editor declarations."
+        Assert-True ($devDependency.Value -eq "0.1.0-alpha.0") "Template $template must pin @slopware/sloppy to first alpha declarations."
+        $templateConfig = Read-RequiredText -Relative "templates/$template/tsconfig.json"
+        Assert-TextContains -Text $templateConfig -Needle '"@slopware/sloppy"' -Message "Template $template tsconfig must load Sloppy declaration package."
+    }
 
     $dependencyAudit = Read-JsonFile -Relative "docs/release/runtime-dependency-audit.json"
     Assert-True ($dependencyAudit.legalReviewStatus -eq "incomplete") "Runtime dependency audit must keep final legal review incomplete."
@@ -133,6 +153,7 @@ function Test-ReleaseTextHygiene {
     foreach ($relative in @(
         "LICENSE",
         "packages/npm/sloppy/LICENSE",
+        "RELEASE_INFRA_PLAN.md",
         "docs/release/index.md",
         "docs/release/KNOWN_LIMITATIONS.md",
         "docs/release/LICENSES.md",
@@ -180,6 +201,16 @@ function Test-ReleaseWorkflow {
     Assert-TextContains -Text $workflow -Needle "actions/upload-artifact@v4" -Message "Release artifact workflow must upload package/checksum artifacts."
     Assert-TextContains -Text $workflow -Needle "SHA256SUMS.txt" -Message "Release artifact workflow must preserve checksum artifacts."
     Assert-TextContains -Text $workflow -Needle "contents: read" -Message "Release artifact workflow must keep repository contents read-only for dry-run."
+    foreach ($needle in @(
+        "tools\windows\fetch-v8.ps1 -Platform windows-x64",
+        "gh release download sloppy-v8-sdk-cache",
+        "sloppy-v8-sdk-linux-x64-*.tar.gz",
+        "sloppy-v8-sdk-darwin-arm64-*.tar.gz",
+        "sloppy-v8-sdk-darwin-x64-*.tar.gz"
+    )) {
+        Assert-TextContains -Text $workflow -Needle $needle -Message "Release artifact workflow must restore existing V8 SDK artifact: $needle"
+    }
+    Assert-True (-not ($workflow -match "(?m)^\s*run:\s*.*build-v8")) "Release artifact workflow must not rebuild V8 in a run step."
     $permissionsBlock = [regex]::Match($workflow, "(?m)^permissions:\r?\n(?<block>(?:^[ ]+.+\r?\n?)*)").Groups["block"].Value
     Assert-True (-not [string]::IsNullOrWhiteSpace($permissionsBlock)) "Release artifact workflow must declare top-level permissions."
     foreach ($line in ($permissionsBlock -split "\r?\n")) {
@@ -293,7 +324,11 @@ function Test-NpmPackagePolicy {
 
     $rootPackage = Get-Content -LiteralPath (Join-Path $packagesRoot "sloppy/package.json") -Raw | ConvertFrom-Json
     Assert-True (Test-Path -LiteralPath (Join-Path $packagesRoot "sloppy/LICENSE") -PathType Leaf) "Root npm package must include a LICENSE file matching its license metadata."
-    foreach ($dependency in @("@rtlzeromemory/sloppy-win32-x64", "@rtlzeromemory/sloppy-linux-x64", "@rtlzeromemory/sloppy-darwin-arm64", "@rtlzeromemory/sloppy-darwin-x64")) {
+    Assert-True ($rootPackage.version -eq "0.1.0-alpha.0") "First @slopware alpha package version must be 0.1.0-alpha.0."
+    Assert-True ($rootPackage.types -eq "types/index.d.ts") "Root npm package must expose TypeScript declarations."
+    Assert-True (Test-Path -LiteralPath (Join-Path $packagesRoot "sloppy/types/index.d.ts") -PathType Leaf) "Root npm package must include TypeScript declaration entrypoint."
+    Assert-True (@($rootPackage.files) -contains "types/") "Root npm package files list must include types/."
+    foreach ($dependency in @("@slopware/sloppy-win32-x64", "@slopware/sloppy-linux-x64", "@slopware/sloppy-darwin-arm64", "@slopware/sloppy-darwin-x64")) {
         $property = $rootPackage.optionalDependencies.PSObject.Properties[$dependency]
         Assert-True ($null -ne $property) "Root npm package missing optional dependency '$dependency'."
     }

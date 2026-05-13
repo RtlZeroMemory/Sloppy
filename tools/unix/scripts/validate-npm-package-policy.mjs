@@ -22,3 +22,9 @@ for (const [name, value] of Object.entries(packageJson.scripts || {})) {
 }
 
 assert(packageJson.publishConfig && packageJson.publishConfig.tag === "alpha", `${packageJsonPath} must publish with alpha dist-tag.`);
+
+if (packageJson.name === "@slopware/sloppy") {
+  assert(packageJson.version === "0.1.0-alpha.0", `${packageJsonPath} must use first alpha version 0.1.0-alpha.0.`);
+  assert(packageJson.types === "types/index.d.ts", `${packageJsonPath} must expose TypeScript declarations.`);
+  assert(Array.isArray(packageJson.files) && packageJson.files.includes("types/"), `${packageJsonPath} must include types/ in npm files.`);
+}

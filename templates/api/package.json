@@ -9,5 +9,8 @@
     "routes": "sloppy routes .sloppy",
     "doctor": "sloppy doctor .sloppy",
     "audit": "sloppy audit .sloppy"
+  },
+  "devDependencies": {
+    "@slopware/sloppy": "0.1.0-alpha.0"
   }
 }

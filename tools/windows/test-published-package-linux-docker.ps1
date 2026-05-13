@@ -1,7 +1,7 @@
 param(
     [string[]]$Images = @("node:22-bullseye", "node:22-bookworm", "node:22-trixie", "fedora:latest"),
     [string[]]$SkipImages = @("node:22-alpine"),
-    [string]$PackageSpec = "@rtlzeromemory/sloppy@alpha",
+    [string]$PackageSpec = "@slopware/sloppy@alpha",
     [string]$ReportRoot = ""
 )
 
@@ -20,7 +20,7 @@ Set-Content -LiteralPath $aggregatePath -Value "" -Encoding UTF8
 $script = @'
 set -uo pipefail
 
-PACKAGE_SPEC="${PACKAGE_SPEC:-@rtlzeromemory/sloppy@alpha}"
+PACKAGE_SPEC="${PACKAGE_SPEC:-@slopware/sloppy@alpha}"
 ROOT="$(mktemp -d)"
 RESULTS="/work/results.ndjson"
 : > "$RESULTS"
@@ -89,9 +89,9 @@ mkdir -p "$ROOT/install"
 cd "$ROOT/install" || exit 1
 npm init -y
 if npm install "$PACKAGE_SPEC" --registry https://registry.npmjs.org/ --prefer-online --cache "$ROOT/npm-cache"; then
-  pkg_json="$(node -e "const p=require('./node_modules/@rtlzeromemory/sloppy/package.json'); console.log(JSON.stringify({name:p.name,version:p.version,optionalDependencies:p.optionalDependencies,bin:p.bin}))")"
+  pkg_json="$(node -e "const p=require('./node_modules/@slopware/sloppy/package.json'); console.log(JSON.stringify({name:p.name,version:p.version,optionalDependencies:p.optionalDependencies,bin:p.bin}))")"
   echo "$pkg_json"
-  find node_modules/@rtlzeromemory -maxdepth 4 -name package.json -print
+  find node_modules/@slopware -maxdepth 4 -name package.json -print
   record "install" "PASS" "$pkg_json"
 else
   record "install" "FAIL" "npm install failed"
@@ -174,7 +174,7 @@ const result = rows.some(r => r.status === 'FAIL') ? 'FAIL' : 'PASS';
 const summary = {
   result,
   image: process.env.IMAGE || '',
-  packageSpec: process.env.PACKAGE_SPEC || '@rtlzeromemory/sloppy@alpha',
+  packageSpec: process.env.PACKAGE_SPEC || '@slopware/sloppy@alpha',
   node: process.version,
   platform: `${process.platform} ${process.arch}`,
   flows: rows,
@@ -221,7 +221,7 @@ foreach ($image in $SkipImages) {
         result = "SKIPPED"
         image = $image
         packageSpec = $PackageSpec
-        reason = "Alpine/musl is not covered by the glibc-only @rtlzeromemory/sloppy-linux-x64 package."
+        reason = "Alpine/musl is not covered by the glibc-only @slopware/sloppy-linux-x64 package."
         flows = @(@{
             flow = "install"
             status = "SKIPPED"

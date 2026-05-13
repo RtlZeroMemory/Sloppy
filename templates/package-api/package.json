@@ -5,6 +5,9 @@
   "dependencies": {
     "validator-lite": "file:./fixtures/validator-lite"
   },
+  "devDependencies": {
+    "@slopware/sloppy": "0.1.0-alpha.0"
+  },
   "scripts": {
     "build": "sloppy build",
     "run": "sloppy run .sloppy",

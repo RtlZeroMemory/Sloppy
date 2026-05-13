@@ -1,9 +1,9 @@
 # Install
 
-The public alpha, pre-production package is `@rtlzeromemory/sloppy`.
+The public alpha, pre-production package is `@slopware/sloppy`.
 
 ```sh
-npm install -g @rtlzeromemory/sloppy@alpha
+npm install -g @slopware/sloppy@alpha
 ```
 
 Check the install:
@@ -43,6 +43,16 @@ ok
 The root package installs a small launcher plus the matching supported
 platform package through npm optional dependencies. It does not build native
 code during install, run `node-gyp`, or download V8 in `postinstall`.
+
+For editor IntelliSense in an app workspace, install the package locally as a
+dev dependency too:
+
+```sh
+npm install --save-dev @slopware/sloppy@alpha
+```
+
+The root package includes TypeScript declarations for `sloppy`,
+`sloppy/data`, `sloppy/fs`, `sloppy/os`, and `sloppy/providers/sqlite`.
 
 ## Build from source
 
@@ -122,7 +132,7 @@ deployment; Sloppy does not bundle Microsoft's ODBC driver in the core package.
 ## Common fixes
 
 - `sloppy: command not found`: add the npm global prefix to `PATH`.
-- Windows `.cmd` launcher issues: run `node <install>/node_modules/@rtlzeromemory/sloppy/bin/sloppy.js --version` to separate npm shim problems from Sloppy problems.
+- Windows `.cmd` launcher issues: run `node <install>/node_modules/@slopware/sloppy/bin/sloppy.js --version` to separate npm shim problems from Sloppy problems.
 - `node_modules` imports fail: install the package with your package manager
   first, then check whether the package is compatible with Sloppy's bundled
   dependency graph. See [Using installed packages](guide/using-packages.md).

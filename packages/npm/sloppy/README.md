@@ -1,4 +1,4 @@
-# @rtlzeromemory/sloppy
+# @slopware/sloppy
 
 This package is a thin launcher for installing the Sloppy runtime. It selects an installed
 platform package and forwards arguments to the packaged `sloppy` binary.
@@ -9,6 +9,11 @@ bootstrap stdlib, built-in project templates, selected docs/examples,
 manifest, and license files. The launcher sets `SLOPPY_SLOPPYC` so commands
 such as `sloppy create`, `sloppy build`, and `sloppy package` work outside a
 repository checkout.
+
+The root package includes TypeScript declarations for the public starter
+surface (`sloppy`, `sloppy/data`, `sloppy/fs`, `sloppy/os`, and
+`sloppy/providers/sqlite`) so app workspaces can install it as a local dev
+dependency for editor IntelliSense.
 
 npm is only a distribution channel for Sloppy itself. Sloppy apps can bundle
 compatible already-installed pure-JavaScript packages when their imports fit

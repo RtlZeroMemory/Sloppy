@@ -53,7 +53,7 @@ If you are comparing Sloppy with other JavaScript runtimes, read
 ## The App Loop
 
 ```sh
-npm install -g @rtlzeromemory/sloppy@alpha
+npm install -g @slopware/sloppy@alpha
 sloppy create my-api
 cd my-api
 sloppy build
