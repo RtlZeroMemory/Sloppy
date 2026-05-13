@@ -100,7 +100,9 @@ export default defineConfig({
           { text: "Codec", link: "/api/codec" },
           { text: "Workers", link: "/api/workers" },
           { text: "Schema", link: "/api/schema" },
-          { text: "Testing", link: "/api/testing" }
+          { text: "Testing", link: "/api/testing" },
+          { text: "TestHost", link: "/api/testhost" },
+          { text: "TestServices", link: "/api/testservices" }
         ]
       },
       {
@@ -150,6 +152,7 @@ export default defineConfig({
           { text: "WebSocket runtime", link: "/internals/websocket-runtime" },
           { text: "V8 bridge", link: "/internals/v8-bridge" },
           { text: "Provider runtime", link: "/internals/provider-runtime" },
+          { text: "TestServices", link: "/internals/testservices" },
           { text: "Async runtime", link: "/internals/async-runtime" },
           { text: "Memory model", link: "/internals/memory-model" },
           { text: "Platform boundaries", link: "/internals/platform-boundaries" },

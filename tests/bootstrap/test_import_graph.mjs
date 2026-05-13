@@ -6,6 +6,7 @@ const modules = [
     "app.js",
     "results.js",
     "schema.js",
+    "testservices.js",
     "testing.js",
     "data.js",
     "codec.js",

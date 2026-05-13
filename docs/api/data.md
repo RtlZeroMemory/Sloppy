@@ -10,6 +10,11 @@ interpolation becomes a parameter, never a string concatenation.
 > Program Mode, SQLite, templates, and package support do not need PostgreSQL,
 > SQL Server, libpq, or ODBC.
 
+For first-party Docker-backed PostgreSQL and SQL Server integration tests, use
+[`TestServices`](testservices.md). It starts real containers, verifies readiness
+through the matching data provider bridge, exposes `provider()` for app-host
+tests, and exposes `env()` for artifact/package tests.
+
 ## Tagged template
 
 ```ts

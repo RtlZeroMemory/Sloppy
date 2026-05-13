@@ -88,6 +88,20 @@
     set_tests_properties(
         examples.core_integration.api_shape PROPERTIES LABELS
                                                      "core-integration;examples;conformance")
+    add_test(
+        NAME bootstrap.stdlib.testservices_runtime
+        COMMAND
+            "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_ARTIFACTS=tests/integration/execution/testservices_runtime"
+            "-DSLOPPY_ONCE_METHOD=GET" "-DSLOPPY_ONCE_TARGET=/testservices"
+            "-DSLOPPY_EXPECTED_OUTPUT=\"ok\":true" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_conformance_existing_artifacts.cmake")
+    set_tests_properties(
+        bootstrap.stdlib.testservices_runtime
+        PROPERTIES
+            LABELS "bootstrap;v8"
+            SKIP_REGULAR_EXPRESSION "requires V8-enabled build")
 
     if(NODE_EXECUTABLE)
         add_test(

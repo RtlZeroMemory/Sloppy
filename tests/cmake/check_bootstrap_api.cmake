@@ -11,6 +11,7 @@ set(request_id_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/request-id.js")
 set(request_logging_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/request-logging.js")
 set(auth_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/auth.js")
 set(public_config_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/config.js")
+set(testservices_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/testservices.js")
 set(testing_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/testing.js")
 set(app_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/app.js")
 set(index_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/index.js")
@@ -23,7 +24,7 @@ set(services_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/services.js")
 set(shared_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/shared.js")
 set(runtime_classic_source "${SLOPPY_BOOTSTRAP_SOURCE_DIR}/internal/runtime-classic.js")
 
-foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${time_source}" "${workers_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
+foreach(required_file IN ITEMS "${results_source}" "${schema_source}" "${data_source}" "${codec_source}" "${ffi_source}" "${fs_source}" "${time_source}" "${workers_source}" "${problem_details_source}" "${request_id_source}" "${request_logging_source}" "${auth_source}" "${public_config_source}" "${testservices_source}" "${testing_source}" "${app_source}" "${index_source}" "${capabilities_source}" "${config_source}" "${logging_source}" "${modules_source}" "${routes_source}" "${services_source}" "${shared_source}" "${runtime_classic_source}")
     if(NOT EXISTS "${required_file}")
         message(FATAL_ERROR "Missing bootstrap API source file: ${required_file}")
     endif()
@@ -42,6 +43,7 @@ file(READ "${request_id_source}" request_id_js)
 file(READ "${request_logging_source}" request_logging_js)
 file(READ "${auth_source}" auth_js)
 file(READ "${public_config_source}" public_config_js)
+file(READ "${testservices_source}" testservices_js)
 file(READ "${testing_source}" testing_js)
 file(READ "${app_source}" app_js)
 file(READ "${index_source}" index_js)
@@ -317,6 +319,17 @@ foreach(required_pattern IN ITEMS
 endforeach()
 
 foreach(required_pattern IN ITEMS
+        "class DockerCliBackend"
+        "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE"
+        "SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE"
+        "function providerBridgeAvailable(kind)"
+        "function startupFailureMessage(kind, options, state, reason)"
+        "const TestServices = Object.freeze"
+        "export { DockerCliBackend, TestServices }")
+    require_substring("${testservices_js}" "${required_pattern}" "testservices.js is missing expected TestServices API pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
         "function createTestHost(app, options = {})"
         "function responseFromResult(result)"
         "function matchRoutePattern(pattern, path)"
@@ -328,6 +341,7 @@ foreach(required_pattern IN ITEMS
         "function createOpenApiHelpers(loadDocument)"
         "class RequestBuilder"
         "const TestHost = Object.freeze"
+        "TestServices,"
         "const FakeClock = Object.freeze"
         "const TestData = Object.freeze"
         "request(method, target, options = undefined)"
@@ -339,8 +353,18 @@ foreach(required_pattern IN ITEMS
         "options(target, options)"
         "close()"
         "const Testing = Object.freeze"
-        "export { createTestHost, FakeClock, TestData, TestHost, Testing }")
+        "export { createTestHost, FakeClock, TestData, TestHost, TestServices, Testing }")
     require_substring("${testing_js}" "${required_pattern}" "testing.js is missing expected app test host pattern")
+endforeach()
+
+foreach(required_pattern IN ITEMS
+        "const __sloppyTestServices = (() =>"
+        "class DockerCliBackend"
+        "SLOPPY_E_TESTSERVICES_DOCKER_UNAVAILABLE"
+        "SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE"
+        "DockerCliBackend,"
+        "TestServices,")
+    require_substring("${runtime_classic_js}" "${required_pattern}" "runtime-classic.js is missing expected TestServices runtime pattern")
 endforeach()
 
 foreach(required_pattern IN ITEMS

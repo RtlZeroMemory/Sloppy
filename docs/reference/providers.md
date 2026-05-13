@@ -18,6 +18,7 @@ the compiler before every runtime path is available.
 | Typed handler injection | `Sqlite<"main">`, `Postgres<"main">`, `SqlServer<"main">` | Compiler metadata and generated injection wrappers exist; runtime execution depends on active bridge, config, and live service setup |
 | Runtime data API | `data.sqlite`, `data.postgres`, `data.sqlserver` from `sloppy/data` | Provider-specific runtime APIs with V8/native/live requirements |
 | Migrations | `Migrations` from `sloppy/data`, `sloppy db status`, `sloppy db migrate` | SQLite, PostgreSQL, and SQL Server migration execution; PostgreSQL/SQL Server are optional and require live provider configuration only when used |
+| TestServices | `TestServices.postgres()`, `TestServices.sqlServer()` | Docker-backed real dependency tests; opt-in and provider-bridge-gated |
 | Native and service checks | provider native tests and `test-live-*.ps1` scripts | SQLite embedded by default; PostgreSQL/SQL Server dependency and service checks are opt-in |
 | V8 provider bridge checks | `conformance.<provider>.bridge_live` | Exercises JavaScript provider calls through a V8-enabled runtime |
 
@@ -155,6 +156,20 @@ metadata, `sloppy db` reads
 `Sloppy__Providers__postgres__<name>__connectionString` or
 `Sloppy__Providers__sqlserver__<name>__connectionString` unless the Plan
 provider carries an explicit `configKey`.
+
+## TestServices Provider Descriptors
+
+`TestServices.postgres()` and `TestServices.sqlServer()` start real Docker
+containers, wait for provider-backed `select 1` readiness, and expose
+`provider()` for `TestHost.create(..., { providers })`.
+
+If the matching provider bridge is unavailable, `provider()` and service
+startup fail with `SLOPPY_E_TESTSERVICES_PROVIDER_UNAVAILABLE`. The helper does
+not return a fake provider and does not fall back to in-memory data.
+
+Artifact/package tests can pass `service.env()` to `TestHost.fromArtifacts`
+or `TestHost.fromPackage`; the runtime that consumes that environment still
+needs the provider bridge and driver support.
 
 ## Result Modes
 

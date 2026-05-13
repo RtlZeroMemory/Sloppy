@@ -26,6 +26,6 @@ so PostgreSQL, SQL Server, and later non-database providers do not get forced in
 hardcoded SQLite model.
 
 Rejected framework-surface fixtures are part of the contract. Middleware, CORS,
-RequestId, RequestLogging, controller mapping, Testing imports, and captured
+RequestId, RequestLogging, controller mapping, Testing/TestServices imports, and captured
 health checks must fail with explicit diagnostics until compiler artifacts can
 represent those behaviors honestly.

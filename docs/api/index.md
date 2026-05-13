@@ -27,6 +27,7 @@ configuration, services, validation, or data access.
 - [Request IDs](request-id.md) — request ID middleware and response header behavior
 - [Request logging](request-logging.md) — structured request completion logs
 - [TestHost](testhost.md) — first-party app, artifact, package, and loopback API testing
+- [TestServices](testservices.md) — first-party Docker-backed PostgreSQL and SQL Server test services
 - [App test host](testing.md) — in-memory app-host dispatch for tests
 - [Request context](request-context.md) — what's on `ctx` inside a handler
 - [Results](results.md) — every response helper

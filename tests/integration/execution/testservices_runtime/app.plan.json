@@ -1,0 +1,44 @@
+{
+  "bundle": {
+    "hash": "sha256:d8f6d0e6f15a3cf3df0435dc7bf5f5c2b4996bc7c69836883396be8939833014",
+    "id": "testservices-runtime-app-js",
+    "path": "app.js"
+  },
+  "compilerVersion": "handwritten-testservices-runtime-fixture",
+  "requiredFeatures": [
+    "stdlib.os"
+  ],
+  "capabilities": [],
+  "features": {
+    "asyncHandlers": true,
+    "capabilities": false,
+    "sourceMaps": true
+  },
+  "handlers": [
+    {
+      "displayName": "GET /testservices",
+      "exportName": "__sloppy_handler_1",
+      "id": 1
+    }
+  ],
+  "routes": [
+    {
+      "handlerId": 1,
+      "method": "GET",
+      "name": null,
+      "pattern": "/testservices"
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "sourceMap": {
+    "hash": "sha256:243dbc340c6c9b249f582ed0feffc8ca397313ea37e60c090a93c59b5a937ff4",
+    "id": "testservices-runtime-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}

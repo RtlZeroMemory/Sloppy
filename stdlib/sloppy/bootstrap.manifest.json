@@ -50,6 +50,7 @@
     "sloppy/request-logging.js",
     "sloppy/results.js",
     "sloppy/schema.js",
+    "sloppy/testservices.js",
     "sloppy/testing.js",
     "sloppy/app.js",
     "sloppy/internal/capabilities.js",

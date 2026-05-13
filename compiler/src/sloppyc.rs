@@ -4861,7 +4861,10 @@ fn validate_module_sloppy_root_import(
         };
         let imported = specifier.imported.name().as_str();
         let local = specifier.local.name.as_str();
-        if matches!(imported, "Testing" | "TestHost" | "FakeClock" | "TestData") {
+        if matches!(
+            imported,
+            "Testing" | "TestHost" | "TestServices" | "FakeClock" | "TestData"
+        ) {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
                 "Sloppy testing helpers cannot be imported by compiled app source",
@@ -6073,7 +6076,10 @@ fn extract_import(
 
             let imported = specifier.imported.name().as_str();
             let local = specifier.local.name.as_str();
-            if matches!(imported, "Testing" | "TestHost" | "FakeClock" | "TestData") {
+            if matches!(
+                imported,
+                "Testing" | "TestHost" | "TestServices" | "FakeClock" | "TestData"
+            ) {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
                     "Sloppy testing helpers cannot be imported by compiled app source",
@@ -6191,6 +6197,7 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "Metrics"
             | "Testing"
             | "TestHost"
+            | "TestServices"
             | "FakeClock"
             | "TestData"
             | "data"
