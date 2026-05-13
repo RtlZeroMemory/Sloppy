@@ -23,13 +23,24 @@ compiler/
     lib.rs                   library exports
     graph.rs                 compiler-owned AppGraph IR
     plan_emit.rs             app.plan.json emission from AppGraph
+    plan_emit/               focused Plan emission helpers
     hash.rs / version.rs     artifact hash and version constants
     sloppyc.rs               extraction plus JS/source-map emission
     sloppyc/
+      app_features.rs
+      auth.rs
       configuration.rs
-      schema.rs
       effects.rs
       framework_features.rs
+      framework.rs
+      handler.rs
+      imports.rs
+      modules.rs
+      ops_docs.rs
+      program.rs
+      routes.rs
+      schema.rs
+      static_files.rs
     parser.rs                Oxc parser setup
     resolver.rs              import resolution
     module_graph.rs          source graph model
@@ -43,12 +54,13 @@ compiler/
     compiler_fixture_harness.rs
 ```
 
-`src/sloppyc.rs` still owns most extraction. The files under `src/sloppyc/`
-hold focused extraction helpers for configuration, schema, effects, and
-recognized framework features that need explicit AppGraph representation before
-they can produce strong metadata. `src/graph.rs` owns the internal AppGraph
-data types copied out of parser lifetimes. `src/plan_emit.rs` consumes that
-graph for Plan JSON so the Plan shape is separated from extraction.
+`src/sloppyc.rs` owns CLI-facing orchestration, metrics wiring, and the
+top-level extraction loop. The files under `src/sloppyc/` own focused compiler
+surfaces such as imports, handlers, routes, Program Mode, module extraction,
+static assets, auth, configuration, schema, effects, and framework feature
+metadata. `src/graph.rs` owns the internal AppGraph data types copied out of
+parser lifetimes. `src/plan_emit.rs` and `src/plan_emit/` consume that graph for
+Plan JSON so the Plan shape is separated from extraction.
 
 ## Main Concepts
 

@@ -50,27 +50,37 @@ pub(super) fn route_pattern_segment_trie_key(segment: &str) -> String {
 }
 
 pub(super) fn route_dispatch_segment_trie_nodes(app: &ExtractedApp) -> usize {
-    let mut prefixes = BTreeSet::<Vec<String>>::new();
+    let mut nodes = vec![BTreeMap::<String, usize>::new()];
+    let mut node_count = 0usize;
 
     for route in app
         .routes
         .iter()
         .filter(|route| route_pattern_has_params(&route.pattern))
     {
-        let mut prefix = vec![format!("m:{}", route.method)];
-        prefixes.insert(prefix.clone());
-        for segment in route
-            .pattern
-            .split('/')
-            .skip(1)
-            .filter(|segment| !segment.is_empty())
-        {
-            prefix.push(route_pattern_segment_trie_key(segment));
-            prefixes.insert(prefix.clone());
+        let mut current = 0usize;
+        for key in std::iter::once(format!("m:{}", route.method)).chain(
+            route
+                .pattern
+                .split('/')
+                .skip(1)
+                .filter(|segment| !segment.is_empty())
+                .map(route_pattern_segment_trie_key),
+        ) {
+            if let Some(next) = nodes[current].get(&key).copied() {
+                current = next;
+                continue;
+            }
+
+            nodes.push(BTreeMap::new());
+            let next = nodes.len() - 1;
+            nodes[current].insert(key, next);
+            current = next;
+            node_count += 1;
         }
     }
 
-    prefixes.len()
+    node_count
 }
 
 pub(super) fn route_json_request_plan(bindings: &[RequestBinding]) -> Value {
@@ -484,110 +494,78 @@ pub(super) fn route_dispatch_json(
     route_artifact: Option<&RouteDispatchArtifactMetadata>,
     resolved_schemas: &BTreeMap<String, Value>,
 ) -> Value {
-    let static_routes = app
-        .routes
-        .iter()
-        .filter(|route| !route_pattern_has_params(&route.pattern))
-        .count();
-    let parameter_routes = app.routes.len().saturating_sub(static_routes);
-    let segment_trie_nodes = route_dispatch_segment_trie_nodes(app);
-    let parameter_candidate_buckets = app
-        .routes
-        .iter()
-        .filter(|route| route_pattern_has_params(&route.pattern))
-        .map(|route| {
-            (
+    let mut static_routes = 0usize;
+    let mut parameter_candidate_keys = BTreeSet::new();
+    let mut constraints = BTreeSet::new();
+    let mut native_no_js_endpoints = 0usize;
+    let mut request_native_json_routes = 0usize;
+    let mut request_generic_json_routes = 0usize;
+    let mut request_fallback_json_routes = 0usize;
+    let mut response_native_json_routes = 0usize;
+    let mut response_generic_json_routes = 0usize;
+    let mut response_fallback_json_routes = 0usize;
+    let mut url_writers = 0usize;
+
+    for route in &app.routes {
+        let has_params = route_pattern_has_params(&route.pattern);
+        if has_params {
+            parameter_candidate_keys.insert((
                 route.method,
                 route_pattern_leading_static_segment(&route.pattern)
                     .unwrap_or("")
                     .to_string(),
-            )
-        })
-        .collect::<BTreeSet<_>>()
-        .len();
+            ));
+        } else {
+            static_routes += 1;
+        }
+        constraints.extend(route_pattern_constraint_names(&route.pattern));
+
+        let response_kind = route
+            .handler
+            .response
+            .as_ref()
+            .map(|response| response.kind.as_str());
+        let native_body = route
+            .handler
+            .response
+            .as_ref()
+            .and_then(|response| response.native_body.as_deref());
+        if route_execution_kind(response_kind, native_body) != RouteExecutionKind::V8Handler {
+            native_no_js_endpoints += 1;
+        }
+
+        if route.name.is_some() {
+            url_writers += 1;
+        }
+
+        match route_json_mode(&route_json_request_plan(&route.handler.bindings)) {
+            "native-schema" => request_native_json_routes += 1,
+            "generic" => request_generic_json_routes += 1,
+            "fallback" => request_fallback_json_routes += 1,
+            _ => {}
+        }
+
+        let response_plan = route_json_response_plan(
+            route.handler.response.as_ref(),
+            &route.handler.responses,
+            resolved_schemas,
+        );
+        match route_json_mode(&response_plan) {
+            "native-static" | "native-schema" => response_native_json_routes += 1,
+            "generic" => response_generic_json_routes += 1,
+            "fallback" => response_fallback_json_routes += 1,
+            _ => {}
+        }
+    }
+
+    let parameter_routes = app.routes.len().saturating_sub(static_routes);
+    let segment_trie_nodes = route_dispatch_segment_trie_nodes(app);
+    let parameter_candidate_buckets = parameter_candidate_keys.len();
     let partial_routes = route_completeness_values
         .iter()
         .filter(|route| route.status.as_str() != "complete")
         .count();
-    let constraints = app
-        .routes
-        .iter()
-        .flat_map(|route| route_pattern_constraint_names(&route.pattern))
-        .collect::<BTreeSet<_>>()
-        .into_iter()
-        .collect::<Vec<_>>();
-    let native_no_js_endpoints = app
-        .routes
-        .iter()
-        .filter(|route| {
-            let response_kind = route
-                .handler
-                .response
-                .as_ref()
-                .map(|response| response.kind.as_str());
-            let native_body = route
-                .handler
-                .response
-                .as_ref()
-                .and_then(|response| response.native_body.as_deref());
-            route_execution_kind(response_kind, native_body) != RouteExecutionKind::V8Handler
-        })
-        .count();
-    let request_native_json_routes = app
-        .routes
-        .iter()
-        .filter(|route| {
-            route_json_mode(&route_json_request_plan(&route.handler.bindings)) == "native-schema"
-        })
-        .count();
-    let request_generic_json_routes = app
-        .routes
-        .iter()
-        .filter(|route| {
-            route_json_mode(&route_json_request_plan(&route.handler.bindings)) == "generic"
-        })
-        .count();
-    let request_fallback_json_routes = app
-        .routes
-        .iter()
-        .filter(|route| {
-            route_json_mode(&route_json_request_plan(&route.handler.bindings)) == "fallback"
-        })
-        .count();
-    let response_native_json_routes = app
-        .routes
-        .iter()
-        .filter(|route| {
-            let plan = route_json_response_plan(
-                route.handler.response.as_ref(),
-                &route.handler.responses,
-                resolved_schemas,
-            );
-            route_json_mode(&plan) == "native-static" || route_json_mode(&plan) == "native-schema"
-        })
-        .count();
-    let response_generic_json_routes = app
-        .routes
-        .iter()
-        .filter(|route| {
-            route_json_mode(&route_json_response_plan(
-                route.handler.response.as_ref(),
-                &route.handler.responses,
-                resolved_schemas,
-            )) == "generic"
-        })
-        .count();
-    let response_fallback_json_routes = app
-        .routes
-        .iter()
-        .filter(|route| {
-            route_json_mode(&route_json_response_plan(
-                route.handler.response.as_ref(),
-                &route.handler.responses,
-                resolved_schemas,
-            )) == "fallback"
-        })
-        .count();
+    let constraints = constraints.into_iter().collect::<Vec<_>>();
     let artifact = route_artifact.map_or_else(
         || {
             json!({
@@ -615,7 +593,7 @@ pub(super) fn route_dispatch_json(
         "catchAllRoutes": 0,
         "nativeNoJsEndpoints": native_no_js_endpoints,
         "urlGeneration": true,
-        "urlWriters": app.routes.iter().filter(|route| route.name.is_some()).count(),
+        "urlWriters": url_writers,
         "dispatchStats": {
             "exactStaticPaths": static_routes,
             "parameterCandidateBuckets": parameter_candidate_buckets,
