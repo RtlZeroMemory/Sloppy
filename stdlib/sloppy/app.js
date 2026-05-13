@@ -936,6 +936,10 @@ function createMetricsAwareServices(services, metricsRegistry) {
             services.addCache(cache, name);
             return this;
         },
+        addHttpClient(clientOrName, options = undefined) {
+            services.addHttpClient(clientOrName, options);
+            return this;
+        },
         dispose() {
             return services.dispose();
         },
