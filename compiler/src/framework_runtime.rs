@@ -29,7 +29,7 @@ pub(crate) fn typed_arrow_handler_source_with_replacements(
         &erase_spans,
         replacements,
     )?;
-    let wrapper = wrapper_source(&executable_source, bindings);
+    let wrapper = wrapper_source(&executable_source, bindings, function.r#async);
     Some(TypedHandlerSource {
         original_source: handler_source,
         emitted_source: wrapper.source,
@@ -53,7 +53,7 @@ pub(crate) fn typed_function_handler_source_with_replacements(
         &erase_spans,
         replacements,
     )?;
-    let wrapper = wrapper_source(&executable_source, bindings);
+    let wrapper = wrapper_source(&executable_source, bindings, function.r#async);
     Some(TypedHandlerSource {
         original_source: handler_source,
         emitted_source: wrapper.source,
@@ -489,18 +489,43 @@ struct WrapperSource {
     handler_column_offset: usize,
 }
 
-fn wrapper_source(handler_source: &str, bindings: &[RequestBinding]) -> WrapperSource {
-    let args = bindings
-        .iter()
-        .map(|binding| {
-            let descriptor = serde_json::to_string(&binding_descriptor(binding)).ok()?;
-            Some(format!(
-                "__sloppy_framework_arg(ctx, __sloppy_scope, {descriptor})"
-            ))
-        })
-        .collect::<Option<Vec<_>>>()
-        .unwrap_or_default()
-        .join(", ");
+fn typed_binding_can_sync_without_scope(binding: &RequestBinding) -> bool {
+    matches!(
+        binding.kind.as_str(),
+        "body.json" | "config" | "header" | "query" | "route"
+    )
+}
+
+fn wrapper_source(
+    handler_source: &str,
+    bindings: &[RequestBinding],
+    handler_is_async: bool,
+) -> WrapperSource {
+    let args_with_scope = |scope_expr: &str| {
+        bindings
+            .iter()
+            .map(|binding| {
+                let descriptor = serde_json::to_string(&binding_descriptor(binding)).ok()?;
+                Some(format!(
+                    "__sloppy_framework_arg(ctx, {scope_expr}, {descriptor})"
+                ))
+            })
+            .collect::<Option<Vec<_>>>()
+            .unwrap_or_default()
+            .join(", ")
+    };
+
+    if !handler_is_async && bindings.iter().all(typed_binding_can_sync_without_scope) {
+        let args = args_with_scope("undefined");
+        let prefix = "(ctx) => { const __sloppy_typed_handler = ";
+        return WrapperSource {
+            source: format!("{prefix}{handler_source}; return __sloppy_typed_handler({args}); }}"),
+            handler_line_offset: 0,
+            handler_column_offset: prefix.len(),
+        };
+    }
+
+    let args = args_with_scope("__sloppy_scope");
     let prefix = "async (ctx) => { const __sloppy_scope = __sloppy_framework_services.createScope(ctx); ctx.services = __sloppy_scope; try { const __sloppy_typed_handler = ";
     WrapperSource {
         source: format!(

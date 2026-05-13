@@ -247,18 +247,56 @@ rows are the only JSON rows in this family intended for local
 Sloppy-vs-runtime loopback comparison. In-process `sloppy_bench` JSON rows must
 not be compared directly against competitor loopback rows.
 
-The Sloppy loopback matrix includes static no-JS `Results.json` and
-`Results.text` rows, a dynamic V8 `Results.json` row, request-body JSON rows,
-large JSON response rows, and route-table rows. When `-HttpProfile` is enabled,
-the static no-JS rows should show `nativeResponseHits > 0`; a zero value means
-the benchmark app did not exercise the native response path being investigated.
+The Sloppy loopback matrix includes static no-JS `Results.json`,
+`Results.text`, empty-status, and problem-details rows; dynamic V8
+`Results.json`, `Results.text`, async, plain-object, and exception rows;
+request-body JSON rows; query/header/service context rows; large JSON response
+rows; and route-table rows. When `-HttpProfile` is enabled, static no-JS rows
+should show `noJsResponsePlanHits > 0`, `nativeResponseHits > 0`, and
+`v8HandlerCalls == 0`. Dynamic V8 rows should show `v8HandlerCalls > 0`. A zero
+value in the path being investigated means the benchmark app did not exercise
+that path.
 
 Pass `-HttpProfile` to run Sloppy loopback rows with `SLOPPY_HTTP_PROFILE=1`.
 The runner starts a fresh Sloppy process per profiled scenario and writes
 machine-readable phase summaries to `artifacts/bench/http-profile-*.json`, plus
 `artifacts/bench/http-profile-summary.md`. Profiling is disabled by default and
 the runtime writes no profile file unless `SLOPPY_HTTP_PROFILE_OUT` is set by
-the harness or by an explicit local profiling command.
+the harness or by an explicit local profiling command. `SLOPPY_V8_PROFILE=1`
+also enables the same profile output for V8-focused local runs. Profile rows
+include handler lookup/cache counters, context/request materialization phases,
+Promise/sync return counters, result conversion counters, JSON stringify
+counters, exception mapping counters, no-JS/native response counters, and
+generic fallback counters.
+
+Profiled Sloppy loopback runs use a separate readiness preflight before the
+measured profiled scenario process. TCP readiness proves the listener is open,
+and an HTTP `/static-json` probe proves app dispatch is ready. The profiled
+process then serves only the scenario requests so readiness probes do not
+inflate `requests`, `nativeResponseHits`, `v8HandlerCalls`, or materialization
+counters for the scenario being inspected.
+
+Common HTTP/V8 profile counters have narrow meanings:
+
+- `noJsResponsePlanHits` counts dispatches served by Plan-backed native response
+  metadata.
+- `nativeResponseHits` counts dispatches that constructed a native response
+  descriptor without calling a JavaScript handler.
+- `v8HandlerCalls` counts registered handler calls through the V8 bridge.
+- `handlerCacheHits` and `handlerCacheMisses` attribute handler-ID lookup.
+- `syncReturns` and `promiseReturns` count only the top-level handler return
+  shape.
+- request/context materialization counters attribute the facets built for the
+  generated handler, such as request facade, query, headers, body, services,
+  route params, and cancellation signal.
+- result conversion and JSON stringify counters attribute the conversion of a
+  V8 handler result into the native HTTP result.
+
+Current large JSON loopback rows are useful for attribution: large plain-object
+or `Results.json` responses still include V8 handler execution, JavaScript
+object construction, V8 JSON stringify, and native result copying. Static
+no-JS JSON rows are the comparison point for the native response plan path, not
+for dynamic JavaScript handler cost.
 
 The competitor `route-table` scenario validates `/route/{id}` loopback routing
 for IDs in a 1000-value cycle. Raw Node/Bun/Deno implementations may use a

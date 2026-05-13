@@ -1244,10 +1244,11 @@ pub(crate) fn emit_plan_with_route_artifact(
                             "kind": response.kind,
                             "status": response.status,
                             "body": native_body,
-                            "contentType": if response.kind == "json" {
-                                "application/json"
-                            } else {
-                                "text/plain; charset=utf-8"
+                            "contentType": match response.kind.as_str() {
+                                "json" => "application/json",
+                                "problem" => "application/problem+json",
+                                "empty" => "text/plain; charset=utf-8",
+                                _ => "text/plain; charset=utf-8",
                             }
                         });
                     }

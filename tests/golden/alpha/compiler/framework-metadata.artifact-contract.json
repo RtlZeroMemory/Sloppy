@@ -6,7 +6,8 @@
   "files": [
     "app.js",
     "app.js.map",
-    "app.plan.json"
+    "app.plan.json",
+    "routes.slrt"
   ],
   "planKind": "web",
   "sourceMapHasXSloppy": true,

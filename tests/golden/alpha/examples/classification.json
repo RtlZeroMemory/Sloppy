@@ -354,6 +354,20 @@
     },
     {
       "entry": "app.js",
+      "kind": "web",
+      "name": "ops-compiler",
+      "reason": "test-only audit fixture for operations endpoint compiler/tooling metadata",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "ops-health-metrics-management",
+      "reason": "operations endpoint host pattern example covered by compiler/tooling metadata",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
       "kind": "program-js",
       "name": "os-runtime-api",
       "reason": "process runtime smoke is platform-sensitive",
@@ -429,6 +443,18 @@
       "tier": "live-provider"
     },
     {
+      "kind": "documentation",
+      "name": "testhost-basic",
+      "reason": "documentation-only TestHost usage example",
+      "tier": "pr"
+    },
+    {
+      "kind": "documentation",
+      "name": "testhost-db",
+      "reason": "documentation-only TestData/TestHost database shape",
+      "tier": "pr"
+    },
+    {
       "entry": "app.js",
       "kind": "program-js",
       "name": "time-basic",
@@ -476,6 +502,33 @@
       "kind": "web",
       "name": "web-dynamic-routes",
       "reason": "covered by dynamic route compiler tests and manual example validation",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "websocket-auth",
+      "reason": "WebSocket auth metadata example; native upgrade execution remains unavailable",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "websocket-echo",
+      "reason": "WebSocket app-host echo example; native upgrade execution remains unavailable",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "websocket-json-schema",
+      "reason": "WebSocket schema metadata example; native upgrade execution remains unavailable",
+      "tier": "pr"
+    },
+    {
+      "kind": "documentation",
+      "name": "websocket-testhost",
+      "reason": "documentation-only TestHost WebSocket example",
       "tier": "pr"
     },
     {

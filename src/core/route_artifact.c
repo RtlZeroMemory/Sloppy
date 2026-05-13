@@ -197,7 +197,7 @@ static SlStatus slrt_validate_entry(SlArena* arena, SlDiag* out_diag, SlBytes ar
                                 "index") -
                              1U);
     }
-    if (execution_kind < 1U || execution_kind > 3U) {
+    if (execution_kind < 1U || execution_kind > 5U) {
         return slrt_fail(arena, out_diag, "invalid SLRT execution kind",
                          sizeof("invalid SLRT execution kind") - 1U,
                          "route artifact execution kinds must be known by this runtime",

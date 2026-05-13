@@ -18,6 +18,18 @@
           "line": 6,
           "path": "input.js"
         }
+      },
+      {
+        "generated": {
+          "column": 33,
+          "line": 9
+        },
+        "id": 2,
+        "source": {
+          "column": 40,
+          "line": 7,
+          "path": "input.js"
+        }
       }
     ],
     "modules": [],
@@ -33,12 +45,23 @@
           "line": 6,
           "path": "input.js"
         }
+      },
+      {
+        "handlerId": 2,
+        "method": "GET",
+        "module": null,
+        "pattern": "/{tenant}/users/{id:int}",
+        "source": {
+          "column": 1,
+          "line": 7,
+          "path": "input.js"
+        }
       }
     ],
     "schemas": [],
     "sourceFiles": [
       {
-        "hash": "sha256:d8a4ccfa1934045187b2532abe6c7bd15b15a00a5f5ce633725cf6a559999d03",
+        "hash": "sha256:fe03ad0541d1ff7570e8d43524b195d74a4a8448da4b305dedf18f1c2febcb37",
         "path": "input.js"
       }
     ],

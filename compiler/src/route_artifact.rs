@@ -24,6 +24,8 @@ pub(crate) enum RouteExecutionKind {
     V8Handler,
     NativeStaticText,
     NativeStaticJson,
+    NativeStaticEmpty,
+    NativeStaticProblem,
 }
 
 impl RouteExecutionKind {
@@ -32,6 +34,8 @@ impl RouteExecutionKind {
             Self::V8Handler => "v8-handler",
             Self::NativeStaticText => "native-static-text",
             Self::NativeStaticJson => "native-static-json",
+            Self::NativeStaticEmpty => "native-static-empty",
+            Self::NativeStaticProblem => "native-static-problem",
         }
     }
 
@@ -40,6 +44,8 @@ impl RouteExecutionKind {
             Self::V8Handler => 1,
             Self::NativeStaticText => 2,
             Self::NativeStaticJson => 3,
+            Self::NativeStaticEmpty => 4,
+            Self::NativeStaticProblem => 5,
         }
     }
 }
@@ -51,6 +57,8 @@ pub(crate) fn route_execution_kind(
     match (response_kind, native_body) {
         (Some("text"), Some(_)) => RouteExecutionKind::NativeStaticText,
         (Some("json"), Some(_)) => RouteExecutionKind::NativeStaticJson,
+        (Some("empty"), Some(_)) => RouteExecutionKind::NativeStaticEmpty,
+        (Some("problem"), Some(_)) => RouteExecutionKind::NativeStaticProblem,
         _ => RouteExecutionKind::V8Handler,
     }
 }

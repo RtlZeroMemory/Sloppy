@@ -118,10 +118,25 @@ function expectedForScenario(scenario, requestIndex, text, status) {
       ? { ok: true }
       : { ok: false, reason: `invalid scenario expected 400, got ${status}` };
   }
+  if (scenario === "static-status") {
+    return status === 204 && text === ""
+      ? { ok: true }
+      : { ok: false, reason: `static-status expected 204 with empty body, got ${status}` };
+  }
   if (scenario === "static-text") {
     return status === 200 && text === "ok\n"
       ? { ok: true }
       : { ok: false, reason: "static-text response did not contain the expected text payload" };
+  }
+  if (scenario === "dynamic-text") {
+    return status === 200 && text === "dynamic-text\n"
+      ? { ok: true }
+      : { ok: false, reason: "dynamic-text response did not contain the expected text payload" };
+  }
+  if (scenario === "exception") {
+    return status === 500
+      ? { ok: true }
+      : { ok: false, reason: `exception expected 500, got ${status}` };
   }
 
   let parsed = null;
@@ -131,6 +146,13 @@ function expectedForScenario(scenario, requestIndex, text, status) {
     return { ok: false, reason: "response body is not valid JSON" };
   }
 
+  if (scenario === "static-problem") {
+    return status === 400 &&
+      parsed?.status === 400 &&
+      parsed?.code === "SLOPPY_E_STATIC_PROBLEM"
+      ? { ok: true }
+      : { ok: false, reason: "static-problem response did not contain the expected problem payload" };
+  }
   if (status !== 200) {
     return { ok: false, reason: `${scenario} expected 200, got ${status}` };
   }
@@ -158,6 +180,31 @@ function expectedForScenario(scenario, requestIndex, text, status) {
     return parsed?.ok === true && parsed?.mode === "dynamic-0"
       ? { ok: true }
       : { ok: false, reason: "dynamic-json response did not contain the expected dynamic payload" };
+  }
+  if (scenario === "dynamic-async") {
+    return parsed?.ok === true && parsed?.mode === "async-dynamic"
+      ? { ok: true }
+      : { ok: false, reason: "dynamic-async response did not contain the expected async payload" };
+  }
+  if (scenario === "ctx-query") {
+    return parsed?.ok === true && parsed?.query === "abc"
+      ? { ok: true }
+      : { ok: false, reason: "ctx-query response did not contain the expected query value" };
+  }
+  if (scenario === "ctx-headers") {
+    return parsed?.ok === true && parsed?.trace === "bench-trace"
+      ? { ok: true }
+      : { ok: false, reason: "ctx-headers response did not contain the expected header value" };
+  }
+  if (scenario === "ctx-services") {
+    return parsed?.ok === true && parsed?.service === "bench-service"
+      ? { ok: true }
+      : { ok: false, reason: "ctx-services response did not contain the expected service value" };
+  }
+  if (scenario === "plain-object") {
+    return parsed?.ok === true && parsed?.mode === "plain-object"
+      ? { ok: true }
+      : { ok: false, reason: "plain-object response did not contain the expected JSON payload" };
   }
   const expectedRoute = `/route/${requestIndex % 1000}`;
   return parsed?.ok === true && parsed?.route === expectedRoute
@@ -221,9 +268,60 @@ function handleScenario(req, res) {
     res.end("ok\n");
     return;
   }
+  if (req.method === "GET" && req.url === "/static-status") {
+    res.writeHead(204).end();
+    return;
+  }
+  if (req.method === "GET" && req.url === "/static-problem") {
+    const body = JSON.stringify({ status: 400, title: "Static problem", code: "SLOPPY_E_STATIC_PROBLEM" });
+    res.writeHead(400, { "content-type": "application/problem+json", "content-length": Buffer.byteLength(body) });
+    res.end(body);
+    return;
+  }
   if (req.method === "GET" && req.url === "/dynamic-json") {
     const body = JSON.stringify({ ok: true, mode: "dynamic-0" });
     res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+    res.end(body);
+    return;
+  }
+  if (req.method === "GET" && req.url === "/dynamic-text") {
+    res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "content-length": 13 });
+    res.end("dynamic-text\n");
+    return;
+  }
+  if (req.method === "GET" && req.url === "/dynamic-async") {
+    const body = JSON.stringify({ ok: true, mode: "async-dynamic" });
+    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+    res.end(body);
+    return;
+  }
+  if (req.method === "GET" && req.url === "/ctx-query?q=abc") {
+    const body = JSON.stringify({ ok: true, query: "abc" });
+    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+    res.end(body);
+    return;
+  }
+  if (req.method === "GET" && req.url === "/ctx-headers") {
+    const body = JSON.stringify({ ok: true, trace: req.headers["x-trace"] ?? "" });
+    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+    res.end(body);
+    return;
+  }
+  if (req.method === "GET" && req.url === "/ctx-services") {
+    const body = JSON.stringify({ ok: true, service: "bench-service" });
+    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+    res.end(body);
+    return;
+  }
+  if (req.method === "GET" && req.url === "/plain-object") {
+    const body = JSON.stringify({ ok: true, mode: "plain-object" });
+    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+    res.end(body);
+    return;
+  }
+  if (req.method === "GET" && req.url === "/exception") {
+    const body = JSON.stringify({ status: 500, title: "Internal Server Error" });
+    res.writeHead(500, { "content-type": "application/problem+json", "content-length": Buffer.byteLength(body) });
     res.end(body);
     return;
   }
@@ -282,7 +380,17 @@ async function startExpressServer() {
   app.get("/route/:id", (req, res) => res.json({ ok: true, route: `/route/${req.params.id}` }));
   app.get("/static-json", (_req, res) => res.json({ ok: true, mode: "static" }));
   app.get("/static-text", (_req, res) => res.type("text/plain; charset=utf-8").send("ok\n"));
+  app.get("/static-status", (_req, res) => res.status(204).end());
+  app.get("/static-problem", (_req, res) =>
+    res.status(400).type("application/problem+json").send({ status: 400, title: "Static problem", code: "SLOPPY_E_STATIC_PROBLEM" }));
   app.get("/dynamic-json", (_req, res) => res.json({ ok: true, mode: "dynamic-0" }));
+  app.get("/dynamic-text", (_req, res) => res.type("text/plain; charset=utf-8").send("dynamic-text\n"));
+  app.get("/dynamic-async", async (_req, res) => res.json({ ok: true, mode: await Promise.resolve("async-dynamic") }));
+  app.get("/ctx-query", (req, res) => res.json({ ok: true, query: req.query.q }));
+  app.get("/ctx-headers", (req, res) => res.json({ ok: true, trace: req.get("x-trace") }));
+  app.get("/ctx-services", (_req, res) => res.json({ ok: true, service: "bench-service" }));
+  app.get("/plain-object", (_req, res) => res.json({ ok: true, mode: "plain-object" }));
+  app.get("/exception", (_req, res) => res.status(500).json({ status: 500, title: "Internal Server Error" }));
   app.use((error, _req, res, _next) => {
     if (error instanceof SyntaxError) {
       res.status(400).json({ error: "malformed_json" });
@@ -311,28 +419,63 @@ async function startFastifyServer() {
   app.get("/route/:id", async (req) => ({ ok: true, route: `/route/${req.params.id}` }));
   app.get("/static-json", async () => ({ ok: true, mode: "static" }));
   app.get("/static-text", async (_req, reply) => reply.type("text/plain; charset=utf-8").send("ok\n"));
+  app.get("/static-status", async (_req, reply) => reply.code(204).send());
+  app.get("/static-problem", async (_req, reply) =>
+    reply.code(400).type("application/problem+json").send({ status: 400, title: "Static problem", code: "SLOPPY_E_STATIC_PROBLEM" }));
   app.get("/dynamic-json", async () => ({ ok: true, mode: "dynamic-0" }));
+  app.get("/dynamic-text", async (_req, reply) => reply.type("text/plain; charset=utf-8").send("dynamic-text\n"));
+  app.get("/dynamic-async", async () => ({ ok: true, mode: await Promise.resolve("async-dynamic") }));
+  app.get("/ctx-query", async (req) => ({ ok: true, query: req.query.q }));
+  app.get("/ctx-headers", async (req) => ({ ok: true, trace: req.headers["x-trace"] }));
+  app.get("/ctx-services", async () => ({ ok: true, service: "bench-service" }));
+  app.get("/plain-object", async () => ({ ok: true, mode: "plain-object" }));
+  app.get("/exception", async (_req, reply) => reply.code(500).send({ status: 500, title: "Internal Server Error" }));
   await app.listen({ host: "127.0.0.1", port: 0 });
   return { baseUrl: app.server.address() ? `http://127.0.0.1:${app.server.address().port}` : "", close: () => app.close() };
 }
 
-async function waitForHttpReady(baseUrl, pathName = "/large") {
+async function waitForTcpReady(port) {
   const deadline = Date.now() + 10_000;
   let lastError = null;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${baseUrl}${pathName}`);
-      if (response.status === 200) {
-        await response.arrayBuffer();
-        return;
-      }
-      lastError = new Error(`ready probe returned ${response.status}`);
+      await new Promise((resolve, reject) => {
+        const socket = net.createConnection({ host: "127.0.0.1", port }, () => {
+          socket.end();
+          resolve();
+        });
+        socket.once("error", reject);
+      });
+      return;
     } catch (error) {
       lastError = error;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw lastError ?? new Error("server did not become ready");
+}
+
+async function waitForHttpReady(baseUrl) {
+  const deadline = Date.now() + 10_000;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${baseUrl}/static-json`, {
+        headers: { "cache-control": "no-store" },
+      });
+      if (response.status === 200) {
+        const body = await response.json();
+        if (body && body.ok === true && body.mode === "static") {
+          return;
+        }
+      }
+      lastError = new Error(`HTTP readiness probe returned status ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw lastError ?? new Error("server did not pass HTTP readiness probe");
 }
 
 async function startSloppyServer(mode, sloppyInfo, profile = null) {
@@ -375,7 +518,10 @@ async function startSloppyServer(mode, sloppyInfo, profile = null) {
   child.once("error", () => {});
   const baseUrl = `http://127.0.0.1:${port}`;
   try {
-    await waitForHttpReady(baseUrl, "/static-json");
+    await waitForTcpReady(port);
+    if (profile === null) {
+      await waitForHttpReady(baseUrl);
+    }
   } catch (error) {
     child.kill("SIGINT");
     throw new Error(`sloppy server did not become ready: ${error.message}\n${stderr}`);
@@ -424,8 +570,35 @@ async function issueScenarioRequest(baseUrl, scenario, index) {
   if (scenario === "static-text") {
     return await fetch(`${baseUrl}/static-text`);
   }
+  if (scenario === "static-status") {
+    return await fetch(`${baseUrl}/static-status`);
+  }
+  if (scenario === "static-problem") {
+    return await fetch(`${baseUrl}/static-problem`);
+  }
   if (scenario === "dynamic-json") {
     return await fetch(`${baseUrl}/dynamic-json`);
+  }
+  if (scenario === "dynamic-text") {
+    return await fetch(`${baseUrl}/dynamic-text`);
+  }
+  if (scenario === "dynamic-async") {
+    return await fetch(`${baseUrl}/dynamic-async`);
+  }
+  if (scenario === "ctx-query") {
+    return await fetch(`${baseUrl}/ctx-query?q=abc`);
+  }
+  if (scenario === "ctx-headers") {
+    return await fetch(`${baseUrl}/ctx-headers`, { headers: { "x-trace": "bench-trace" } });
+  }
+  if (scenario === "ctx-services") {
+    return await fetch(`${baseUrl}/ctx-services`);
+  }
+  if (scenario === "plain-object") {
+    return await fetch(`${baseUrl}/plain-object`);
+  }
+  if (scenario === "exception") {
+    return await fetch(`${baseUrl}/exception`);
   }
   return await fetch(`${baseUrl}/route/${index % 1000}`);
 }
@@ -529,15 +702,27 @@ async function runRuntime(name, version, start) {
   const scenarios = [
     "static-json",
     "static-text",
+    "static-status",
+    "static-problem",
     "dynamic-json",
+    "dynamic-text",
+    "dynamic-async",
     "small",
     "invalid",
     "medium",
     "large",
+    "ctx-query",
+    "ctx-headers",
+    "ctx-services",
+    "plain-object",
+    "exception",
     "route-table",
   ];
   try {
     if (httpProfile && name.startsWith("sloppy:loopback:")) {
+      server = await start();
+      await server.close();
+      server = null;
       const rows = [];
       for (let repeatIndex = 1; repeatIndex <= repeat; repeatIndex += 1) {
         for (const scenario of scenarios) {
@@ -729,7 +914,16 @@ const report = {
     large: "GET /large; validates 256-item JSON response",
     "static-json": "GET /static-json; validates a static Results.json payload eligible for native no-JS response dispatch",
     "static-text": "GET /static-text; validates a static Results.text payload eligible for native no-JS response dispatch",
+    "static-status": "GET /static-status; validates a static no-body response eligible for native no-JS response dispatch",
+    "static-problem": "GET /static-problem; validates a static ProblemDetails-style response eligible for native no-JS response dispatch",
     "dynamic-json": "GET /dynamic-json; validates a Results.json payload that still requires V8 handler execution and result conversion",
+    "dynamic-text": "GET /dynamic-text; validates a Results.text payload that still requires V8 handler execution and result conversion",
+    "dynamic-async": "GET /dynamic-async; validates an async Results.json payload through V8 Promise handling",
+    "ctx-query": "GET /ctx-query?q=abc; validates query materialization on a V8 route",
+    "ctx-headers": "GET /ctx-headers; validates request header materialization on a V8 route",
+    "ctx-services": "GET /ctx-services; validates service injection on a V8 route",
+    "plain-object": "GET /plain-object; validates plain object response conversion on a V8 route",
+    exception: "GET /exception; validates thrown handler diagnostics mapping on a V8 route",
     "route-table": "GET /route/{id}; validates route echo; raw runtimes may use a parameter route, so this is loopback routing evidence rather than a generated 1000-route-table comparison",
   },
   host: {
@@ -751,14 +945,15 @@ if (httpProfile) {
   const lines = [
     "# HTTP phase profile summary",
     "",
-    "| Scenario | Requests | Native response hits | HTTP parse avg ns | Route dispatch avg ns | JSON validation avg ns | V8 total avg ns | V8 context avg ns | V8 call avg ns | V8 conversion avg ns | V8 result construction avg ns | JSON stringify avg ns | Response serialization avg ns | Socket write avg ns | Write completion avg ns |",
-    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Scenario | Requests | No-JS hits | Native hits | V8 calls | Cache hits | Cache misses | Sync returns | Promise returns | JSON stringify calls | Generic fallbacks | HTTP parse avg ns | Route dispatch avg ns | Handler lookup avg ns | V8 total avg ns | Context avg ns | Base ctx avg ns | Request facade avg ns | V8 call avg ns | V8 conversion avg ns | JSON stringify avg ns | Response serialization avg ns | Socket write avg ns |",
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
   ];
   for (const file of files) {
     const profile = JSON.parse(await fs.readFile(path.join(httpProfileOutDir, file), "utf8"));
     const phaseAvg = (name) => profile.phases?.[name]?.avgNs ?? 0;
+    const counter = (name) => profile.counters?.[name] ?? 0;
     lines.push(
-      `| ${profile.scenario ?? file} | ${profile.requests ?? 0} | ${profile.counters?.nativeResponseHits ?? 0} | ${phaseAvg("http_parse")} | ${phaseAvg("route_dispatch")} | ${phaseAvg("json_validation")} | ${phaseAvg("v8_handler_execution")} | ${phaseAvg("v8_context_construction")} | ${phaseAvg("v8_handler_call")} | ${phaseAvg("v8_result_conversion")} | ${phaseAvg("v8_result_construction")} | ${phaseAvg("v8_json_stringify_generic_serialization")} | ${phaseAvg("response_serialization_header_writing")} | ${phaseAvg("socket_write_scheduling")} | ${phaseAvg("write_completion")} |`,
+      `| ${profile.scenario ?? file} | ${profile.requests ?? 0} | ${counter("noJsResponsePlanHits")} | ${counter("nativeResponseHits")} | ${counter("v8HandlerCalls")} | ${counter("v8HandlerCacheHits")} | ${counter("v8HandlerCacheMisses")} | ${counter("syncReturns")} | ${counter("promiseReturns")} | ${counter("jsonStringifyCalls")} | ${counter("genericFallbacks")} | ${phaseAvg("http_parse")} | ${phaseAvg("route_dispatch")} | ${phaseAvg("v8_handler_lookup")} | ${phaseAvg("v8_handler_execution")} | ${phaseAvg("v8_context_construction")} | ${phaseAvg("v8_context_base_object_creation")} | ${phaseAvg("v8_request_facade_creation")} | ${phaseAvg("v8_handler_call")} | ${phaseAvg("v8_result_conversion")} | ${phaseAvg("v8_json_stringify_generic_serialization")} | ${phaseAvg("response_serialization_header_writing")} | ${phaseAvg("socket_write_scheduling")} |`,
     );
   }
   await fs.writeFile(path.join(httpProfileOutDir, "http-profile-summary.md"), `${lines.join("\n")}\n`, "utf8");

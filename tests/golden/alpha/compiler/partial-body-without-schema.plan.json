@@ -82,6 +82,7 @@
     "dataProviders": false,
     "metadataInference": true,
     "nativeEndpointDispatch": true,
+    "nativeJsonDispatch": true,
     "sourceMaps": true,
     "strongPlanMetadata": true
   },
@@ -124,6 +125,19 @@
       "dynamicRoutes": 0,
       "partialRoutes": 1
     },
+    "json": {
+      "request": {
+        "fallback": 0,
+        "generic": 1,
+        "materialized": 0,
+        "native": 0
+      },
+      "response": {
+        "fallback": 0,
+        "generic": 1,
+        "native": 0
+      }
+    },
     "mode": "native-compiled",
     "nativeNoJsEndpoints": 0,
     "parameterRoutes": 0,
@@ -159,6 +173,19 @@
         "strategy": "exact-static-hash"
       },
       "handlerId": 1,
+      "jsonRequest": {
+        "fallbackReason": "schema-missing",
+        "materialization": "generic",
+        "maxBodyBytes": 65536,
+        "maxDepth": 50,
+        "mode": "generic",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "fallbackReason": "dynamic-handler-result",
+        "mode": "generic",
+        "writer": "none"
+      },
       "method": "POST",
       "name": null,
       "pattern": "/echo",
@@ -199,6 +226,7 @@
       "capabilities": false,
       "effects": false,
       "ffi": false,
+      "nativeJsonDispatch": true,
       "providers": false,
       "routeDispatch": true,
       "routes": true,
