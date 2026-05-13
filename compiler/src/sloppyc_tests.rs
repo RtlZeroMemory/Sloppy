@@ -7111,6 +7111,12 @@ app.get("/me", () => Results.ok({ ok: true }))
 app.get("/reprotected", () => Results.ok({ ok: true }))
   .allowAnonymous()
   .requiresScope("users:read");
+app.get("/anonymous-after-scope", () => Results.ok({ ok: true }))
+  .requiresScope("users:read")
+  .allowAnonymous();
+app.get("/require-after-scope", () => Results.ok({ ok: true }))
+  .requiresScope("lost:scope")
+  .requiresAuth("bearerAuth");
 const group = app.group("/group").requireAuth();
 group.allowAnonymous();
 group.get("/open", () => Results.ok({ ok: true }));
@@ -7143,6 +7149,28 @@ export default app;
     assert!(reprotected.required);
     assert!(!reprotected.allow_anonymous);
     assert_eq!(reprotected.scopes, vec!["users:read"]);
+    let anonymous_after_scope = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/anonymous-after-scope")
+        .expect("anonymous-after-scope route should exist")
+        .auth
+        .as_ref()
+        .expect("anonymous-after-scope route auth should extract");
+    assert!(!anonymous_after_scope.required);
+    assert!(anonymous_after_scope.allow_anonymous);
+    assert!(anonymous_after_scope.scopes.is_empty());
+    let require_after_scope = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/require-after-scope")
+        .expect("require-after-scope route should exist")
+        .auth
+        .as_ref()
+        .expect("require-after-scope route auth should extract");
+    assert!(require_after_scope.required);
+    assert_eq!(require_after_scope.schemes, vec!["bearerAuth"]);
+    assert!(require_after_scope.scopes.is_empty());
     let group_open = app
         .routes
         .iter()
@@ -7193,6 +7221,27 @@ export default app;
         reprotected["auth"]["scopes"],
         serde_json::json!(["users:read"])
     );
+    let anonymous_after_scope = routes
+        .iter()
+        .find(|route| route["pattern"] == "/anonymous-after-scope")
+        .expect("anonymous-after-scope route should be emitted");
+    assert_eq!(
+        anonymous_after_scope["auth"]["allowAnonymous"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        anonymous_after_scope["auth"]["scopes"],
+        serde_json::json!([])
+    );
+    let require_after_scope = routes
+        .iter()
+        .find(|route| route["pattern"] == "/require-after-scope")
+        .expect("require-after-scope route should be emitted");
+    assert_eq!(
+        require_after_scope["auth"]["schemes"],
+        serde_json::json!(["bearerAuth"])
+    );
+    assert_eq!(require_after_scope["auth"]["scopes"], serde_json::json!([]));
     let group_open = routes
         .iter()
         .find(|route| route["pattern"] == "/group/open")

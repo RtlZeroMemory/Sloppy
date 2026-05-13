@@ -13102,6 +13102,7 @@ fn route_metadata_chain<'a>(
 ) -> Result<(&'a Expression<'a>, RouteMetadata), Diagnostic> {
     let mut current = expression;
     let mut metadata = RouteMetadata::default();
+    let mut auth_replaced_by_later_setter = false;
     while let Expression::CallExpression(call) = current {
         let Expression::StaticMemberExpression(member) = &call.callee else {
             break;
@@ -13114,47 +13115,65 @@ fn route_metadata_chain<'a>(
                 current = &member.object;
             }
             "requireAuth" | "requiresAuth" => {
-                merge_auth_requirement(&mut metadata.auth, auth_requirement_from_call(call)?);
+                let requirement = auth_requirement_from_call(call)?;
+                if metadata.auth.is_none() {
+                    metadata.auth = Some(requirement);
+                    auth_replaced_by_later_setter = true;
+                } else if !auth_replaced_by_later_setter {
+                    merge_auth_requirement(&mut metadata.auth, requirement);
+                }
                 current = &member.object;
             }
             "allowAnonymous" => {
-                merge_auth_requirement(&mut metadata.auth, anonymous_auth_requirement());
+                let requirement = anonymous_auth_requirement();
+                if metadata.auth.is_none() {
+                    metadata.auth = Some(requirement);
+                    auth_replaced_by_later_setter = true;
+                } else if !auth_replaced_by_later_setter {
+                    merge_auth_requirement(&mut metadata.auth, requirement);
+                }
                 current = &member.object;
             }
             "authorize" => {
                 let policy = route_name_from_argument(call)?;
-                merge_auth_requirement(
-                    &mut metadata.auth,
-                    AuthRequirementMetadata {
-                        required: true,
-                        policy: Some(policy),
-                        ..AuthRequirementMetadata::default()
-                    },
-                );
+                if !auth_replaced_by_later_setter {
+                    merge_auth_requirement(
+                        &mut metadata.auth,
+                        AuthRequirementMetadata {
+                            required: true,
+                            policy: Some(policy),
+                            ..AuthRequirementMetadata::default()
+                        },
+                    );
+                }
                 current = &member.object;
             }
             "requiresScope" => {
                 let scopes = route_tags_from_arguments(call)?;
-                merge_auth_requirement(
-                    &mut metadata.auth,
-                    AuthRequirementMetadata {
-                        required: true,
-                        scopes,
-                        ..AuthRequirementMetadata::default()
-                    },
-                );
+                if !auth_replaced_by_later_setter {
+                    merge_auth_requirement(
+                        &mut metadata.auth,
+                        AuthRequirementMetadata {
+                            required: true,
+                            scopes,
+                            ..AuthRequirementMetadata::default()
+                        },
+                    );
+                }
                 current = &member.object;
             }
             "requiresRole" => {
                 let roles = route_tags_from_arguments(call)?;
-                merge_auth_requirement(
-                    &mut metadata.auth,
-                    AuthRequirementMetadata {
-                        required: true,
-                        roles,
-                        ..AuthRequirementMetadata::default()
-                    },
-                );
+                if !auth_replaced_by_later_setter {
+                    merge_auth_requirement(
+                        &mut metadata.auth,
+                        AuthRequirementMetadata {
+                            required: true,
+                            roles,
+                            ..AuthRequirementMetadata::default()
+                        },
+                    );
+                }
                 current = &member.object;
             }
             "accepts" => {
