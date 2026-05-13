@@ -22,7 +22,7 @@ scheme://host:port
 
 HTTP/1.1 connections are reused when the response is keep-alive eligible.
 HTTP/2 h2/h2c sessions are reused for the same origin and can carry concurrent
-streams where the current runtime path supports it.
+streams up to the configured stream capacity.
 
 Factory named clients use a created low-level client by default, so repeated
 calls through the same named client share the pool. Static `HttpClient.get(...)`
@@ -40,9 +40,14 @@ Observable pool counters:
 - `idleConnections`
 - `queuedRequests`
 
-The low-level pool currently rejects over-capacity HTTP/1.1 acquisition rather
-than keeping a transport-level wait queue. The factory bulkhead policy provides
-the app-facing concurrency queue and rejection behavior.
+The low-level pool keeps a bounded pending queue for over-capacity HTTP/1.1
+connections and HTTP/2 streams. `pool.pendingQueueTimeoutMs` bounds that queue
+wait independently from `pool.idleTimeoutMs`; setting `idleTimeoutMs: 0`
+disables idle reuse without making queued requests fail immediately. Client
+close rejects queued acquisitions and closes idle connections or HTTP/2
+sessions. Active requests finish or fail through their own timeout,
+deadline, cancellation, or socket outcome, and released connections are not
+returned to an already-closed pool.
 
 ## Request Pipeline
 
@@ -73,6 +78,12 @@ When registered with services:
 
 TestHost can replace `http.<name>` with a mock while preserving typed-client
 validation and resilience behavior.
+
+For artifact, package, and loopback TestHost modes, outbound mocks run as
+local loopback HTTP servers. TestHost injects the generated server URL into the
+child process through config environment variables such as
+`Billing__BaseUrl`, so package/runtime tests still exercise the native-backed
+low-level `HttpClient` path instead of swapping in an app-host service object.
 
 ## Diagnostics And Labels
 

@@ -78,6 +78,7 @@ import {
     Http as RootHttp,
     HttpClientFactory as RootHttpClientFactory,
     HttpError as RootHttpError,
+    SloppyHttpClientError as RootSloppyHttpClientError,
     Metrics,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
@@ -131,6 +132,7 @@ assert.equal(RootHttpClient, HttpClient);
 assert.equal(RootHttp, Http);
 assert.equal(RootHttpClientFactory, HttpClientFactory);
 assert.equal(RootHttpError, HttpError);
+assert.equal(RootSloppyHttpClientError, SloppyHttpClientError);
 assert.equal(RootTestHttp, TestHttp);
 assert.equal(typeof Auth.jwtBearer, "function");
 assert.equal(typeof Auth.apiKey, "function");

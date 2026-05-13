@@ -81,8 +81,11 @@ sloppy create my-tool --template program
 | `hello` | hello fixture | `ctest -R examples.hello.api_shape` | Smallest app-host hello shape | Static example check only. |
 | `http-client-basic` | API-shape fixture | `ctest -R bootstrap.stdlib.http_client` | Outbound `HttpClient` helper shape | Bootstrap test uses local test bridge; runtime bridge lanes are separate. |
 | `http-client-typed` | documentation example | Read `examples/http-client-typed/README.md` | Typed outbound client registered through services | App-host shape is covered by `tests/bootstrap/test_http_client_factory.mjs`. |
+| `http-client-generated` | documentation example | Read `examples/http-client-generated/README.md` | OpenAPI-to-`Http.typedClient` generated client shape | Generator behavior is covered by `tests/bootstrap/test_http_client_factory.mjs`. |
 | `http-client-resilience` | documentation example | Read `examples/http-client-resilience/README.md` | Retry, circuit-breaker, bulkhead, and pool options | API shape is covered by `tests/bootstrap/test_http_client_factory.mjs`. |
 | `http-client-testhost` | documentation example | Read `examples/http-client-testhost/README.md` | `TestHttp.mock()` with `TestHost` outbound overrides | App-host mock path is covered by `tests/bootstrap/test_http_client_factory.mjs`. |
+| `http-client-testhost-package-mock` | documentation example | Read `examples/http-client-testhost-package-mock/README.md` | Artifact/package TestHost outbound mock injection | Process-host harness is covered by `tests/bootstrap/test_testhost_process_modes.mjs`; positive handler execution requires a V8-enabled CLI. |
+| `http-client-runtime-loopback` | documentation example | Read `examples/http-client-runtime-loopback/README.md` | Native-backed outbound loopback client path | Low-level loopback coverage is in `tests/bootstrap/test_http_client.mjs`; artifact/package runtime execution requires V8. |
 | `modules-basic` | API-shape fixture | `ctest -R examples.modules_basic.api_shape` | Module phases and route contribution shape | Static example check only. |
 | `net-deadline-cancel` | API-shape fixture | `ctest -R examples.net.api_shape` | Network cancellation shape | Static example check only. |
 | `net-local-ipc` | API-shape fixture | `ctest -R examples.net.api_shape` | Local IPC shape | Static example check only. |

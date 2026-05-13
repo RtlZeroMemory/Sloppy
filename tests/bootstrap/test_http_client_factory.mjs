@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import {
     Config,
@@ -12,11 +16,48 @@ import {
     TestHttp,
 } from "../../stdlib/sloppy/index.js";
 
+const stdlibIndexUrl = pathToFileURL(path.resolve("stdlib/sloppy/index.js")).href;
+
 async function assertRejectsCode(fn, code) {
     await assert.rejects(fn, (error) => {
         assert.equal(error.code, code);
         return true;
     });
+}
+
+class CountingAbortSignal {
+    constructor() {
+        this.aborted = false;
+        this.reason = undefined;
+        this.added = 0;
+        this.removed = 0;
+        this._listeners = new Set();
+    }
+
+    addEventListener(type, listener) {
+        if (type !== "abort") {
+            return;
+        }
+        this.added += 1;
+        this._listeners.add(listener);
+    }
+
+    removeEventListener(type, listener) {
+        if (type !== "abort") {
+            return;
+        }
+        if (this._listeners.delete(listener)) {
+            this.removed += 1;
+        }
+    }
+
+    abort(reason = "cancelled") {
+        this.aborted = true;
+        this.reason = reason;
+        for (const listener of [...this._listeners]) {
+            listener();
+        }
+    }
 }
 
 {
@@ -170,30 +211,15 @@ async function assertRejectsCode(fn, code) {
         .replyJson(500, { failed: true })
         .post("/payments")
         .replyJson(200, { ok: true });
-    const client = Http.client("payments", {
-        baseUrl: "http://payments.test",
+    const client = mock.createClient("payments", {
         retry: Http.retry.exponential({
             maxAttempts: 2,
             retryOnStatus: [500],
             initialDelayMs: 0,
             maxDelayMs: 0,
         }),
-    }).__sloppyHttpClientRegistration.createNamed();
-    const mocked = Http.client("payments", {
-        baseUrl: "http://payments.test",
-        retry: Http.retry.exponential({
-            maxAttempts: 2,
-            retryOnStatus: [500],
-            initialDelayMs: 0,
-            maxDelayMs: 0,
-        }),
-    }).__sloppyHttpClientRegistration.createNamed;
-
-    assert.equal(typeof client.get, "function");
-    assert.equal(typeof mocked, "function");
-
-    const noRetryClient = mock.createClient("payments");
-    const response = await noRetryClient.post("/payments").json({ ok: true });
+    });
+    const response = await client.post("/payments").json({ ok: true });
     assert.equal(response.status, 500);
 }
 
@@ -290,9 +316,261 @@ async function assertRejectsCode(fn, code) {
 }
 
 {
+    const mock = TestHttp.mock()
+        .get("/cached")
+        .replyJson(200, { ok: true });
+    const response = await mock.createClient("cached").get("/cached").send();
+
+    assert.deepEqual(await response.json(), { ok: true });
+    assert.deepEqual(await response.json(), { ok: true });
+    assert.equal(await response.text(), "{\"ok\":true}");
+    assert.deepEqual(Array.from(await response.bytes()), Array.from(new TextEncoder().encode("{\"ok\":true}")));
+}
+
+{
+    const mock = TestHttp.mock()
+        .get("/cached")
+        .replyJson(200, { id: 42 });
+    const response = await mock.createClient("cached-validation").get("/cached").send();
+    await assertRejectsCode(
+        () => response.json(schema.object({ id: schema.string() })),
+        "SLOPPY_E_HTTP_RESPONSE_VALIDATION_FAILED",
+    );
+    assert.deepEqual(await response.json(), { id: 42 });
+}
+
+{
+    const signal = new CountingAbortSignal();
+    const mock = TestHttp.mock()
+        .get("/retry")
+        .replyJson(500, { failed: true })
+        .get("/retry")
+        .replyJson(200, { ok: true });
+    const client = mock.createClient("retry-cleanup", {
+        retry: Http.retry.fixed({
+            maxAttempts: 2,
+            retryOnStatus: [500],
+            retryOnMethods: ["GET"],
+            delayMs: 1,
+        }),
+    });
+
+    assert.deepEqual(await (await client.get("/retry", { signal })).json(), { ok: true });
+    assert.equal(signal.added, signal.removed);
+    signal.abort();
+    assert.equal(signal.added, signal.removed);
+}
+
+{
+    const signal = new CountingAbortSignal();
+    const mock = TestHttp.mock()
+        .get("/slow")
+        .replyText(200, "ok", {}, { delayMs: 10 });
+    const client = mock.createClient("bulk-cleanup", {
+        bulkhead: Http.bulkhead({
+            maxConcurrent: 1,
+            maxQueue: 1,
+            queueTimeoutMs: 100,
+        }),
+    });
+
+    const first = client.get("/slow").text();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const second = client.get("/slow", { signal }).text();
+    await first;
+    assert.equal(await second, "ok");
+    assert.equal(signal.added, signal.removed);
+    signal.abort();
+    assert.equal(signal.added, signal.removed);
+}
+
+{
+    const client = TestHttp.mock()
+        .get("/off")
+        .replyJson(500, { failed: true })
+        .createClient("quiet", {
+            metrics: false,
+            diagnostics: false,
+        });
+
+    assert.equal((await client.get("/off")).status, 500);
+    await assertRejectsCode(() => client.get("/missing").send(), "SLOPPY_E_HTTP_MOCK_UNEXPECTED_CALL");
+    assert.deepEqual(client.metrics().counters, []);
+    assert.deepEqual(client.diagnostics(), []);
+}
+
+{
+    const client = TestHttp.mock()
+        .get("/closed")
+        .replyText(200, "ok")
+        .createClient("closed");
+    assert.equal(await client.get("/closed").text(), "ok");
+    await client.close();
+    await client.close();
+    assert.throws(() => client.get("/closed"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
+}
+
+assert.throws(
+    () => Http.typedClient("reserved", {
+        baseUrl: "http://api.example.test",
+        endpoints: {
+            send: Http.get("/send").returns(200),
+        },
+    }),
+    /reserved client method name/,
+);
+
+{
+    const openapi = {
+        openapi: "3.0.3",
+        info: { title: "Billing" },
+        paths: {
+            "/invoices/{id}": {
+                get: {
+                    operationId: "getInvoice",
+                    parameters: [
+                        { name: "id", in: "path", required: true, schema: { type: "string" } },
+                        { name: "include", in: "query", schema: { type: "string" } },
+                    ],
+                    responses: {
+                        200: {
+                            description: "ok",
+                            content: {
+                                "application/json": {
+                                    schema: { $ref: "#/components/schemas/Invoice" },
+                                },
+                            },
+                        },
+                        404: {
+                            description: "problem",
+                            content: {
+                                "application/json": {
+                                    schema: { $ref: "#/components/schemas/ProblemDetails" },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+            "/invoices": {
+                post: {
+                    operationId: "createInvoice",
+                    requestBody: {
+                        content: {
+                            "application/json": {
+                                schema: { $ref: "#/components/schemas/CreateInvoice" },
+                            },
+                        },
+                    },
+                    responses: {
+                        201: {
+                            description: "created",
+                            content: {
+                                "application/json": {
+                                    schema: { $ref: "#/components/schemas/Invoice" },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        components: {
+            schemas: {
+                CreateInvoice: {
+                    type: "object",
+                    required: ["amount"],
+                    properties: {
+                        amount: { type: "number" },
+                    },
+                },
+                Invoice: {
+                    type: "object",
+                    required: ["id", "amount"],
+                    properties: {
+                        amount: { type: "number" },
+                        id: { type: "string" },
+                        status: { type: "string", enum: ["paid", "open"] },
+                    },
+                },
+                ProblemDetails: {
+                    type: "object",
+                    properties: {
+                        title: { type: "string" },
+                    },
+                },
+            },
+        },
+    };
+    const generated = Http.generateClientFromOpenApi(openapi, {
+        name: "billing",
+        exportName: "BillingClient",
+        baseUrlConfigKey: "Billing:BaseUrl",
+    });
+    const generatedAgain = Http.generateClientFromOpenApi(openapi, {
+        name: "billing",
+        exportName: "BillingClient",
+        baseUrlConfigKey: "Billing:BaseUrl",
+    });
+    assert.equal(generated.source, generatedAgain.source);
+    assert.equal(generated.warnings.length, 0);
+    assert.match(generated.source, /Http\.typedClient\("billing"/);
+    assert.match(generated.source, /getInvoice: Http\.get\("\/invoices\/\{id\}"\)/);
+    assert.match(generated.source, /\.params\(schema\.object/);
+    assert.match(generated.source, /\.query\(schema\.object/);
+    assert.match(generated.source, /createInvoice: Http\.post\("\/invoices"\)/);
+    assert.match(generated.source, /\.body\(CreateInvoice\)/);
+    assert.match(generated.source, /\.returns\(201, Invoice\)/);
+
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "sloppy-generated-http-client-"));
+    const modulePath = path.join(tempDir, "billing-client.mjs");
+    const importableSource = generated.source.replace("\"sloppy\"", JSON.stringify(stdlibIndexUrl));
+    await fs.writeFile(modulePath, importableSource);
+    const imported = await import(pathToFileURL(modulePath).href);
+    const mock = TestHttp.mock()
+        .get("/invoices/inv_1")
+        .replyJson(200, { id: "inv_1", amount: 42, status: "paid" });
+    const typed = imported.BillingClient.__sloppyHttpClientRegistration.createTyped(mock.createClient("billing"));
+    assert.deepEqual(await typed.getInvoice({ id: "inv_1", query: { include: "status" } }), {
+        id: "inv_1",
+        amount: 42,
+        status: "paid",
+    });
+}
+
+{
+    const generated = Http.generateClientFromOpenApi({
+        openapi: "3.0.3",
+        paths: {
+            "/union": {
+                get: {
+                    operationId: "getUnion",
+                    responses: {
+                        200: {
+                            description: "ok",
+                            content: {
+                                "application/json": {
+                                    schema: { oneOf: [{ type: "string" }, { type: "number" }] },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }, { name: "union" });
+    assert.equal(generated.warnings.length, 1);
+    assert.match(generated.source, /Unsupported OpenAPI construct/);
+    assert.match(generated.source, /\.returns\(200\)/);
+}
+
+{
     const factory = HttpClientFactory.create();
     const github = Http.client("github", { baseUrl: "http://github.test" });
     factory.addClient(github);
     assert.equal(factory.get("github"), github);
     assert.throws(() => factory.addClient(github), /already registered/);
+    await factory.dispose();
+    await factory.dispose();
+    assert.throws(() => factory.get("github"), /SLOPPY_E_HTTP_CLIENT_CLOSED/);
 }

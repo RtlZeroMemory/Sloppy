@@ -109,6 +109,32 @@ Typed clients validate params, query, and body values before sending. Responses
 are selected by status code. Unknown statuses and schema mismatches throw
 `SloppyHttpClientError` with stable error codes.
 
+## Generated Clients
+
+`Http.generateClientFromOpenApi(document, options)` generates a deterministic
+Sloppy typed client module from an OpenAPI 3.0.3 document or Sloppy OpenAPI
+artifact. The generated module uses first-party `Http.typedClient(...)`,
+`Config.required(...)`, and Sloppy `schema.*` declarations.
+
+```ts
+import { File } from "sloppy/fs";
+import { Http } from "sloppy/http";
+
+const document = await File.readJson(".sloppy/openapi.json");
+const generated = Http.generateClientFromOpenApi(document, {
+  name: "Billing",
+  baseUrlConfigKey: "Billing:BaseUrl",
+});
+
+await File.writeText("src/clients/billing.js", generated.source);
+```
+
+The generator maps literal paths, methods, path parameters, query parameters,
+JSON request bodies, and JSON response schemas where the OpenAPI schema shape
+is supported. Unsupported constructs are reported in `generated.warnings` and
+as comments in the output; the generator does not invent schemas for shapes it
+cannot prove.
+
 ## Resilience Policies
 
 The factory includes first-party timeout, retry, circuit-breaker, and bulkhead
@@ -174,6 +200,12 @@ await (await host.get("/invoices/inv_1").expectStatus(200))
 
 mock.expectCalled("GET", "/invoices/inv_1").expectNoUnexpectedCalls();
 ```
+
+`TestHost.fromArtifacts(...)`, `TestHost.fromPackage(...)`, and loopback modes
+accept the same `httpClients` map. In process-backed modes TestHost starts a
+local HTTP mock server for each named client and injects the matching
+`<Client>__BaseUrl` config environment variable into the app process, so the
+normal outbound `HttpClient` path is exercised.
 
 ## Metrics, Diagnostics, And Health
 
@@ -249,7 +281,11 @@ policy, timeout, redirect policy, or connection pool:
 const client = HttpClient.create({
   baseUrl: "http://api.internal/v1/",
   headers: { "user-agent": "sloppy-service" },
-  pool: { maxConnectionsPerOrigin: 4, idleTimeoutMs: 5000 },
+  pool: {
+    maxConnectionsPerOrigin: 4,
+    idleTimeoutMs: 5000,
+    pendingQueueTimeoutMs: 1000,
+  },
 });
 
 const response = await client.patch("/items/1", { json: { enabled: true } });
@@ -321,6 +357,7 @@ always produce an empty body.
 | `redirects.max` | `5` (range 0..20) |
 | `pool.maxConnectionsPerOrigin` | `8` (range 1..256) |
 | `pool.idleTimeoutMs` | `30000` |
+| `pool.pendingQueueTimeoutMs` | `1000` |
 
 Size options accept integers or size strings such as `"4mb"`. Connections are
 reused per origin (`scheme://host:port`) when the response is keep-alive

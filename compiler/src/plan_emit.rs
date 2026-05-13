@@ -662,12 +662,34 @@ fn find_code_token(source: &str, token: &str, start: usize) -> Option<usize> {
             cursor = next;
             continue;
         }
-        if source.as_bytes()[cursor..].starts_with(token) {
+        if source.as_bytes()[cursor..].starts_with(token)
+            && token_has_code_boundaries(source, cursor, token)
+        {
             return Some(cursor);
         }
         cursor += 1;
     }
     None
+}
+
+fn token_has_code_boundaries(source: &str, index: usize, token: &[u8]) -> bool {
+    let starts_with_identifier = token.first().is_some_and(|byte| is_identifier_byte(*byte));
+    let ends_with_identifier = token.last().is_some_and(|byte| is_identifier_byte(*byte));
+    if starts_with_identifier {
+        let before = index
+            .checked_sub(1)
+            .and_then(|idx| source.as_bytes().get(idx));
+        if before.is_some_and(|byte| is_identifier_byte(*byte) || *byte == b'.') {
+            return false;
+        }
+    }
+    if ends_with_identifier {
+        let after = source.as_bytes().get(index + token.len());
+        if after.is_some_and(|byte| is_identifier_byte(*byte)) {
+            return false;
+        }
+    }
+    true
 }
 
 fn find_matching_delimiter(source: &str, open_index: usize, open: u8, close: u8) -> Option<usize> {
@@ -749,8 +771,10 @@ fn parse_http_endpoints(source: &str) -> Vec<Value> {
                         .chars()
                         .take_while(|ch| ch.is_ascii_digit())
                         .collect::<String>();
-                    if !status_text.is_empty() {
-                        returns.push(json!({ "status": status_text.parse::<u16>().unwrap_or(0) }));
+                    if let Ok(status) = status_text.parse::<u16>() {
+                        if (100..=599).contains(&status) {
+                            returns.push(json!({ "status": status }));
+                        }
                     }
                     return_cursor = status_index + status_text.len();
                 }
@@ -1930,8 +1954,11 @@ pub(crate) fn emit_plan_with_route_artifact(
         value["features"]["httpClient"] = json!(true);
         let http_clients = http_clients_from_sources(app);
         if !http_clients.is_empty() {
+            let static_http_clients = http_clients
+                .iter()
+                .all(|client| client["target"] == "static");
             value["httpClients"] = json!(http_clients);
-            value["strongPlan"]["evidence"]["httpClients"] = json!(true);
+            value["strongPlan"]["evidence"]["httpClients"] = json!(static_http_clients);
         }
         doctor_checks.push(json!({
             "id": "stdlib.httpclient.contract",

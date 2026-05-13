@@ -8,6 +8,7 @@ const SAFE_RETRY_METHODS = new Set(["GET", "HEAD", "PUT", "DELETE"]);
 const SENSITIVE_HEADER_PATTERN = /^(authorization|cookie|set-cookie|x-api-key|api-key)$/iu;
 const SENSITIVE_QUERY_PATTERN = /(token|secret|password|authorization|api[_-]?key)/iu;
 const HTTP_CLIENT_TOKEN_PREFIX = "http.";
+const TYPED_CLIENT_RESERVED_ENDPOINT_NAMES = new Set(["send", "metrics", "diagnostics", "dispose", "close"]);
 
 class SloppyHttpClientError extends Error {
     constructor(code, message, options = undefined) {
@@ -142,17 +143,19 @@ function normalizePoolOptions(value, subject) {
             idleTimeoutMs: 30000,
             connectionLifetimeMs: undefined,
             pendingQueueLimit: 0,
+            pendingQueueTimeoutMs: 1000,
         });
     }
     if (!isPlainObject(value)) {
         throw new TypeError(`${subject} pool must be a plain object.`);
     }
-    return {
+    return Object.freeze({
         maxConnectionsPerOrigin: positiveInteger(value.maxConnectionsPerOrigin, `${subject} pool.maxConnectionsPerOrigin`, 8),
         idleTimeoutMs: nonNegativeInteger(value.idleTimeoutMs, `${subject} pool.idleTimeoutMs`, 30000),
         connectionLifetimeMs: nonNegativeInteger(value.connectionLifetimeMs, `${subject} pool.connectionLifetimeMs`),
         pendingQueueLimit: nonNegativeInteger(value.pendingQueueLimit, `${subject} pool.pendingQueueLimit`, 0),
-    };
+        pendingQueueTimeoutMs: nonNegativeInteger(value.pendingQueueTimeoutMs, `${subject} pool.pendingQueueTimeoutMs`, 1000),
+    });
 }
 
 function normalizeRetryPolicy(policy) {
@@ -298,10 +301,13 @@ function createMetrics() {
     };
 }
 
-function createDiagnostics() {
+function createDiagnostics(limit = 128) {
     const records = [];
     return {
         record(record) {
+            if (records.length >= limit) {
+                records.shift();
+            }
             records.push(Object.freeze({ ...record, fields: Object.freeze(record.fields ?? {}) }));
         },
         snapshot() {
@@ -338,13 +344,24 @@ function sleep(ms, signal) {
         return Promise.resolve();
     }
     return new Promise((resolve, reject) => {
-        const timer = setTimeout(resolve, ms);
+        let done = false;
+        let cleanup = () => {};
+        const finish = (fn) => {
+            if (done) {
+                return;
+            }
+            done = true;
+            clearTimeout(timer);
+            cleanup();
+            fn();
+        };
+        const timer = setTimeout(() => finish(resolve), ms);
         if (signal !== undefined && typeof signal.addEventListener === "function") {
             const abort = () => {
-                clearTimeout(timer);
-                reject(new SloppyHttpClientError("SLOPPY_E_HTTP_CANCELLED", "HTTP request was cancelled."));
+                finish(() => reject(new SloppyHttpClientError("SLOPPY_E_HTTP_CANCELLED", "HTTP request was cancelled.")));
             };
             signal.addEventListener("abort", abort, { once: true });
+            cleanup = () => signal.removeEventListener?.("abort", abort);
         }
     });
 }
@@ -529,13 +546,27 @@ class BulkheadState {
         }
         return await new Promise((resolve, reject) => {
             let timer;
+            let cleanupSignal = () => {};
+            let settled = false;
+            const settle = (fn) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                clearTimeout(timer);
+                cleanupSignal();
+                fn();
+            };
             const record = {
                 resolve: () => {
-                    clearTimeout(timer);
-                    this.active += 1;
-                    resolve(() => this.leave());
+                    settle(() => {
+                        this.active += 1;
+                        resolve(() => this.leave());
+                    });
                 },
-                reject,
+                reject: (error) => {
+                    settle(() => reject(error));
+                },
             };
             this.queue.push(record);
             timer = setTimeout(() => {
@@ -544,17 +575,18 @@ class BulkheadState {
                     this.queue.splice(index, 1);
                 }
                 this.rejected += 1;
-                reject(new SloppyHttpClientError("SLOPPY_E_HTTP_BULKHEAD_REJECTED", "HTTP client bulkhead queue timed out."));
+                record.reject(new SloppyHttpClientError("SLOPPY_E_HTTP_BULKHEAD_REJECTED", "HTTP client bulkhead queue timed out."));
             }, this.policy.queueTimeoutMs);
             if (signal !== undefined && typeof signal.addEventListener === "function") {
-                signal.addEventListener("abort", () => {
-                    clearTimeout(timer);
+                const abort = () => {
                     const index = this.queue.indexOf(record);
                     if (index >= 0) {
                         this.queue.splice(index, 1);
                     }
-                    reject(new SloppyHttpClientError("SLOPPY_E_HTTP_CANCELLED", "HTTP request was cancelled."));
-                }, { once: true });
+                    record.reject(new SloppyHttpClientError("SLOPPY_E_HTTP_CANCELLED", "HTTP request was cancelled."));
+                };
+                signal.addEventListener("abort", abort, { once: true });
+                cleanupSignal = () => signal.removeEventListener?.("abort", abort);
             }
         });
     }
@@ -578,6 +610,8 @@ class HttpClientFactory {
             throw new TypeError("HttpClientFactory.create options must be a plain object.");
         }
         this._clients = new Map();
+        this._closed = false;
+        this._disposePromise = undefined;
         for (const client of options.clients ?? []) {
             this.addClient(client);
         }
@@ -588,6 +622,9 @@ class HttpClientFactory {
     }
 
     addClient(client) {
+        if (this._closed) {
+            throw new SloppyHttpClientError("SLOPPY_E_HTTP_CLIENT_CLOSED", "HTTP client factory is closed.");
+        }
         if (client?.__sloppyHttpClientRegistration?.kind !== "named" &&
             client?.__sloppyHttpClientRegistration?.kind !== "typed")
         {
@@ -602,6 +639,9 @@ class HttpClientFactory {
     }
 
     get(name) {
+        if (this._closed) {
+            throw new SloppyHttpClientError("SLOPPY_E_HTTP_CLIENT_CLOSED", "HTTP client factory is closed.");
+        }
         validateClientName(name, "HttpClientFactory.get");
         const client = this._clients.get(name);
         if (client === undefined) {
@@ -611,7 +651,11 @@ class HttpClientFactory {
     }
 
     dispose() {
-        return Promise.all(Array.from(this._clients.values(), (client) => client.dispose?.())).then(() => undefined);
+        if (this._disposePromise === undefined) {
+            this._closed = true;
+            this._disposePromise = Promise.all(Array.from(this._clients.values(), (client) => client.dispose?.())).then(() => undefined);
+        }
+        return this._disposePromise;
     }
 }
 
@@ -626,8 +670,25 @@ function createManagedClient(name, options, transport = undefined) {
         timeoutMs: options.timeoutMs,
         pool: options.pool,
     });
+    let closed = false;
+    let closePromise;
+
+    function assertOpen() {
+        if (closed) {
+            throw new SloppyHttpClientError("SLOPPY_E_HTTP_CLIENT_CLOSED", `HTTP client '${name}' is closed.`);
+        }
+    }
+
+    async function closeClient() {
+        if (closePromise === undefined) {
+            closed = true;
+            closePromise = Promise.resolve(lowLevel.close?.() ?? lowLevel.dispose?.()).then(() => undefined);
+        }
+        return closePromise;
+    }
 
     async function execute(method, path, requestOptions = {}) {
+        assertOpen();
         const targetPath = appendPathQuery(expandPath(path, requestOptions.params), requestOptions.query);
         const safeTemplate = redactUrlTemplate(path, requestOptions.query);
         const headers = { ...(requestOptions.headers ?? {}) };
@@ -664,20 +725,24 @@ function createManagedClient(name, options, transport = undefined) {
                         canRetryMethod(effectiveRetry, method, { headers }) &&
                         requestOptions.stream === undefined
                     ) {
-                        metrics.increment("http.client.retries.total", { client: name, method, route: path });
+                        if (options.metrics) {
+                            metrics.increment("http.client.retries.total", { client: name, method, route: path });
+                        }
                         await sleep(retryDelay(effectiveRetry, attempt, response), requestOptions.signal);
                         continue;
                     }
                     const successful = response.status < 500;
                     circuit.afterRequest(successful);
-                    metrics.increment("http.client.requests.total", {
-                        client: name,
-                        method,
-                        route: path,
-                        status: String(response.status),
-                        statusClass: responseStatusClass(response.status),
-                        outcome: successful ? "success" : "failure",
-                    });
+                    if (options.metrics) {
+                        metrics.increment("http.client.requests.total", {
+                            client: name,
+                            method,
+                            route: path,
+                            status: String(response.status),
+                            statusClass: responseStatusClass(response.status),
+                            outcome: successful ? "success" : "failure",
+                        });
+                    }
                     return createResponse(response, { client: name, method, path: safeTemplate, attempt });
                 } catch (error) {
                     lastError = error;
@@ -688,7 +753,9 @@ function createManagedClient(name, options, transport = undefined) {
                         requestOptions.stream === undefined &&
                         error?.code !== "SLOPPY_E_HTTP_CANCELLED"
                     ) {
-                        metrics.increment("http.client.retries.total", { client: name, method, route: path });
+                        if (options.metrics) {
+                            metrics.increment("http.client.retries.total", { client: name, method, route: path });
+                        }
                         await sleep(retryDelay(effectiveRetry, attempt), requestOptions.signal);
                         continue;
                     }
@@ -697,17 +764,21 @@ function createManagedClient(name, options, transport = undefined) {
             }
             throw new SloppyHttpClientError("SLOPPY_E_HTTP_RETRY_EXHAUSTED", "HTTP client retry attempts were exhausted.", { cause: lastError });
         } catch (error) {
-            diagnostics.record({
-                code: error?.code ?? "SLOPPY_E_HTTP_REQUEST_FAILED",
-                message: "HTTP client request failed.",
-                fields: {
-                    client: name,
-                    method,
-                    path: safeTemplate,
-                    headers: redactHeaders(headers),
-                },
-            });
-            metrics.increment("http.client.errors.total", { client: name, method, route: path });
+            if (options.diagnostics) {
+                diagnostics.record({
+                    code: error?.code ?? "SLOPPY_E_HTTP_REQUEST_FAILED",
+                    message: "HTTP client request failed.",
+                    fields: {
+                        client: name,
+                        method,
+                        path: safeTemplate,
+                        headers: redactHeaders(headers),
+                    },
+                });
+            }
+            if (options.metrics) {
+                metrics.increment("http.client.errors.total", { client: name, method, route: path });
+            }
             throw error;
         } finally {
             leaveBulkhead();
@@ -718,6 +789,7 @@ function createManagedClient(name, options, transport = undefined) {
         __sloppyHttpTransport: transport,
         name,
         request(method, path, requestOptions = {}) {
+            assertOpen();
             return new HttpRequestBuilder(execute, String(method).toUpperCase(), validateEndpointPath(path, "Http.client request"), requestOptions);
         },
         get(path, requestOptions = {}) {
@@ -740,14 +812,14 @@ function createManagedClient(name, options, transport = undefined) {
         },
         metrics() {
             return Object.freeze({
-                counters: metrics.snapshot(),
+                counters: options.metrics ? metrics.snapshot() : Object.freeze([]),
                 pool: lowLevel.poolStats?.(),
                 circuit: circuit.snapshot(),
                 bulkhead: bulk.snapshot(),
             });
         },
         diagnostics() {
-            return diagnostics.snapshot();
+            return options.diagnostics ? diagnostics.snapshot() : Object.freeze([]);
         },
         health() {
             const circuitState = circuit.snapshot().state;
@@ -758,10 +830,10 @@ function createManagedClient(name, options, transport = undefined) {
             });
         },
         dispose() {
-            return lowLevel.dispose?.() ?? lowLevel.close?.();
+            return closeClient();
         },
         close() {
-            return lowLevel.close?.() ?? lowLevel.dispose?.();
+            return closeClient();
         },
     };
 }
@@ -852,31 +924,35 @@ class HttpRequestBuilder {
 }
 
 function createResponse(response, context) {
-    let bodyCache;
+    let bodyBytesPromise;
+    let jsonPromise;
+    async function bodyBytes() {
+        if (bodyBytesPromise === undefined) {
+            bodyBytesPromise = Promise.resolve(response.bytes()).then((bytes) => new Uint8Array(bytes));
+        }
+        return new Uint8Array(await bodyBytesPromise);
+    }
+    async function bodyText() {
+        return Text.utf8.decode(await bodyBytes());
+    }
+    async function bodyJson() {
+        if (jsonPromise === undefined) {
+            jsonPromise = bodyText().then((text) => JSON.parse(text));
+        }
+        return await jsonPromise;
+    }
     return Object.freeze({
         status: response.status,
         headers: response.headers,
         context: Object.freeze({ ...context }),
         async text() {
-            if (bodyCache === undefined) {
-                bodyCache = await response.text();
-            }
-            if (typeof bodyCache === "string") {
-                return bodyCache;
-            }
-            return Text.utf8.decode(bodyCache);
+            return await bodyText();
         },
         async bytes() {
-            if (bodyCache === undefined) {
-                bodyCache = await response.bytes();
-            }
-            if (bodyCache instanceof Uint8Array) {
-                return new Uint8Array(bodyCache);
-            }
-            return Text.utf8.encode(String(bodyCache));
+            return await bodyBytes();
         },
         async json(schema = undefined) {
-            const value = await response.json();
+            const value = await bodyJson();
             return validateWithSchema(schema, value, "SLOPPY_E_HTTP_RESPONSE_VALIDATION_FAILED", "HTTP response validation failed.");
         },
         async problem() {
@@ -984,6 +1060,9 @@ function createTypedClient(name, options = {}, transport = undefined) {
         if (typeof endpointName !== "string" || endpointName.length === 0) {
             throw new TypeError("Http.typedClient endpoint names must be non-empty strings.");
         }
+        if (TYPED_CLIENT_RESERVED_ENDPOINT_NAMES.has(endpointName)) {
+            throw new TypeError(`Http.typedClient endpoint '${endpointName}' uses a reserved client method name.`);
+        }
         if (typeof builder?.__build !== "function") {
             throw new TypeError(`Http.typedClient endpoint '${endpointName}' must come from Http.get/post/put/patch/delete.`);
         }
@@ -1082,6 +1161,227 @@ function createNamedClient(name, options = {}, transport = undefined) {
     return Object.freeze(client);
 }
 
+function sanitizeIdentifier(value, fallback) {
+    if (/^[A-Za-z_$][0-9A-Za-z_$]*$/u.test(String(value ?? ""))) {
+        return String(value);
+    }
+    const text = String(value ?? "")
+        .replace(/[^0-9A-Za-z_$]+/gu, " ")
+        .trim()
+        .replace(/(^| )([0-9A-Za-z_$])/gu, (_, __, ch) => ch.toUpperCase());
+    const candidate = text.length === 0 ? fallback : text;
+    const prefixed = /^[A-Za-z_$]/u.test(candidate) ? candidate : `_${candidate}`;
+    return /^[A-Za-z_$][0-9A-Za-z_$]*$/u.test(prefixed) ? prefixed : fallback;
+}
+
+function generatedEndpointName(method, path, operation) {
+    if (typeof operation?.operationId === "string" && operation.operationId.length !== 0) {
+        return sanitizeIdentifier(operation.operationId, `${method.toLowerCase()}Endpoint`);
+    }
+    const pathName = path
+        .replace(/\{([^}]+)\}/gu, " $1 ")
+        .replace(/[^0-9A-Za-z_$]+/gu, " ")
+        .trim();
+    return sanitizeIdentifier(`${method.toLowerCase()} ${pathName}`, `${method.toLowerCase()}Endpoint`);
+}
+
+function generateSchemaExpression(openapi, schemaValue, warnings, subject, componentNames = new Map()) {
+    if (!isPlainObject(schemaValue)) {
+        warnings.push(`${subject}: schema is not an object`);
+        return undefined;
+    }
+    if (typeof schemaValue.$ref === "string") {
+        const name = componentNames.get(schemaValue.$ref);
+        if (name !== undefined) {
+            return name;
+        }
+        warnings.push(`${subject}: unsupported reference ${schemaValue.$ref}`);
+        return undefined;
+    }
+    if (schemaValue.allOf !== undefined || schemaValue.anyOf !== undefined || schemaValue.oneOf !== undefined) {
+        warnings.push(`${subject}: composed schemas are not emitted as client validators`);
+        return undefined;
+    }
+    if (schemaValue.enum !== undefined) {
+        if (!Array.isArray(schemaValue.enum)) {
+            warnings.push(`${subject}: enum must be an array`);
+            return undefined;
+        }
+        return `schema.enum(${JSON.stringify(schemaValue.enum)})`;
+    }
+    let expression;
+    if (schemaValue.type === "string") {
+        expression = "schema.string()";
+    } else if (schemaValue.type === "boolean") {
+        expression = "schema.boolean()";
+    } else if (schemaValue.type === "integer") {
+        expression = "schema.int()";
+    } else if (schemaValue.type === "number") {
+        expression = "schema.number()";
+    } else if (schemaValue.type === "array") {
+        const item = generateSchemaExpression(openapi, schemaValue.items, warnings, `${subject}[]`, componentNames);
+        if (item === undefined) {
+            return undefined;
+        }
+        expression = `schema.array(${item})`;
+    } else if (schemaValue.type === "object" || schemaValue.properties !== undefined) {
+        const properties = isPlainObject(schemaValue.properties) ? schemaValue.properties : {};
+        const required = new Set(Array.isArray(schemaValue.required) ? schemaValue.required : []);
+        const fields = [];
+        for (const key of Object.keys(properties).sort()) {
+            const field = generateSchemaExpression(openapi, properties[key], warnings, `${subject}.${key}`, componentNames);
+            if (field === undefined) {
+                continue;
+            }
+            fields.push(`${JSON.stringify(key)}: ${required.has(key) ? field : `${field}.optional()`}`);
+        }
+        if (schemaValue.additionalProperties !== undefined && schemaValue.additionalProperties !== false) {
+            warnings.push(`${subject}: additionalProperties is not emitted as a client validator`);
+        }
+        expression = `schema.object({ ${fields.join(", ")} })`;
+    } else {
+        warnings.push(`${subject}: unsupported schema type ${String(schemaValue.type ?? "unknown")}`);
+        return undefined;
+    }
+    return schemaValue.nullable === true ? `${expression}.nullable()` : expression;
+}
+
+function openApiJsonSchema(operation, direction, status = undefined) {
+    if (direction === "request") {
+        return operation?.requestBody?.content?.["application/json"]?.schema;
+    }
+    return operation?.responses?.[status]?.content?.["application/json"]?.schema;
+}
+
+function parametersSchemaExpression(openapi, parameters, location, warnings, subject, componentNames) {
+    const fields = [];
+    for (const parameter of parameters) {
+        if (parameter?.in !== location) {
+            continue;
+        }
+        if (typeof parameter.name !== "string" || parameter.name.length === 0) {
+            warnings.push(`${subject}: ${location} parameter without a static name was skipped`);
+            continue;
+        }
+        const expression = generateSchemaExpression(openapi, parameter.schema, warnings, `${subject}.${location}.${parameter.name}`, componentNames);
+        if (expression === undefined) {
+            continue;
+        }
+        fields.push(`${JSON.stringify(parameter.name)}: ${parameter.required === true ? expression : `${expression}.optional()`}`);
+    }
+    return fields.length === 0 ? undefined : `schema.object({ ${fields.sort().join(", ")} })`;
+}
+
+function generateHttpClientFromOpenApi(openapi, options = {}) {
+    if (!isPlainObject(openapi)) {
+        throw new TypeError("Http.generateClientFromOpenApi expects an OpenAPI object.");
+    }
+    if (!isPlainObject(options)) {
+        throw new TypeError("Http.generateClientFromOpenApi options must be a plain object.");
+    }
+    const clientName = String(options.name ?? openapi.info?.title ?? "GeneratedClient");
+    validateClientName(clientName, "Http.generateClientFromOpenApi name");
+    const exportName = sanitizeIdentifier(options.exportName ?? clientName, "GeneratedClient");
+    const baseUrlConfigKey = options.baseUrlConfigKey ?? `${clientName}:BaseUrl`;
+    const warnings = [];
+    const componentNames = new Map();
+    const componentSchemas = openapi.components?.schemas;
+    if (isPlainObject(componentSchemas)) {
+        for (const name of Object.keys(componentSchemas).sort()) {
+            componentNames.set(`#/components/schemas/${name}`, sanitizeIdentifier(name, "Schema"));
+        }
+    }
+    const lines = [
+        "import { Config, Http, schema } from \"sloppy\";",
+        "",
+    ];
+    if (isPlainObject(componentSchemas)) {
+        for (const name of Object.keys(componentSchemas).sort()) {
+            const identifier = componentNames.get(`#/components/schemas/${name}`);
+            const expression = generateSchemaExpression(openapi, componentSchemas[name], warnings, `components.schemas.${name}`, componentNames);
+            if (expression !== undefined) {
+                lines.push(`const ${identifier} = ${expression};`);
+            }
+        }
+        if (Object.keys(componentSchemas).length !== 0) {
+            lines.push("");
+        }
+    }
+    const endpointLines = [];
+    const usedEndpointNames = new Set();
+    const paths = isPlainObject(openapi.paths) ? openapi.paths : {};
+    for (const path of Object.keys(paths).sort()) {
+        const pathItem = paths[path];
+        if (!isPlainObject(pathItem)) {
+            warnings.push(`${path}: path item is not an object`);
+            continue;
+        }
+        for (const method of ["get", "post", "put", "patch", "delete"]) {
+            const operation = pathItem[method];
+            if (!isPlainObject(operation)) {
+                continue;
+            }
+            let endpointName = generatedEndpointName(method, path, operation);
+            while (usedEndpointNames.has(endpointName) || TYPED_CLIENT_RESERVED_ENDPOINT_NAMES.has(endpointName)) {
+                endpointName = `${endpointName}Endpoint`;
+            }
+            usedEndpointNames.add(endpointName);
+            const parameters = [
+                ...(Array.isArray(pathItem.parameters) ? pathItem.parameters : []),
+                ...(Array.isArray(operation.parameters) ? operation.parameters : []),
+            ];
+            const chain = [`Http.${method}(${JSON.stringify(path)})`];
+            const paramsSchema = parametersSchemaExpression(openapi, parameters, "path", warnings, `${method.toUpperCase()} ${path}`, componentNames);
+            if (paramsSchema !== undefined) {
+                chain.push(`.params(${paramsSchema})`);
+            }
+            const querySchema = parametersSchemaExpression(openapi, parameters, "query", warnings, `${method.toUpperCase()} ${path}`, componentNames);
+            if (querySchema !== undefined) {
+                chain.push(`.query(${querySchema})`);
+            }
+            const requestSchema = openApiJsonSchema(operation, "request");
+            if (requestSchema !== undefined) {
+                const expression = generateSchemaExpression(openapi, requestSchema, warnings, `${method.toUpperCase()} ${path} requestBody`, componentNames);
+                if (expression !== undefined) {
+                    chain.push(`.body(${expression})`);
+                }
+            }
+            const responses = isPlainObject(operation.responses) ? operation.responses : {};
+            for (const status of Object.keys(responses).sort()) {
+                const numericStatus = Number.parseInt(status, 10);
+                if (!Number.isInteger(numericStatus) || numericStatus < 100 || numericStatus > 599) {
+                    warnings.push(`${method.toUpperCase()} ${path}: response status ${status} was skipped`);
+                    continue;
+                }
+                const responseSchema = openApiJsonSchema(operation, "response", status);
+                if (responseSchema === undefined) {
+                    chain.push(`.returns(${numericStatus})`);
+                    continue;
+                }
+                const expression = generateSchemaExpression(openapi, responseSchema, warnings, `${method.toUpperCase()} ${path} response ${status}`, componentNames);
+                chain.push(expression === undefined ? `.returns(${numericStatus})` : `.returns(${numericStatus}, ${expression})`);
+            }
+            endpointLines.push(`        ${endpointName}: ${chain.join("\n            ")},`);
+        }
+    }
+    for (const warning of warnings) {
+        lines.push(`// Unsupported OpenAPI construct: ${warning}`);
+    }
+    if (warnings.length !== 0) {
+        lines.push("");
+    }
+    lines.push(`export const ${exportName} = Http.typedClient(${JSON.stringify(clientName)}, {`);
+    lines.push(`    baseUrl: Config.required(${JSON.stringify(baseUrlConfigKey)}),`);
+    lines.push("    endpoints: {");
+    lines.push(...endpointLines);
+    lines.push("    },");
+    lines.push("});");
+    lines.push("");
+    lines.push(`export default ${exportName};`);
+    lines.push("");
+    return Object.freeze({ source: lines.join("\n"), warnings: Object.freeze([...warnings]) });
+}
+
 function mockResponse(status, headers, body) {
     const bodyBytes = typeof body === "string" ? Text.utf8.encode(body) : body;
     return createResponse({
@@ -1156,45 +1456,54 @@ class TestHttpMock {
     patch(path) { return this._route("PATCH", path); }
     delete(path) { return this._route("DELETE", path); }
 
+    async _dispatchRaw({ method, url, json, text, bytes, headers, signal }) {
+        const [path] = String(url).split("?");
+        const route = this._routes.find((candidate) => candidate.method === method && candidate.pattern.test(path));
+        const call = Object.freeze({ method, path, url, json, text, bytes, headers: redactHeaders(headers) });
+        this._calls.push(call);
+        if (route === undefined) {
+            this._unexpected.push(call);
+            throw new SloppyHttpClientError("SLOPPY_E_HTTP_MOCK_UNEXPECTED_CALL", `Unexpected outbound HTTP call ${method} ${path}.`, { call });
+        }
+        const response = route.responses.length > 1 ? route.responses.shift() : route.responses[0];
+        if (response === undefined) {
+            throw new SloppyHttpClientError("SLOPPY_E_HTTP_MOCK_EXHAUSTED", `No mock response configured for ${method} ${path}.`);
+        }
+        if (response.kind === "timeout") {
+            throw new SloppyHttpClientError("SLOPPY_E_HTTP_TIMEOUT", "Mock HTTP request timed out.");
+        }
+        if (response.kind === "error") {
+            throw new SloppyHttpClientError("SLOPPY_E_HTTP_CONNECT_FAILED", "Mock HTTP connection failed.");
+        }
+        if (response.delayMs !== undefined) {
+            await sleep(response.delayMs, signal);
+        }
+        const responseHeaders = { ...response.headers };
+        let body;
+        if (response.kind === "json") {
+            body = Text.utf8.encode(JSON.stringify(response.value));
+            responseHeaders["content-type"] ??= "application/json; charset=utf-8";
+        } else if (response.kind === "text") {
+            body = Text.utf8.encode(String(response.value));
+            responseHeaders["content-type"] ??= "text/plain; charset=utf-8";
+        } else {
+            body = response.value instanceof Uint8Array ? response.value : new Uint8Array(response.value);
+        }
+        return Object.freeze({
+            status: response.status,
+            headers: Object.freeze(responseHeaders),
+            body: new Uint8Array(body),
+        });
+    }
+
     createClient(name = "mock", options = {}) {
         if (!isPlainObject(options)) {
             throw new TypeError("TestHttp.mock createClient options must be a plain object.");
         }
         const transport = Object.freeze({
-            request: async ({ method, url, json, text, bytes, headers }) => {
-                const [path] = String(url).split("?");
-                const route = this._routes.find((candidate) => candidate.method === method && candidate.pattern.test(path));
-                const call = Object.freeze({ method, path, url, json, text, bytes, headers: redactHeaders(headers) });
-                this._calls.push(call);
-                if (route === undefined) {
-                    this._unexpected.push(call);
-                    throw new SloppyHttpClientError("SLOPPY_E_HTTP_MOCK_UNEXPECTED_CALL", `Unexpected outbound HTTP call ${method} ${path}.`, { call });
-                }
-                const response = route.responses.length > 1 ? route.responses.shift() : route.responses[0];
-                if (response === undefined) {
-                    throw new SloppyHttpClientError("SLOPPY_E_HTTP_MOCK_EXHAUSTED", `No mock response configured for ${method} ${path}.`);
-                }
-                if (response.kind === "timeout") {
-                    throw new SloppyHttpClientError("SLOPPY_E_HTTP_TIMEOUT", "Mock HTTP request timed out.");
-                }
-                if (response.kind === "error") {
-                    throw new SloppyHttpClientError("SLOPPY_E_HTTP_CONNECT_FAILED", "Mock HTTP connection failed.");
-                }
-                if (response.delayMs !== undefined) {
-                    await sleep(response.delayMs);
-                }
-                const headersOut = { ...response.headers };
-                let body;
-                if (response.kind === "json") {
-                    body = Text.utf8.encode(JSON.stringify(response.value));
-                    headersOut["content-type"] ??= "application/json; charset=utf-8";
-                } else if (response.kind === "text") {
-                    body = Text.utf8.encode(String(response.value));
-                    headersOut["content-type"] ??= "text/plain; charset=utf-8";
-                } else {
-                    body = response.value instanceof Uint8Array ? response.value : new Uint8Array(response.value);
-                }
-                return mockResponse(response.status, headersOut, body);
+            request: async (request) => {
+                const response = await this._dispatchRaw(request);
+                return mockResponse(response.status, response.headers, response.body);
             },
             poolStats: () => Object.freeze({
                 connectionsCreated: 0,
@@ -1250,6 +1559,7 @@ const TestHttp = Object.freeze({
 const Http = Object.freeze({
     client: createNamedClient,
     typedClient: createTypedClient,
+    generateClientFromOpenApi: generateHttpClientFromOpenApi,
     get(path) { return endpoint("GET", path); },
     post(path) { return endpoint("POST", path); },
     put(path) { return endpoint("PUT", path); },

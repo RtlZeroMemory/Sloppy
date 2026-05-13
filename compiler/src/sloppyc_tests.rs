@@ -6286,16 +6286,22 @@ export default app;
 #[test]
 fn sloppy_http_import_emits_http_client_required_feature() {
     let source = r#"import { Sloppy, Results, schema } from "sloppy";
-import { Http, HttpClientFactory } from "sloppy/http";
+import { Http, HttpClientFactory, TestHttp } from "sloppy/http";
 const ignored = "Http.client(\"from-string\", { baseUrl: \"https://string.invalid\" })";
 // Http.client("from-line-comment", { baseUrl: "https://line-comment.invalid" });
 /* Http.typedClient("from-block-comment", { baseUrl: "https://block-comment.invalid" }); */
+function ignoredBoundaryProbe() {
+  MyHttp.client("not-sloppy-http", { baseUrl: "https://myhttp.invalid" });
+  TestHttp.mock().get("/invoices/inv_1").replyJson(200, { id: "inv_1" });
+}
 const Invoice = schema.object({ id: schema.string() });
 const Billing = Http.typedClient("billing", {
   baseUrl: "https://billing.example.test",
   endpoints: {
     getInvoice: Http.get("/invoices/{id}")
       .returns(200, Invoice),
+    invalidStatus: Http.get("/invalid-status")
+      .returns(999, Invoice),
   },
 });
 const factory = HttpClientFactory.create({ clients: [Billing] });
@@ -6315,6 +6321,7 @@ export default app;
         "HttpClientFactory",
         "HttpError",
         "SloppyHttpClientError",
+        "TestHttp",
     ] {
         assert!(emitted_js.source.contains(expected_export));
     }
@@ -6357,6 +6364,25 @@ export default app;
         value["httpClients"][0]["endpoints"][0]["path"],
         serde_json::json!("/invoices/{id}")
     );
+    assert_eq!(
+        value["strongPlan"]["evidence"]["httpClients"],
+        serde_json::json!(true)
+    );
+    assert!(value["httpClients"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|client| client["name"] != "not-sloppy-http"));
+    assert!(value["httpClients"][0]["endpoints"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|endpoint| endpoint["returns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["status"] != serde_json::json!(0)
+                && item["status"] != serde_json::json!(999))));
 }
 
 #[test]
@@ -6389,6 +6415,10 @@ export default app;
         serde_json::json!("dynamic")
     );
     assert_eq!(value["httpClients"][0]["kind"], serde_json::json!("named"));
+    assert_eq!(
+        value["strongPlan"]["evidence"]["httpClients"],
+        serde_json::json!(false)
+    );
     assert!(value["doctorChecks"]
         .as_array()
         .unwrap()

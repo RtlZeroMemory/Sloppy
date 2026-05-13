@@ -1162,6 +1162,7 @@ function normalizeHttpPoolOptions(value, operation) {
     const idleTimeoutMs = raw.idleTimeoutMs ?? HTTP_CLIENT_DEFAULT_POOL_IDLE_TIMEOUT_MS;
     const connectionLifetimeMs = raw.connectionLifetimeMs ?? undefined;
     const pendingQueueLimit = raw.pendingQueueLimit ?? 0;
+    const pendingQueueTimeoutMs = raw.pendingQueueTimeoutMs ?? 1000;
     if (!Number.isInteger(maxConnectionsPerOrigin) || maxConnectionsPerOrigin < 1 || maxConnectionsPerOrigin > 256) {
         throw httpClientError(
             "HttpClientInvalidOptionsError",
@@ -1192,11 +1193,19 @@ function normalizeHttpPoolOptions(value, operation) {
             `${operation} pool.pendingQueueLimit must be an integer from 0 to 100000.`,
         );
     }
+    if (!Number.isInteger(pendingQueueTimeoutMs) || pendingQueueTimeoutMs < 0) {
+        throw httpClientError(
+            "HttpClientInvalidOptionsError",
+            "SLOPPY_E_HTTP_CLIENT_INVALID_OPTIONS",
+            `${operation} pool.pendingQueueTimeoutMs must be a non-negative integer.`,
+        );
+    }
     return Object.freeze({
         maxConnectionsPerOrigin,
         idleTimeoutMs,
         connectionLifetimeMs,
         pendingQueueLimit,
+        pendingQueueTimeoutMs,
     });
 }
 
@@ -1452,6 +1461,7 @@ class HttpConnectionPool {
             poolWaitCount: 0,
             poolRejectedCount: 0,
         };
+        this._closed = false;
     }
 
     _entry(originKey) {
@@ -1492,6 +1502,15 @@ class HttpConnectionPool {
     }
 
     async _openQueued(originKey, entry, waiter) {
+        waiter.cleanup();
+        if (this._closed) {
+            waiter.reject(httpClientError(
+                "HttpClientPoolClosedError",
+                "SLOPPY_E_HTTP_CLIENT_POOL_CLOSED",
+                "HTTP client connection pool was closed.",
+            ));
+            return;
+        }
         entry.total += 1;
         entry.inUse += 1;
         try {
@@ -1511,7 +1530,15 @@ class HttpConnectionPool {
         if (waiter === undefined) {
             return false;
         }
-        clearTimeout(waiter.timer);
+        waiter.cleanup();
+        if (this._closed) {
+            waiter.reject(httpClientError(
+                "HttpClientPoolClosedError",
+                "SLOPPY_E_HTTP_CLIENT_POOL_CLOSED",
+                "HTTP client connection pool was closed.",
+            ));
+            return false;
+        }
         if (reusableRecord !== undefined && !this._isExpired(reusableRecord)) {
             this._stats.connectionsReused += 1;
             entry.inUse += 1;
@@ -1526,7 +1553,24 @@ class HttpConnectionPool {
         return false;
     }
 
-    async acquire(originKey, connect) {
+    _queueTimeoutMs(options = {}) {
+        const pendingTimeoutMs = this._options.pendingQueueTimeoutMs;
+        const remainingMs = options.expiresAtMs === undefined ? Infinity : httpRemainingMs(options.expiresAtMs);
+        return Math.max(0, Math.min(pendingTimeoutMs, remainingMs));
+    }
+
+    _closedError() {
+        return httpClientError(
+            "HttpClientPoolClosedError",
+            "SLOPPY_E_HTTP_CLIENT_POOL_CLOSED",
+            "HTTP client connection pool was closed.",
+        );
+    }
+
+    async acquire(originKey, connect, options = {}) {
+        if (this._closed) {
+            throw this._closedError();
+        }
         const entry = this._entry(originKey);
         while (entry.idle.length > 0) {
             const idle = entry.idle.pop();
@@ -1546,19 +1590,46 @@ class HttpConnectionPool {
             if (entry.queue.length < this._options.pendingQueueLimit) {
                 this._stats.poolWaitCount += 1;
                 return await new Promise((resolve, reject) => {
-                    const waiter = { connect, resolve, reject, timer: undefined };
-                    waiter.timer = setTimeout(() => {
+                    const timeoutMs = this._queueTimeoutMs(options);
+                    let cleanupSignal = () => {};
+                    const waiter = {
+                        connect,
+                        resolve,
+                        reject,
+                        timer: undefined,
+                        cleanup() {
+                            if (waiter.timer !== undefined) {
+                                clearTimeout(waiter.timer);
+                                waiter.timer = undefined;
+                            }
+                            cleanupSignal();
+                            cleanupSignal = () => {};
+                        },
+                    };
+                    const rejectQueued = (error) => {
                         const index = entry.queue.indexOf(waiter);
                         if (index >= 0) {
                             entry.queue.splice(index, 1);
                         }
+                        waiter.cleanup();
+                        reject(error);
+                    };
+                    waiter.timer = setTimeout(() => {
                         this._stats.poolRejectedCount += 1;
-                        reject(httpClientError(
+                        rejectQueued(httpClientError(
                             "HttpClientPoolExhaustedError",
                             "SLOPPY_E_HTTP_CLIENT_POOL_EXHAUSTED",
                             "HTTP client connection pool pending queue timed out for origin.",
                         ));
-                    }, this._options.idleTimeoutMs);
+                    }, timeoutMs);
+                    cleanupSignal = subscribeHttpCancellation(options.signal, () => {
+                        this._stats.poolRejectedCount += 1;
+                        rejectQueued(httpClientError(
+                            "HttpClientCancelledError",
+                            "SLOPPY_E_HTTP_CLIENT_REQUEST_CANCELLED",
+                            "HTTP client request was cancelled.",
+                        ));
+                    });
                     entry.queue.push(waiter);
                 });
             }
@@ -1572,7 +1643,14 @@ class HttpConnectionPool {
         entry.total += 1;
         entry.inUse += 1;
         try {
+            if (this._closed) {
+                throw this._closedError();
+            }
             const connection = await connect();
+            if (this._closed) {
+                await connection.close().catch(() => {});
+                throw this._closedError();
+            }
             this._stats.connectionsCreated += 1;
             return { connection, reused: false, createdAt: Date.now() };
         } catch (error) {
@@ -1591,6 +1669,13 @@ class HttpConnectionPool {
         }
         entry.inUse -= 1;
         const record = { connection, timer: undefined, createdAt };
+        if (this._closed) {
+            entry.total -= 1;
+            this._stats.connectionsClosed += 1;
+            await connection.close().catch(() => {});
+            this._prune(originKey, entry);
+            return;
+        }
         if (reusable && !this._isExpired(record)) {
             if (this._settleNextQueued(originKey, entry, record)) {
                 return;
@@ -1662,6 +1747,9 @@ class HttpConnectionPool {
     }
 
     async acquireHttp2(originKey, connect) {
+        if (this._closed) {
+            throw this._closedError();
+        }
         const entry = this._http2Entry(originKey);
         const reusable = this._findReusableHttp2Session(entry);
         if (reusable !== undefined) {
@@ -1713,6 +1801,10 @@ class HttpConnectionPool {
     }
 
     adoptHttp2(originKey, session) {
+        if (this._closed) {
+            session.close().catch(() => {});
+            throw this._closedError();
+        }
         const entry = this._http2Entry(originKey);
         if (entry.total >= this._options.maxConnectionsPerOrigin) {
             this._stats.poolRejectedCount += 1;
@@ -1733,6 +1825,10 @@ class HttpConnectionPool {
     releaseHttp2(originKey, session) {
         const entry = this._http2Entries.get(originKey);
         if (entry === undefined) {
+            session.close().catch(() => {});
+            return;
+        }
+        if (this._closed) {
             session.close().catch(() => {});
             return;
         }
@@ -1796,6 +1892,10 @@ class HttpConnectionPool {
     }
 
     async close() {
+        if (this._closed) {
+            return;
+        }
+        this._closed = true;
         const pending = [];
         for (const entry of this._entries.values()) {
             for (const idle of entry.idle.splice(0)) {
@@ -1804,12 +1904,8 @@ class HttpConnectionPool {
                 pending.push(idle.connection.close().catch(() => {}));
             }
             for (const waiter of entry.queue.splice(0)) {
-                clearTimeout(waiter.timer);
-                waiter.reject(httpClientError(
-                    "HttpClientPoolClosedError",
-                    "SLOPPY_E_HTTP_CLIENT_POOL_CLOSED",
-                    "HTTP client connection pool was closed.",
-                ));
+                waiter.cleanup();
+                waiter.reject(this._closedError());
             }
             entry.total = entry.inUse;
         }
@@ -4711,7 +4807,10 @@ async function sendHttpRequestOnce(request, pool, lifecycle) {
             if (pool === undefined) {
                 connection = await acquireConnection();
             } else {
-                const lease = await pool.acquire(originKey, acquireConnection);
+                const lease = await pool.acquire(originKey, acquireConnection, {
+                    signal: request.signal,
+                    expiresAtMs: request.expiresAtMs,
+                });
                 connection = lease.connection;
                 reused = lease.reused;
                 createdAt = lease.createdAt;
@@ -4953,27 +5052,49 @@ function createHttpClientFacade(baseOptions = undefined) {
         poolOptions,
     );
     const pool = poolOptions === undefined ? undefined : new HttpConnectionPool(poolOptions);
+    let closed = false;
+    let closePromise;
+    function assertOpen() {
+        if (closed) {
+            throw httpClientError(
+                "HttpClientClosedError",
+                "SLOPPY_E_HTTP_CLIENT_CLOSED",
+                "HTTP client is closed.",
+            );
+        }
+    }
+    function requestOpen(request, options, defaultMethod) {
+        assertOpen();
+        return sendHttpRequest(baseOptions, request, options, defaultMethod, pool);
+    }
+    function closeClient() {
+        if (closePromise === undefined) {
+            closed = true;
+            closePromise = Promise.resolve(pool?.close()).then(() => undefined);
+        }
+        return closePromise;
+    }
     const client = {
         request(request, options = undefined) {
-            return sendHttpRequest(baseOptions, request, options, undefined, pool);
+            return requestOpen(request, options, undefined);
         },
         get(url, options = undefined) {
-            return sendHttpRequest(baseOptions, url, options, "GET", pool);
+            return requestOpen(url, options, "GET");
         },
         post(url, options = undefined) {
-            return sendHttpRequest(baseOptions, url, options, "POST", pool);
+            return requestOpen(url, options, "POST");
         },
         put(url, options = undefined) {
-            return sendHttpRequest(baseOptions, url, options, "PUT", pool);
+            return requestOpen(url, options, "PUT");
         },
         patch(url, options = undefined) {
-            return sendHttpRequest(baseOptions, url, options, "PATCH", pool);
+            return requestOpen(url, options, "PATCH");
         },
         delete(url, options = undefined) {
-            return sendHttpRequest(baseOptions, url, options, "DELETE", pool);
+            return requestOpen(url, options, "DELETE");
         },
         head(url, options = undefined) {
-            return sendHttpRequest(baseOptions, url, options, "HEAD", pool);
+            return requestOpen(url, options, "HEAD");
         },
         getJson(url, options = undefined) {
             return sendHttpBodyRequest(baseOptions, url, options, "json", pool);
@@ -5004,10 +5125,10 @@ function createHttpClientFacade(baseOptions = undefined) {
             });
         },
         close() {
-            return pool?.close();
+            return closeClient();
         },
         dispose() {
-            return pool?.close();
+            return closeClient();
         },
     };
     Object.defineProperty(client, "__sloppyHttpClientOptions", {

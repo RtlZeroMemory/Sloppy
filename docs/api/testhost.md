@@ -201,6 +201,21 @@ The `httpClients` keys are named-client names. They override the `http.<name>`
 service token and also work for typed clients registered through
 `app.services.addHttpClient(TypedClient)`.
 
+Artifact, package, and loopback hosts accept the same map:
+
+```ts
+const host = await TestHost.fromArtifacts(".sloppy", {
+    httpClients: {
+        billing,
+    },
+});
+```
+
+In process-backed modes TestHost starts a local mock HTTP server and injects
+the matching named-client base URL into the child process configuration. That
+keeps outbound calls on the normal low-level `HttpClient` path while preserving
+mock call recording and unexpected-call diagnostics.
+
 Mocks can return JSON, text, or bytes, provide a sequence of responses,
 simulate timeouts or connection errors, and assert calls:
 

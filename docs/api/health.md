@@ -148,6 +148,8 @@ use `app.health()`.
 Named HTTP clients expose a lightweight `health()` snapshot:
 
 ```ts
+import { Http } from "sloppy/http";
+
 const billing = Http.client("billing", {
     baseUrl: "https://billing.internal",
     circuitBreaker: Http.circuitBreaker({

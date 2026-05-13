@@ -4735,7 +4735,7 @@ fn sloppy_net_import_name_supported(name: &str) -> bool {
 fn sloppy_http_import_name_supported(name: &str) -> bool {
     matches!(
         name,
-        "Http" | "HttpClientFactory" | "HttpError" | "SloppyHttpClientError"
+        "Http" | "HttpClientFactory" | "HttpError" | "SloppyHttpClientError" | "TestHttp"
     )
 }
 
@@ -4930,7 +4930,7 @@ fn mark_sloppy_root_runtime_usage(graph: &mut ModuleGraph, import: &ImportDeclar
                 graph.uses_data_runtime = true;
                 graph.uses_provider_health_runtime = true;
             }
-            "Http" | "HttpClientFactory" | "HttpError" | "SloppyHttpClientError" => {
+            "Http" | "HttpClientFactory" | "HttpError" | "SloppyHttpClientError" | "TestHttp" => {
                 graph.uses_http_client_runtime = true;
             }
             _ => {}
@@ -6230,6 +6230,7 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "HttpClientFactory"
             | "HttpError"
             | "SloppyHttpClientError"
+            | "TestHttp"
             | "Testing"
             | "TestHost"
             | "TestServices"
@@ -20255,6 +20256,7 @@ fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
             "HttpClientFactory",
             "HttpError",
             "SloppyHttpClientError",
+            "TestHttp",
         ]);
     }
     if app.uses_workers_runtime {
@@ -20880,7 +20882,7 @@ fn emit_dynamic_web_app_js(source: &str, app: &ExtractedApp) -> EmittedAppJs {
     let mut output = String::with_capacity(source.len() + 8192);
     output.push_str("const __sloppyRuntime = globalThis.__sloppy_runtime;\n");
     output.push_str("if (__sloppyRuntime === undefined) { throw new Error(\"Sloppy bootstrap runtime was not loaded\"); }\n");
-    output.push_str("const { Results, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
+    output.push_str("const { Results, Realtime, Environment, data, sql, Time, File, Directory, Path, Random, Hash, Hmac, Password, ConstantTime, Secret, NonCryptoHash, Base64, Base64Url, Hex, Text, Binary, Compression, Checksums, TcpClient, TcpListener, TcpConnection, NetworkAddress, HttpClient, Http, HttpClientFactory, HttpError, SloppyHttpClientError, TestHttp, System, Process, Signals, OsError, BackgroundService, WorkQueue, WorkerPool, Worker, WorkerCancellationController, WorkerCancellationSignal, SloppyWorkerError, __createFrameworkServiceProvider } = __sloppyRuntime;\n");
     output.push_str(
         r#"const __sloppy_framework_services = __createFrameworkServiceProvider();
 const __sloppy_framework_provider_configs = new Map([]);

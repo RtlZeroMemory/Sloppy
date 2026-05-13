@@ -26,6 +26,7 @@ Options:
 | `timeoutMs` | positive integer | Default per-request timeout. |
 | `pool.maxConnectionsPerOrigin` | positive integer | Defaults to `8`. |
 | `pool.idleTimeoutMs` | non-negative integer | Defaults to `30000`. |
+| `pool.pendingQueueTimeoutMs` | non-negative integer | Defaults to `1000`; bounds waits for an available pooled connection or HTTP/2 stream. |
 | `pool.connectionLifetimeMs` | non-negative integer | Accepted by the factory descriptor and passed to the low-level pool descriptor. |
 | `pool.pendingQueueLimit` | non-negative integer | Accepted by the factory descriptor and passed to the low-level pool descriptor. |
 | `retry` | `Http.retry.*` policy | Defaults to no retry. |
@@ -110,6 +111,31 @@ request is sent. Successful known statuses return the validated response body.
 Unknown statuses, non-success statuses, and response schema mismatches throw
 `SloppyHttpClientError`.
 
+## `Http.generateClientFromOpenApi(document, options)`
+
+Generates a Sloppy typed-client module from an OpenAPI 3.0.3 document or a
+Sloppy OpenAPI artifact.
+
+Options:
+
+| Option | Type | Notes |
+| --- | --- | --- |
+| `name` | string | Client name and default export identifier source. Required. |
+| `baseUrlConfigKey` | string | Defaults to `<name>:BaseUrl`. |
+| `exportName` | string | Optional named export override. |
+
+Return value:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `source` | string | Deterministic JavaScript module source. |
+| `warnings` | string[] | Unsupported OpenAPI constructs that were skipped or commented. |
+
+Supported schema constructs are the Sloppy-generated JSON Schema subset:
+`object`, `array`, `string`, `number`, `integer`, `boolean`, `nullable`, and
+literal `enum` values. Unsupported constructs are not converted into fake
+schemas.
+
 ## Resilience
 
 Retry policies:
@@ -180,6 +206,11 @@ Mock features:
 - assert expected calls
 - assert no unexpected calls
 
+`TestHost.fromArtifacts(...)`, `TestHost.fromPackage(...)`, and their
+`mode: "loopback"` variants accept the same `httpClients` map. Process-backed
+hosts run each mock as a local loopback HTTP endpoint and inject matching
+base-URL config into the child process.
+
 ## Error Codes
 
 Factory errors use `SloppyHttpClientError`.
@@ -195,5 +226,7 @@ Factory errors use `SloppyHttpClientError`.
 - `SLOPPY_E_HTTP_RETRY_EXHAUSTED`
 - `SLOPPY_E_HTTP_CIRCUIT_OPEN`
 - `SLOPPY_E_HTTP_BULKHEAD_REJECTED`
+- `SLOPPY_E_HTTP_CLIENT_CLOSED`
+- `SLOPPY_E_HTTP_CLIENT_POOL_CLOSED`
 - `SLOPPY_E_HTTP_MOCK_UNEXPECTED_CALL`
 - `SLOPPY_E_HTTP_MOCK_EXHAUSTED`
