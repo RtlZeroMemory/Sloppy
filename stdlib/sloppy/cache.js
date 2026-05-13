@@ -1,6 +1,7 @@
 import { serializeJson } from "./results.js";
 import { isSchema } from "./schema.js";
 import { Text } from "./codec.js";
+import { isRealDataProvider } from "./data.js";
 
 const CACHE_MARKER = Symbol("SloppyCache");
 const DEFAULT_MEMORY_MAX_ENTRIES = 1024;
@@ -19,6 +20,9 @@ function isPlainObject(value) {
 }
 
 function nowMs(clock = undefined) {
+    if (clock !== undefined && typeof clock.now === "function") {
+        return clock.now().getTime();
+    }
     if (clock !== undefined && typeof clock.monotonicNowMs === "function") {
         return clock.monotonicNowMs();
     }
@@ -169,6 +173,11 @@ function expiresAtFromOptions(options, clock = undefined) {
         expiresAt = expiresAt === undefined ? options.absoluteExpiration : Math.min(expiresAt, options.absoluteExpiration);
     }
     return expiresAt;
+}
+
+function refreshSlidingExpiration(baseMs, slidingExpirationMs, absoluteExpiration = undefined) {
+    const refreshed = baseMs + slidingExpirationMs;
+    return absoluteExpiration === undefined ? refreshed : Math.min(refreshed, absoluteExpiration);
 }
 
 function isExpired(entry, clock = undefined) {
@@ -419,6 +428,7 @@ class MemoryCache extends BaseCache {
             createdAt: timestamp,
             updatedAt: timestamp,
             lastAccessedAt: timestamp,
+            absoluteExpiration: options.absoluteExpiration,
             expiresAt: expiresAtFromOptions(options, this.clock),
             slidingExpirationMs: options.slidingExpirationMs,
         };
@@ -475,7 +485,7 @@ class MemoryCache extends BaseCache {
         }
         entry.lastAccessedAt = nowMs(this.clock);
         if (entry.slidingExpirationMs !== undefined) {
-            entry.expiresAt = entry.lastAccessedAt + entry.slidingExpirationMs;
+            entry.expiresAt = refreshSlidingExpiration(entry.lastAccessedAt, entry.slidingExpirationMs, entry.absoluteExpiration);
         }
         this._record("hits");
         return validateValueWithSchema(JSON.parse(entry.valueJson), options.schema, normalizedKey);
@@ -556,13 +566,13 @@ class MemoryCache extends BaseCache {
 
 function providerKind(db, operation) {
     const debug = typeof db?.__debug === "function" ? db.__debug() : undefined;
-    if (debug?.kind === "sqlite-connection") {
+    if (debug?.kind === "sqlite-connection" && isRealDataProvider(db, "sqlite")) {
         return "sqlite";
     }
-    if (debug?.kind === "postgres-connection") {
+    if (debug?.kind === "postgres-connection" && isRealDataProvider(db, "postgres")) {
         return "postgres";
     }
-    if (debug?.kind === "sqlserver-connection") {
+    if (debug?.kind === "sqlserver-connection" && isRealDataProvider(db, "sqlserver")) {
         return "sqlserver";
     }
     const expected = operation === "sqlServer" ? "sqlserver" : operation;
@@ -581,13 +591,28 @@ function validateTableName(value) {
     return table;
 }
 
+function isSqlServerDuplicateKeyError(error) {
+    const code = error?.number ?? error?.code ?? error?.state;
+    if (code === 2627 || code === 2601 || code === "2627" || code === "2601") {
+        return true;
+    }
+    const message = String(error?.message ?? error ?? "");
+    return /duplicate key|unique constraint|violation of (primary key|unique)/iu.test(message);
+}
+
+function affectedRows(result) {
+    const value = result?.affectedRows ?? result?.affected_rows ?? result?.rowCount ?? result?.rowsAffected;
+    return Number.isInteger(value) ? value : undefined;
+}
+
 function distributedSql(kind, table) {
-    const columns = "namespace, cache_key, value_json, created_at, updated_at, expires_at, sliding_expiration_ms, tags_json";
-    const values = Array.from({ length: 8 }, (_, index) => placeholder(kind, index + 1)).join(", ");
+    const columns = "namespace, cache_key, value_json, created_at, updated_at, expires_at, absolute_expires_at, sliding_expiration_ms, tags_json";
+    const values = Array.from({ length: 9 }, (_, index) => placeholder(kind, index + 1)).join(", ");
     const updateSet = [
         "value_json = excluded.value_json",
         "updated_at = excluded.updated_at",
         "expires_at = excluded.expires_at",
+        "absolute_expires_at = excluded.absolute_expires_at",
         "sliding_expiration_ms = excluded.sliding_expiration_ms",
         "tags_json = excluded.tags_json",
     ].join(", ");
@@ -596,8 +621,10 @@ function distributedSql(kind, table) {
             ensure: `create table if not exists ${table} (` +
                 "namespace text not null, cache_key text not null, value_json text not null, " +
                 "created_at text not null, updated_at text not null, expires_at text null, " +
+                "absolute_expires_at text null, " +
                 "sliding_expiration_ms integer null, tags_json text not null, primary key (namespace, cache_key))",
-            get: `select value_json, expires_at, sliding_expiration_ms, tags_json from ${table} where namespace = $1 and cache_key = $2`,
+            ensureAbsoluteExpires: `alter table ${table} add column if not exists absolute_expires_at text null`,
+            get: `select value_json, expires_at, absolute_expires_at, sliding_expiration_ms, tags_json from ${table} where namespace = $1 and cache_key = $2`,
             selectNamespace: `select cache_key, tags_json from ${table} where namespace = $1`,
             deleteOne: `delete from ${table} where namespace = $1 and cache_key = $2`,
             clearNamespace: `delete from ${table} where namespace = $1`,
@@ -611,15 +638,17 @@ function distributedSql(kind, table) {
             ensure: `if object_id(N'dbo.${table}', N'U') is null begin create table dbo.${table} (` +
                 "namespace nvarchar(128) not null, cache_key nvarchar(256) not null, value_json nvarchar(max) not null, " +
                 "created_at nvarchar(64) not null, updated_at nvarchar(64) not null, expires_at nvarchar(64) null, " +
+                "absolute_expires_at nvarchar(64) null, " +
                 "sliding_expiration_ms int null, tags_json nvarchar(max) not null, constraint " +
                 `pk_${table} primary key (namespace, cache_key)) end`,
-            get: `select value_json, expires_at, sliding_expiration_ms, tags_json from dbo.${table} where namespace = ? and cache_key = ?`,
+            ensureAbsoluteExpires: `if col_length(N'dbo.${table}', N'absolute_expires_at') is null alter table dbo.${table} add absolute_expires_at nvarchar(64) null`,
+            get: `select value_json, expires_at, absolute_expires_at, sliding_expiration_ms, tags_json from dbo.${table} where namespace = ? and cache_key = ?`,
             selectNamespace: `select cache_key, tags_json from dbo.${table} where namespace = ?`,
             deleteOne: `delete from dbo.${table} where namespace = ? and cache_key = ?`,
             clearNamespace: `delete from dbo.${table} where namespace = ?`,
             clearAll: `delete from dbo.${table}`,
             cleanup: `delete from dbo.${table} where expires_at is not null and expires_at <= ?`,
-            update: `update dbo.${table} set value_json = ?, updated_at = ?, expires_at = ?, sliding_expiration_ms = ?, tags_json = ? where namespace = ? and cache_key = ?`,
+            update: `update dbo.${table} set value_json = ?, updated_at = ?, expires_at = ?, absolute_expires_at = ?, sliding_expiration_ms = ?, tags_json = ? where namespace = ? and cache_key = ?`,
             insert: `insert into dbo.${table} (${columns}) values (${values})`,
         });
     }
@@ -627,8 +656,10 @@ function distributedSql(kind, table) {
         ensure: `create table if not exists ${table} (` +
             "namespace text not null, cache_key text not null, value_json text not null, " +
             "created_at text not null, updated_at text not null, expires_at text null, " +
+            "absolute_expires_at text null, " +
             "sliding_expiration_ms integer null, tags_json text not null, primary key (namespace, cache_key))",
-        get: `select value_json, expires_at, sliding_expiration_ms, tags_json from ${table} where namespace = ? and cache_key = ?`,
+        ensureAbsoluteExpires: `alter table ${table} add column absolute_expires_at text null`,
+        get: `select value_json, expires_at, absolute_expires_at, sliding_expiration_ms, tags_json from ${table} where namespace = ? and cache_key = ?`,
         selectNamespace: `select cache_key, tags_json from ${table} where namespace = ?`,
         deleteOne: `delete from ${table} where namespace = ? and cache_key = ?`,
         clearNamespace: `delete from ${table} where namespace = ?`,
@@ -662,6 +693,15 @@ class DistributedCache extends BaseCache {
             return;
         }
         await this.db.exec(this.sql.ensure, []);
+        if (this.sql.ensureAbsoluteExpires !== undefined) {
+            try {
+                await this.db.exec(this.sql.ensureAbsoluteExpires, []);
+            } catch (error) {
+                if (!/duplicate column|already exists/iu.test(String(error?.message ?? error))) {
+                    throw error;
+                }
+            }
+        }
         this.initialized = true;
     }
 
@@ -685,37 +725,72 @@ class DistributedCache extends BaseCache {
         return Number.isFinite(time) ? time : undefined;
     }
 
-    async get(key, schemaOrOptions = undefined) {
-        this._assertOpen("get");
+    _rowOptions(row, fallbackOptions = {}) {
+        const expiresAt = this._time(row.expires_at ?? row.expiresAt);
+        const absoluteExpiration = this._time(row.absolute_expires_at ?? row.absoluteExpiresAt);
+        const tags = JSON.parse(row.tags_json ?? row.tagsJson ?? "[]");
+        const slidingExpirationMs = row.sliding_expiration_ms ?? row.slidingExpirationMs;
+        const options = {
+            tags,
+            schema: fallbackOptions.schema,
+        };
+        if (slidingExpirationMs !== null && slidingExpirationMs !== undefined) {
+            options.slidingExpirationMs = Number(slidingExpirationMs);
+            if (absoluteExpiration !== undefined) {
+                options.absoluteExpiration = absoluteExpiration;
+            } else if (expiresAt !== undefined) {
+                options.absoluteExpiration = expiresAt;
+            }
+        } else if (expiresAt !== undefined) {
+            options.absoluteExpiration = expiresAt;
+        }
+        return options;
+    }
+
+    async _refreshSliding(normalizedKey, row, value, fallbackOptions) {
+        const slidingExpirationMs = row.sliding_expiration_ms ?? row.slidingExpirationMs;
+        if (slidingExpirationMs === null || slidingExpirationMs === undefined) {
+            return;
+        }
+        await this.set(normalizedKey, value, {
+            ...this._rowOptions(row, fallbackOptions),
+            slidingExpirationMs: Number(slidingExpirationMs),
+        });
+    }
+
+    async _getWithMetadata(normalizedKey, schemaOrOptions = undefined) {
         await this._ensure();
-        const normalizedKey = this._key(key);
         const options = isSchema(schemaOrOptions)
             ? Object.freeze({ schema: schemaOrOptions })
             : this._entryOptions(schemaOrOptions ?? {});
-        this._record("gets");
         const row = await this.db.queryOne(this.sql.get, [this.namespace, normalizedKey]);
         if (row === null || row === undefined) {
-            this._record("misses");
             return undefined;
         }
         const expiresAt = this._time(row.expires_at ?? row.expiresAt);
         if (expiresAt !== undefined && nowMs(this.clock) >= expiresAt) {
             await this.remove(normalizedKey);
             this._record("expired");
+            return undefined;
+        }
+        const value = validateValueWithSchema(JSON.parse(row.value_json ?? row.valueJson), options.schema, normalizedKey);
+        const entryOptions = this._rowOptions(row, options);
+        await this._refreshSliding(normalizedKey, row, value, options);
+        return Object.freeze({ value, options: entryOptions });
+    }
+
+    async get(key, schemaOrOptions = undefined) {
+        this._assertOpen("get");
+        await this._ensure();
+        const normalizedKey = this._key(key);
+        this._record("gets");
+        const entry = await this._getWithMetadata(normalizedKey, schemaOrOptions);
+        if (entry === undefined) {
             this._record("misses");
             return undefined;
         }
         this._record("hits");
-        if (row.sliding_expiration_ms !== null && row.sliding_expiration_ms !== undefined) {
-            const value = JSON.parse(row.value_json ?? row.valueJson);
-            await this.set(normalizedKey, value, {
-                ...options,
-                slidingExpirationMs: Number(row.sliding_expiration_ms),
-                tags: JSON.parse(row.tags_json ?? row.tagsJson ?? "[]"),
-                ttlMs: Number(row.sliding_expiration_ms),
-            });
-        }
-        return validateValueWithSchema(JSON.parse(row.value_json ?? row.valueJson), options.schema, normalizedKey);
+        return entry.value;
     }
 
     async has(key) {
@@ -737,6 +812,7 @@ class DistributedCache extends BaseCache {
         }
         const timestamp = nowDate(this.clock).toISOString();
         const expiresAt = this._iso(expiresAtFromOptions(normalizedOptions, this.clock));
+        const absoluteExpiresAt = this._iso(normalizedOptions.absoluteExpiration);
         const tagsJson = serializeJson(normalizedOptions.tags);
         if (this.provider === "sqlserver") {
             try {
@@ -747,19 +823,31 @@ class DistributedCache extends BaseCache {
                     timestamp,
                     timestamp,
                     expiresAt,
+                    absoluteExpiresAt,
                     normalizedOptions.slidingExpirationMs ?? null,
                     tagsJson,
                 ]);
-            } catch {
-                await this.db.exec(this.sql.update, [
+            } catch (error) {
+                if (!isSqlServerDuplicateKeyError(error)) {
+                    throw error;
+                }
+                const updateResult = await this.db.exec(this.sql.update, [
                     json,
                     timestamp,
                     expiresAt,
+                    absoluteExpiresAt,
                     normalizedOptions.slidingExpirationMs ?? null,
                     tagsJson,
                     this.namespace,
                     normalizedKey,
                 ]);
+                const updated = affectedRows(updateResult);
+                if (updated !== undefined && updated < 1) {
+                    throw new SloppyCacheError("SLOPPY_E_CACHE_WRITE_FAILED", "Sloppy SQL Server distributed cache update did not write a row.", {
+                        keyHash: stableHash(normalizedKey),
+                        provider: this.provider,
+                    });
+                }
             }
         } else {
             await this.db.exec(this.sql.set, [
@@ -769,6 +857,7 @@ class DistributedCache extends BaseCache {
                 timestamp,
                 timestamp,
                 expiresAt,
+                absoluteExpiresAt,
                 normalizedOptions.slidingExpirationMs ?? null,
                 tagsJson,
             ]);
@@ -858,8 +947,15 @@ class HybridCache extends BaseCache {
             return memory;
         }
         let distributed;
+        let distributedOptions;
         try {
-            distributed = await this.distributed.get(normalizedKey, schemaOrOptions);
+            if (typeof this.distributed._getWithMetadata === "function") {
+                const entry = await this.distributed._getWithMetadata(normalizedKey, schemaOrOptions);
+                distributed = entry?.value;
+                distributedOptions = entry?.options;
+            } else {
+                distributed = await this.distributed.get(normalizedKey, schemaOrOptions);
+            }
         } catch (error) {
             if (this.failOpenOnDistributedRead) {
                 this._record("misses");
@@ -872,7 +968,10 @@ class HybridCache extends BaseCache {
             return undefined;
         }
         if (this.populateMemoryOnDistributedHit) {
-            await this.memory.set(normalizedKey, distributed, isPlainObject(schemaOrOptions) ? schemaOrOptions : {});
+            await this.memory.set(normalizedKey, distributed, {
+                ...(distributedOptions ?? {}),
+                ...(isPlainObject(schemaOrOptions) ? schemaOrOptions : {}),
+            });
         }
         this._record("hits");
         return distributed;
@@ -941,14 +1040,53 @@ class NoopCache extends BaseCache {
     constructor(name = "noop") {
         super(name, "noop", {});
     }
-    async get() { return undefined; }
-    async has() { return false; }
-    async set() { return this; }
-    async remove() { return false; }
-    async invalidateTag() { return 0; }
-    async invalidateTags() { return 0; }
-    async clear() { return 0; }
-    async cleanup() { return 0; }
+    async get(key, schemaOrOptions = undefined) {
+        this._assertOpen("get");
+        this._key(key);
+        if (isSchema(schemaOrOptions)) {
+            return undefined;
+        }
+        this._entryOptions(schemaOrOptions ?? {});
+        return undefined;
+    }
+    async has(key) {
+        this._assertOpen("has");
+        this._key(key);
+        return false;
+    }
+    async set(key, value, options = {}) {
+        this._assertOpen("set");
+        this._key(key);
+        this._entryOptions(options);
+        cloneJsonValue(value);
+        return this;
+    }
+    async remove(key) {
+        this._assertOpen("remove");
+        this._key(key);
+        return false;
+    }
+    async invalidateTag(tag) {
+        this._assertOpen("invalidateTag");
+        normalizeTag(tag, this);
+        return 0;
+    }
+    async invalidateTags(tags) {
+        this._assertOpen("invalidateTags");
+        normalizeTags(tags, this);
+        return 0;
+    }
+    async clear(options = {}) {
+        this._assertOpen("clear");
+        if (options !== undefined && !isPlainObject(options)) {
+            throw new TypeError("Sloppy cache clear options must be a plain object.");
+        }
+        return 0;
+    }
+    async cleanup() {
+        this._assertOpen("cleanup");
+        return 0;
+    }
 }
 
 function isCache(value) {

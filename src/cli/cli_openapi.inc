@@ -1257,7 +1257,8 @@ static void sl_cli_openapi_emit_components(FILE* out, const SlCliMetadata* metad
             const SlCliAuthScheme* scheme = &metadata->auth_schemes[index];
             sl_cli_write_cstr(out, index == 0U ? "\n      " : ",\n      ");
             sl_cli_json_escape(out, scheme->name);
-            if (sl_cli_span_equal_cstr(scheme->kind, "jwtBearer")) {
+            if (sl_cli_span_equal_cstr(scheme->kind, "jwtBearer") ||
+                sl_cli_span_equal_cstr(scheme->kind, "bearer")) {
                 sl_cli_write_cstr(out, ": { \"type\": \"http\", \"scheme\": \"bearer\", "
                                        "\"bearerFormat\": \"JWT\" }");
             }

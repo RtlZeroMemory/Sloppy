@@ -48,21 +48,25 @@ function createCacheBridge() {
         if (sql.includes("create table")) {
             return { affectedRows: 0 };
         }
+        if (sql.includes("alter table") || sql.includes("col_length")) {
+            return { affectedRows: 0 };
+        }
         if (sql.startsWith("insert into") || sql.includes(" on conflict ")) {
-            const [namespace, key, valueJson, createdAt, updatedAt, expiresAt, slidingExpirationMs, tagsJson] = params;
+            const [namespace, key, valueJson, createdAt, updatedAt, expiresAt, absoluteExpiresAt, slidingExpirationMs, tagsJson] = params;
             store.set(entryKey(namespace, key), {
                 cache_key: key,
                 value_json: valueJson,
                 created_at: createdAt,
                 updated_at: updatedAt,
                 expires_at: expiresAt,
+                absolute_expires_at: absoluteExpiresAt,
                 sliding_expiration_ms: slidingExpirationMs,
                 tags_json: tagsJson,
             });
             return { affectedRows: 1 };
         }
         if (provider === "sqlserver" && sql.startsWith("update ")) {
-            const [valueJson, updatedAt, expiresAt, slidingExpirationMs, tagsJson, namespace, key] = params;
+            const [valueJson, updatedAt, expiresAt, absoluteExpiresAt, slidingExpirationMs, tagsJson, namespace, key] = params;
             const currentKey = entryKey(namespace, key);
             const existing = store.get(currentKey);
             if (existing === undefined) {
@@ -73,6 +77,7 @@ function createCacheBridge() {
                 value_json: valueJson,
                 updated_at: updatedAt,
                 expires_at: expiresAt,
+                absolute_expires_at: absoluteExpiresAt,
                 sliding_expiration_ms: slidingExpirationMs,
                 tags_json: tagsJson,
             });
@@ -171,6 +176,10 @@ async function withCacheBridge(callback) {
     assert.deepEqual(Cache.tags("users", ["user:42"]), ["users", "user:42"]);
     assert.throws(() => Cache.memory({ maxEntries: 0 }), /maxEntries/);
     await assertRejectsMessage(() => Cache.memory({ maxEntries: 1 }).set("", 1), /cache key/);
+    const noop = Cache.noop();
+    await assertRejectsMessage(() => noop.get(""), /cache key/);
+    noop.dispose();
+    await assertRejectsMessage(() => noop.set("after-dispose", 1), /disposed/);
 }
 
 {
@@ -198,6 +207,25 @@ async function withCacheBridge(callback) {
     await new Promise((resolve) => setTimeout(resolve, 25));
     assert.equal(await ttlCache.get("short"), undefined);
     assert.equal(ttlCache.stats().expired >= 1, true);
+
+    let current = Date.parse("2026-05-13T00:00:00.000Z");
+    const clock = {
+        now() {
+            return new Date(current);
+        },
+        monotonicNowMs() {
+            return 1;
+        },
+    };
+    const sliding = Cache.memory({ maxEntries: 10, clock });
+    await sliding.set("bounded", "value", {
+        absoluteExpiration: new Date(current + 50),
+        slidingExpirationMs: 100,
+    });
+    current += 40;
+    assert.equal(await sliding.get("bounded"), "value");
+    current += 20;
+    assert.equal(await sliding.get("bounded"), undefined);
 }
 
 {
@@ -258,6 +286,21 @@ async function withCacheBridge(callback) {
             () => Cache.sqlServer(data.createFakeProvider({ query: () => [], exec: () => ({ affectedRows: 0 }) })),
             /requires a real sqlserver/,
         );
+        const spoofedProvider = Object.freeze({
+            __debug() {
+                return Object.freeze({ kind: "sqlite-connection" });
+            },
+            query() {
+                return [];
+            },
+            queryOne() {
+                return null;
+            },
+            exec() {
+                return { affectedRows: 0 };
+            },
+        });
+        assert.throws(() => Cache.sqlite(spoofedProvider), /requires a real sqlite/);
 
         const memory = Cache.memory("front", { maxEntries: 10 });
         const distributed = Cache.sqlite(sqliteDb, { name: "back", namespace: "hybrid" });
@@ -269,9 +312,31 @@ async function withCacheBridge(callback) {
         await hybrid.set("both", { value: 2 }, { tags: ["hybrid"] });
         assert.deepEqual(await memory.get("both"), { value: 2 });
         assert.deepEqual(await distributed.get("both"), { value: 2 });
-        assert.equal(await hybrid.invalidateTag("hybrid"), 3);
+        assert.equal(await hybrid.invalidateTag("hybrid"), 4);
         assert.equal(await hybrid.get("both"), undefined);
         assert.equal(hybrid.stats().memory.kind, "memory");
+
+        let current = Date.parse("2026-05-13T00:00:00.000Z");
+        const clock = {
+            now() {
+                return new Date(current);
+            },
+        };
+        const expiringMemory = Cache.memory("expiring-front", { maxEntries: 10, clock });
+        const expiringDistributed = Cache.sqlite(sqliteDb, { name: "expiring-back", namespace: "hybrid-expiring", clock });
+        const expiringHybrid = Cache.hybrid("expiring-main", {
+            memory: expiringMemory,
+            distributed: expiringDistributed,
+        });
+        await expiringDistributed.set("bounded", { value: 3 }, {
+            absoluteExpiration: new Date(current + 50),
+            slidingExpirationMs: 100,
+        });
+        current += 40;
+        assert.deepEqual(await expiringHybrid.get("bounded"), { value: 3 });
+        current += 20;
+        assert.equal(await expiringMemory.get("bounded"), undefined);
+        assert.equal(await expiringHybrid.get("bounded"), undefined);
     });
 }
 

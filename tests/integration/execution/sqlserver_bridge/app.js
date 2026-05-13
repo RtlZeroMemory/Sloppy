@@ -210,7 +210,10 @@ globalThis.__sloppy_handler_1 = async () => {
         await db.exec("if object_id(N'dbo.sloppy_sqlserver_bridge_cursor', N'U') is not null drop table dbo.sloppy_sqlserver_bridge_cursor");
       } catch {
       }
-      db.close();
+      try {
+        await db.close();
+      } catch {
+      }
     }
   } catch (error) {
     return Results.text(String(error && error.message ? error.message : error), { status: 500 });
