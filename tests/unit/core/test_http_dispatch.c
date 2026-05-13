@@ -1904,6 +1904,65 @@ static int test_stale_plan_route_table_ignores_cached_handler(void)
     return 0;
 }
 
+static int test_in_place_plan_handler_mutation_ignores_cached_handler(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlan plan = {0};
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {.kind = SL_ENGINE_RESULT_TEXT, .text = sl_str_from_cstr("stale")};
+    SlDiag diag = {0};
+
+    handler.id = 1U;
+    handler.export_name = sl_str_from_cstr("__sloppy_handler_1");
+    handler.display_name = sl_str_from_cstr("Http.Stale");
+    route.method = sl_str_from_cstr("GET");
+    route.pattern = sl_str_from_cstr("/stale");
+    route.handler_id = 1U;
+    route.name = sl_str_from_cstr("Http.Stale");
+    plan.version = SL_PLAN_CURRENT_VERSION;
+    plan.handlers = &handler;
+    plan.handler_count = 1U;
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /stale HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 26;
+    }
+
+    plan.handlers = NULL;
+    plan.handler_count = 0U;
+    if (expect_status(sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch,
+                                                    &request, &result, &diag),
+                      SL_STATUS_OUT_OF_RANGE) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 27;
+    }
+
+    if (result.kind != SL_ENGINE_RESULT_NONE || diag.code != SL_DIAG_ENGINE_CALL_ERROR ||
+        expect_str_equal(diag.message, "matched route handler ID was not found in app plan") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 28;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static SlPlan validation_plan(SlPlanHandler* handler, SlPlanRoute* route,
                               SlPlanRequestBinding* bindings, SlPlanSchema* schemas,
                               SlPlanSchemaProperty* properties, SlPlanSchemaNode* property_nodes)
@@ -4074,6 +4133,7 @@ int main(void)
         HTTP_DISPATCH_TEST(test_lifecycle_dispatch_uses_backend_body_limit),
         HTTP_DISPATCH_TEST(test_missing_plan_handler_fails_before_engine_call),
         HTTP_DISPATCH_TEST(test_stale_plan_route_table_ignores_cached_handler),
+        HTTP_DISPATCH_TEST(test_in_place_plan_handler_mutation_ignores_cached_handler),
         HTTP_DISPATCH_TEST(test_plan_backed_body_validation_returns_problem_before_handler_call),
         HTTP_DISPATCH_TEST(
             test_plan_backed_json_body_rejects_wrong_content_type_before_handler_call),

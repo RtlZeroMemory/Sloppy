@@ -28,6 +28,7 @@
 #include "sloppy/container.h"
 
 #include <yyjson.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -167,6 +168,9 @@ static SlStatus sl_http_dispatch_write_diag(SlArena* arena, SlDiag* out_diag, Sl
 
 static bool sl_http_dispatch_power_of_two(size_t value);
 static bool sl_http_dispatch_binding_valid(const SlHttpRouteBinding* binding);
+static bool sl_http_dispatch_handler_is_current_plan_member(const SlPlan* plan,
+                                                            const SlPlanHandler* handler,
+                                                            SlHandlerId handler_id);
 
 #define SL_HTTP_DISPATCH_TABLE_METHOD_MASK 0x3fU
 #define SL_HTTP_DISPATCH_TABLE_VALIDATED_FLAG (1U << 31U)
@@ -219,7 +223,9 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
         }
         for (index = 0U; index < dispatch_table->route_count; index += 1U) {
             const SlHttpRouteBinding* binding = &dispatch_table->routes[index];
-            if (binding->handler == NULL || binding->handler->id != binding->handler_id) {
+            if (!sl_http_dispatch_handler_is_current_plan_member(
+                    dispatch_table->plan, binding->handler, binding->handler_id))
+            {
                 return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
             }
         }
@@ -235,6 +241,41 @@ static SlStatus sl_http_dispatch_validate_table(const SlHttpDispatchTable* dispa
     }
 
     return sl_status_ok();
+}
+
+static bool sl_http_dispatch_handler_is_current_plan_member(const SlPlan* plan,
+                                                            const SlPlanHandler* handler,
+                                                            SlHandlerId handler_id)
+{
+    uintptr_t handlers_start = 0U;
+    uintptr_t handler_address = 0U;
+    uintptr_t offset = 0U;
+    size_t handlers_bytes = 0U;
+
+    if (plan == NULL || handler == NULL || plan->handlers == NULL || plan->handler_count == 0U ||
+        !sl_handler_id_valid(handler_id))
+    {
+        return false;
+    }
+    if (plan->handler_count > SIZE_MAX / sizeof(plan->handlers[0])) {
+        return false;
+    }
+
+    handlers_start = (uintptr_t)plan->handlers;
+    handler_address = (uintptr_t)handler;
+    handlers_bytes = plan->handler_count * sizeof(plan->handlers[0]);
+    if (UINTPTR_MAX - handlers_start < handlers_bytes || handler_address < handlers_start ||
+        handler_address >= handlers_start + handlers_bytes)
+    {
+        return false;
+    }
+
+    offset = handler_address - handlers_start;
+    if ((offset % sizeof(plan->handlers[0])) != 0U) {
+        return false;
+    }
+
+    return handler->id == handler_id && !sl_str_is_empty(handler->export_name);
 }
 
 static SlStatus sl_http_dispatch_missing_route(SlArena* arena, SlDiag* out_diag)
@@ -3369,8 +3410,8 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     {
         uint64_t started_ns = sl_http_profile_now_ns();
         if (dispatch_table->handler_cache_trusted && dispatch_table->plan == plan &&
-            binding->handler != NULL && binding->handler->id == binding->handler_id &&
-            !sl_str_is_empty(binding->handler->export_name))
+            sl_http_dispatch_handler_is_current_plan_member(plan, binding->handler,
+                                                            binding->handler_id))
         {
             handler = binding->handler;
             use_cached_handler = true;
