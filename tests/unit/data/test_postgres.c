@@ -114,6 +114,15 @@ static SlPostgresParam bool_param(bool value)
     return param;
 }
 
+static SlPostgresParam bytes_param(const unsigned char* value, size_t length)
+{
+    SlPostgresParam param;
+
+    param.kind = SL_POSTGRES_PARAM_BYTES;
+    param.value.bytes = sl_bytes_from_parts(value, length);
+    return param;
+}
+
 static int close_and_return(SlPostgresConnection* connection, int code)
 {
     if (connection != NULL && connection->open) {
@@ -466,6 +475,12 @@ static int test_live_query_exec_and_transactions(void)
     SlPostgresParam unsupported_param = {.kind = SL_POSTGRES_PARAM_UNSUPPORTED};
     SlPostgresParam insert_params[] = {text_param("Ada"), bool_param(true)};
     SlPostgresParam rollback_params[] = {text_param("rollback"), bool_param(false)};
+    const char attack_text[] = "Robert'); drop table sloppy_pg_test; --";
+    const char unicode_text[] = {'u', 'n', 'i',        'c',        'o',        'd',
+                                 'e', ' ', (char)0xe2, (char)0x98, (char)0x83, '\0'};
+    const unsigned char raw_bytes[] = {0x00U, 0x27U, 0x3bU, 0x2dU, 0x2dU, 0xffU};
+    SlPostgresParam safety_params[] = {text_param(attack_text), text_param(unicode_text),
+                                       bytes_param(raw_bytes, sizeof(raw_bytes))};
     SlDiag diag = {0};
     SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
     int open_result = 0;
@@ -488,6 +503,32 @@ static int test_live_query_exec_and_transactions(void)
         NULL, 0U, &exec_result, NULL);
     if (expect_status(status, SL_STATUS_OK) != 0) {
         return close_and_return(&connection, 42);
+    }
+
+    status = sl_postgres_query_one(
+        &arena, &connection,
+        sl_str_from_cstr("select $1::text as payload, $2::text as utf8, $3::bytea as raw"),
+        safety_params, 3U, &one, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found || one.column_count != 3U ||
+        one.values[0].kind != SL_POSTGRES_VALUE_TEXT ||
+        expect_str_equal(one.values[0].value.text, attack_text) != 0 ||
+        one.values[1].kind != SL_POSTGRES_VALUE_TEXT ||
+        expect_str_equal(one.values[1].value.text, unicode_text) != 0 ||
+        one.values[2].kind != SL_POSTGRES_VALUE_BYTES ||
+        one.values[2].value.bytes.length != sizeof(raw_bytes) ||
+        one.values[2].value.bytes.ptr == NULL ||
+        memcmp(one.values[2].value.bytes.ptr, raw_bytes, sizeof(raw_bytes)) != 0)
+    {
+        return close_and_return(&connection, 61);
+    }
+
+    status = sl_postgres_query_one(&arena, &connection,
+                                   sl_str_from_cstr("select count(*) from sloppy_pg_test"), NULL,
+                                   0U, &one, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !one.found ||
+        one.values[0].kind != SL_POSTGRES_VALUE_INTEGER || one.values[0].value.integer != 0)
+    {
+        return close_and_return(&connection, 62);
     }
 
     status =

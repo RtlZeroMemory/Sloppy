@@ -1,20 +1,4 @@
-import { Sloppy, Results, Body, Route, Schema } from "sloppy";
-
-const Login = Schema.object({
-  username: Schema.string(),
-  password: Schema.string(),
-});
-
-const Medium = Schema.object({
-  name: Schema.string(),
-  email: Schema.string(),
-  roles: Schema.array(Schema.string()),
-  profile: Schema.object({
-    active: Schema.boolean(),
-    age: Schema.integer(),
-    tags: Schema.array(Schema.string()),
-  }),
-});
+import { Sloppy, Results, Route } from "sloppy";
 
 const app = Sloppy.create();
 
@@ -26,18 +10,18 @@ function largeList() {
   }));
 }
 
-app.post("/small", (body: Body<typeof Login>) => {
-  return Results.json({ ok: true, echo: body });
-}).accepts(Login);
-
-app.post("/medium", (body: Body<typeof Medium>) => {
-  return Results.json({ ok: true, echo: body });
-}).accepts(Medium);
-
 app.get("/large", () => Results.json({ items: largeList() }));
 
 app.get("/route/{id:int}", (id: Route<number>) => {
   return Results.json({ ok: true, route: `/route/${id}` });
+});
+
+app.get("/static-json", () => Results.json({ ok: true, mode: "static" }));
+
+app.get("/static-text", () => Results.text("ok\n"));
+
+app.get("/dynamic-json", () => {
+  return Results.json({ ok: true, mode: `dynamic-${Math.trunc(Math.random() * 0)}` });
 });
 
 export default app;

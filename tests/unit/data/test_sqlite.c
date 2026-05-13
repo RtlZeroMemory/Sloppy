@@ -38,6 +38,23 @@ static int expect_bytes_equal(SlBytes actual, const unsigned char* expected, siz
     return 0;
 }
 
+static int expect_str_bytes_equal(SlStr actual, const char* expected, size_t length)
+{
+    size_t index = 0U;
+
+    if (actual.length != length || (length != 0U && (actual.ptr == NULL || expected == NULL))) {
+        return 1;
+    }
+
+    for (index = 0U; index < length; index += 1U) {
+        if ((unsigned char)actual.ptr[index] != (unsigned char)expected[index]) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static bool diag_has_hint(const SlDiag* diag, const char* hint)
 {
     size_t index = 0U;
@@ -479,6 +496,114 @@ static int test_parameter_binding_and_types(void)
     }
 
     return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 27;
+}
+
+static int test_parameterization_safety_matrix(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    SlArena arena = {0};
+    SlSqliteConnection connection = {0};
+    const char attack_text[] = "Robert'); drop table safety; -- /* comment */";
+    const char unicode_text[] = {'u', 'n', 'i',        'c',        'o',       'd',
+                                 'e', ' ', (char)0xe2, (char)0x98, (char)0x83};
+    const char nul_text[] = {'n', 'u', 'l', '\0', 'q', 'u', 'o', 't', 'e', '\'', ';', '-', '-'};
+    const unsigned char binary[] = {0x00U, 0x27U, 0x3bU, 0x2dU, 0x2dU, 0xffU};
+    SlSqliteParam attack_params[] = {text_param("attack"), text_param(attack_text),
+                                     blob_param(NULL, 0U)};
+    SlSqliteParam unicode_params[] = {
+        text_param("unicode"),
+        {.kind = SL_SQLITE_PARAM_TEXT,
+         .value.text = sl_str_from_parts(unicode_text, sizeof(unicode_text))},
+        blob_param(NULL, 0U)};
+    SlSqliteParam nul_params[] = {
+        text_param("nul"),
+        {.kind = SL_SQLITE_PARAM_TEXT, .value.text = sl_str_from_parts(nul_text, sizeof(nul_text))},
+        blob_param(NULL, 0U)};
+    SlSqliteParam binary_params[] = {text_param("binary"), text_param("bytes"),
+                                     blob_param(binary, sizeof(binary))};
+    SlSqliteParam label_param = text_param("nul");
+    SlSqliteParam binary_label_param = text_param("binary");
+    SlSqliteExecResult exec_result = {0};
+    SlSqliteQueryOneResult row = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 151;
+    }
+    if (open_memory(&arena, &connection) != 0) {
+        return 152;
+    }
+    if (exec_sql(&arena, &connection,
+                 "create table safety (label text primary key, payload text, raw blob)") != 0)
+    {
+        return close_and_return(&connection, 153);
+    }
+
+    status =
+        sl_sqlite_exec(&arena, &connection, sl_str_from_cstr("insert into safety values (?, ?, ?)"),
+                       attack_params, 3U, &exec_result, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || exec_result.changes != 1) {
+        return close_and_return(&connection, 154);
+    }
+    status =
+        sl_sqlite_exec(&arena, &connection, sl_str_from_cstr("insert into safety values (?, ?, ?)"),
+                       unicode_params, 3U, &exec_result, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || exec_result.changes != 1) {
+        return close_and_return(&connection, 155);
+    }
+    status =
+        sl_sqlite_exec(&arena, &connection, sl_str_from_cstr("insert into safety values (?, ?, ?)"),
+                       nul_params, 3U, &exec_result, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || exec_result.changes != 1) {
+        return close_and_return(&connection, 156);
+    }
+    status =
+        sl_sqlite_exec(&arena, &connection, sl_str_from_cstr("insert into safety values (?, ?, ?)"),
+                       binary_params, 3U, &exec_result, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || exec_result.changes != 1) {
+        return close_and_return(&connection, 157);
+    }
+
+    status = sl_sqlite_query_one(
+        &arena, &connection, sl_str_from_cstr("select count(*) from safety"), NULL, 0U, &row, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !row.found ||
+        row.values[0].kind != SL_SQLITE_VALUE_INTEGER || row.values[0].value.integer != 4)
+    {
+        return close_and_return(&connection, 158);
+    }
+
+    status = sl_sqlite_query_one(&arena, &connection,
+                                 sl_str_from_cstr("select payload from safety where label = ?"),
+                                 &label_param, 1U, &row, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !row.found ||
+        row.values[0].kind != SL_SQLITE_VALUE_TEXT ||
+        expect_str_bytes_equal(row.values[0].value.text, nul_text, sizeof(nul_text)) != 0)
+    {
+        return close_and_return(&connection, 159);
+    }
+
+    label_param = text_param("unicode");
+    status = sl_sqlite_query_one(&arena, &connection,
+                                 sl_str_from_cstr("select payload from safety where label = ?"),
+                                 &label_param, 1U, &row, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !row.found ||
+        row.values[0].kind != SL_SQLITE_VALUE_TEXT ||
+        expect_str_bytes_equal(row.values[0].value.text, unicode_text, sizeof(unicode_text)) != 0)
+    {
+        return close_and_return(&connection, 160);
+    }
+
+    status = sl_sqlite_query_one(&arena, &connection,
+                                 sl_str_from_cstr("select raw from safety where label = ?"),
+                                 &binary_label_param, 1U, &row, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !row.found ||
+        row.values[0].kind != SL_SQLITE_VALUE_BLOB ||
+        expect_bytes_equal(row.values[0].value.blob, binary, sizeof(binary)) != 0)
+    {
+        return close_and_return(&connection, 161);
+    }
+
+    return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 162;
 }
 
 static int test_json_date_time_are_explicit_text_policy(void)
@@ -1205,6 +1330,137 @@ static int test_query_max_rows_overflow_preserves_outputs(void)
     return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 150;
 }
 
+static int test_cursor_iterates_past_materialized_default_and_closes(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char cursor_storage[TEST_ARENA_SIZE];
+    unsigned char row_storage[4096];
+    SlArena arena = {0};
+    SlArena cursor_arena = {0};
+    SlArena row_arena = {0};
+    SlSqliteConnection connection = {0};
+    SlSqliteCursor cursor = {0};
+    SlSqliteCursorNextResult next = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+    int64_t expected = 1;
+
+    if (!sl_status_is_ok(status)) {
+        return 151;
+    }
+    if (open_memory(&arena, &connection) != 0 ||
+        expect_status(sl_arena_init(&cursor_arena, cursor_storage, sizeof(cursor_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&row_arena, row_storage, sizeof(row_storage)), SL_STATUS_OK) !=
+            0)
+    {
+        return close_and_return(&connection, 152);
+    }
+
+    status = sl_sqlite_cursor_open(
+        &cursor_arena, &connection,
+        sl_str_from_cstr("with recursive n(x) as (select 1 union all select x + 1 from n where x < "
+                         "200) select x as id from n"),
+        NULL, 0U, NULL, &cursor, NULL);
+    if (expect_status(status, SL_STATUS_OK) != 0 || !cursor.open || cursor.column_count != 1U ||
+        expect_str_equal(cursor.column_names[0], "id") != 0)
+    {
+        return close_and_return(&connection, 153);
+    }
+
+    for (;;) {
+        sl_arena_reset(&row_arena);
+        status = sl_sqlite_cursor_next(&row_arena, &cursor, &next, NULL);
+        if (expect_status(status, SL_STATUS_OK) != 0) {
+            return close_and_return(&connection, 154);
+        }
+        if (next.done) {
+            break;
+        }
+        if (next.row.values == NULL || next.row.values[0].kind != SL_SQLITE_VALUE_INTEGER ||
+            next.row.values[0].value.integer != expected)
+        {
+            return close_and_return(&connection, 155);
+        }
+        expected += 1;
+    }
+
+    if (expected != 201 || cursor.open ||
+        expect_status(sl_sqlite_cursor_close(&cursor), SL_STATUS_OK) != 0)
+    {
+        return close_and_return(&connection, 156);
+    }
+
+    return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 157;
+}
+
+static int test_cursor_max_rows_and_use_after_close_are_deterministic(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char cursor_storage[TEST_ARENA_SIZE];
+    unsigned char row_storage[4096];
+    SlArena arena = {0};
+    SlArena cursor_arena = {0};
+    SlArena row_arena = {0};
+    SlSqliteConnection connection = {0};
+    SlSqliteCursor cursor = {0};
+    SlSqliteCursorOptions options = {.max_rows = 2U, .batch_size = 1U};
+    SlSqliteCursorNextResult next = {0};
+    SlDiag diag = {0};
+    SlStatus status = sl_arena_init(&arena, storage, sizeof(storage));
+
+    if (!sl_status_is_ok(status)) {
+        return 158;
+    }
+    if (open_memory(&arena, &connection) != 0 ||
+        expect_status(sl_arena_init(&cursor_arena, cursor_storage, sizeof(cursor_storage)),
+                      SL_STATUS_OK) != 0 ||
+        expect_status(sl_arena_init(&row_arena, row_storage, sizeof(row_storage)), SL_STATUS_OK) !=
+            0)
+    {
+        return close_and_return(&connection, 159);
+    }
+
+    status = sl_sqlite_cursor_open(
+        &cursor_arena, &connection,
+        sl_str_from_cstr("with recursive n(x) as (select 1 union all select x + 1 from n where x < "
+                         "3) select x from n"),
+        NULL, 0U, &options, &cursor, &diag);
+    if (expect_status(status, SL_STATUS_OK) != 0) {
+        return close_and_return(&connection, 160);
+    }
+    if (expect_status(sl_sqlite_cursor_next(&row_arena, &cursor, &next, &diag), SL_STATUS_OK) !=
+            0 ||
+        next.done)
+    {
+        return close_and_return(&connection, 161);
+    }
+    sl_arena_reset(&row_arena);
+    if (expect_status(sl_sqlite_cursor_next(&row_arena, &cursor, &next, &diag), SL_STATUS_OK) !=
+            0 ||
+        next.done)
+    {
+        return close_and_return(&connection, 162);
+    }
+    sl_arena_reset(&row_arena);
+    status = sl_sqlite_cursor_next(&row_arena, &cursor, &next, &diag);
+    if (expect_status(status, SL_STATUS_CAPACITY_EXCEEDED) != 0 ||
+        !diag_contains_text(&diag, "exceeded max rows") || cursor.open)
+    {
+        return close_and_return(&connection, 163);
+    }
+    if (expect_status(sl_sqlite_cursor_close(&cursor), SL_STATUS_OK) != 0 ||
+        expect_status(sl_sqlite_cursor_close(&cursor), SL_STATUS_OK) != 0)
+    {
+        return close_and_return(&connection, 164);
+    }
+    status = sl_sqlite_cursor_next(&row_arena, &cursor, &next, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0) {
+        return close_and_return(&connection, 165);
+    }
+
+    return expect_status(sl_sqlite_close(&connection), SL_STATUS_OK) == 0 ? 0 : 166;
+}
+
 int main(void)
 {
     int result = test_open_close_and_use_after_close();
@@ -1228,6 +1484,11 @@ int main(void)
     }
 
     result = test_parameter_binding_and_types();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_parameterization_safety_matrix();
     if (result != 0) {
         return result;
     }
@@ -1293,6 +1554,16 @@ int main(void)
     }
 
     result = test_query_max_rows_overflow_preserves_outputs();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_cursor_iterates_past_materialized_default_and_closes();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_cursor_max_rows_and_use_after_close_are_deterministic();
     if (result != 0) {
         return result;
     }

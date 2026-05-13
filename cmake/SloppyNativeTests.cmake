@@ -135,6 +135,7 @@
     sloppy_add_c_unit_test(
         core_stream_foundation core.stream.foundation tests/unit/core/test_stream.c)
     sloppy_add_c_unit_test(core_http_parser core.http.parser tests/unit/core/test_http.c)
+    sloppy_add_c_unit_test(core_http_profile core.http.profile tests/unit/core/test_http_profile.c)
     sloppy_add_c_unit_test(
         core_http2_dispatch core.http2.dispatch tests/unit/core/test_http2_dispatch.c)
     sloppy_add_c_unit_test(core_http2_frame core.http2.frame tests/unit/core/test_http2_frame.c)

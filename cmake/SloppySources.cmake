@@ -30,6 +30,7 @@ set(
     src/core/worker_pool.c
     src/core/stream.c
     src/core/http.c
+    src/core/http_profile.c
     src/core/http2_dispatch.c
     src/core/http2_frame.c
     src/core/http2_hpack.c
@@ -172,6 +173,7 @@ set(
     tests/unit/core/test_worker_pool.c
     tests/unit/core/test_stream.c
     tests/unit/core/test_http.c
+    tests/unit/core/test_http_profile.c
     tests/unit/core/test_http2_dispatch.c
     tests/unit/core/test_http2_frame.c
     tests/unit/core/test_http2_hpack.c

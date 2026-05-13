@@ -8,6 +8,8 @@
 #include "string_interop.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 
@@ -313,6 +315,102 @@ bool sl_v8_db_copy_uint8_array(v8::Local<v8::Value> value, std::vector<unsigned 
         return false;
     }
     out->assign(data + offset, data + offset + length);
+    return true;
+}
+
+bool sl_v8_db_parse_max_rows_option(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                    v8::Local<v8::Value> options, uint32_t default_value,
+                                    uint32_t* out, const char* operation_label)
+{
+    if (out == nullptr) {
+        return false;
+    }
+    *out = default_value;
+    if (options->IsUndefined() || options->IsNull()) {
+        return true;
+    }
+    const std::string label =
+        operation_label == nullptr ? "database query" : std::string(operation_label);
+    if (!options->IsObject() || options->IsArray()) {
+        sl_v8_db_throw_type_error(isolate,
+                                  (label + " options must be an object when supplied").c_str(),
+                                  "Sloppy database option type error");
+        return false;
+    }
+    v8::Local<v8::Value> max_rows_value;
+    if (!sl_v8_db_get_object_property(isolate, context, options.As<v8::Object>(), "maxRows",
+                                      &max_rows_value))
+    {
+        return false;
+    }
+    if (max_rows_value->IsUndefined() || max_rows_value->IsNull()) {
+        return true;
+    }
+    if (!max_rows_value->IsNumber()) {
+        sl_v8_db_throw_type_error(
+            isolate, (label + " maxRows option must be an integer from 1 to 4294967295").c_str(),
+            "Sloppy database option type error");
+        return false;
+    }
+    double max_rows = max_rows_value.As<v8::Number>()->Value();
+    if (!std::isfinite(max_rows) || std::floor(max_rows) != max_rows || max_rows < 1.0 ||
+        max_rows > static_cast<double>(UINT32_MAX))
+    {
+        sl_v8_db_throw_type_error(
+            isolate, (label + " maxRows option must be an integer from 1 to 4294967295").c_str(),
+            "Sloppy database option type error");
+        return false;
+    }
+    *out = static_cast<uint32_t>(max_rows);
+    return true;
+}
+
+bool sl_v8_db_parse_timeout_ms_option(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                      v8::Local<v8::Value> options, bool* out_has_timeout,
+                                      uint32_t* out_timeout_ms, const char* operation_label)
+{
+    if (out_has_timeout == nullptr || out_timeout_ms == nullptr) {
+        return false;
+    }
+    *out_has_timeout = false;
+    *out_timeout_ms = 0U;
+    if (options->IsUndefined() || options->IsNull()) {
+        return true;
+    }
+    const std::string label =
+        operation_label == nullptr ? "database operation" : std::string(operation_label);
+    if (!options->IsObject() || options->IsArray()) {
+        sl_v8_db_throw_type_error(isolate,
+                                  (label + " options must be an object when supplied").c_str(),
+                                  "Sloppy database option type error");
+        return false;
+    }
+    v8::Local<v8::Value> timeout_value;
+    if (!sl_v8_db_get_object_property(isolate, context, options.As<v8::Object>(), "timeoutMs",
+                                      &timeout_value))
+    {
+        return false;
+    }
+    if (timeout_value->IsUndefined() || timeout_value->IsNull()) {
+        return true;
+    }
+    if (!timeout_value->IsNumber()) {
+        sl_v8_db_throw_type_error(
+            isolate, (label + " timeoutMs option must be an integer from 0 to 4294967295").c_str(),
+            "Sloppy database option type error");
+        return false;
+    }
+    double timeout_ms = timeout_value.As<v8::Number>()->Value();
+    if (!std::isfinite(timeout_ms) || std::floor(timeout_ms) != timeout_ms || timeout_ms < 0.0 ||
+        timeout_ms > static_cast<double>(UINT32_MAX))
+    {
+        sl_v8_db_throw_type_error(
+            isolate, (label + " timeoutMs option must be an integer from 0 to 4294967295").c_str(),
+            "Sloppy database option type error");
+        return false;
+    }
+    *out_has_timeout = true;
+    *out_timeout_ms = static_cast<uint32_t>(timeout_ms);
     return true;
 }
 

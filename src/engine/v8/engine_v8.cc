@@ -24,6 +24,7 @@
 #include "string_interop.h"
 
 #include "sloppy/breadcrumbs.h"
+#include "sloppy/http_profile.h"
 
 #include "sloppy/data_sqlite.h"
 
@@ -2405,17 +2406,30 @@ sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr 
                                        sl_str_empty());
     }
 
-    if (!sl_v8_make_http_context_object(isolate, context, request_context, &context_arg)) {
-        return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
-            sl_v8_literal("failed to materialize JavaScript request context",
-                          sizeof("failed to materialize JavaScript request context") - 1U),
-            sl_str_empty(), sl_str_empty());
+    {
+        uint64_t started_ns = sl_http_profile_now_ns();
+        bool made_context =
+            sl_v8_make_http_context_object(isolate, context, request_context, &context_arg);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_CONTEXT_CONSTRUCTION,
+                                     sl_http_profile_now_ns() - started_ns);
+        if (!made_context) {
+            return sl_v8_write_diag(
+                engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+                sl_v8_literal("failed to materialize JavaScript request context",
+                              sizeof("failed to materialize JavaScript request context") - 1U),
+                sl_str_empty(), sl_str_empty());
+        }
     }
 
     v8::Local<v8::Function> function = value.As<v8::Function>();
     v8::Local<v8::Value> args[1] = {context_arg};
-    v8::MaybeLocal<v8::Value> maybe_result = function->Call(context, context->Global(), 1, args);
+    v8::MaybeLocal<v8::Value> maybe_result;
+    {
+        uint64_t started_ns = sl_http_profile_now_ns();
+        maybe_result = function->Call(context, context->Global(), 1, args);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_HANDLER_CALL,
+                                     sl_http_profile_now_ns() - started_ns);
+    }
     v8::Local<v8::Value> js_result;
     if (!maybe_result.ToLocal(&js_result)) {
         return sl_v8_write_exception_diag(
@@ -2433,8 +2447,15 @@ sl_engine_v8_call_function_with_context(SlEngine* engine, SlArena* arena, SlStr 
         return status;
     }
 
-    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, request_context,
-                                        request_context->cancellation, out_result, out_diag);
+    {
+        uint64_t started_ns = sl_http_profile_now_ns();
+        status = sl_v8_convert_handler_result(isolate, context, engine, arena, js_result,
+                                              request_context, request_context->cancellation,
+                                              out_result, out_diag);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_RESULT_CONVERSION,
+                                     sl_http_profile_now_ns() - started_ns);
+    }
+    return status;
 }
 
 extern "C" SlStatus sl_engine_v8_validate_registered_handlers(SlEngine* engine, const SlPlan* plan,
@@ -2517,17 +2538,30 @@ extern "C" SlStatus sl_engine_v8_call_registered_handler_with_context(
     v8::Context::Scope context_scope(context);
     v8::TryCatch try_catch(isolate);
 
-    if (!sl_v8_make_http_context_object(isolate, context, request_context, &context_arg)) {
-        return sl_v8_write_diag(
-            engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
-            sl_v8_literal("failed to materialize JavaScript request context",
-                          sizeof("failed to materialize JavaScript request context") - 1U),
-            sl_str_empty(), sl_str_empty());
+    {
+        uint64_t started_ns = sl_http_profile_now_ns();
+        bool made_context =
+            sl_v8_make_http_context_object(isolate, context, request_context, &context_arg);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_CONTEXT_CONSTRUCTION,
+                                     sl_http_profile_now_ns() - started_ns);
+        if (!made_context) {
+            return sl_v8_write_diag(
+                engine->arena, out_diag, SL_DIAG_ENGINE_CALL_ERROR, SL_STATUS_INVALID_STATE,
+                sl_v8_literal("failed to materialize JavaScript request context",
+                              sizeof("failed to materialize JavaScript request context") - 1U),
+                sl_str_empty(), sl_str_empty());
+        }
     }
 
     v8::Local<v8::Function> function = handler->second.Get(isolate);
     v8::Local<v8::Value> args[1] = {context_arg};
-    v8::MaybeLocal<v8::Value> maybe_result = function->Call(context, context->Global(), 1, args);
+    v8::MaybeLocal<v8::Value> maybe_result;
+    {
+        uint64_t started_ns = sl_http_profile_now_ns();
+        maybe_result = function->Call(context, context->Global(), 1, args);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_HANDLER_CALL,
+                                     sl_http_profile_now_ns() - started_ns);
+    }
     v8::Local<v8::Value> js_result;
     if (!maybe_result.ToLocal(&js_result)) {
         return sl_v8_write_exception_diag(
@@ -2545,6 +2579,13 @@ extern "C" SlStatus sl_engine_v8_call_registered_handler_with_context(
         return status;
     }
 
-    return sl_v8_convert_handler_result(isolate, context, engine, arena, js_result, request_context,
-                                        request_context->cancellation, out_result, out_diag);
+    {
+        uint64_t started_ns = sl_http_profile_now_ns();
+        status = sl_v8_convert_handler_result(isolate, context, engine, arena, js_result,
+                                              request_context, request_context->cancellation,
+                                              out_result, out_diag);
+        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_RESULT_CONVERSION,
+                                     sl_http_profile_now_ns() - started_ns);
+    }
+    return status;
 }
