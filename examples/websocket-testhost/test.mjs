@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { Sloppy, TestHost, schema } from "../../stdlib/sloppy/index.js";
+import { Sloppy, TestHost, schema } from "sloppy";
 
 const app = Sloppy.create();
 

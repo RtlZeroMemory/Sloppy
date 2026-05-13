@@ -6,6 +6,7 @@ import { HttpClient, TcpListener } from "./net.js";
 import { Process as SloppyProcess, System as SloppySystem } from "./os.js";
 import { RAW_JSON_BODY, serializeJson } from "./results.js";
 import { Schema, validationProblem } from "./schema.js";
+import { TestServices } from "./testservices.js";
 
 const SUPPORTED_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"]);
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
@@ -3473,8 +3474,9 @@ const TestHost = Object.freeze({
 const Testing = Object.freeze({
     createHost: createTestHost,
     TestHost,
+    TestServices,
     FakeClock,
     TestData,
 });
 
-export { createTestHost, FakeClock, TestData, TestHost, Testing };
+export { createTestHost, FakeClock, TestData, TestHost, TestServices, Testing };

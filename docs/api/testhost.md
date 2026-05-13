@@ -188,6 +188,34 @@ that accepts clock injection.
 provider descriptors with `open()` helpers. SQLite native bridge availability
 still depends on the active runtime lane.
 
+For real PostgreSQL and SQL Server integration tests, use
+[`TestServices`](testservices.md) (experimental):
+
+```ts
+import { Sloppy, TestHost, TestServices } from "sloppy";
+
+const app = Sloppy.create();
+await using pg = await TestServices.postgres();
+
+await using host = await TestHost.create(app, {
+    providers: {
+        main: pg.provider(),
+    },
+});
+```
+
+Artifact, package, and loopback hosts receive service environment through
+normal `TestHost` options:
+
+```ts
+import { TestHost, TestServices } from "sloppy";
+
+await using pg = await TestServices.postgres();
+await using host = await TestHost.fromArtifacts(".sloppy", {
+    env: pg.env(),
+});
+```
+
 ## Diagnostics, Health, Metrics, Jobs, OpenAPI
 
 App-host tests can assert health endpoints through normal requests:
@@ -237,6 +265,5 @@ them after dispatch.
 - App-host multipart parsing is a bounded helper for form fields and file
   descriptors; it is not binary-fidelity upload testing unless the native
   app-host upload lane implements that behavior.
-- Docker-backed PostgreSQL and SQL Server helpers are not bundled into the
-  JavaScript API. Use the existing live-provider lanes and report them
-  separately.
+- Docker-backed PostgreSQL and SQL Server helpers are opt-in through
+  `TestServices`; default CI must report those live container lanes separately.

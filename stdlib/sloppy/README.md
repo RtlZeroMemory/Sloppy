@@ -14,6 +14,7 @@ stdlib/sloppy/
   results.js
   schema.js
   testing.js
+  testservices.js
   data.js
   fs.js
   net.js
@@ -83,6 +84,10 @@ lib/sloppy/bootstrap/sloppy/
   runtime path. The dogfood proof in
   `tests/bootstrap/test_prealpha_control_plane_dogfood.mjs` imports the
   `examples/prealpha-control-plane` route modules through this host.
+- `testservices.js` provides experimental `TestServices`, the opt-in Docker-backed
+  PostgreSQL and SQL Server test service layer. It uses `sloppy/os` process
+  APIs for Docker CLI lifecycle, `sloppy/data` provider bridges for readiness
+  and SQL helpers, and redacted diagnostics/cleanup for TestHost integration.
 - `codec.js`, `crypto.js`, `fs.js`, `time.js`, `net.js`, `os.js`, and `workers.js` expose
   the current public API shape and feature-gated bridge calls where native bridge support
   exists.
@@ -128,6 +133,7 @@ lib/sloppy/bootstrap/sloppy/
 
 - `docs/api/index.md`
 - `docs/api/testhost.md` — `TestHost`
+- `docs/api/testservices.md` — `TestServices`
 - `docs/api/filesystem.md` — `sloppy/fs`
 - `docs/api/network.md` — `sloppy/net`
 - `docs/api/http-client.md` — `HttpClient`

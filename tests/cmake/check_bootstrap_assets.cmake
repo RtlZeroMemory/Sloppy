@@ -47,6 +47,8 @@ set(required_bootstrap_assets
     providers/sqlite.js
     results.js
     schema.js
+    testservices.js
+    testing.js
     internal/capabilities.js
     internal/config.js
     internal/intrinsics.js

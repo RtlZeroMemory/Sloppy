@@ -86,7 +86,7 @@ Confirmed unsupported or constrained (each has a fixture or diagnostic code):
   (`fixtures/unsupported-http-method/`,
   `SLOPPYC_E_UNSUPPORTED_HTTP_METHOD`).
 - Dynamic middleware lookup, dynamic CORS policies, RequestId generator
-  callbacks, dynamic RequestLogging options, Testing imports, and dynamic
+  callbacks, dynamic RequestLogging options, Testing/TestServices imports, and dynamic
   controller mappings fail with specific diagnostics instead of being omitted
   from the Plan. Static middleware, CORS, RequestId, RequestLogging, and
   controller subsets are compiler-extracted.
