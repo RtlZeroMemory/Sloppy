@@ -40,6 +40,7 @@ set(
     src/core/http_context.c
     src/core/http_dispatch.c
     src/core/http_response.c
+    src/core/websocket.c
     src/core/json_profile.c
     src/core/json_writer.c
     src/core/request_validation.c
@@ -116,6 +117,7 @@ if(SLOPPY_ENABLE_V8)
         src/engine/v8/engine_v8.cc
         src/engine/v8/async_scheduler.cc
         src/engine/v8/http_bridge.cc
+        src/engine/v8/websocket_bridge.cc
         src/engine/v8/string_interop.cc
         src/engine/v8/intrinsics.cc
         src/engine/v8/intrinsics_crypto.cc
@@ -184,6 +186,7 @@ set(
     tests/unit/core/test_http_context.c
     tests/unit/core/test_http_dispatch.c
     tests/unit/core/test_http_response.c
+    tests/unit/core/test_websocket.c
     tests/unit/core/test_json_profile.c
     tests/unit/core/test_json_writer.c
     tests/unit/core/test_route.c
@@ -213,6 +216,7 @@ set(
     tests/fuzz/fuzz_diagnostics_render.c
     tests/fuzz/fuzz_memory_primitives.c
     tests/fuzz/fuzz_stream.c
+    tests/fuzz/fuzz_websocket_frame.c
     benchmarks/bench_main.c
     benchmarks/bench_v8_bridge.c
     benchmarks/bench_route_matcher.c

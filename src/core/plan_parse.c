@@ -1350,6 +1350,296 @@ static SlStatus sl_plan_parse_size_field(SlPlanParseContext* ctx, yyjson_val* ob
     return sl_status_ok();
 }
 
+static bool sl_plan_parse_websocket_protocol_token_valid(SlStr value)
+{
+    if (sl_str_is_empty(value)) {
+        return false;
+    }
+    for (size_t index = 0U; index < value.length; index += 1U) {
+        unsigned char ch = (unsigned char)value.ptr[index];
+        if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+            (ch >= '0' && ch <= '9') || ch == '!' || ch == '#' || ch == '$' ||
+            ch == '%' || ch == '&' || ch == '\'' || ch == '*' || ch == '+' ||
+            ch == '-' || ch == '.' || ch == '^' || ch == '_' || ch == '`' ||
+            ch == '|' || ch == '~')
+        {
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
+static SlStatus sl_plan_parse_str_array_field(SlPlanParseContext* ctx, yyjson_val* object,
+                                              const char* field_name, bool require_non_empty,
+                                              bool validate_websocket_protocols,
+                                              const SlStr** out_values, size_t* out_count)
+{
+    yyjson_val* array = NULL;
+    yyjson_val* entry = NULL;
+    yyjson_arr_iter iter = {0};
+    SlStr* values = NULL;
+    size_t count = 0U;
+    size_t index = 0U;
+    SlStatus status;
+
+    if (ctx == NULL || object == NULL || field_name == NULL || out_values == NULL ||
+        out_count == NULL)
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out_values = NULL;
+    *out_count = 0U;
+    array = yyjson_obj_get(object, field_name);
+    if (array == NULL || yyjson_is_null(array)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_arr(array)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("expected a JSON string array for this metadata field",
+                                  sizeof("expected a JSON string array for this metadata field") -
+                                      1U));
+    }
+    count = yyjson_arr_size(array);
+    if (require_non_empty && count == 0U) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan websocket metadata",
+                                  sizeof("invalid app plan websocket metadata") - 1U),
+            sl_plan_parse_literal("WebSocket metadata arrays must not be empty when present",
+                                  sizeof("WebSocket metadata arrays must not be empty when "
+                                         "present") -
+                                      1U));
+    }
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlStr), _Alignof(SlStr),
+                                       (void**)&values);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    yyjson_arr_iter_init(array, &iter);
+    while ((entry = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (!yyjson_is_str(entry)) {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("invalid app plan field type",
+                                      sizeof("invalid app plan field type") - 1U),
+                sl_plan_parse_literal("WebSocket metadata arrays must contain strings",
+                                      sizeof("WebSocket metadata arrays must contain strings") -
+                                          1U));
+        }
+        status = sl_plan_parse_copy_str(
+            ctx->arena, sl_str_from_parts(yyjson_get_str(entry), yyjson_get_len(entry)),
+            &values[index]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        if (sl_str_is_empty(values[index]) ||
+            (validate_websocket_protocols &&
+             !sl_plan_parse_websocket_protocol_token_valid(values[index])))
+        {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("invalid app plan websocket metadata",
+                                      sizeof("invalid app plan websocket metadata") - 1U),
+                sl_plan_parse_literal("WebSocket protocols must be non-empty protocol tokens",
+                                      sizeof("WebSocket protocols must be non-empty protocol "
+                                             "tokens") -
+                                          1U));
+        }
+        index += 1U;
+    }
+    *out_values = values;
+    *out_count = count;
+    return sl_status_ok();
+}
+
+static SlPlanWebSocketSlowClientPolicy sl_plan_parse_websocket_slow_client_policy(SlStr value)
+{
+    if (sl_str_equal(value, sl_str_from_cstr("close"))) {
+        return SL_PLAN_WEBSOCKET_SLOW_CLIENT_CLOSE;
+    }
+    return SL_PLAN_WEBSOCKET_SLOW_CLIENT_ERROR;
+}
+
+static SlStatus sl_plan_parse_route_websocket(SlPlanParseContext* ctx, yyjson_val* route,
+                                              SlPlanRoute* out)
+{
+    yyjson_val* websocket = NULL;
+    yyjson_val* origins = NULL;
+    SlStr slow_client_policy = {0};
+    SlStatus status;
+
+    if (ctx == NULL || route == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    out->websocket.slow_client_policy = SL_PLAN_WEBSOCKET_SLOW_CLIENT_ERROR;
+    websocket = yyjson_obj_get(route, "websocket");
+    if (websocket == NULL || yyjson_is_null(websocket)) {
+        return sl_status_ok();
+    }
+    if (!sl_plan_route_is_websocket(out)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan websocket metadata",
+                                  sizeof("invalid app plan websocket metadata") - 1U),
+            sl_plan_parse_literal("routes[].websocket is valid only for websocket routes",
+                                  sizeof("routes[].websocket is valid only for websocket routes") -
+                                      1U));
+    }
+    if (!yyjson_is_obj(websocket)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("routes[].websocket must be a JSON object",
+                                  sizeof("routes[].websocket must be a JSON object") - 1U));
+    }
+
+    status = sl_plan_parse_str_array_field(ctx, websocket, "protocols", false, true,
+                                           &out->websocket.protocols,
+                                           &out->websocket.protocol_count);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    origins = yyjson_obj_get(websocket, "origins");
+    if (origins != NULL && !yyjson_is_null(origins)) {
+        if (yyjson_is_str(origins)) {
+            SlStr origin = sl_str_from_parts(yyjson_get_str(origins), yyjson_get_len(origins));
+            if (!sl_str_equal(origin, sl_str_from_cstr("*"))) {
+                return sl_plan_parse_field_diag(
+                    ctx,
+                    sl_plan_parse_literal("invalid app plan websocket metadata",
+                                          sizeof("invalid app plan websocket metadata") - 1U),
+                    sl_plan_parse_literal("WebSocket origin string must be '*'",
+                                          sizeof("WebSocket origin string must be '*'") - 1U));
+            }
+            out->websocket.origin_policy = SL_PLAN_WEBSOCKET_ORIGINS_ANY;
+        }
+        else if (yyjson_is_arr(origins)) {
+            status = sl_plan_parse_str_array_field(ctx, websocket, "origins", true, false,
+                                                   &out->websocket.origins,
+                                                   &out->websocket.origin_count);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            out->websocket.origin_policy = SL_PLAN_WEBSOCKET_ORIGINS_LIST;
+        }
+        else {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("invalid app plan field type",
+                                      sizeof("invalid app plan field type") - 1U),
+                sl_plan_parse_literal("WebSocket origins must be '*', an array, or null",
+                                      sizeof("WebSocket origins must be '*', an array, or null") -
+                                          1U));
+        }
+    }
+
+    status = sl_plan_parse_size_field(ctx, websocket, "maxMessageBytes",
+                                      &out->websocket.max_message_bytes);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_size_field(ctx, websocket, "maxSendQueueBytes",
+                                      &out->websocket.max_send_queue_bytes);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_size_field(ctx, websocket, "heartbeatMs",
+                                      &out->websocket.heartbeat_ms);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_size_field(ctx, websocket, "idleTimeoutMs",
+                                      &out->websocket.idle_timeout_ms);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_size_field(ctx, websocket, "closeTimeoutMs",
+                                      &out->websocket.close_timeout_ms);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status =
+        sl_plan_parse_bool_field(ctx, websocket, "compression", false, &out->websocket.compression);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (out->websocket.compression) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan websocket metadata",
+                                  sizeof("invalid app plan websocket metadata") - 1U),
+            sl_plan_parse_literal("WebSocket compression must be false until supported",
+                                  sizeof("WebSocket compression must be false until supported") -
+                                      1U));
+    }
+    status = sl_plan_parse_optional_string(ctx, websocket, "slowClientPolicy", true,
+                                           &slow_client_policy);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (!sl_str_is_empty(slow_client_policy)) {
+        if (!sl_str_equal(slow_client_policy, sl_str_from_cstr("error")) &&
+            !sl_str_equal(slow_client_policy, sl_str_from_cstr("close")))
+        {
+            return sl_plan_parse_field_diag(
+                ctx,
+                sl_plan_parse_literal("invalid app plan websocket metadata",
+                                      sizeof("invalid app plan websocket metadata") - 1U),
+                sl_plan_parse_literal("WebSocket slowClientPolicy must be error or close",
+                                      sizeof("WebSocket slowClientPolicy must be error or close") -
+                                          1U));
+        }
+        out->websocket.slow_client_policy =
+            sl_plan_parse_websocket_slow_client_policy(slow_client_policy);
+    }
+    return sl_status_ok();
+}
+
+static SlStatus sl_plan_parse_route_auth(SlPlanParseContext* ctx, yyjson_val* route,
+                                         SlPlanRoute* out)
+{
+    yyjson_val* auth = NULL;
+    SlStatus status;
+
+    if (ctx == NULL || route == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    auth = yyjson_obj_get(route, "auth");
+    out->auth = (SlPlanAuthRequirement){0};
+    if (auth == NULL || yyjson_is_null(auth)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_obj(auth)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            sl_plan_parse_literal("routes[].auth must be a JSON object",
+                                  sizeof("routes[].auth must be a JSON object") - 1U));
+    }
+
+    out->auth.present = true;
+    status = sl_plan_parse_bool_field(ctx, auth, "required", false, &out->auth.required);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status =
+        sl_plan_parse_bool_field(ctx, auth, "allowAnonymous", false, &out->auth.allow_anonymous);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_parse_one_binding(SlPlanParseContext* ctx, yyjson_val* value,
                                           SlPlanRequestBinding* out)
 {
@@ -2044,6 +2334,24 @@ static SlStatus sl_plan_parse_one_route(SlPlanParseContext* ctx, const SlPlan* p
     if (!sl_status_is_ok(status)) {
         return status;
     }
+    status = sl_plan_parse_optional_string(ctx, value, "kind", true, &out->kind);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    if (sl_str_is_empty(out->kind)) {
+        out->kind = sl_str_from_cstr("http");
+    }
+    if (!sl_str_equal(out->kind, sl_str_from_cstr("http")) &&
+        !sl_str_equal(out->kind, sl_str_from_cstr("sse")) &&
+        !sl_str_equal(out->kind, sl_str_from_cstr("websocket")))
+    {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("unsupported app plan route kind",
+                                  sizeof("unsupported app plan route kind") - 1U),
+            sl_plan_parse_literal("route kind must be http, sse, or websocket",
+                                  sizeof("route kind must be http, sse, or websocket") - 1U));
+    }
     if (!sl_plan_route_method_supported(out->method)) {
         return sl_plan_parse_field_diag(
             ctx,
@@ -2054,6 +2362,14 @@ static SlStatus sl_plan_parse_one_route(SlPlanParseContext* ctx, const SlPlan* p
                 sizeof("Plan v1 route metadata supports GET, POST, PUT, "
                        "PATCH, DELETE, and OPTIONS") -
                     1U));
+    }
+    if (sl_plan_route_is_websocket(out) && !sl_str_equal(out->method, sl_str_from_cstr("GET"))) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan websocket metadata",
+                                  sizeof("invalid app plan websocket metadata") - 1U),
+            sl_plan_parse_literal("WebSocket routes must use GET",
+                                  sizeof("WebSocket routes must use GET") - 1U));
     }
 
     status = sl_plan_parse_require_string(ctx, value, "pattern", true, &out->pattern);
@@ -2102,6 +2418,14 @@ static SlStatus sl_plan_parse_one_route(SlPlanParseContext* ctx, const SlPlan* p
         return status;
     }
     status = sl_plan_parse_route_json_response(ctx, value, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_route_auth(ctx, value, out);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+    status = sl_plan_parse_route_websocket(ctx, value, out);
     if (!sl_status_is_ok(status)) {
         return status;
     }

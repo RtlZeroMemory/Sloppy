@@ -1773,6 +1773,7 @@ extern "C" SlStatus sl_engine_v8_create(const SlEngineOptions* options, SlArena*
     status = sl_v8_init_async_features(backend, arena);
     if (!sl_status_is_ok(status)) {
         sl_v8_ffi_dispose(backend);
+        sl_v8_websocket_dispose(backend);
         sl_resource_table_dispose(&backend->resources);
         delete backend;
         return sl_v8_reset_create_arena(arena, mark, status);
@@ -1937,6 +1938,7 @@ extern "C" void sl_engine_v8_destroy(SlEngine* engine)
             backend->fs_executor_initialized = false;
         }
         sl_v8_ffi_dispose(backend);
+        sl_v8_websocket_dispose(backend);
         sl_resource_table_dispose(&backend->resources);
         if (backend->async_loop != nullptr) {
             sl_v8_workers_dispose(backend);

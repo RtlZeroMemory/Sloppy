@@ -299,6 +299,59 @@ static SlEngineOptions v8_options(void)
     return options;
 }
 
+typedef struct TestWebSocketBridge
+{
+    size_t send_count;
+    SlWebSocketOpcode last_opcode;
+    unsigned char last_payload[128];
+    size_t last_payload_length;
+    size_t close_count;
+    uint16_t close_code;
+    char close_reason[32];
+    size_t close_reason_length;
+} TestWebSocketBridge;
+
+static SlStatus test_websocket_bridge_send(void* user,
+                                           const SlWebSocketFrameWriteOptions* options,
+                                           SlDiag* out_diag)
+{
+    TestWebSocketBridge* bridge = (TestWebSocketBridge*)user;
+
+    (void)out_diag;
+    if (bridge == NULL || options == NULL || options->payload.length > sizeof(bridge->last_payload))
+    {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    bridge->send_count += 1U;
+    bridge->last_opcode = options->opcode;
+    bridge->last_payload_length = options->payload.length;
+    if (options->payload.length != 0U) {
+        memcpy(bridge->last_payload, options->payload.ptr, options->payload.length);
+    }
+    return sl_status_ok();
+}
+
+static SlStatus test_websocket_bridge_close(void* user, uint16_t code, SlStr reason,
+                                            SlDiag* out_diag)
+{
+    TestWebSocketBridge* bridge = (TestWebSocketBridge*)user;
+
+    (void)out_diag;
+    if (bridge == NULL || reason.length >= sizeof(bridge->close_reason)) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    bridge->close_count += 1U;
+    bridge->close_code = code;
+    bridge->close_reason_length = reason.length;
+    if (reason.length != 0U) {
+        memcpy(bridge->close_reason, reason.ptr, reason.length);
+    }
+    bridge->close_reason[reason.length] = '\0';
+    return sl_status_ok();
+}
+
 static void init_sqlite_plan(SlPlan* plan, SlPlanDataProvider* provider,
                              SlPlanCapability* capability, const char* access)
 {
@@ -6172,6 +6225,93 @@ static int test_registered_handler_receives_context(void)
     return 0;
 }
 
+static int test_registered_websocket_handler_echoes_native_message(void)
+{
+    unsigned char engine_storage[16384];
+    SlArena engine_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = test_request_context(&request);
+    TestWebSocketBridge bridge_state = {0};
+    SlEngineWebSocketBridge bridge = {0};
+    SlEngineWebSocketSession* session = NULL;
+    const unsigned char payload[] = {'h', '\0', 'i'};
+    const unsigned char expected_echo[] = {'e', 'c', 'h', 'o', ':', 'h', '\0', 'i'};
+    SlWebSocketFrame frame = {0};
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0) {
+        return 94;
+    }
+
+    bridge.user = &bridge_state;
+    bridge.protocol = sl_str_from_cstr("sloppy.realtime");
+    bridge.send = test_websocket_bridge_send;
+    bridge.close = test_websocket_bridge_close;
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-websocket-register.js"),
+                sl_str_from_cstr(
+                    "__sloppy_register_handler(2, async function (ctx) {"
+                    "  const socket = ctx.__sloppyWebSocket;"
+                    "  if (socket.protocol !== 'sloppy.realtime') throw new Error('bad protocol');"
+                    "  await socket.accept();"
+                    "  const first = await socket.messages().next();"
+                    "  if (first.value.kind !== 'text') throw new Error('missing kind');"
+                    "  if (first.value.text.length !== 3) throw new Error('truncated text');"
+                    "  await socket.sendText('echo:' + first.value.text);"
+                    "  await socket.close(1001, 'bye');"
+                    "});"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 95;
+    }
+
+    if (expect_status(sl_engine_call_registered_websocket_handler_with_context(
+                          engine, &engine_arena, 2U, &context, &bridge, &session, &diag),
+                      SL_STATUS_OK) != 0 ||
+        session == NULL)
+    {
+        sl_engine_destroy(engine);
+        return 96;
+    }
+
+    frame.fin = true;
+    frame.opcode = SL_WEBSOCKET_OPCODE_TEXT;
+    frame.payload = sl_bytes_from_parts(payload, sizeof(payload));
+
+    if (expect_status(sl_engine_websocket_receive(engine, session, &frame, &diag), SL_STATUS_OK) !=
+        0)
+    {
+        sl_engine_destroy(engine);
+        return 97;
+    }
+
+    if (bridge_state.send_count != 1U || bridge_state.last_opcode != SL_WEBSOCKET_OPCODE_TEXT ||
+        bridge_state.last_payload_length != sizeof(expected_echo) ||
+        memcmp(bridge_state.last_payload, expected_echo, sizeof(expected_echo)) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 98;
+    }
+
+    if (bridge_state.close_count != 1U || bridge_state.close_code != 1001U ||
+        bridge_state.close_reason_length != strlen("bye") ||
+        memcmp(bridge_state.close_reason, "bye", strlen("bye")) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 99;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_duplicate_registered_handler_fails_during_eval(void)
 {
     unsigned char engine_storage[8192];
@@ -8151,6 +8291,11 @@ int main(int argc, char** argv)
     }
 
     result = test_registered_handler_receives_context();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_registered_websocket_handler_echoes_native_message();
     if (result != 0) {
         return result;
     }

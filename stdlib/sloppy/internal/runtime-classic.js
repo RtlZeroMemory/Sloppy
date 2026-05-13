@@ -11083,7 +11083,14 @@ Reason:
         if (typeof handler !== "function") {
             throw new TypeError("Sloppy WebSocket route handler must be a function.");
         }
-        return function sloppyWebSocketUnavailable() {
+        return function sloppyWebSocketRoute(ctx) {
+            if (ctx?.__sloppyWebSocketHandshake === true && ctx.__sloppyWebSocket !== undefined) {
+                ctx.__sloppyWebSocket.__setContext?.(ctx);
+                if (handler.length >= 2) {
+                    return handler(ctx, ctx.__sloppyWebSocket);
+                }
+                return handler(ctx.__sloppyWebSocket);
+            }
             return Results.problem({
                 status: 501,
                 title: "WebSocket runtime is not available",

@@ -1,23 +1,34 @@
 # WebSocket Runtime Notes
 
-WebSocket routes currently have two separate execution paths:
+WebSocket routes have two execution paths:
 
 - app-host TestHost simulation for public API and lifecycle tests
-- native HTTP dispatch fallback that returns an unavailable WebSocket response
+- native HTTP/1.1 Upgrade execution in `sloppy run` for V8-backed routes
 
-Do not treat the app-host simulation as native transport coverage.
+Do not treat one path as full coverage for the other. TestHost owns rich
+app-level behavior such as auth helpers, message validation, heartbeat, idle
+timeout, and bounded send queues. The native lane owns wire-level handshake,
+frame parsing, connection upgrade, and V8 session delivery.
 
-## Current Native Boundary
+## Native Runtime Boundary
 
-The libuv HTTP transport parses a bounded HTTP request, materializes a
-`SlHttpRequestLifecycle`, dispatches the route, and writes a bounded
-`SlHttpResponse`. It has a dedicated h2c Upgrade continuation, but there is no
-equivalent WebSocket continuation that keeps the socket in an upgraded state.
+The libuv HTTP transport recognizes `Upgrade: websocket` before normal HTTP
+dispatch. It validates the WebSocket handshake, writes `101 Switching
+Protocols`, and moves the connection into WebSocket frame mode. In frame mode it
+parses masked client frames, dispatches text and binary messages to the V8
+session bridge, answers ping frames with pong frames, echoes close frames, and
+uses the transport send helper for server frames.
 
-The V8 HTTP bridge materializes request context objects and converts handler
-return values into `Results.*` descriptors. It does not expose raw transport
-handles, libuv streams, frame readers, or long-lived socket resources to
-JavaScript.
+`src/core/websocket.c` owns handshake validation and frame parser/writer logic.
+`src/platform/libuv/http_transport_libuv.c` owns upgraded connection lifetime.
+`src/engine/v8/websocket_bridge.cc` owns the JavaScript socket object and async
+message iterator. `src/cli/cli_run.inc` connects those pieces to Plan route
+matching and registered V8 handlers.
+
+The V8 bridge still hides native transport handles. JavaScript receives an
+engine-owned socket facade with `accept`, `messages`, `sendText`, `sendJson`,
+`sendBytes`, and `close`; it never receives libuv streams or raw native
+pointers.
 
 ## App-Host Simulation
 
@@ -36,23 +47,17 @@ The simulation is deterministic and test-runner neutral. It is not a protocol
 parser and does not validate wire-level masking, opcodes, fragmentation, or
 UTF-8 framing.
 
-## Native Work Required For Real Upgrade Support
+## Remaining Native Gaps
 
-A real runtime lane needs these pieces in order:
+The native lane intentionally remains narrower than TestHost:
 
-1. HTTP/1.1 Upgrade recognition for `Upgrade: websocket`, `Connection:
-   Upgrade`, `Sec-WebSocket-Key`, and `Sec-WebSocket-Version: 13`.
-2. A response path that writes `101 Switching Protocols` with
-   `Sec-WebSocket-Accept` and then transfers the connection out of normal HTTP
-   response dispatch.
-3. A bounded frame parser for masked client frames, control-frame validation,
-   close parsing, ping/pong, text, binary, and size limits.
-4. A bounded writer with queue accounting and deterministic slow-client policy.
-5. A V8 resource object that can outlive the initial request dispatch while
-   still respecting owner-thread, cleanup, cancellation, and service-scope
-   rules.
-6. Shutdown integration so server stop closes active sockets and disposes
-   route scopes.
+- no fragmented message reassembly
+- no per-message compression
+- no heartbeat or idle-timeout timers
+- no native bounded send queue or app-host slow-client policy
+- no native `message.json()` or schema validation helper on inbound messages
+- no auth principal materialization for protected upgraded routes
 
-Until those pieces exist, native runtime modes must fail clearly instead of
-pretending that app-host behavior is transport support.
+Protected native WebSocket routes fail closed until the auth bridge can attach
+the authenticated principal to the upgraded connection. Keep auth behavior
+covered in TestHost until that native bridge exists.

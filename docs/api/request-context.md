@@ -10,8 +10,9 @@ app.get("/users/{id:int}", (ctx) => {
 
 SSE and WebSocket route handlers use the same `ctx` as ordinary routes. The
 realtime stream/socket object is the second handler argument. SSE exposes the
-current bounded stream helper; WebSocket handler execution is experimental and
-partial until native upgrade/runtime support lands.
+current bounded stream helper. WebSocket handlers can also use the one-argument
+`async (socket) => { ... }` shape; native Upgrade dispatch attaches the request
+context to `socket.ctx`.
 
 ```ts
 app.sse("/events", async (ctx, stream) => {

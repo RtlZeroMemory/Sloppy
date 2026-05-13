@@ -148,9 +148,10 @@ binary messages expose `bytes`; JSON messages can be read through `json()` or
 validated with `validate(schema)`.
 
 `Realtime.websocket(handler, options?)` wraps a handler with the same route
-handler marker used by `app.websocket(...)`. Direct HTTP calls to a WebSocket
-route still return the unavailable response; use TestHost WebSocket helpers to
-exercise the socket path.
+handler marker used by `app.websocket(...)`. Native Upgrade dispatch enters
+the wrapped handler when the V8 request context carries a WebSocket session.
+Direct non-Upgrade HTTP calls to a WebSocket route fail because the route
+requires an Upgrade request.
 
 ## `Realtime.hub(name)`
 
@@ -166,7 +167,7 @@ await hub.group("admins").sendJson({ type: "refresh" });
 ```
 
 The hub stores connection state in memory. It is not a broker, not shared
-across processes, and not wired to native WebSocket upgrades in this alpha.
+across processes, and not a native WebSocket transport.
 
 ## Plan, Routes, And OpenAPI
 
@@ -183,10 +184,14 @@ HTTP response operations.
   serialization; the handler does not stay attached to a live socket after it
   returns.
 - WebSocket app-host execution is available through `TestHost.create(app)`.
-- Native HTTP upgrade execution is unavailable and returns `501`.
+- Native HTTP/1.1 WebSocket Upgrade execution is available for V8-backed
+  `sloppy run` routes with text and binary frame delivery, server sends, close
+  frames, and ping-to-pong handling.
 - Artifact/package TestHost WebSocket connections report
   `SLOPPY_E_TESTHOST_WEBSOCKET_UNSUPPORTED` until a runtime lane supports real
   upgrade execution.
+- Native protected WebSocket routes fail closed until the auth principal bridge
+  is attached to upgraded connections.
 - There is no browser client helper.
 - Hubs are in-process bootstrap helpers only.
 - No compression, replay buffer, external pub/sub, or cross-node fan-out.
