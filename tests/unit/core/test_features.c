@@ -214,15 +214,17 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_FFI);
     const SlRuntimeFeatureDescriptor* realtime =
         sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_RUNTIME_REALTIME);
+    const SlRuntimeFeatureDescriptor* webhooks =
+        sl_runtime_feature_descriptor(SL_RUNTIME_FEATURE_STDLIB_WEBHOOKS);
 
-    if (SL_RUNTIME_FEATURE_COUNT != 47) {
+    if (SL_RUNTIME_FEATURE_COUNT != 48) {
         return 60;
     }
     if (sqlite == NULL || postgres == NULL || sqlserver == NULL || data == NULL || time == NULL ||
         crypto == NULL || codec == NULL || net == NULL || os == NULL || http_client == NULL ||
         fs == NULL || config == NULL || cache == NULL || node_path == NULL ||
         node_fs_promises == NULL || node_assert == NULL || node_stream == NULL || ffi == NULL ||
-        realtime == NULL)
+        realtime == NULL || webhooks == NULL)
     {
         return 61;
     }
@@ -389,6 +391,16 @@ static int test_descriptors_publish_import_and_intrinsic_metadata(void)
     {
         return 80;
     }
+    if (!sl_str_equal(webhooks->stable_id, sl_str_from_cstr("stdlib.webhooks")) ||
+        !sl_str_equal(webhooks->stdlib_import, sl_str_from_cstr("sloppy/webhooks")) ||
+        !sl_str_is_empty(webhooks->v8_intrinsic_namespace) || webhooks->requires_v8_intrinsics ||
+        !webhooks->available ||
+        (webhooks->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_CRYPTO)) == 0U ||
+        (webhooks->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_HTTP_CLIENT)) == 0U ||
+        (webhooks->dependencies & (1U << (uint32_t)SL_RUNTIME_FEATURE_STDLIB_WORKERS)) == 0U)
+    {
+        return 81;
+    }
     return 0;
 }
 
@@ -444,6 +456,47 @@ static int test_workers_required_feature_activates_runtime_dependencies(void)
     }
     if (diag.code != SL_DIAG_NONE) {
         return 3;
+    }
+    return 0;
+}
+
+static int test_webhooks_required_feature_is_known_and_activates_dependencies(void)
+{
+    unsigned char diag_storage[2048];
+    SlArena diag_arena = {0};
+    SlPlanRequiredFeature required[1] = {{sl_str_from_cstr("stdlib.webhooks")}};
+    SlPlan plan = target_only_plan();
+    SlRuntimeFeatureAvailability availability = sl_runtime_feature_default_availability();
+    SlRuntimeFeatureSet set = {0};
+    SlDiag diag = {0};
+    SlRuntimeFeatureId id = SL_RUNTIME_FEATURE_COUNT;
+
+    availability.v8 = true;
+    plan.required_features = required;
+    plan.required_feature_count = 1U;
+    sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
+
+    if (expect_status(sl_runtime_feature_id_from_str(sl_str_from_cstr("stdlib.webhooks"), &id),
+                      SL_STATUS_OK) != 0 ||
+        id != SL_RUNTIME_FEATURE_STDLIB_WEBHOOKS)
+    {
+        return 1;
+    }
+    if (expect_status(
+            sl_runtime_feature_activate_plan(&plan, &availability, &diag_arena, &set, &diag),
+            SL_STATUS_OK) != 0)
+    {
+        return 2;
+    }
+    if (!sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_WEBHOOKS) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_CRYPTO) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_HTTP_CLIENT) ||
+        !sl_runtime_feature_set_contains(&set, SL_RUNTIME_FEATURE_STDLIB_WORKERS))
+    {
+        return 3;
+    }
+    if (diag.code != SL_DIAG_NONE) {
+        return 4;
     }
     return 0;
 }
@@ -1531,6 +1584,7 @@ int main(void)
         test_http_client_feature_diagnostic_golden,
         test_http_client_required_feature_activates_tcp_dependency,
         test_workers_required_feature_activates_runtime_dependencies,
+        test_webhooks_required_feature_is_known_and_activates_dependencies,
         test_workers_feature_diagnostic_golden,
         test_node_compat_required_features_activate_v8_dependency,
         test_node_compat_required_feature_fails_without_v8,

@@ -480,6 +480,79 @@ pub(super) fn config_bind_metadata(
     Some(reads)
 }
 
+pub(super) fn config_bind_helper_source(
+    binding_name: &str,
+    expression: &Expression<'_>,
+    source: &str,
+    source_name: &str,
+    state: &AppState,
+) -> Option<(Vec<ConfigReadMetadata>, String)> {
+    let Expression::CallExpression(call) = expression else {
+        return None;
+    };
+    let Expression::StaticMemberExpression(method_member) = &call.callee else {
+        return None;
+    };
+    if method_member.property.name.as_str() != "bind" {
+        return None;
+    }
+    let Expression::StaticMemberExpression(config_member) = &method_member.object else {
+        return None;
+    };
+    if config_member.property.name.as_str() != "config" {
+        return None;
+    }
+    let Expression::Identifier(app) = &config_member.object else {
+        return None;
+    };
+    if !state.app_vars.contains(app.name.as_str()) || call.arguments.is_empty() {
+        return None;
+    }
+    let prefix = string_argument(call.arguments.first()?)?;
+    let schema = call.arguments.get(1).and_then(object_argument)?;
+    let mut reads = Vec::new();
+    let mut fields = Vec::new();
+    for property in &schema.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            continue;
+        };
+        if property.computed {
+            continue;
+        }
+        let name = property_key_name(&property.key)?;
+        let Some((key_segment, value_type, has_default, default_value, required, sensitive)) =
+            bind_descriptor_metadata(name, &property.value)
+        else {
+            continue;
+        };
+        let key = format!("{}:{}", provider_config_prefix(prefix), key_segment);
+        reads.push(ConfigReadMetadata {
+            key: key.clone(),
+            value_type: value_type.clone(),
+            has_default,
+            default_value: default_value.clone(),
+            required,
+            sensitive,
+            source_name: source_name.to_string(),
+            source: source.to_string(),
+            span: property.span,
+        });
+        fields.push(json!({
+            "property": name,
+            "key": key,
+            "type": value_type,
+            "hasDefault": has_default,
+            "default": default_value,
+            "required": required,
+        }));
+    }
+    let fields = serde_json::to_string(&fields).ok()?;
+    Some((
+        reads,
+        format!("const {binding_name} = __sloppy_config_bind({fields});"),
+    ))
+}
+
 pub(super) fn bind_descriptor_metadata(
     name: &str,
     expression: &Expression<'_>,

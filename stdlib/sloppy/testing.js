@@ -1918,6 +1918,7 @@ class RequestBuilder {
         this._target = target;
         this._headers = {};
         this._body = {};
+        this._requestOptions = {};
         this._timeoutMs = undefined;
         this._sent = undefined;
         this._jwt = undefined;
@@ -1926,8 +1927,24 @@ class RequestBuilder {
                 throw new TypeError("Sloppy test host request options must be a plain object.");
             }
             this.headers(options.headers ?? {});
-            this._body = { ...options };
-            delete this._body.headers;
+            this._requestOptions = { ...options };
+            delete this._requestOptions.headers;
+            delete this._requestOptions.body;
+            delete this._requestOptions.text;
+            delete this._requestOptions.json;
+            delete this._requestOptions[TESTHOST_TEXT_BODY];
+            delete this._requestOptions.timeout;
+            delete this._requestOptions.timeoutMs;
+            this._body = {};
+            if (options.json !== undefined) {
+                this._body.json = options.json;
+            } else if (options.text !== undefined) {
+                this._body.text = options.text;
+            } else if (options[TESTHOST_TEXT_BODY] !== undefined) {
+                this._body[TESTHOST_TEXT_BODY] = options[TESTHOST_TEXT_BODY];
+            } else if (options.body !== undefined) {
+                this._body.body = options.body;
+            }
             if (options.timeoutMs !== undefined || options.timeout !== undefined) {
                 this.timeout(options.timeoutMs ?? options.timeout);
             }
@@ -2022,7 +2039,7 @@ class RequestBuilder {
     }
 
     asUser(principal) {
-        this._body.user = createTestPrincipal(principal);
+        this._requestOptions.user = createTestPrincipal(principal);
         return this;
     }
 
@@ -2050,6 +2067,7 @@ class RequestBuilder {
                 this.bearer(await createJwt(this._jwt.claims, this._jwt.options));
             }
             return this._host.request(this._method, this._target, {
+                ...this._requestOptions,
                 ...this._body,
                 headers: this._headers,
                 timeoutMs: this._timeoutMs,

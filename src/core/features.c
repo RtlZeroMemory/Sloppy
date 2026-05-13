@@ -32,6 +32,12 @@
      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CODEC) |                                             \
      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO))
 #define SL_FEATURE_DEPS_WORKERS SL_FEATURE_DEPS_NET
+#define SL_FEATURE_DEPS_WEBHOOKS                                                                   \
+    (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |             \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP) |                                               \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_CRYPTO) |                                            \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_HTTP_CLIENT) |                                       \
+     SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_WORKERS))
 #define SL_FEATURE_DEPS_CACHE                                                                      \
     (SL_FEATURE_BIT(SL_RUNTIME_FEATURE_CORE) | SL_FEATURE_BIT(SL_RUNTIME_FEATURE_V8) |             \
      SL_FEATURE_BIT(SL_RUNTIME_FEATURE_STDLIB_APP) |                                               \
@@ -182,6 +188,16 @@ static SlRuntimeFeatureDescriptor sl_feature_workers_descriptor(SlRuntimeFeature
         sl_feature_literal("sloppy/workers", sizeof("sloppy/workers") - 1U),
         sl_feature_literal("__sloppy.workers", sizeof("__sloppy.workers") - 1U),
         SL_FEATURE_DEPS_WORKERS, available, true, true);
+}
+
+static SlRuntimeFeatureDescriptor sl_feature_webhooks_descriptor(SlRuntimeFeatureId id)
+{
+    return sl_feature_descriptor_make(
+        id, SL_RUNTIME_FEATURE_KIND_STDLIB,
+        sl_feature_literal("stdlib.webhooks", sizeof("stdlib.webhooks") - 1U),
+        sl_feature_literal("webhooks stdlib", sizeof("webhooks stdlib") - 1U),
+        sl_feature_literal("sloppy/webhooks", sizeof("sloppy/webhooks") - 1U), sl_str_empty(),
+        SL_FEATURE_DEPS_WEBHOOKS, true, false, true);
 }
 
 static SlRuntimeFeatureDescriptor sl_feature_cache_descriptor(SlRuntimeFeatureId id)
@@ -362,6 +378,8 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
         return sl_feature_http_client_descriptor(id, http_client);
     case SL_RUNTIME_FEATURE_STDLIB_WORKERS:
         return sl_feature_workers_descriptor(id, workers);
+    case SL_RUNTIME_FEATURE_STDLIB_WEBHOOKS:
+        return sl_feature_webhooks_descriptor(id);
     case SL_RUNTIME_FEATURE_STDLIB_CACHE:
         return sl_feature_cache_descriptor(id);
     case SL_RUNTIME_FEATURE_STDLIB_FFI:
@@ -706,6 +724,10 @@ const SlRuntimeFeatureDescriptor* sl_runtime_feature_descriptor(SlRuntimeFeature
         {SL_RUNTIME_FEATURE_STDLIB_CACHE, SL_RUNTIME_FEATURE_KIND_STDLIB,
          SL_FEATURE_STR("stdlib.cache"), SL_FEATURE_STR("cache stdlib"),
          SL_FEATURE_STR("sloppy/cache"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_CACHE, true, false,
+         true},
+        {SL_RUNTIME_FEATURE_STDLIB_WEBHOOKS, SL_RUNTIME_FEATURE_KIND_STDLIB,
+         SL_FEATURE_STR("stdlib.webhooks"), SL_FEATURE_STR("webhooks stdlib"),
+         SL_FEATURE_STR("sloppy/webhooks"), SL_FEATURE_EMPTY, SL_FEATURE_DEPS_WEBHOOKS, true, false,
          true}};
 
     if ((uint32_t)id >= (uint32_t)SL_RUNTIME_FEATURE_COUNT) {

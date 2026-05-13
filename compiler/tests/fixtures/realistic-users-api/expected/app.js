@@ -2,11 +2,17 @@ const __sloppyRuntime = globalThis.__sloppy_runtime;
 if (__sloppyRuntime === undefined) {
   throw new Error("Sloppy bootstrap runtime was not loaded");
 }
-const { Results, data } = __sloppyRuntime;
+const { Results, schema, Schema, data } = __sloppyRuntime;
 function __sloppy_open_data_provider(kind, token) {
   if (kind === "sqlite") { return data.sqlite(token); }
   throw new Error(`sloppy: ${kind} provider bridge unavailable`);
 }
+
+const UserCreate = schema.object({
+  name: schema.string().min(1),
+  email: schema.string().email().optional(),
+  tags: schema.array(schema.string()).optional()
+});
 
 globalThis.__sloppy_handler_1 = function(ctx) { const __sloppy_opened_providers = []; let db; try { db = __sloppy_open_data_provider("sqlite", "data.main"); __sloppy_opened_providers.push(db); function listUsers() {
   return db.query("select id, name, email from users", []);

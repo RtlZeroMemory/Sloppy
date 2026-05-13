@@ -499,6 +499,7 @@ export default app;
         .apply_to_app(&mut app)
         .expect("configuration should apply");
     let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("Results"));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,
@@ -533,7 +534,10 @@ const auth = app.config.bind("Auth", {
   tokenTtlMinutes: { type: "number", default: 60, min: 1, max: 1440 },
   issuer: { key: "Jwt:Issuer", type: "string", required: true }
 });
-app.get("/", () => Results.text("ok"));
+app.get("/", () => Results.json({
+  issuer: auth.issuer,
+  tokenTtlMinutes: auth.tokenTtlMinutes
+}));
 export default app;
 "#;
     let mut app =
@@ -1038,6 +1042,68 @@ export default app;
     .expect("plan should emit");
     assert!(plan.contains("\"module\": \"usersModule\""));
     assert!(plan.contains("\"path\": \"users.js\""));
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
+fn protected_function_module_param_routes_request_full_context() {
+    let root = fixture_temp_dir("function-module-auth-param-context");
+    let modules = root.join("modules");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::write(
+        modules.join("tickets.js"),
+        r#"import { Results } from "sloppy";
+
+export function ticketsModule(app) {
+    const tickets = app.group("/tickets").requiresAuth();
+    tickets.get("/{id:int}", (ctx) => Results.json({ id: ctx.route.id }));
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Auth, Config, Sloppy } from "sloppy";
+import { ticketsModule } from "./modules/tickets.js";
+
+const app = Sloppy.create();
+app.use(Auth.apiKey({ configKey: "Auth:ApiKey" }));
+app.useModule(ticketsModule);
+export default app;
+"#;
+
+    let app = extract_temp_input(&root, source).expect("fixture should extract");
+    let route = app
+        .routes
+        .iter()
+        .find(|route| route.pattern == "/tickets/{id:int}")
+        .expect("module param route should extract");
+    assert!(route.auth.as_ref().expect("auth should inherit").required);
+    assert!(route
+        .handler
+        .bindings
+        .iter()
+        .any(|binding| binding.kind == "route" && binding.name.as_deref() == Some("id")));
+    assert!(route
+        .handler
+        .bindings
+        .iter()
+        .any(|binding| binding.kind == "context"));
+
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("__sloppy_require_auth"));
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let value: serde_json::Value = serde_json::from_str(&plan).expect("plan should be valid json");
+    let bindings = value["routes"][0]["bindings"]
+        .as_array()
+        .expect("route bindings should be emitted");
+    assert!(bindings.iter().any(|binding| binding["kind"] == "route"));
+    assert!(bindings.iter().any(|binding| binding["kind"] == "context"));
 
     fs::remove_dir_all(&root).expect("test directory should be removable");
 }
@@ -4960,6 +5026,25 @@ export default app;
     assert!(app.uses_webhooks_runtime);
 
     let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("Results"));
+    assert!(emitted_js.source.contains("schema"));
+    assert!(emitted_js.source.contains("Schema"));
+    assert!(emitted_js.source.contains("Webhooks"));
+    let schema_offset = emitted_js
+        .source
+        .find("const OrderSchema = schema.object")
+        .expect("schema helper should be emitted");
+    let event_offset = emitted_js
+        .source
+        .find("const OrderCreated = Webhooks.event")
+        .expect("webhook event helper should be emitted");
+    assert!(
+        schema_offset < event_offset,
+        "schema helper should be emitted before the webhook event descriptor that references it"
+    );
+    assert!(emitted_js
+        .source
+        .contains("Results.json({ event: OrderCreated.name })"));
     let emitted_source_map = super::emit_source_map(&app, &emitted_js);
     let plan = super::emit_plan(
         &app,

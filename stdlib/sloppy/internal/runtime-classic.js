@@ -19701,8 +19701,59 @@ function createRedisCache(nameOrRedis, maybeOptions = undefined) {
         redis: createRedisCache,
         __testing: Object.freeze({ ...Cache.__testing, createRedisCache }),
     });
+    function __sloppyValidateConfigReferenceKey(key, subject = "Config.required") {
+        if (typeof key !== "string" || key.length === 0) {
+            throw new TypeError(`Sloppy ${subject} key must be a non-empty string.`);
+        }
+    }
+    function __sloppyRequiredConfigReference(key) {
+        __sloppyValidateConfigReferenceKey(key, "Config.required");
+        return Object.freeze({
+            __sloppyConfigReference: true,
+            key,
+            required: true,
+            toString() {
+                return "[Config reference redacted]";
+            },
+            toJSON() {
+                return {
+                    key,
+                    required: true,
+                    value: "[redacted]",
+                };
+            },
+        });
+    }
+    function __sloppyBooleanConfigReference(key, fallback = undefined) {
+        __sloppyValidateConfigReferenceKey(key, "Config.boolean");
+        if (fallback !== undefined && typeof fallback !== "boolean") {
+            throw new TypeError("Sloppy Config.boolean fallback must be a boolean when provided.");
+        }
+        return Object.freeze({
+            __sloppyConfigReference: true,
+            key,
+            type: "boolean",
+            default: fallback,
+            toString() {
+                return "[Config reference redacted]";
+            },
+            toJSON() {
+                return {
+                    key,
+                    type: "boolean",
+                    value: "[redacted]",
+                };
+            },
+        });
+    }
+    const Config = Object.freeze({
+        boolean: __sloppyBooleanConfigReference,
+        required: __sloppyRequiredConfigReference,
+        requiredSecret: __sloppyRequiredConfigReference,
+    });
     globalThis.__sloppy_runtime = Object.freeze({
         Results,
+        Config,
         Cache,
         SloppyCacheError,
         Realtime,

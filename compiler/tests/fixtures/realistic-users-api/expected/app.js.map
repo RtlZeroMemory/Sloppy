@@ -1,6 +1,6 @@
 {
   "file": "app.js",
-  "mappings": ";;;;;;;;;;gCAyBe;AACf;AACA;AACA;;;;gCAEgB;AAChB;AAA6C;;;;;gCAGtB;AACvB;AACA;AACA;;gCAEmB",
+  "mappings": ";;;;;;;;;;;;;;;;gCAyBe;AACf;AACA;AACA;;;;gCAEgB;AAChB;AAA6C;;;;;gCAGtB;AACvB;AACA;AACA;;gCAEmB",
   "names": [],
   "sources": [
     "input.js"
@@ -84,7 +84,7 @@
       {
         "generated": {
           "column": 33,
-          "line": 11
+          "line": 17
         },
         "id": 1,
         "source": {
@@ -96,7 +96,7 @@
       {
         "generated": {
           "column": 33,
-          "line": 18
+          "line": 24
         },
         "id": 2,
         "source": {
@@ -108,7 +108,7 @@
       {
         "generated": {
           "column": 33,
-          "line": 25
+          "line": 31
         },
         "id": 3,
         "source": {
@@ -120,7 +120,7 @@
       {
         "generated": {
           "column": 33,
-          "line": 30
+          "line": 36
         },
         "id": 4,
         "source": {

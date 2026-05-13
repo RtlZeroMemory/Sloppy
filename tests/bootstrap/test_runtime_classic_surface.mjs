@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
     Cache,
+    Config,
     ProblemDetails,
     Results,
     Schema,
@@ -16,6 +17,7 @@ assert.equal(typeof runtime, "object");
 
 const expectedExports = [
     "Results",
+    "Config",
     "Cache",
     "Realtime",
     "schema",
@@ -75,6 +77,7 @@ for (const name of expectedExports) {
 }
 
 assert.equal(typeof runtime.Results.json, typeof Results.json);
+assert.equal(typeof runtime.Config.requiredSecret, typeof Config.requiredSecret);
 assert.equal(typeof runtime.Cache.memory, typeof Cache.memory);
 assert.equal(typeof runtime.ProblemDetails.defaults, typeof ProblemDetails.defaults);
 assert.equal(typeof runtime.schema.string, typeof schema.string);
@@ -89,6 +92,7 @@ assert.equal(response.status, 200);
 
 assert.deepEqual(runtime.schema.string().validate("ok"), schema.string().validate("ok"));
 assert.deepEqual(runtime.Text.utf8.decode(runtime.Text.utf8.encode("hello")), "hello");
+assert.equal(runtime.Config.requiredSecret("Auth:SessionSecret").key, "Auth:SessionSecret");
 const ratePolicy = runtime.RateLimit.fixedWindow({
     limit: 1,
     windowMs: 1000,

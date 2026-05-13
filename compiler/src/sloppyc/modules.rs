@@ -954,6 +954,13 @@ fn extract_module_function_routes(
                             init,
                             &schema_names,
                         )? {
+                            if let Some(init_source) = source_slice(source, init.span()) {
+                                let helper_source = format!("const {name} = {init_source};");
+                                helper_sources.insert(name.to_string(), helper_source);
+                                helper_effects
+                                    .entry(name.to_string())
+                                    .or_insert_with(FunctionEffectSummary::default);
+                            }
                             schemas.push(schema);
                         }
                     } else if let Some((receiver, prefix, metadata)) = app_group_call(init)? {
@@ -1180,6 +1187,10 @@ fn extract_module_function_routes(
                 tags.extend(contract_metadata.tags.clone());
                 let auth = contract_metadata.auth.clone().or(inherited_auth);
                 if let Some(requirement) = &auth {
+                    if requirement.required {
+                        force_auth_required_route_v8_dispatch(&mut handler);
+                        ensure_auth_required_route_request_context(&mut handler);
+                    }
                     handler.emitted_source =
                         wrap_handler_with_auth(&handler.emitted_source, requirement);
                     handler.is_async = true;
@@ -1252,22 +1263,70 @@ pub(super) fn helper_sources_referenced_by_handler(
     handler_source: &str,
     helper_sources: &BTreeMap<String, String>,
 ) -> Vec<String> {
-    let mut selected = BTreeSet::<&str>::new();
-    let mut pending_sources = vec![handler_source];
-    while let Some(source) = pending_sources.pop() {
-        for (name, helper_source) in helper_sources {
-            let name = name.as_str();
-            if selected.contains(name) || !source_contains_identifier(source, name) {
-                continue;
-            }
-            selected.insert(name);
-            pending_sources.push(helper_source.as_str());
+    let mut selected = BTreeSet::<String>::new();
+    let mut visiting = BTreeSet::<String>::new();
+    let mut ordered = Vec::<String>::new();
+    for name in helper_sources.keys() {
+        if source_contains_identifier(handler_source, name) {
+            push_helper_source_with_dependencies(
+                name,
+                helper_sources,
+                &mut selected,
+                &mut visiting,
+                &mut ordered,
+            );
         }
     }
-    selected
-        .into_iter()
-        .filter_map(|name| helper_sources.get(name).cloned())
-        .collect()
+    ordered
+}
+
+pub(super) fn helper_sources_in_dependency_order(
+    helper_sources: &BTreeMap<String, String>,
+) -> Vec<String> {
+    let mut selected = BTreeSet::<String>::new();
+    let mut visiting = BTreeSet::<String>::new();
+    let mut ordered = Vec::<String>::new();
+    for name in helper_sources.keys() {
+        push_helper_source_with_dependencies(
+            name,
+            helper_sources,
+            &mut selected,
+            &mut visiting,
+            &mut ordered,
+        );
+    }
+    ordered
+}
+
+fn push_helper_source_with_dependencies(
+    name: &str,
+    helper_sources: &BTreeMap<String, String>,
+    selected: &mut BTreeSet<String>,
+    visiting: &mut BTreeSet<String>,
+    ordered: &mut Vec<String>,
+) {
+    if selected.contains(name) || !visiting.insert(name.to_string()) {
+        return;
+    }
+    let Some(source) = helper_sources.get(name) else {
+        visiting.remove(name);
+        return;
+    };
+    for dependency in helper_sources.keys() {
+        if dependency == name || !source_contains_identifier(source, dependency) {
+            continue;
+        }
+        push_helper_source_with_dependencies(
+            dependency,
+            helper_sources,
+            selected,
+            visiting,
+            ordered,
+        );
+    }
+    visiting.remove(name);
+    selected.insert(name.to_string());
+    ordered.push(source.clone());
 }
 
 pub(super) fn source_contains_identifier(source: &str, identifier: &str) -> bool {
