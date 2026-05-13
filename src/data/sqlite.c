@@ -180,8 +180,7 @@ static SlStatus sl_sqlite_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code
     if (!sl_str_is_empty(sql)) {
         (void)sql;
         diag_status = sl_diag_builder_add_hint(
-            &builder,
-            sl_sqlite_literal("statement: redacted", sizeof("statement: redacted") - 1U));
+            &builder, sl_sqlite_literal("statement: redacted", sizeof("statement: redacted") - 1U));
         if (!sl_status_is_ok(diag_status)) {
             return diag_status;
         }

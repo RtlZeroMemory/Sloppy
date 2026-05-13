@@ -478,7 +478,8 @@ bool pg_v8_sql_keyword_is(const std::string& sql, const char* keyword)
         offset += 1U;
     }
     return index + offset == sql.size() ||
-           !(sql[index + offset] == '_' || (sql[index + offset] >= '0' && sql[index + offset] <= '9') ||
+           !(sql[index + offset] == '_' ||
+             (sql[index + offset] >= '0' && sql[index + offset] <= '9') ||
              (sql[index + offset] >= 'A' && sql[index + offset] <= 'Z') ||
              (sql[index + offset] >= 'a' && sql[index + offset] <= 'z'));
 }
@@ -958,14 +959,17 @@ bool pg_v8_request_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context
 
     PGresult* column_result = pg_v8_request_column_result(request);
     const int columns = column_result == nullptr ? -1 : PQnfields(column_result);
-    v8::Local<v8::Array> rows =
-        v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
+    v8::Local<v8::Array> rows;
     SlV8DbColumnSet column_set;
     std::vector<v8::Local<v8::Value>> values;
 
-    if (columns < 0 || !pg_v8_prepare_columns(isolate, context, column_result, &column_set)) {
+    if (columns < 0 ||
+        request->row_results.size() > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+        !pg_v8_prepare_columns(isolate, context, column_result, &column_set))
+    {
         return false;
     }
+    rows = v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
     values.resize(static_cast<size_t>(columns));
     for (size_t row_index = 0; row_index < request->row_results.size(); row_index += 1) {
         PGresult* row_result = request->row_results[row_index];
@@ -1082,14 +1086,17 @@ bool pg_v8_request_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context,
 
     PGresult* column_result = pg_v8_request_column_result(request);
     const int columns = column_result == nullptr ? -1 : PQnfields(column_result);
-    v8::Local<v8::Array> rows =
-        v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
+    v8::Local<v8::Array> rows;
     SlV8DbColumnSet column_set;
     std::vector<v8::Local<v8::Value>> values;
 
-    if (columns < 0 || !pg_v8_prepare_columns(isolate, context, column_result, &column_set)) {
+    if (columns < 0 ||
+        request->row_results.size() > static_cast<size_t>(std::numeric_limits<int>::max()) ||
+        !pg_v8_prepare_columns(isolate, context, column_result, &column_set))
+    {
         return false;
     }
+    rows = v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
     values.resize(static_cast<size_t>(columns));
     for (size_t row_index = 0; row_index < request->row_results.size(); row_index += 1) {
         PGresult* row_result = request->row_results[row_index];

@@ -176,6 +176,7 @@ SlStatus sl_crypto_base64_encode(SlBytes data, char* out, size_t out_length, siz
     if (out == NULL || out_written == NULL || !sl_crypto_bytes_valid(data)) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
+    *out_written = 0U;
 
     status = sl_checked_add_size(data.length, 2U, &required);
     if (sl_status_is_ok(status)) {

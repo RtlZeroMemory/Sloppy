@@ -243,10 +243,9 @@ SlStatus sl_db_sql_statement_redacted(SlArena* arena, const SlDbSqlStatement* st
     }
     status = sl_string_builder_append_cstr(&builder, "statement: ");
     if (sl_status_is_ok(status)) {
-        status = sl_string_builder_append_str(
-            &builder, sl_str_is_empty(statement->statement_label)
-                          ? sl_str_from_cstr("<unlabeled>")
-                          : statement->statement_label);
+        status = sl_string_builder_append_str(&builder, sl_str_is_empty(statement->statement_label)
+                                                            ? sl_str_from_cstr("<unlabeled>")
+                                                            : statement->statement_label);
     }
     if (sl_status_is_ok(status)) {
         status = sl_string_builder_append_cstr(&builder, " [parameters=");

@@ -346,18 +346,17 @@ static int test_invalid_options_and_use_after_close(void)
     if (one.found || one.column_count != 0U || one.column_names != NULL || one.values != NULL) {
         return 29;
     }
-    status = sl_sqlserver_exec(&arena, &read_only,
-                               sl_str_from_cstr("insert into t values ('sekrit')"), NULL, 0U,
-                               &result, &diag);
+    status =
+        sl_sqlserver_exec(&arena, &read_only, sl_str_from_cstr("insert into t values ('sekrit')"),
+                          NULL, 0U, &result, &diag);
     if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
         diag.code != SL_DIAG_PERMISSION_DENIED || diag_contains_text(&diag, "sekrit"))
     {
         return 25;
     }
     diag = (SlDiag){0};
-    status = sl_sqlserver_exec_batch(&arena, &read_only,
-                                     sl_str_from_cstr("insert into t values ('sekrit')"), &result,
-                                     &diag);
+    status = sl_sqlserver_exec_batch(
+        &arena, &read_only, sl_str_from_cstr("insert into t values ('sekrit')"), &result, &diag);
     if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
         diag.code != SL_DIAG_PERMISSION_DENIED || diag_contains_text(&diag, "sekrit"))
     {

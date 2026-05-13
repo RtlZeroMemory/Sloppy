@@ -437,10 +437,14 @@ static int test_invalid_and_capacity_guards(void)
     {
         return 71;
     }
+    if (written != 0U) {
+        return 72;
+    }
+    written = 999U;
     if (expect_status(sl_crypto_base64_encode(sl_bytes_from_parts(&dummy, overflow_length),
                                               sentinel, sizeof(sentinel), &written),
                       SL_STATUS_OVERFLOW) != 0 ||
-        sentinel[0] != 'x')
+        sentinel[0] != 'x' || written != 0U)
     {
         return 75;
     }

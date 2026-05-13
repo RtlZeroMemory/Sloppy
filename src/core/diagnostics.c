@@ -3308,6 +3308,57 @@ static bool sl_diag_secret_key_at(SlStr text, size_t index, size_t* out_separato
     return false;
 }
 
+static bool sl_diag_authorization_header_at(SlStr text, size_t index, size_t* out_separator)
+{
+    static const char key[] = "authorization";
+    size_t end = index + sizeof(key) - 1U;
+
+    if (out_separator == NULL || index >= text.length ||
+        !sl_diag_secret_key_boundary_before(text, index) ||
+        !sl_diag_secret_word_at(text, index, key) || !sl_diag_secret_key_boundary_after(text, end))
+    {
+        return false;
+    }
+
+    while (end < text.length && (text.ptr[end] == ' ' || text.ptr[end] == '\t')) {
+        end += 1U;
+    }
+    if (end >= text.length || text.ptr[end] != ':') {
+        return false;
+    }
+
+    *out_separator = end;
+    return true;
+}
+
+static SlStatus sl_diag_builder_append_redacted_authorization(SlStringBuilder* builder, SlStr input,
+                                                              size_t* index)
+{
+    size_t cursor = *index;
+    SlStatus status;
+
+    while (cursor < input.length &&
+           (input.ptr[cursor] == ':' || input.ptr[cursor] == ' ' || input.ptr[cursor] == '\t'))
+    {
+        status = sl_string_builder_append_char(builder, input.ptr[cursor]);
+        if (!sl_status_is_ok(status)) {
+            return status;
+        }
+        cursor += 1U;
+    }
+
+    status = sl_string_builder_append_str(builder, sl_diag_redacted());
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    while (cursor < input.length && input.ptr[cursor] != '\n' && input.ptr[cursor] != '\r') {
+        cursor += 1U;
+    }
+    *index = cursor;
+    return sl_status_ok();
+}
+
 static SlStatus sl_diag_builder_append_redacted_value(SlStringBuilder* builder, SlStr input,
                                                       size_t* index, bool is_connection_string)
 {
@@ -3418,6 +3469,20 @@ static SlStatus sl_diag_builder_append_redacted_text(SlStringBuilder* builder, S
         size_t uri_password_start = 0U;
         size_t uri_password_end = 0U;
         bool is_connection_string = false;
+
+        if (sl_diag_authorization_header_at(input, index, &separator)) {
+            status = sl_string_builder_append_str(
+                builder, sl_str_from_parts(input.ptr + index, separator - index));
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            index = separator;
+            status = sl_diag_builder_append_redacted_authorization(builder, input, &index);
+            if (!sl_status_is_ok(status)) {
+                return status;
+            }
+            continue;
+        }
 
         if (sl_diag_secret_key_at(input, index, &separator, &is_connection_string)) {
             status = sl_string_builder_append_str(

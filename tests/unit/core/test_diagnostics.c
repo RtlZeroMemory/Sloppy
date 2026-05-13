@@ -2106,6 +2106,9 @@ static int test_redaction_helper(void)
                           &arena,
                           sl_str_from_cstr("password=secret PWD = {top;secret}; token:abc "
                                            "postgres://ada:secret@localhost/db API_KEY=xyz "
+                                           "Authorization: Bearer bearer-secret\n"
+                                           "authorization: Basic basic-secret\n"
+                                           "AUTHORIZATION: Digest digest-secret\n"
                                            "monkey=value donkey:abc key=plain "
                                            "key exchange: keep key steps: visible "
                                            "connectionString=Server=.;Password=p; "
@@ -2124,19 +2127,22 @@ static int test_redaction_helper(void)
     {
         return 101;
     }
-    if (expect_str_equal(
-            redacted, sl_str_from_cstr("password=<redacted> PWD = <redacted>; "
-                                       "token:<redacted> postgres://ada:<redacted>@localhost/db "
-                                       "API_KEY=<redacted> monkey=value donkey:abc key=<redacted> "
-                                       "key exchange: keep key steps: visible "
-                                       "connectionString=<redacted>; clientSecret=<redacted> "
-                                       "private_key=<redacted> passphrase=<redacted> "
-                                       "certificatePath=<redacted> privateKeyPath=<redacted> "
-                                       "clientCertificatePath=<redacted> "
-                                       "clientPrivateKeyPath=<redacted> "
-                                       "caBundlePath=<redacted> "
-                                       "trustStorePath=<redacted> keyPath=<redacted> "
-                                       "certPath=<redacted> caPath=<redacted>")) != 0)
+    if (expect_str_equal(redacted,
+                         sl_str_from_cstr("password=<redacted> PWD = <redacted>; "
+                                          "token:<redacted> postgres://ada:<redacted>@localhost/db "
+                                          "API_KEY=<redacted> Authorization: <redacted>\n"
+                                          "authorization: <redacted>\n"
+                                          "AUTHORIZATION: <redacted>\n"
+                                          "monkey=value donkey:abc key=<redacted> "
+                                          "key exchange: keep key steps: visible "
+                                          "connectionString=<redacted>; clientSecret=<redacted> "
+                                          "private_key=<redacted> passphrase=<redacted> "
+                                          "certificatePath=<redacted> privateKeyPath=<redacted> "
+                                          "clientCertificatePath=<redacted> "
+                                          "clientPrivateKeyPath=<redacted> "
+                                          "caBundlePath=<redacted> "
+                                          "trustStorePath=<redacted> keyPath=<redacted> "
+                                          "certPath=<redacted> caPath=<redacted>")) != 0)
     {
         return 102;
     }
@@ -2158,11 +2164,13 @@ static int test_report_json_redacts_secret_hints(void)
                                            SL_DIAG_PERMISSION_DENIED,
                                            sl_str_from_cstr("safe public failure")),
                       SL_STATUS_OK) != 0 ||
-        expect_status(sl_diag_builder_add_hint(
-                          &builder,
-                          sl_str_from_cstr("password=hunter2 token=abc connectionString=Server=.;"
-                                           "Password=p")),
-                      SL_STATUS_OK) != 0 ||
+        expect_status(
+            sl_diag_builder_add_hint(
+                &builder, sl_str_from_cstr("password=hunter2 token=abc connectionString=Server=.;"
+                                           "Password=p\nAuthorization: Bearer bearer-secret\n"
+                                           "Authorization: Basic basic-secret\n"
+                                           "Authorization: Digest digest-secret")),
+            SL_STATUS_OK) != 0 ||
         expect_status(sl_diag_builder_finish(&builder, &diag), SL_STATUS_OK) != 0 ||
         expect_status(sl_diag_render_report_json(&arena, &diag, NULL, &rendered), SL_STATUS_OK) !=
             0)
@@ -2172,7 +2180,10 @@ static int test_report_json_redacts_secret_hints(void)
     if (expect_str_contains(rendered, "<redacted>") != 0 ||
         expect_str_contains(rendered, "hunter2") == 0 ||
         expect_str_contains(rendered, "token=abc") == 0 ||
-        expect_str_contains(rendered, "Password=p") == 0)
+        expect_str_contains(rendered, "Password=p") == 0 ||
+        expect_str_contains(rendered, "bearer-secret") == 0 ||
+        expect_str_contains(rendered, "basic-secret") == 0 ||
+        expect_str_contains(rendered, "digest-secret") == 0)
     {
         return 113;
     }

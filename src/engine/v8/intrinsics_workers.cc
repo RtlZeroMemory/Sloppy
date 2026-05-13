@@ -158,6 +158,19 @@ bool workers_v8_std_string_from_value(v8::Isolate* isolate, v8::Local<v8::Value>
     return sl_v8_std_string_from_value(isolate, value, out);
 }
 
+bool workers_v8_string_from_std(v8::Isolate* isolate, const std::string& value,
+                                v8::Local<v8::String>* out)
+{
+    if (isolate == nullptr || out == nullptr ||
+        value.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+    {
+        return false;
+    }
+    return v8::String::NewFromUtf8(isolate, value.c_str(), v8::NewStringType::kNormal,
+                                   static_cast<int>(value.size()))
+        .ToLocal(out);
+}
+
 bool workers_v8_compile_run(v8::Isolate* isolate, v8::Local<v8::Context> context,
                             const std::string& source_name, const std::string& source,
                             v8::Local<v8::Value>* out);
@@ -310,14 +323,10 @@ bool workers_v8_json_stringify(v8::Isolate* isolate, v8::Local<v8::Context> cont
 bool workers_v8_json_parse(v8::Isolate* isolate, v8::Local<v8::Context> context,
                            const std::string& json, v8::Local<v8::Value>* out)
 {
-    v8::MaybeLocal<v8::String> maybe_json = v8::String::NewFromUtf8(
-        isolate, json.c_str(), v8::NewStringType::kNormal, static_cast<int>(json.size()));
     v8::Local<v8::String> local_json;
     v8::Local<v8::Value> parsed;
 
-    if (json.size() > static_cast<size_t>(std::numeric_limits<int>::max()) ||
-        !maybe_json.ToLocal(&local_json))
-    {
+    if (!workers_v8_string_from_std(isolate, json, &local_json)) {
         return false;
     }
     if (!v8::JSON::Parse(context, local_json).ToLocal(&parsed)) {
@@ -363,9 +372,10 @@ bool workers_v8_reject_code_error(v8::Isolate* isolate, v8::Local<v8::Context> c
 {
     const char* fallback_code = code.empty() ? "SLOPPY_E_WORKER_CRASHED" : code.c_str();
     const char* fallback_message = message.empty() ? "worker operation failed" : message.c_str();
-    v8::Local<v8::String> local_message =
-        v8::String::NewFromUtf8(isolate, fallback_message, v8::NewStringType::kNormal)
-            .ToLocalChecked();
+    v8::Local<v8::String> local_message;
+    if (!workers_v8_string_from_std(isolate, std::string(fallback_message), &local_message)) {
+        local_message = v8::String::NewFromUtf8Literal(isolate, "worker operation failed");
+    }
     v8::Local<v8::Value> error = v8::Exception::Error(local_message);
     workers_v8_set_error_code(isolate, context, error, fallback_code);
     return resolver->Reject(context, error).FromMaybe(false);
@@ -431,20 +441,14 @@ bool workers_v8_compile_run(v8::Isolate* isolate, v8::Local<v8::Context> context
                             const std::string& source_name, const std::string& source,
                             v8::Local<v8::Value>* out)
 {
-    if (source.size() > static_cast<size_t>(std::numeric_limits<int>::max()) ||
-        source_name.size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+    v8::Local<v8::String> local_source;
+    v8::Local<v8::String> local_name;
+
+    if (!workers_v8_string_from_std(isolate, source, &local_source) ||
+        !workers_v8_string_from_std(isolate, source_name, &local_name))
     {
         return false;
     }
-
-    v8::Local<v8::String> local_source =
-        v8::String::NewFromUtf8(isolate, source.c_str(), v8::NewStringType::kNormal,
-                                static_cast<int>(source.size()))
-            .ToLocalChecked();
-    v8::Local<v8::String> local_name =
-        v8::String::NewFromUtf8(isolate, source_name.c_str(), v8::NewStringType::kNormal,
-                                static_cast<int>(source_name.size()))
-            .ToLocalChecked();
     v8::ScriptOrigin origin(local_name);
     v8::ScriptCompiler::Source script_source(local_source, origin);
     v8::Local<v8::Script> script;
@@ -574,17 +578,13 @@ WorkersV8ExecutionResult workers_v8_execute_in_isolate(const SlV8WorkerRequest& 
             }
             v8::Local<v8::Value> exports_value;
             v8::Local<v8::Value> fn_value;
+            v8::Local<v8::String> export_name;
             if (!context->Global()
                      ->Get(context, workers_v8_literal(isolate, "__sloppyWorkerExports"))
                      .ToLocal(&exports_value) ||
                 !exports_value->IsObject() ||
-                !exports_value.As<v8::Object>()
-                     ->Get(context,
-                           v8::String::NewFromUtf8(isolate, request.export_name.c_str(),
-                                                   v8::NewStringType::kNormal,
-                                                   static_cast<int>(request.export_name.size()))
-                               .ToLocalChecked())
-                     .ToLocal(&fn_value) ||
+                !workers_v8_string_from_std(isolate, request.export_name, &export_name) ||
+                !exports_value.As<v8::Object>()->Get(context, export_name).ToLocal(&fn_value) ||
                 !fn_value->IsFunction())
             {
                 result.code = "SLOPPY_E_WORKER_CRASHED";
@@ -656,6 +656,7 @@ WorkersV8ExecutionResult workers_v8_execute_js_on_runtime(v8::Isolate* isolate,
     v8::Local<v8::Object> signal = v8::Object::New(isolate);
     v8::Local<v8::Value> exports_value;
     v8::Local<v8::Value> fn_value;
+    v8::Local<v8::String> export_name;
     v8::Local<v8::Function> fn;
     v8::Local<v8::Value> call_result;
     bool undefined_json = false;
@@ -689,12 +690,8 @@ WorkersV8ExecutionResult workers_v8_execute_js_on_runtime(v8::Isolate* isolate,
              ->Get(context, workers_v8_literal(isolate, "__sloppyWorkerExports"))
              .ToLocal(&exports_value) ||
         !exports_value->IsObject() ||
-        !exports_value.As<v8::Object>()
-             ->Get(context, v8::String::NewFromUtf8(isolate, request.export_name.c_str(),
-                                                    v8::NewStringType::kNormal,
-                                                    static_cast<int>(request.export_name.size()))
-                                .ToLocalChecked())
-             .ToLocal(&fn_value) ||
+        !workers_v8_string_from_std(isolate, request.export_name, &export_name) ||
+        !exports_value.As<v8::Object>()->Get(context, export_name).ToLocal(&fn_value) ||
         !fn_value->IsFunction())
     {
         result.code = "SLOPPY_E_WORKER_CRASHED";

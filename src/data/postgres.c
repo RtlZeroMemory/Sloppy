@@ -169,8 +169,7 @@ static SlStatus sl_pg_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code, Sl
     else if (!sl_str_is_empty(sql)) {
         (void)sql;
         diag_status = sl_diag_builder_add_hint(
-            &builder,
-            sl_pg_literal("statement: redacted", sizeof("statement: redacted") - 1U));
+            &builder, sl_pg_literal("statement: redacted", sizeof("statement: redacted") - 1U));
         if (!sl_status_is_ok(diag_status)) {
             return diag_status;
         }
@@ -251,8 +250,7 @@ static bool sl_pg_read_only_exec_allowed(SlStr sql)
 {
     return (sl_pg_statement_keyword_is(sql, "BEGIN") &&
             !sl_pg_statement_contains_ci(sql, "write")) ||
-           sl_pg_statement_keyword_is(sql, "COMMIT") ||
-           sl_pg_statement_keyword_is(sql, "ROLLBACK");
+           sl_pg_statement_keyword_is(sql, "COMMIT") || sl_pg_statement_keyword_is(sql, "ROLLBACK");
 }
 
 static SlStatus sl_pg_read_only_rejected_diag(SlArena* arena, SlDiag* out_diag, SlStr operation)
@@ -559,8 +557,8 @@ SlStatus sl_postgres_open(SlArena* diag_arena, const SlPostgresOpenOptions* opti
     if (options->access == SL_POSTGRES_ACCESS_READ) {
         setup_result = PQexec(conn, "SET default_transaction_read_only = on");
         if (setup_result == NULL || PQresultStatus(setup_result) != PGRES_COMMAND_OK) {
-            const char* message = setup_result == NULL ? PQerrorMessage(conn)
-                                                       : PQresultErrorMessage(setup_result);
+            const char* message =
+                setup_result == NULL ? PQerrorMessage(conn) : PQresultErrorMessage(setup_result);
             char* message_copy = NULL;
             if (message != NULL && message[0] != '\0') {
                 status = sl_pg_copy_cstr(diag_arena, sl_str_from_cstr(message), &message_copy);
@@ -1277,12 +1275,11 @@ SlStatus sl_postgres_transaction_begin(SlArena* arena, SlPostgresConnection* con
                           sizeof("operation: transaction.begin") - 1U),
             NULL, sl_str_empty(), sl_str_empty(), sl_status_from_code(SL_STATUS_INVALID_STATE));
     }
-    status = sl_postgres_exec(
-        arena, connection,
-        connection->access == SL_POSTGRES_ACCESS_READ
-            ? sl_pg_literal("BEGIN READ ONLY", sizeof("BEGIN READ ONLY") - 1U)
-            : sl_pg_literal("BEGIN", sizeof("BEGIN") - 1U),
-        NULL, 0U, &result, out_diag);
+    status = sl_postgres_exec(arena, connection,
+                              connection->access == SL_POSTGRES_ACCESS_READ
+                                  ? sl_pg_literal("BEGIN READ ONLY", sizeof("BEGIN READ ONLY") - 1U)
+                                  : sl_pg_literal("BEGIN", sizeof("BEGIN") - 1U),
+                              NULL, 0U, &result, out_diag);
     if (!sl_status_is_ok(status)) {
         return status;
     }

@@ -177,9 +177,8 @@ static int test_redaction_and_doctor(void)
         sl_str_from_cstr("postgres://ada@localhost/db?password = 'secret value'&sslmode=require"),
         &redacted);
     if (expect_status(status, SL_STATUS_OK) != 0 ||
-        expect_str_equal(redacted,
-                         "postgres://ada@localhost/db?password = **************&sslmode=require") !=
-            0)
+        expect_str_equal(
+            redacted, "postgres://ada@localhost/db?password = **************&sslmode=require") != 0)
     {
         return 18;
     }
@@ -497,9 +496,9 @@ static int test_read_only_access_rejects_write_before_libpq(void)
         return 37;
     }
     diag = (SlDiag){0};
-    status = sl_postgres_exec_batch(
-        &arena, &connection, sl_str_from_cstr("select 1; insert into users values (1)"), &exec,
-        &diag);
+    status = sl_postgres_exec_batch(&arena, &connection,
+                                    sl_str_from_cstr("select 1; insert into users values (1)"),
+                                    &exec, &diag);
     if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
         !diag_contains_text(&diag, "read-only connection rejected") ||
         diag_contains_text(&diag, "insert into users"))

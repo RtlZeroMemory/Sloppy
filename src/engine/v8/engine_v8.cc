@@ -1835,14 +1835,16 @@ std::string sl_v8_redact_diagnostic_text(std::string_view input)
                     value_start = cursor;
                 }
                 value_end = field_end;
-            } else {
+            }
+            else {
                 value_start = cursor;
                 value_end = sl_v8_secret_value_end(text, value_start);
             }
             if (value_end > value_start) {
                 text.replace(value_start, value_end - value_start, "[REDACTED]");
                 search = value_start + sizeof("[REDACTED]") - 1U;
-            } else {
+            }
+            else {
                 search = cursor + 1U;
             }
         }
