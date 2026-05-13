@@ -440,9 +440,13 @@ SlCapabilityOperation pg_v8_request_capability(PgV8Operation operation)
     switch (operation) {
     case PgV8Operation::Query:
     case PgV8Operation::QueryRaw:
+    case PgV8Operation::QueryCursor:
+    case PgV8Operation::QueryRawCursor:
     case PgV8Operation::QueryOne:
     case PgV8Operation::TransactionQuery:
     case PgV8Operation::TransactionQueryRaw:
+    case PgV8Operation::TransactionQueryCursor:
+    case PgV8Operation::TransactionQueryRawCursor:
     case PgV8Operation::TransactionQueryOne:
         return SL_CAPABILITY_OPERATION_READ;
     default:
@@ -484,6 +488,79 @@ bool pg_v8_sql_keyword_is(const std::string& sql, const char* keyword)
              (sql[index + offset] >= 'a' && sql[index + offset] <= 'z'));
 }
 
+bool pg_v8_ascii_ident(char ch)
+{
+    return ch == '_' || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') ||
+           (ch >= 'a' && ch <= 'z');
+}
+
+bool pg_v8_token_at(const std::string& sql, size_t index, const char* token)
+{
+    size_t offset = 0U;
+
+    if (token == nullptr || index >= sql.size()) {
+        return false;
+    }
+    if (index > 0U && pg_v8_ascii_ident(sql[index - 1U])) {
+        return false;
+    }
+    while (token[offset] != '\0') {
+        if (index + offset >= sql.size()) {
+            return false;
+        }
+        char actual = sql[index + offset];
+        char expected = token[offset];
+        if (actual >= 'a' && actual <= 'z') {
+            actual = static_cast<char>(actual - 'a' + 'A');
+        }
+        if (expected >= 'a' && expected <= 'z') {
+            expected = static_cast<char>(expected - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+        offset += 1U;
+    }
+    return index + offset >= sql.size() || !pg_v8_ascii_ident(sql[index + offset]);
+}
+
+bool pg_v8_select_contains_into(const std::string& sql)
+{
+    size_t index = 0U;
+
+    while (index < sql.size() &&
+           (sql[index] == ' ' || sql[index] == '\t' || sql[index] == '\r' || sql[index] == '\n'))
+    {
+        index += 1U;
+    }
+    index += sizeof("SELECT") - 1U;
+    while (index < sql.size()) {
+        if (sql[index] == '-' && index + 1U < sql.size() && sql[index + 1U] == '-') {
+            index += 2U;
+            while (index < sql.size() && sql[index] != '\r' && sql[index] != '\n') {
+                index += 1U;
+            }
+            continue;
+        }
+        if (sql[index] == '/' && index + 1U < sql.size() && sql[index + 1U] == '*') {
+            index += 2U;
+            while (index + 1U < sql.size() && !(sql[index] == '*' && sql[index + 1U] == '/')) {
+                index += 1U;
+            }
+            if (index + 1U >= sql.size()) {
+                return true;
+            }
+            index += 2U;
+            continue;
+        }
+        if (pg_v8_token_at(sql, index, "INTO")) {
+            return true;
+        }
+        index += 1U;
+    }
+    return false;
+}
+
 SlCapabilityOperation pg_v8_effective_request_capability(PgV8Operation operation,
                                                          const std::string& sql)
 {
@@ -491,7 +568,8 @@ SlCapabilityOperation pg_v8_effective_request_capability(PgV8Operation operation
     if (capability != SL_CAPABILITY_OPERATION_READ) {
         return capability;
     }
-    return pg_v8_sql_keyword_is(sql, "SELECT") || pg_v8_sql_keyword_is(sql, "SHOW")
+    return (pg_v8_sql_keyword_is(sql, "SELECT") && !pg_v8_select_contains_into(sql)) ||
+                   pg_v8_sql_keyword_is(sql, "SHOW")
                ? SL_CAPABILITY_OPERATION_READ
                : SL_CAPABILITY_OPERATION_WRITE;
 }

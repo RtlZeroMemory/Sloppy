@@ -395,6 +395,102 @@ bool sqlsrv_v8_sql_keyword_is(const std::string& sql, const char* keyword)
              (sql[index + offset] >= 'a' && sql[index + offset] <= 'z'));
 }
 
+bool sqlsrv_v8_ascii_ident(char ch)
+{
+    return ch == '_' || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') ||
+           (ch >= 'a' && ch <= 'z');
+}
+
+bool sqlsrv_v8_token_at(const std::string& sql, size_t index, const char* token)
+{
+    size_t offset = 0U;
+
+    if (token == nullptr || index >= sql.size()) {
+        return false;
+    }
+    if (index > 0U && sqlsrv_v8_ascii_ident(sql[index - 1U])) {
+        return false;
+    }
+    while (token[offset] != '\0') {
+        if (index + offset >= sql.size()) {
+            return false;
+        }
+        char actual = sql[index + offset];
+        char expected = token[offset];
+        if (actual >= 'a' && actual <= 'z') {
+            actual = static_cast<char>(actual - 'a' + 'A');
+        }
+        if (expected >= 'a' && expected <= 'z') {
+            expected = static_cast<char>(expected - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+        offset += 1U;
+    }
+    return index + offset >= sql.size() || !sqlsrv_v8_ascii_ident(sql[index + offset]);
+}
+
+bool sqlsrv_v8_read_remainder_allowed(const std::string& sql, size_t index)
+{
+    bool saw_semicolon = false;
+
+    while (index < sql.size()) {
+        char ch = sql[index];
+        if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
+            index += 1U;
+            continue;
+        }
+        if (ch == '-' && index + 1U < sql.size() && sql[index + 1U] == '-') {
+            index += 2U;
+            while (index < sql.size() && sql[index] != '\r' && sql[index] != '\n') {
+                index += 1U;
+            }
+            continue;
+        }
+        if (ch == '/' && index + 1U < sql.size() && sql[index + 1U] == '*') {
+            index += 2U;
+            while (index + 1U < sql.size() && !(sql[index] == '*' && sql[index + 1U] == '/')) {
+                index += 1U;
+            }
+            if (index + 1U >= sql.size()) {
+                return false;
+            }
+            index += 2U;
+            continue;
+        }
+        if (saw_semicolon) {
+            return false;
+        }
+        if (ch == ';') {
+            saw_semicolon = true;
+            index += 1U;
+            continue;
+        }
+        if (sqlsrv_v8_token_at(sql, index, "INTO")) {
+            return false;
+        }
+        index += 1U;
+    }
+    return true;
+}
+
+bool sqlsrv_v8_read_sql_allowed(const std::string& sql)
+{
+    size_t index = 0U;
+
+    if (!sqlsrv_v8_sql_keyword_is(sql, "SELECT")) {
+        return false;
+    }
+    while (index < sql.size() &&
+           (sql[index] == ' ' || sql[index] == '\t' || sql[index] == '\r' || sql[index] == '\n'))
+    {
+        index += 1U;
+    }
+    index += sizeof("SELECT") - 1U;
+    return sqlsrv_v8_read_remainder_allowed(sql, index);
+}
+
 SlCapabilityOperation sqlsrv_v8_effective_request_capability(SqlSrvV8Operation operation,
                                                              const std::string& sql)
 {
@@ -402,8 +498,8 @@ SlCapabilityOperation sqlsrv_v8_effective_request_capability(SqlSrvV8Operation o
     if (capability != SL_CAPABILITY_OPERATION_READ) {
         return capability;
     }
-    return sqlsrv_v8_sql_keyword_is(sql, "SELECT") ? SL_CAPABILITY_OPERATION_READ
-                                                   : SL_CAPABILITY_OPERATION_WRITE;
+    return sqlsrv_v8_read_sql_allowed(sql) ? SL_CAPABILITY_OPERATION_READ
+                                           : SL_CAPABILITY_OPERATION_WRITE;
 }
 
 bool sqlsrv_v8_access_allows(SlSqlServerAccess access, SlCapabilityOperation operation)

@@ -159,16 +159,6 @@ pub(super) fn app_use_auth_provider_call(
                 .or_else(|| object_bool_property_value(options, "rotate"))
                 .unwrap_or(false);
             let csrf = object_bool_property_value(options, "csrf").unwrap_or(false);
-            if object_property_expression(options, "csrf").is_some()
-                && object_bool_property_value(options, "csrf").is_none()
-            {
-                return Err(Diagnostic::new(
-                    "SLOPPYC_E_UNSUPPORTED_AUTH",
-                    "Auth.cookieSession compiler extraction supports csrf: true or csrf: false; custom CSRF options remain stdlib runtime objects",
-                )
-                .with_path(path)
-                .with_span(call.span));
-            }
             if csrf && (!secure || cookie_path != "/") {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_AUTH",

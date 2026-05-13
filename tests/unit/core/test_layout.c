@@ -4,7 +4,9 @@
 #include "sloppy/http_dispatch.h"
 #include "sloppy/logging.h"
 #include "sloppy/plan.h"
+#include "sloppy/data_postgres.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 #if UINTPTR_MAX == UINT64_MAX
@@ -38,6 +40,16 @@ _Static_assert(sizeof(SlLogField) == 248U,
                "SlLogField must store only the active structured-field payload");
 _Static_assert(_Alignof(SlLogField) == _Alignof(SlLogText),
                "SlLogField alignment should match its largest payload");
+
+_Static_assert(offsetof(SlPostgresConnection, handle) == 0U,
+               "SlPostgresConnection handle offset is public ABI");
+_Static_assert(offsetof(SlPostgresConnection, open) == sizeof(void*),
+               "SlPostgresConnection open offset must preserve public ABI");
+_Static_assert(offsetof(SlPostgresConnection, transaction_active) == sizeof(void*) + 1U,
+               "SlPostgresConnection transaction_active offset must preserve public ABI");
+_Static_assert(offsetof(SlPostgresConnection, access) >
+                   offsetof(SlPostgresConnection, transaction_active),
+               "SlPostgresConnection new fields must be added after existing public ABI fields");
 #endif
 
 int main(void)

@@ -155,9 +155,105 @@ static bool sl_sqlsrv_statement_keyword_is(SlStr sql, const char* keyword)
              (sql.ptr[index + offset] >= 'a' && sql.ptr[index + offset] <= 'z'));
 }
 
+static bool sl_sqlsrv_ascii_ident(char ch)
+{
+    return ch == '_' || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') ||
+           (ch >= 'a' && ch <= 'z');
+}
+
+static bool sl_sqlsrv_token_at(SlStr sql, size_t index, const char* token)
+{
+    size_t offset = 0U;
+
+    if (token == NULL || index >= sql.length) {
+        return false;
+    }
+    if (index > 0U && sl_sqlsrv_ascii_ident(sql.ptr[index - 1U])) {
+        return false;
+    }
+    while (token[offset] != '\0') {
+        char actual;
+        char expected = token[offset];
+
+        if (index + offset >= sql.length) {
+            return false;
+        }
+        actual = sql.ptr[index + offset];
+        if (actual >= 'a' && actual <= 'z') {
+            actual = (char)(actual - 'a' + 'A');
+        }
+        if (expected >= 'a' && expected <= 'z') {
+            expected = (char)(expected - 'a' + 'A');
+        }
+        if (actual != expected) {
+            return false;
+        }
+        offset += 1U;
+    }
+    return index + offset >= sql.length || !sl_sqlsrv_ascii_ident(sql.ptr[index + offset]);
+}
+
+static bool sl_sqlsrv_read_remainder_allowed(SlStr sql, size_t index)
+{
+    bool saw_semicolon = false;
+
+    while (index < sql.length) {
+        char ch = sql.ptr[index];
+
+        if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n') {
+            index += 1U;
+            continue;
+        }
+        if (ch == '-' && index + 1U < sql.length && sql.ptr[index + 1U] == '-') {
+            index += 2U;
+            while (index < sql.length && sql.ptr[index] != '\r' && sql.ptr[index] != '\n') {
+                index += 1U;
+            }
+            continue;
+        }
+        if (ch == '/' && index + 1U < sql.length && sql.ptr[index + 1U] == '*') {
+            index += 2U;
+            while (index + 1U < sql.length &&
+                   !(sql.ptr[index] == '*' && sql.ptr[index + 1U] == '/'))
+            {
+                index += 1U;
+            }
+            if (index + 1U >= sql.length) {
+                return false;
+            }
+            index += 2U;
+            continue;
+        }
+        if (saw_semicolon) {
+            return false;
+        }
+        if (ch == ';') {
+            saw_semicolon = true;
+            index += 1U;
+            continue;
+        }
+        if (sl_sqlsrv_token_at(sql, index, "INTO")) {
+            return false;
+        }
+        index += 1U;
+    }
+    return true;
+}
+
 static bool sl_sqlsrv_read_only_query_allowed(SlStr sql)
 {
-    return sl_sqlsrv_statement_keyword_is(sql, "SELECT");
+    size_t index = 0U;
+
+    if (!sl_sqlsrv_statement_keyword_is(sql, "SELECT")) {
+        return false;
+    }
+    while (index < sql.length && (sql.ptr[index] == ' ' || sql.ptr[index] == '\t' ||
+                                  sql.ptr[index] == '\r' || sql.ptr[index] == '\n'))
+    {
+        index += 1U;
+    }
+    index += sizeof("SELECT") - 1U;
+    return sl_sqlsrv_read_remainder_allowed(sql, index);
 }
 
 static SlStatus sl_sqlsrv_read_only_rejected_diag(SlArena* arena, SlDiag* out_diag, SlStr operation)

@@ -1,0 +1,4 @@
+Sloppy Audit
+
+[note] SLOPPY_AUDIT_CONFIG_PLAN_VISIBLE configuration requirements are Plan-visible without values (configuration.requirements)
+[error] SLOPPY_AUDIT_CONFIG_REQUIRED_MISSING Missing required config Auth:\xE2\x80\xAESecret\x1B\n\t required by src/auth.ts:1 (redaction: none) (configuration.requirements)

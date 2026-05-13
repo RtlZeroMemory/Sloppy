@@ -90,8 +90,9 @@ boring to review. This page defines the standards for code under
   suppress backend detail when the backend may echo user SQL or parameter values.
 - Recursive delete and directory traversal code must not follow symlinks,
   junctions, or directory reparse points by default. POSIX directory opens use
-  `O_NOFOLLOW`; Windows directory recursion checks `FILE_ATTRIBUTE_REPARSE_POINT`
-  before descending.
+  `O_NOFOLLOW`; do not define it to `0` or otherwise compile away the guard.
+  Platforms without it must fail clearly instead of silently following symlinks.
+  Windows directory recursion checks `FILE_ATTRIBUTE_REPARSE_POINT` before descending.
 - Windows dynamic-library loading goes through the platform helper and uses
   `LoadLibraryExW` search flags. Plain `LoadLibraryW` is not acceptable in
   Sloppy-owned implementation code.

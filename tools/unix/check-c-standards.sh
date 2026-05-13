@@ -44,6 +44,7 @@ EOF
 void bad_fragment_write(FILE* file) { (void)fputs("bad", file); }
 EOF
     cat > "$invalid/src/platform/posix/bad_fs.c" <<'EOF'
+#define O_NOFOLLOW 0
 int bad_open_dir(int dirfd, const char* name) { return openat(dirfd, name, O_RDONLY | O_DIRECTORY); }
 EOF
     cat > "$invalid/src/platform/win32/bad_dynlib.c" <<'EOF'
@@ -258,6 +259,9 @@ while IFS= read -r file; do
             [[ "$line" =~ (^|[^[:alnum:]_])(open|openat)[[:space:]]*\(.*O_DIRECTORY ]] &&
             [[ "$line" != *"O_NOFOLLOW"* ]]; then
             add_finding violations "$file" "$line_number" "Directory handles used by POSIX platform code must not follow symlinks by default. Add O_NOFOLLOW, or document and test a narrow platform exception." "O_DIRECTORY"
+        fi
+        if is_posix_platform_path "$file" && [[ "$line" =~ ^[[:space:]]*#[[:space:]]*define[[:space:]]+O_NOFOLLOW[[:space:]]+0($|[^0-9]) ]]; then
+            add_finding violations "$file" "$line_number" "POSIX no-follow hardening must not be silently compiled away. Fail at compile time or return a clear unsupported status when O_NOFOLLOW is unavailable." "O_NOFOLLOW 0"
         fi
         previous_line="$line"
     done < "$repo_root/$file"

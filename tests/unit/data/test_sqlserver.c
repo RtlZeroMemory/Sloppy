@@ -372,6 +372,31 @@ static int test_invalid_options_and_use_after_close(void)
         return 35;
     }
     diag = (SlDiag){0};
+    status = sl_sqlserver_query(&arena, &read_only, sl_str_from_cstr("select 1; delete from users"),
+                                NULL, 0U, NULL, &query_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_PERMISSION_DENIED || diag_contains_text(&diag, "delete from users"))
+    {
+        return 37;
+    }
+    diag = (SlDiag){0};
+    status = sl_sqlserver_query(&arena, &read_only,
+                                sl_str_from_cstr("select id into copied_users from users"), NULL,
+                                0U, NULL, &query_result, &diag);
+    if (expect_status(status, SL_STATUS_INVALID_STATE) != 0 ||
+        diag.code != SL_DIAG_PERMISSION_DENIED || diag_contains_text(&diag, "copied_users"))
+    {
+        return 38;
+    }
+    diag = (SlDiag){0};
+    status =
+        sl_sqlserver_query(&arena, &read_only, sl_str_from_cstr("select 1 -- trailing comment"),
+                           NULL, 0U, NULL, &query_result, &diag);
+    if (sl_status_code(status) == SL_STATUS_INVALID_STATE && diag.code == SL_DIAG_PERMISSION_DENIED)
+    {
+        return 39;
+    }
+    diag = (SlDiag){0};
     status = sl_sqlserver_query_one(
         &arena, &read_only, sl_str_from_cstr("update t set value = 'sekrit' output inserted.id"),
         NULL, 0U, &one, &diag);

@@ -692,7 +692,8 @@ Platform security-sensitive APIs need the same boundary discipline:
 - Windows dynamic-library loading must go through Sloppy's platform helper and use
   `LoadLibraryExW` with explicit search flags. Do not call `LoadLibraryW` directly.
 - POSIX platform code that opens directory handles for traversal or recursive delete must
-  include `O_NOFOLLOW`, or document and test a narrow exception.
+  include `O_NOFOLLOW`. Do not define `O_NOFOLLOW` to `0`; unsupported platforms must
+  fail clearly or carry a documented, tested exception.
 - Windows recursive traversal must check `FILE_ATTRIBUTE_REPARSE_POINT` before descending
   into a directory-like entry.
 

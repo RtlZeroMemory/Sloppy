@@ -29,8 +29,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#ifndef O_NOFOLLOW
-#define O_NOFOLLOW 0
+#if !defined(O_NOFOLLOW)
+#error                                                                                             \
+    "Sloppy POSIX filesystem hardening requires O_NOFOLLOW; add an explicit unsupported path instead of silently following symlinks."
 #endif
 
 struct SlFsFileHandle

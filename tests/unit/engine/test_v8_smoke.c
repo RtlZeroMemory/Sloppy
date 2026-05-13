@@ -3345,7 +3345,11 @@ static int test_promise_rejection_redacts_secret_text(void)
                 sl_str_from_cstr("globalThis.sloppy_reject_secret = async function () { throw new "
                                  "Error('password=hunter2 token=abc Authorization: Bearer "
                                  "bearer-secret; Authorization: Basic basic-secret; "
-                                 "Authorization: Digest digest-secret'); };"),
+                                 "Authorization: Digest digest-secret\\n"
+                                 "{\"token\":\"json-secret\",\"api_key\":\"api-secret\"}\\n"
+                                 "Cookie: sid=cookie-secret; csrf=csrf-secret\\n"
+                                 "Set-Cookie: sid=set-cookie-secret; HttpOnly\\n"
+                                 "connectionString=postgres://ada:conn-secret@localhost/db'); };"),
                 &diag),
             SL_STATUS_OK) != 0)
     {
@@ -3368,7 +3372,13 @@ static int test_promise_rejection_redacts_secret_text(void)
         expect_str_contains(diag.message, sl_str_from_cstr("token=abc")) == 0 ||
         expect_str_contains(diag.message, sl_str_from_cstr("bearer-secret")) == 0 ||
         expect_str_contains(diag.message, sl_str_from_cstr("basic-secret")) == 0 ||
-        expect_str_contains(diag.message, sl_str_from_cstr("digest-secret")) == 0)
+        expect_str_contains(diag.message, sl_str_from_cstr("digest-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("json-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("api-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("cookie-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("csrf-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("set-cookie-secret")) == 0 ||
+        expect_str_contains(diag.message, sl_str_from_cstr("conn-secret")) == 0)
     {
         sl_engine_destroy(engine);
         return 74;
@@ -8169,6 +8179,14 @@ static int test_provider_bridge_non_live_invalid_shapes(void)
                     "  Object.setPrototypeOf(pgInheritedMax, { maxConnections: 'bad' });"
                     "  expectOpenClose(() => __sloppy.data.postgres.open(pgInheritedMax), "
                     "__sloppy.data.postgres.close);"
+                    "  const pgRead = __sloppy.data.postgres.open({ "
+                    "connectionString: 'postgres://localhost/sloppy', capability: 'data.pg', "
+                    "access: 'read' });"
+                    "  expectThrow(() => __sloppy.data.postgres.queryCursor(pgRead, 'select id "
+                    "into copied from users', []), 'read-only');"
+                    "  expectThrow(() => __sloppy.data.postgres.queryRawCursor(pgRead, 'insert "
+                    "into users values (1)', []), 'read-only');"
+                    "  __sloppy.data.postgres.close(pgRead);"
                     "  expectThrow(() => __sloppy.data.postgres.open({ "
                     "connectionString: 'postgres://localhost/sloppy', capability: 'data.pg', "
                     "get maxConnections() { throw new Error('max'); } }), 'open requires open "
@@ -8189,6 +8207,14 @@ static int test_provider_bridge_non_live_invalid_shapes(void)
                     "  Object.setPrototypeOf(sqlSrvInheritedMax, { maxConnections: 'bad' });"
                     "  expectOpenClose(() => __sloppy.data.sqlserver.open(sqlSrvInheritedMax), "
                     "__sloppy.data.sqlserver.close);"
+                    "  const sqlSrvRead = __sloppy.data.sqlserver.open({ "
+                    "connectionString: 'Driver={ODBC Driver 18 for SQL Server};Server=localhost;', "
+                    "capability: 'data.sqlsrv', access: 'read' });"
+                    "  expectThrow(() => __sloppy.data.sqlserver.query(sqlSrvRead, 'select 1; "
+                    "delete from users', []), 'read-only');"
+                    "  expectThrow(() => __sloppy.data.sqlserver.queryCursor(sqlSrvRead, 'select "
+                    "id into copied from users', []), 'read-only');"
+                    "  __sloppy.data.sqlserver.close(sqlSrvRead);"
                     "  expectThrow(() => __sloppy.data.sqlserver.open({ "
                     "connectionString: 'Driver={ODBC Driver 18 for SQL Server};Server=localhost;', "
                     "capability: 'data.sqlsrv', get maxConnections() { throw new Error('max'); } "
@@ -8208,8 +8234,10 @@ static int test_provider_bridge_non_live_invalid_shapes(void)
                                                &result, &diag),
                       SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_JSON ||
-        expect_bytes_equal(result.response.body, "{\"checks\":[true,true,true,true,true,true,true,"
-                                                 "true,true,true,true,true,true,true]}") != 0)
+        expect_bytes_equal(result.response.body,
+                           "{\"checks\":[true,true,true,true,true,true,true,"
+                           "true,true,true,true,true,true,true,true,true,true,"
+                           "true]}") != 0)
     {
         sl_engine_destroy(engine);
         return 230;

@@ -38,7 +38,7 @@ static void sl_cli_audit_text_write_safe(const char* text)
             fputs("\\x1B", stdout);
             break;
         default:
-            if (*cursor < 0x20U || *cursor == 0x7FU) {
+            if (*cursor < 0x20U || *cursor == 0x7FU || *cursor >= 0x80U) {
                 printf("\\x%02X", (unsigned int)*cursor);
             }
             else {

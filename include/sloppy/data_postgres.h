@@ -45,9 +45,9 @@ typedef struct SlPostgresOpenOptions
 typedef struct SlPostgresConnection
 {
     void* handle;
-    SlPostgresAccess access;
     bool open;
     bool transaction_active;
+    SlPostgresAccess access;
 } SlPostgresConnection;
 
 typedef enum SlPostgresParamKind

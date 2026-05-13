@@ -370,6 +370,17 @@ foreach ($file in $files) {
                 -Severity "error"
         }
 
+        if ((Test-PosixPlatformPath $relativePath) -and
+            ($line -match '^\s*#\s*define\s+O_NOFOLLOW\s+0\b')) {
+            $violations += New-Finding `
+                -File $relativePath `
+                -Line $lineNumber `
+                -Pattern "O_NOFOLLOW 0" `
+                -Rule "POSIX no-follow hardening must not be silently compiled away." `
+                -Fix "Fail at compile time or return a clear unsupported status when O_NOFOLLOW is unavailable." `
+                -Severity "error"
+        }
+
         $previousLine = $line
     }
 }
@@ -425,6 +436,7 @@ struct BadPacked { char c; int i; };
 void bad_fragment_copy(char* dst, const char* src) { strcpy(dst, src); }
 '@
         Set-Content -LiteralPath (Join-Path $invalidRoot "src/platform/posix/bad_fs.c") -Value @'
+#define O_NOFOLLOW 0
 int bad_open_dir(int dirfd, const char* name) { return openat(dirfd, name, O_RDONLY | O_DIRECTORY); }
 '@
         Set-Content -LiteralPath (Join-Path $invalidRoot "src/platform/win32/bad_dynlib.c") -Value @'

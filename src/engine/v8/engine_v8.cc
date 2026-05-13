@@ -1755,7 +1755,30 @@ size_t sl_v8_secret_value_end(std::string_view text, size_t start)
                 continue;
             }
             if (text[cursor] == quote) {
-                return cursor;
+                return cursor + 1U;
+            }
+            cursor += 1U;
+        }
+        return text.size();
+    }
+    if (start < text.size() && (text[start] == '{' || text[start] == '[')) {
+        const char open = text[start];
+        const char close = open == '{' ? '}' : ']';
+        size_t cursor = start + 1U;
+        size_t depth = 1U;
+        while (cursor < text.size()) {
+            if (text[cursor] == '"' || text[cursor] == '\'') {
+                cursor = sl_v8_secret_value_end(text, cursor);
+                continue;
+            }
+            if (text[cursor] == open) {
+                depth += 1U;
+            }
+            else if (text[cursor] == close) {
+                depth -= 1U;
+                if (depth == 0U) {
+                    return cursor + 1U;
+                }
             }
             cursor += 1U;
         }
@@ -1771,23 +1794,53 @@ size_t sl_v8_secret_value_end(std::string_view text, size_t start)
     return cursor;
 }
 
-size_t sl_v8_authorization_value_end(std::string_view text, size_t start)
+size_t sl_v8_header_value_end(std::string_view text, size_t start)
 {
     size_t cursor = start;
-    while (cursor < text.size() && text[cursor] != '\r' && text[cursor] != '\n' &&
-           text[cursor] != ';' && text[cursor] != '&')
-    {
+    while (cursor < text.size() && text[cursor] != '\r' && text[cursor] != '\n') {
         cursor += 1U;
     }
     return cursor;
+}
+
+void sl_v8_redact_cookie_header_value(std::string* text, size_t value_start, size_t field_end)
+{
+    size_t cursor = value_start;
+
+    while (cursor < field_end) {
+        while (cursor < field_end &&
+               ((*text)[cursor] == ' ' || (*text)[cursor] == '\t' || (*text)[cursor] == ';'))
+        {
+            cursor += 1U;
+        }
+        while (cursor < field_end && (*text)[cursor] != '=' && (*text)[cursor] != ';') {
+            cursor += 1U;
+        }
+        if (cursor >= field_end || (*text)[cursor] != '=') {
+            continue;
+        }
+        cursor += 1U;
+        const size_t secret_start = cursor;
+        while (cursor < field_end && (*text)[cursor] != ';') {
+            cursor += 1U;
+        }
+        if (cursor > secret_start) {
+            const size_t old_length = cursor - secret_start;
+            const size_t new_length = sizeof("[REDACTED]") - 1U;
+            text->replace(secret_start, old_length, "[REDACTED]");
+            cursor = secret_start + sizeof("[REDACTED]") - 1U;
+            field_end = field_end - old_length + new_length;
+        }
+    }
 }
 
 } // namespace
 
 std::string sl_v8_redact_diagnostic_text(std::string_view input)
 {
-    static constexpr std::string_view keys[] = {"password", "token", "secret", "authorization",
-                                                "cookie"};
+    static constexpr std::string_view keys[] = {
+        "password",   "token",   "secret",  "authorization", "cookie",
+        "set-cookie", "api_key", "api-key", "apiKey",        "connectionString"};
     std::string text(input);
 
     for (std::string_view key : keys) {
@@ -1808,6 +1861,12 @@ std::string sl_v8_redact_diagnostic_text(std::string_view input)
             while (cursor < text.size() && (text[cursor] == ' ' || text[cursor] == '\t')) {
                 cursor += 1U;
             }
+            if (cursor < text.size() && (text[cursor] == '"' || text[cursor] == '\'')) {
+                cursor += 1U;
+                while (cursor < text.size() && (text[cursor] == ' ' || text[cursor] == '\t')) {
+                    cursor += 1U;
+                }
+            }
             if (cursor >= text.size() || (text[cursor] != '=' && text[cursor] != ':')) {
                 search = index + key.size();
                 continue;
@@ -1817,7 +1876,7 @@ std::string sl_v8_redact_diagnostic_text(std::string_view input)
                 cursor += 1U;
             }
             if (key == "authorization") {
-                size_t field_end = sl_v8_authorization_value_end(text, cursor);
+                size_t field_end = sl_v8_header_value_end(text, cursor);
                 size_t scheme_end = cursor;
 
                 while (scheme_end < field_end && text[scheme_end] != ' ' &&
@@ -1835,6 +1894,12 @@ std::string sl_v8_redact_diagnostic_text(std::string_view input)
                     value_start = cursor;
                 }
                 value_end = field_end;
+            }
+            else if (key == "cookie" || key == "set-cookie") {
+                size_t field_end = sl_v8_header_value_end(text, cursor);
+                sl_v8_redact_cookie_header_value(&text, cursor, field_end);
+                search = cursor + 1U;
+                continue;
             }
             else {
                 value_start = cursor;
