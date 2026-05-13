@@ -269,6 +269,143 @@ pub(super) fn extract_relative_helper_import(
         .with_span(import.source.span));
     }
 
+    for statement in &parsed.program.body {
+        match statement {
+            Statement::FunctionDeclaration(function) => {
+                let Some(identifier) = &function.id else {
+                    continue;
+                };
+                let Some(helper_source) = source_slice(&source, function.span) else {
+                    graph.visiting.remove(&imported.path);
+                    return Err(Diagnostic::new(
+                        "SLOPPYC_E_UNSUPPORTED_HELPER",
+                        "helper source could not be extracted",
+                    )
+                    .with_path(&imported.path)
+                    .with_span(function.span));
+                };
+                let name = identifier.name.as_str().to_string();
+                let summary = helper_effects_from_function(
+                    function,
+                    &BTreeMap::new(),
+                    &helper_effects,
+                    &source,
+                    &source_name,
+                );
+                helper_sources.insert(name.clone(), helper_source);
+                helper_effects.insert(name, summary);
+                resolve_helper_effect_callgraph(&mut helper_effects);
+            }
+            Statement::VariableDeclaration(declaration) => {
+                for declarator in &declaration.declarations {
+                    let Some(init) = &declarator.init else {
+                        continue;
+                    };
+                    if helper_initializer(init).is_none() {
+                        continue;
+                    }
+                    let Some(name) = binding_identifier(&declarator.id) else {
+                        graph.visiting.remove(&imported.path);
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
+                            "helper declarations must use simple identifiers",
+                        )
+                        .with_path(&imported.path)
+                        .with_span(declarator.span));
+                    };
+                    let Some(init_source) = source_slice(&source, init.span()) else {
+                        graph.visiting.remove(&imported.path);
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_HELPER",
+                            "helper source could not be extracted",
+                        )
+                        .with_path(&imported.path)
+                        .with_span(init.span()));
+                    };
+                    let helper_source = format!("const {name} = {init_source};");
+                    let summary = helper_effects_from_initializer(
+                        init,
+                        &BTreeMap::new(),
+                        &helper_effects,
+                        &source,
+                        &source_name,
+                    );
+                    helper_sources.insert(name.to_string(), helper_source);
+                    helper_effects.insert(name.to_string(), summary);
+                    resolve_helper_effect_callgraph(&mut helper_effects);
+                }
+            }
+            Statement::ExportNamedDeclaration(export) => match &export.declaration {
+                Some(Declaration::FunctionDeclaration(function)) => {
+                    let Some(identifier) = &function.id else {
+                        continue;
+                    };
+                    let Some(helper_source) = source_slice(&source, function.span) else {
+                        graph.visiting.remove(&imported.path);
+                        return Err(Diagnostic::new(
+                            "SLOPPYC_E_UNSUPPORTED_HELPER",
+                            "helper source could not be extracted",
+                        )
+                        .with_path(&imported.path)
+                        .with_span(function.span));
+                    };
+                    let name = identifier.name.as_str().to_string();
+                    let summary = helper_effects_from_function(
+                        function,
+                        &BTreeMap::new(),
+                        &helper_effects,
+                        &source,
+                        &source_name,
+                    );
+                    helper_sources.insert(name.clone(), helper_source);
+                    helper_effects.insert(name, summary);
+                    resolve_helper_effect_callgraph(&mut helper_effects);
+                }
+                Some(Declaration::VariableDeclaration(declaration)) => {
+                    for declarator in &declaration.declarations {
+                        let Some(init) = &declarator.init else {
+                            continue;
+                        };
+                        if helper_initializer(init).is_none() {
+                            continue;
+                        }
+                        let Some(name) = binding_identifier(&declarator.id) else {
+                            graph.visiting.remove(&imported.path);
+                            return Err(Diagnostic::new(
+                                "SLOPPYC_E_UNSUPPORTED_MODULE_SHAPE",
+                                "helper declarations must use simple identifiers",
+                            )
+                            .with_path(&imported.path)
+                            .with_span(declarator.span));
+                        };
+                        let Some(init_source) = source_slice(&source, init.span()) else {
+                            graph.visiting.remove(&imported.path);
+                            return Err(Diagnostic::new(
+                                "SLOPPYC_E_UNSUPPORTED_HELPER",
+                                "helper source could not be extracted",
+                            )
+                            .with_path(&imported.path)
+                            .with_span(init.span()));
+                        };
+                        let helper_source = format!("const {name} = {init_source};");
+                        let summary = helper_effects_from_initializer(
+                            init,
+                            &BTreeMap::new(),
+                            &helper_effects,
+                            &source,
+                            &source_name,
+                        );
+                        helper_sources.insert(name.to_string(), helper_source);
+                        helper_effects.insert(name.to_string(), summary);
+                        resolve_helper_effect_callgraph(&mut helper_effects);
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
     let mut found = None::<ImportedHelper>;
     for statement in &parsed.program.body {
         let Statement::ExportNamedDeclaration(export) = statement else {
@@ -363,6 +500,18 @@ pub(super) fn extract_relative_helper_import(
         .with_path(&imported.path)
         .with_span(imported.span));
     };
+    for dependency_source in helper_sources_referenced_by_handler(&helper.source, &helper_sources) {
+        if let Some((name, _)) = helper_sources
+            .iter()
+            .find(|(_, source)| **source == dependency_source)
+        {
+            helpers.push(ImportedHelper {
+                name: name.clone(),
+                source: dependency_source,
+                summary: helper_effects.get(name).cloned().unwrap_or_default(),
+            });
+        }
+    }
     helpers.push(helper);
     Ok(helpers)
 }

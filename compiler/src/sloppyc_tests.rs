@@ -1314,6 +1314,69 @@ export default app;
 }
 
 #[test]
+fn function_module_imported_helper_includes_private_helper_dependencies() {
+    let root = fixture_temp_dir("function-module-imported-helper-dependencies");
+    let modules = root.join("modules");
+    let infrastructure = root.join("infrastructure");
+    fs::create_dir_all(&modules).expect("modules directory should be created");
+    fs::create_dir_all(&infrastructure).expect("infrastructure directory should be created");
+    fs::write(
+        infrastructure.join("ticket-store.js"),
+        r#"export async function ensureTicketSchema(db) {
+    return db.exec("create table if not exists tickets (id integer primary key, title text not null)", []);
+}
+
+export async function createRuntimeTicket(db, input) {
+    await ensureTicketSchema(db);
+    return db.transaction(async (tx) => {
+        await tx.exec("insert into tickets (title) values (?)", [input.title]);
+        return await tx.queryOne("select id, title from tickets where title = ?", [input.title]);
+    });
+}
+"#,
+    )
+    .expect("infrastructure fixture should be writable");
+    fs::write(
+        modules.join("tickets.js"),
+        r#"import { Results } from "sloppy";
+import { createRuntimeTicket } from "../infrastructure/ticket-store.js";
+
+export function ticketsModule(app) {
+    const db = app.provider("sqlite:main");
+
+    app.post("/tickets", async () => {
+        const inserted = await createRuntimeTicket(db, { title: "DogFood" });
+        return Results.created(`/tickets/${inserted.id}`, inserted);
+    }).withName("Tickets.Create");
+}
+"#,
+    )
+    .expect("module fixture should be writable");
+    let source = r#"import { Sloppy } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+import { ticketsModule } from "./modules/tickets.js";
+
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+app.useModule(ticketsModule);
+export default app;
+"#;
+    let app =
+        extract_temp_input(&root, source).expect("imported helper dependencies should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("function ensureTicketSchema"));
+    assert!(emitted_js
+        .source
+        .contains("async function createRuntimeTicket"));
+    assert!(
+        emitted_js.source.find("function ensureTicketSchema")
+            < emitted_js.source.find("async function createRuntimeTicket")
+    );
+
+    fs::remove_dir_all(&root).expect("test directory should be removable");
+}
+
+#[test]
 fn function_module_still_rejects_multistatement_handlers_without_runtime_effects() {
     let root = fixture_temp_dir("function-module-multistatement-no-effects");
     let modules = root.join("modules");
