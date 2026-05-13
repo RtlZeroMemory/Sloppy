@@ -220,7 +220,7 @@ function bearerToken(ctx) {
     if (/[\r\n,]/u.test(value)) {
         return null;
     }
-    const match = value.match(/^Bearer ([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){2})$/u);
+    const match = value.match(/^Bearer ([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){2})$/iu);
     return match === null ? null : match[1];
 }
 
@@ -1257,9 +1257,21 @@ function normalizeSessionRow(row) {
     }
     const claimsText = row.claims_json ?? row.claimsJson ?? row.claims;
     const metadataText = row.metadata_json ?? row.metadataJson ?? row.metadata;
+    let claimsValue = claimsText;
+    let metadataValue = metadataText;
+    try {
+        if (typeof claimsText === "string") {
+            claimsValue = JSON.parse(claimsText);
+        }
+        if (typeof metadataText === "string") {
+            metadataValue = JSON.parse(metadataText);
+        }
+    } catch {
+        return undefined;
+    }
     return cloneSessionRecord({
         id: row.id,
-        claims: typeof claimsText === "string" ? JSON.parse(claimsText) : claimsText,
+        claims: claimsValue,
         createdAt: Number(row.created_at_ms ?? row.createdAt ?? row.created_at),
         lastSeenAt: Number(row.last_seen_at_ms ?? row.lastSeenAt ?? row.last_seen_at),
         expiresAt: row.expires_at_ms === null || row.expires_at_ms === undefined
@@ -1272,9 +1284,9 @@ function normalizeSessionRow(row) {
             ? undefined
             : Number(row.revoked_at_ms),
         csrf: row.csrf === null ? undefined : row.csrf,
-        metadata: metadataText === null || metadataText === undefined
+        metadata: metadataValue === null || metadataValue === undefined
             ? undefined
-            : (typeof metadataText === "string" ? JSON.parse(metadataText) : metadataText),
+            : metadataValue,
     });
 }
 
@@ -1514,18 +1526,28 @@ async function signIn(ctx, claims, options = undefined) {
     return result;
 }
 
-function signOut(ctx, options = undefined) {
+async function signOut(ctx, options = undefined) {
     const scheme = findSessionScheme(ctx);
     const sessionId = typeof ctx?.session?.id === "string" ? ctx.session.id : undefined;
     if (sessionId !== undefined && scheme.store !== undefined) {
-        scheme.store.revoke(sessionId, nowMilliseconds(scheme.clock)).catch(() => {});
+        await scheme.store.revoke(sessionId, nowMilliseconds(scheme.clock));
     }
     ctx.user = anonymousUser();
-    return Results.status(204).cookie(
+    let result = Results.status(204).cookie(
         scheme.cookieName,
         "",
         sessionStoreCookieOptions(scheme, { ...options, maxAgeSeconds: 0, expires: new Date(0) }),
     );
+    if (scheme.csrf.enabled) {
+        result = result.cookie(scheme.csrf.cookieName, "", {
+            path: scheme.path,
+            secure: scheme.secure,
+            sameSite: scheme.sameSite,
+            maxAgeSeconds: 0,
+            expires: new Date(0),
+        });
+    }
+    return result;
 }
 
 function apiKey(options) {

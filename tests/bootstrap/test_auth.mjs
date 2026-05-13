@@ -172,6 +172,9 @@ try {
     assert.deepEqual(me.body.roles, ["admin"]);
     assert.equal(me.body.scheme, "jwtBearer");
     assert.equal(me.body.authenticated, true);
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { Authorization: `bearer ${valid}` },
+    })).response.status, 200);
 
     assert.equal((await requestJson(host, "GET", "/admin", {
         headers: { Authorization: `Bearer ${noAdmin}` },
@@ -485,6 +488,12 @@ try {
     assert.equal(me.response.status, 200);
     assert.equal(me.body.subject, "db-user");
     assert.equal(row.last_seen_at_ms, 1_700_000_000_000);
+    const validRow = { ...row };
+    row.claims_json = "{";
+    assert.equal((await requestJson(host, "GET", "/me", {
+        headers: { cookie: `sloppy.session=${session}` },
+    })).response.status, 401);
+    row = validRow;
     assert.equal((await requestJson(host, "POST", "/logout", {
         headers: { cookie: `sloppy.session=${session}` },
     })).response.status, 204);
@@ -872,6 +881,7 @@ try {
         clock: () => 1_700_000_000_000,
     }));
     app.post("/login", (ctx) => Auth.signIn(ctx, { sub: "csrf-user" }));
+    app.post("/logout", (ctx) => Auth.signOut(ctx));
     app.post("/unsafe", (ctx) => Results.ok({ subject: ctx.user.sub })).requireAuth();
 
     const host = Testing.createHost(app);
@@ -888,6 +898,18 @@ try {
             "x-csrf-token": csrf,
         },
     })).response.status, 200);
+    const logout = await host.post("/logout", {
+        headers: {
+            cookie: `sloppy.session=${session}; __Host-sloppy_csrf=${csrf}`,
+            "x-csrf-token": csrf,
+        },
+    });
+    const logoutCookies = setCookies(logout);
+    assert.ok(logoutCookies.some((cookie) => cookie.startsWith("sloppy.session=")));
+    const logoutCsrf = logoutCookies.find((cookie) => cookie.startsWith("__Host-sloppy_csrf="));
+    assert.ok(logoutCsrf);
+    assertCookieDirective(logoutCsrf, "Max-Age=0");
+    assertCookieDirective(logoutCsrf, "Expires=Thu, 01 Jan 1970 00:00:00 GMT");
     await host.close();
 }
 

@@ -7018,6 +7018,13 @@ app.auth.addPolicy("ops", (user) => user.claims.department === requiredDepartmen
 app.get("/", () => Results.ok({ ok: true })).requireAuth({ policy: "ops" });
 export default app;
 "#,
+        r#"import { Sloppy, Results, Auth, Config } from "sloppy";
+const app = Sloppy.create();
+const store = Math.random() > 0 ? Auth.sessionStore.memory() : undefined;
+app.use(Auth.cookieSession({ secret: Config.required("Auth:SessionSecret"), store }));
+app.get("/", () => Results.ok({ ok: true })).requireAuth();
+export default app;
+"#,
     ] {
         let diagnostic = extract(std::path::Path::new("app.ts"), source)
             .expect_err("unsupported static auth metadata should fail closed");
@@ -7091,7 +7098,11 @@ export default app;
     assert!(emitted_js.source.contains("__sloppy_auth_session"));
     assert!(emitted_js.source.contains("cookieSession"));
     assert!(emitted_js.source.contains("__sloppy_auth_memory_sessions"));
+    assert!(emitted_js
+        .source
+        .contains("__sloppy_auth_memory_sessions.delete"));
     assert!(emitted_js.source.contains("__sloppy_auth_rotate_session"));
+    assert!(emitted_js.source.contains("previous.expiresAt"));
     assert!(emitted_js
         .source
         .contains("return await __sloppy_auth_rotate_session(ctx, await terminal());"));
