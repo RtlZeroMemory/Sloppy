@@ -1487,7 +1487,10 @@ function createHealthHelpers(host) {
         },
         async check(name, path = "/health") {
             const body = await this.snapshot(path);
-            return body.checks?.find((entry) => entry.name === name);
+            if (Array.isArray(body.checks)) {
+                return body.checks.find((entry) => entry.name === name);
+            }
+            return body.checks?.[name];
         },
         async expect(name, status, path = "/health") {
             const check = await this.check(name, path);

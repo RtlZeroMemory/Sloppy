@@ -15,7 +15,9 @@ import {
     orm,
     ProblemDetails,
     RateLimit,
+    Realtime,
     Results,
+    schema,
     Sloppy,
     table,
     TestHost,
@@ -31,6 +33,7 @@ const DEFAULT_PROPERTY_TARGETS = Object.freeze([
     "http-client",
     "static-files",
     "rate-limit",
+    "realtime",
     "workers",
     "logging",
     "config",
@@ -156,6 +159,13 @@ function assertBytesEqual(actual, expected) {
 function assertThrows(fn, pattern = /./) {
     assert.throws(fn, (error) => {
         assert.match(String(error?.message ?? error), pattern);
+        return true;
+    });
+}
+
+function assertThrowsCode(fn, code) {
+    assert.throws(fn, (error) => {
+        assert.equal(error.code, code);
         return true;
     });
 }
@@ -476,6 +486,56 @@ const properties = Object.freeze({
         const bucketDenied = await bucketStore.check({ policy: bucket, cost: 1, partitionHash: "global", nowMs: 0 });
         assert.equal(bucketDenied.allowed, false);
         assert.ok(bucketDenied.retryAfterMs >= 1);
+    },
+
+    realtime(random, iteration) {
+        const maxLength = 1 + random.int(32);
+        const text = "x".repeat(random.int(maxLength + 1));
+        const Channel = Realtime.channel(`property${iteration}`, {
+            client: {
+                sendValue: schema.object({
+                    text: schema.string().maxLength(maxLength),
+                }),
+            },
+            server: {
+                didReceive: schema.object({
+                    text: schema.string().maxLength(maxLength),
+                }),
+            },
+        });
+
+        const parsed = Channel.parseClientMessage(JSON.stringify({
+            type: "sendValue",
+            data: { text },
+            id: `client-${iteration}`,
+        }));
+        assert.deepEqual(parsed, {
+            type: "sendValue",
+            data: { text },
+            id: `client-${iteration}`,
+        });
+
+        const server = Channel.serializeServerMessage("didReceive", { text });
+        assert.deepEqual(server, { type: "didReceive", data: { text } });
+        assert.equal(Channel.stringifyServerMessage("didReceive", { text }), JSON.stringify(server));
+
+        assertThrowsCode(() => Channel.parseClientMessage("{"), "SLOPPY_E_REALTIME_MALFORMED_JSON");
+        assertThrowsCode(
+            () => Channel.parseClientMessage(JSON.stringify({ type: "unknown", data: {} })),
+            "SLOPPY_E_REALTIME_UNKNOWN_EVENT",
+        );
+        assertThrowsCode(
+            () => Channel.parseClientMessage(JSON.stringify({ type: "sendValue" })),
+            "SLOPPY_E_REALTIME_MALFORMED_ENVELOPE",
+        );
+        assertThrowsCode(
+            () => Channel.parseClientMessage(JSON.stringify({ type: "sendValue", data: { text: "x".repeat(maxLength + 1) } })),
+            "SLOPPY_E_REALTIME_VALIDATION_FAILED",
+        );
+        assertThrowsCode(
+            () => Channel.serializeServerMessage("didReceive", { text: "x".repeat(maxLength + 1) }),
+            "SLOPPY_E_REALTIME_VALIDATION_FAILED",
+        );
     },
 
     async workers(random) {

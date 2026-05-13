@@ -105,6 +105,8 @@ api.get("/items/{id:int}", (ctx) => {
         transientIdsDifferent: transientA.id !== transientB.id,
         user: user.sub,
         routePattern: ctx.routePattern,
+        signalAborted: ctx.signal.aborted,
+        deadline: ctx.deadline,
         remoteAddress: ctx.connection.remoteAddress,
         connection: {
             protocol: ctx.connection.protocol,
@@ -112,7 +114,7 @@ api.get("/items/{id:int}", (ctx) => {
             secure: ctx.connection.secure,
         },
     });
-}).requiresScope("items:read").requiresRole("reader");
+}).requiresScope("items:read", "items:write").requiresRole("reader");
 
 api.post("/json", async (ctx) => {
     const input = await ctx.body.validate(CreateItem);
@@ -158,9 +160,16 @@ try {
     }).get("/api/items/42");
     wrongRole.expectStatus(403).expectProblem({ status: 403, code: "SLOPPY_E_AUTH_FORBIDDEN" });
 
-    const client = host.asUser({
+    const missingWriteScope = await host.asUser({
         sub: "user-1",
         scopes: ["items:read"],
+        roles: ["reader"],
+    }).get("/api/items/42");
+    missingWriteScope.expectStatus(403).expectProblem({ status: 403, code: "SLOPPY_E_AUTH_FORBIDDEN" });
+
+    const client = host.asUser({
+        sub: "user-1",
+        scopes: ["items:read", "items:write"],
         roles: ["reader"],
         claims: { tenant: "core" },
     });
@@ -180,6 +189,8 @@ try {
         transientIdsDifferent: true,
         user: "user-1",
         routePattern: "/api/items/{id:int}",
+        signalAborted: false,
+        deadline: null,
         remoteAddress: "test-host",
         connection: {
             protocol: "http",
@@ -259,6 +270,13 @@ try {
         true,
         "app metrics should include route-level HTTP metrics",
     );
+    const openapi = await host.openapi();
+    assert.equal(openapi.paths["/api/limited"].get.responses["429"].description, "Too Many Requests");
+    assert.equal(
+        openapi.paths["/api/limited"].get["x-slop-rate-limit"].some((policy) => policy.name === "matrix-limited"),
+        true,
+    );
+    assert.equal(openapi.paths["/api/items/{id}"].get["x-slop-route"].pattern, "/api/items/{id:int}");
     assert.equal(JSON.stringify(app.metrics.snapshot()).includes("user-1"), false);
 } finally {
     await host.close();
