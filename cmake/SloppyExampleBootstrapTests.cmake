@@ -109,6 +109,11 @@
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_app_host_foundation.mjs")
         add_test(
+            NAME bootstrap.stdlib.testhost_process_modes
+            COMMAND
+                "${CMAKE_COMMAND}" -E env "SLOPPY_TESTHOST_CLI=$<TARGET_FILE:sloppy>"
+                "${NODE_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_testhost_process_modes.mjs")
+        add_test(
             NAME bootstrap.stdlib.prealpha_control_plane_dogfood
             COMMAND "${NODE_EXECUTABLE}"
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_prealpha_control_plane_dogfood.mjs")
@@ -154,7 +159,8 @@
                     "${PROJECT_SOURCE_DIR}/tests/bootstrap/test_core_integration.mjs")
         set_tests_properties(
             bootstrap.stdlib.import_graph bootstrap.stdlib.public_exports
-            bootstrap.stdlib.app_host_foundation bootstrap.stdlib.prealpha_control_plane_dogfood
+            bootstrap.stdlib.app_host_foundation bootstrap.stdlib.testhost_process_modes
+            bootstrap.stdlib.prealpha_control_plane_dogfood
             bootstrap.stdlib.modules
             bootstrap.stdlib.data_foundation bootstrap.stdlib.codec bootstrap.stdlib.auth bootstrap.stdlib.property
             bootstrap.stdlib.os

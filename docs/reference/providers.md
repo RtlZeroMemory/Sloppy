@@ -163,6 +163,9 @@ the runtime data API:
 
 - `query(...)` returns object rows by default.
 - `query(..., { mode: "raw" })` and `queryRaw(...)` return `{ mode, columns, columnNames, rows }`.
+- `queryCursor(...)` returns an async iterable object-row cursor.
+- `queryRawCursor(...)` returns an async iterable raw positional cursor.
+- `stream(...)` is a connection-level alias for `queryCursor(...)`.
 - `queryOne(...)` returns a single object row or `null`.
 
 Raw mode preserves duplicate column names and positional values. Object mode
@@ -170,9 +173,26 @@ uses normal JS object property semantics, so the last duplicate column name wins
 
 `query(...)` and `queryRaw(...)` are bounded. The default cap is 128 materialized
 rows, and operation option `{ maxRows }` adjusts the cap for one call. Providers
-fail with an exceeded-max-rows diagnostic instead of silently truncating. The
-current public provider API does not expose cursor-style incremental row
-streaming.
+fail with an exceeded-max-rows diagnostic instead of silently truncating.
+
+Cursors are the large-result API. They do not use the 128-row materialization
+cap by default, but accept `{ maxRows }` when a stream should be bounded by the
+caller. Cursors expose `close()`, `closed`, `provider`, `mode`, `columns`, and
+`columnNames`; closing is idempotent and `next()` after close fails
+deterministically. Early loop break, consumer errors, provider close, runtime
+shutdown, and transaction teardown release or invalidate active cursor
+resources.
+
+Provider cursor ownership:
+
+- SQLite keeps the prepared statement active and steps rows incrementally.
+- PostgreSQL uses libpq single-row mode and pins the pool connection until the
+  cursor closes or reaches end-of-stream.
+- SQL Server keeps the ODBC statement active and fetches rows incrementally
+  with `SQLFetch`.
+
+The public API exposes Sloppy cursor objects only. Driver pointers, statement
+handles, libpq handles, and ODBC handles are never exposed to JavaScript.
 
 ## Redaction Helpers
 
@@ -188,9 +208,12 @@ Redaction behavior includes:
   non-sqlite static provider handlers fail with
   `SLOPPYC_E_UNSUPPORTED_PROVIDER_BRIDGE`.
 - `deadline`, `signal`, and `timeoutMs` provider operation options are checked
-  before dispatch. Native `query` and `queryRaw` bridge calls pass finite
-  timeout budgets to driver-level interruption. Signals are a pre-dispatch
-  cancellation mechanism for data providers.
+  before dispatch. Native `query`, `queryRaw`, and cursor bridge calls pass
+  finite timeout budgets to driver-level interruption. Signals are a
+  pre-dispatch cancellation mechanism for data providers.
+- Response streaming is currently an async-iterator integration point. Sloppy
+  does not provide a cursor-to-HTTP helper that first materializes every row.
+  Cursor column metadata is stable for future native JSON streaming.
 - PostgreSQL and SQL Server pools are bounded and fail fast under full
   saturation. They do not expose a public wait queue, acquire timeout, idle
   pruning, or max-lifetime policy.

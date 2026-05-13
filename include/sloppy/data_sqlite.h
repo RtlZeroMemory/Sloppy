@@ -17,6 +17,7 @@ extern "C" {
 #endif
 
 #define SL_SQLITE_DEFAULT_MAX_ROWS 128U
+#define SL_SQLITE_DEFAULT_CURSOR_BATCH_SIZE 128U
 
 typedef enum SlSqliteAccess
 {
@@ -122,6 +123,13 @@ typedef struct SlSqliteQueryOptionsV2
     uint32_t timeout_ms;
 } SlSqliteQueryOptionsV2;
 
+typedef struct SlSqliteCursorOptions
+{
+    size_t batch_size;
+    size_t max_rows;
+    uint32_t timeout_ms;
+} SlSqliteCursorOptions;
+
 /*
  * Query results borrow no SQLite statement storage. Column names, rows, and cell values are
  * copied into the caller-provided arena and become invalid when that arena is reset/freed.
@@ -150,6 +158,30 @@ typedef struct SlSqliteExecResult
 {
     int changes;
 } SlSqliteExecResult;
+
+typedef struct SlSqliteCursor
+{
+    SlSqliteConnection* connection;
+    void* statement;
+    SlStr* column_names;
+    size_t column_count;
+    size_t batch_size;
+    size_t max_rows;
+    size_t rows_read;
+    uint32_t timeout_ms;
+    uint64_t timeout_started_ns;
+    uint64_t timeout_ns;
+    bool timeout_expired;
+    bool timeout_installed;
+    bool open;
+    bool done;
+} SlSqliteCursor;
+
+typedef struct SlSqliteCursorNextResult
+{
+    bool done;
+    SlSqliteRow row;
+} SlSqliteCursorNextResult;
 
 /*
  * Transaction handles are single-use. Commit or rollback completes the transaction and makes
@@ -210,6 +242,13 @@ SlStatus sl_sqlite_query_v2(SlArena* arena, SlSqliteConnection* connection, SlSt
 SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlStr sql,
                              const SlSqliteParam* params, size_t param_count,
                              SlSqliteQueryOneResult* out_result, SlDiag* out_diag);
+SlStatus sl_sqlite_cursor_open(SlArena* arena, SlSqliteConnection* connection, SlStr sql,
+                               const SlSqliteParam* params, size_t param_count,
+                               const SlSqliteCursorOptions* options, SlSqliteCursor* out_cursor,
+                               SlDiag* out_diag);
+SlStatus sl_sqlite_cursor_next(SlArena* arena, SlSqliteCursor* cursor,
+                               SlSqliteCursorNextResult* out_result, SlDiag* out_diag);
+SlStatus sl_sqlite_cursor_close(SlSqliteCursor* cursor);
 
 SlStatus sl_sqlite_transaction_begin(SlArena* arena, SlSqliteConnection* connection,
                                      SlSqliteTransaction* out_tx, SlDiag* out_diag);
@@ -229,6 +268,10 @@ SlStatus sl_sqlite_transaction_query_v2(SlArena* arena, SlSqliteTransaction* tx,
 SlStatus sl_sqlite_transaction_query_one(SlArena* arena, SlSqliteTransaction* tx, SlStr sql,
                                          const SlSqliteParam* params, size_t param_count,
                                          SlSqliteQueryOneResult* out_result, SlDiag* out_diag);
+SlStatus sl_sqlite_transaction_cursor_open(SlArena* arena, SlSqliteTransaction* tx, SlStr sql,
+                                           const SlSqliteParam* params, size_t param_count,
+                                           const SlSqliteCursorOptions* options,
+                                           SlSqliteCursor* out_cursor, SlDiag* out_diag);
 
 #ifdef __cplusplus
 }

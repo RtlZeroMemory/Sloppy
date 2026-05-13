@@ -101,6 +101,43 @@ static void sl_sqlite_clear_timeout_progress(sqlite3* db, bool installed)
     }
 }
 
+static int sl_sqlite_cursor_timeout_progress_callback(void* user)
+{
+    SlSqliteCursor* cursor = (SlSqliteCursor*)user;
+    uint64_t now_ns = 0U;
+
+    if (cursor == NULL || cursor->timeout_ns == 0U) {
+        return 0;
+    }
+    if (!sl_status_is_ok(sl_platform_monotonic_time_ns(&now_ns))) {
+        return 0;
+    }
+    if (now_ns >= cursor->timeout_started_ns &&
+        now_ns - cursor->timeout_started_ns >= cursor->timeout_ns)
+    {
+        cursor->timeout_expired = true;
+        return 1;
+    }
+    return 0;
+}
+
+static bool sl_sqlite_cursor_install_timeout_progress(sqlite3* db, SlSqliteCursor* cursor)
+{
+    uint64_t started_ns = 0U;
+
+    if (db == NULL || cursor == NULL || cursor->timeout_ms == 0U) {
+        return false;
+    }
+    if (!sl_status_is_ok(sl_platform_monotonic_time_ns(&started_ns))) {
+        return false;
+    }
+    cursor->timeout_started_ns = started_ns;
+    cursor->timeout_ns = (uint64_t)cursor->timeout_ms * 1000000ULL;
+    cursor->timeout_expired = false;
+    sqlite3_progress_handler(db, 1000, sl_sqlite_cursor_timeout_progress_callback, cursor);
+    return true;
+}
+
 static SlStatus sl_sqlite_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code, SlStr message,
                                SlStr operation, const char* sqlite_message, SlStr sql,
                                SlStatus status)
@@ -1019,6 +1056,197 @@ SlStatus sl_sqlite_query_one(SlArena* arena, SlSqliteConnection* connection, SlS
     return sl_status_ok();
 }
 
+SlStatus sl_sqlite_cursor_open(SlArena* arena, SlSqliteConnection* connection, SlStr sql,
+                               const SlSqliteParam* params, size_t param_count,
+                               const SlSqliteCursorOptions* options, SlSqliteCursor* out_cursor,
+                               SlDiag* out_diag)
+{
+    sqlite3_stmt* stmt = NULL;
+    sqlite3* db = sl_sqlite_db(connection);
+    SlStatus status;
+    size_t column_count = 0U;
+    size_t batch_size = SL_SQLITE_DEFAULT_CURSOR_BATCH_SIZE;
+    size_t max_rows = 0U;
+    uint32_t timeout_ms = 0U;
+    SlStr operation =
+        sl_sqlite_literal("operation: cursor.open", sizeof("operation: cursor.open") - 1U);
+
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+    if (out_cursor == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_cursor = (SlSqliteCursor){0};
+    if (arena == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (options != NULL) {
+        if (options->batch_size > 0U) {
+            batch_size = options->batch_size;
+        }
+        max_rows = options->max_rows;
+        timeout_ms = options->timeout_ms;
+    }
+
+    status = sl_sqlite_prepare(arena, connection, sql, operation, &stmt, out_diag);
+    if (!sl_status_is_ok(status)) {
+        return status;
+    }
+
+    status = sl_sqlite_bind_params(stmt, params, param_count, arena, out_diag, operation, sql);
+    if (!sl_status_is_ok(status)) {
+        sqlite3_finalize(stmt);
+        return status;
+    }
+
+    column_count = (size_t)sqlite3_column_count(stmt);
+    status = sl_sqlite_copy_columns(arena, stmt, column_count, &out_cursor->column_names);
+    if (!sl_status_is_ok(status)) {
+        sqlite3_finalize(stmt);
+        *out_cursor = (SlSqliteCursor){0};
+        return status;
+    }
+
+    out_cursor->connection = connection;
+    out_cursor->statement = stmt;
+    out_cursor->column_count = column_count;
+    out_cursor->batch_size = batch_size;
+    out_cursor->max_rows = max_rows;
+    out_cursor->timeout_ms = timeout_ms;
+    out_cursor->open = true;
+    out_cursor->done = false;
+
+    if (timeout_ms > 0U) {
+        out_cursor->timeout_installed = sl_sqlite_cursor_install_timeout_progress(db, out_cursor);
+        if (!out_cursor->timeout_installed) {
+            sqlite3_finalize(stmt);
+            *out_cursor = (SlSqliteCursor){0};
+            return sl_sqlite_diag(
+                arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
+                sl_sqlite_literal("sqlite provider timeout setup failed",
+                                  sizeof("sqlite provider timeout setup failed") - 1U),
+                operation, sqlite3_errmsg(db), sql, sl_status_from_code(SL_STATUS_INTERNAL));
+        }
+    }
+
+    return sl_status_ok();
+}
+
+SlStatus sl_sqlite_cursor_next(SlArena* arena, SlSqliteCursor* cursor,
+                               SlSqliteCursorNextResult* out_result, SlDiag* out_diag)
+{
+    sqlite3_stmt* stmt = NULL;
+    sqlite3* db = NULL;
+    SlSlice value_slice = {0};
+    size_t column = 0U;
+    int rc = SQLITE_OK;
+    SlStatus status;
+    SlStr operation =
+        sl_sqlite_literal("operation: cursor.next", sizeof("operation: cursor.next") - 1U);
+
+    if (out_diag != NULL) {
+        *out_diag = (SlDiag){0};
+    }
+    if (out_result == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    *out_result = (SlSqliteCursorNextResult){0};
+    if (arena == NULL || cursor == NULL || cursor->connection == NULL ||
+        cursor->statement == NULL || !cursor->open)
+    {
+        return sl_sqlite_invalid_state_diag(arena, out_diag, operation);
+    }
+    if (cursor->done) {
+        out_result->done = true;
+        return sl_status_ok();
+    }
+    if (cursor->max_rows > 0U && cursor->rows_read >= cursor->max_rows) {
+        sl_sqlite_cursor_close(cursor);
+        return sl_sqlite_diag(
+            arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
+            sl_sqlite_literal("sqlite provider cursor exceeded max rows",
+                              sizeof("sqlite provider cursor exceeded max rows") - 1U),
+            operation, NULL, sl_str_empty(), sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED));
+    }
+
+    stmt = (sqlite3_stmt*)cursor->statement;
+    db = sl_sqlite_db(cursor->connection);
+    rc = sqlite3_step(stmt);
+    if (rc == SQLITE_DONE) {
+        cursor->done = true;
+        sl_sqlite_cursor_close(cursor);
+        out_result->done = true;
+        return sl_status_ok();
+    }
+    if (rc != SQLITE_ROW) {
+        const bool expired = (rc == SQLITE_INTERRUPT && cursor->timeout_expired);
+        sl_sqlite_cursor_close(cursor);
+        return sl_sqlite_diag(
+            arena, out_diag, SL_DIAG_SQLITE_PROVIDER_ERROR,
+            expired
+                ? sl_sqlite_literal("sqlite provider operation deadline was exceeded",
+                                    sizeof("sqlite provider operation deadline was exceeded") - 1U)
+                : sl_sqlite_literal("sqlite provider cursor failed",
+                                    sizeof("sqlite provider cursor failed") - 1U),
+            operation, db == NULL ? NULL : sqlite3_errmsg(db), sl_str_empty(),
+            expired ? sl_status_from_code(SL_STATUS_DEADLINE_EXCEEDED)
+                    : sl_status_from_code(SL_STATUS_INVALID_ARGUMENT));
+    }
+
+    if (cursor->column_count > 0U) {
+        status = sl_arena_array_alloc(arena, cursor->column_count, sizeof(SlSqliteValue),
+                                      _Alignof(SlSqliteValue), &value_slice);
+        if (!sl_status_is_ok(status)) {
+            sl_sqlite_cursor_close(cursor);
+            return status;
+        }
+    }
+
+    out_result->row.values = (SlSqliteValue*)value_slice.ptr;
+    for (column = 0U; column < cursor->column_count; column += 1U) {
+        status = sl_sqlite_copy_value(arena, stmt, column, &out_result->row.values[column]);
+        if (!sl_status_is_ok(status)) {
+            sl_sqlite_cursor_close(cursor);
+            return status;
+        }
+    }
+
+    cursor->rows_read += 1U;
+    out_result->done = false;
+    return sl_status_ok();
+}
+
+SlStatus sl_sqlite_cursor_close(SlSqliteCursor* cursor)
+{
+    sqlite3_stmt* stmt = NULL;
+    sqlite3* db = NULL;
+    int rc = SQLITE_OK;
+
+    if (cursor == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!cursor->open) {
+        return sl_status_ok();
+    }
+
+    stmt = (sqlite3_stmt*)cursor->statement;
+    db = sl_sqlite_db(cursor->connection);
+    sl_sqlite_clear_timeout_progress(db, cursor->timeout_installed);
+    cursor->timeout_installed = false;
+    cursor->statement = NULL;
+    cursor->open = false;
+    cursor->done = true;
+    if (stmt == NULL) {
+        return sl_status_ok();
+    }
+    rc = sqlite3_finalize(stmt);
+    if (cursor->connection != NULL) {
+        sl_sqlite_sync_transaction_state(cursor->connection);
+    }
+    return rc == SQLITE_OK ? sl_status_ok() : sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+}
+
 SlStatus sl_sqlite_transaction_begin(SlArena* arena, SlSqliteConnection* connection,
                                      SlSqliteTransaction* out_tx, SlDiag* out_diag)
 {
@@ -1189,4 +1417,20 @@ SlStatus sl_sqlite_transaction_query_one(SlArena* arena, SlSqliteTransaction* tx
     }
 
     return status;
+}
+
+SlStatus sl_sqlite_transaction_cursor_open(SlArena* arena, SlSqliteTransaction* tx, SlStr sql,
+                                           const SlSqliteParam* params, size_t param_count,
+                                           const SlSqliteCursorOptions* options,
+                                           SlSqliteCursor* out_cursor, SlDiag* out_diag)
+{
+    if (tx == NULL || tx->connection == NULL || !tx->active) {
+        return sl_sqlite_invalid_state_diag(
+            arena, out_diag,
+            sl_sqlite_literal("operation: transaction.cursor.open",
+                              sizeof("operation: transaction.cursor.open") - 1U));
+    }
+
+    return sl_sqlite_cursor_open(arena, tx->connection, sql, params, param_count, options,
+                                 out_cursor, out_diag);
 }

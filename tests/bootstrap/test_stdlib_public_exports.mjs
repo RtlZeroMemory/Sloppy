@@ -70,10 +70,13 @@ import {
     Auth,
     BackgroundService as RootBackgroundService,
     Config,
+    FakeClock,
     t as RootFfiTypes,
     HttpClient as RootHttpClient,
     Jobs as RootJobs,
     SloppyJobsError as RootSloppyJobsError,
+    TestData,
+    TestHost,
     unsafeFfi as RootUnsafeFfi,
     WorkQueue as RootWorkQueue,
     Worker as RootWorker,
@@ -129,6 +132,11 @@ assert.equal(Auth.constantTimeEquals("same", "same"), true);
 assert.equal(Auth.constantTimeEquals("same", "diff"), false);
 assert.equal(typeof Config.boolean, "function");
 assert.equal(typeof Config.required, "function");
+assert.equal(typeof TestHost.create, "function");
+assert.equal(typeof TestHost.fromArtifacts, "function");
+assert.equal(typeof TestHost.fromPackage, "function");
+assert.equal(typeof FakeClock.fixed, "function");
+assert.equal(typeof TestData.sqliteMemory, "function");
 assert.equal(RootBackgroundService, BackgroundService);
 assert.equal(RootFfiTypes, t);
 assert.equal(RootUnsafeFfi, unsafeFfi);

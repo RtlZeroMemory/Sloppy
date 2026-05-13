@@ -1,5 +1,9 @@
 # App test host
 
+For the full first-party testing API, including artifact/package mode and
+loopback mode, see [TestHost](testhost.md). This page documents the in-memory
+app-host helper that backs `TestHost.create(app)`.
+
 `Testing.createHost(app)` creates an in-memory host for Sloppy app tests. It
 dispatches HTTP-like requests through the JavaScript app-host route table,
 middleware pipeline, result conversion, CORS handlers, health routes, and

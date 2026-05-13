@@ -4952,14 +4952,14 @@ fn validate_module_sloppy_root_import(
         };
         let imported = specifier.imported.name().as_str();
         let local = specifier.local.name.as_str();
-        if imported == "Testing" {
+        if matches!(imported, "Testing" | "TestHost" | "FakeClock" | "TestData") {
             return Err(Diagnostic::new(
                 "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
-                "Testing is a JavaScript app-host test helper and cannot be imported by compiled app source",
+                "Sloppy testing helpers cannot be imported by compiled app source",
             )
             .with_path(path)
             .with_span(specifier.span)
-            .with_hint("Use Testing from JavaScript tests around the generated app, not inside compiler input."));
+            .with_hint("Use Sloppy testing helpers from JavaScript tests around the generated app, not inside compiler input."));
         }
         if !sloppy_root_import_name_supported(imported) || imported != local {
             return Err(Diagnostic::new(
@@ -6177,14 +6177,14 @@ fn extract_import(
 
             let imported = specifier.imported.name().as_str();
             let local = specifier.local.name.as_str();
-            if imported == "Testing" {
+            if matches!(imported, "Testing" | "TestHost" | "FakeClock" | "TestData") {
                 return Err(Diagnostic::new(
                     "SLOPPYC_E_UNSUPPORTED_TESTING_IMPORT",
-                    "Testing is a JavaScript app-host test helper and cannot be imported by compiled app source",
+                    "Sloppy testing helpers cannot be imported by compiled app source",
                 )
                 .with_path(path)
                 .with_span(specifier.span)
-                .with_hint("Use Testing from JavaScript tests around the generated app, not inside compiler input."));
+                .with_hint("Use Sloppy testing helpers from JavaScript tests around the generated app, not inside compiler input."));
             }
             if sloppy_root_import_name_supported(imported) && imported != local {
                 state.unsupported_import_alias = true;
@@ -6294,6 +6294,9 @@ fn sloppy_root_import_name_supported(name: &str) -> bool {
             | "RequestId"
             | "RequestLogging"
             | "Testing"
+            | "TestHost"
+            | "FakeClock"
+            | "TestData"
             | "data"
             | "sql"
             | "Migrations"

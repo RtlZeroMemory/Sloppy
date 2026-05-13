@@ -23,7 +23,7 @@ stdlib/sloppy/data.js               public sql template + value wrappers
 
 ```text
 JavaScript (handler)
-   │  data.sqlite.open / sql`...` / db.query(...)
+   │  data.sqlite.open / sql`...` / db.query(...) / db.queryCursor(...)
    ▼
 stdlib/sloppy/data.js, stdlib/sloppy/providers/sqlite.js
    │  Validate args, lower sql template, delegate to bridge
@@ -32,10 +32,10 @@ src/engine/v8/intrinsics_<provider>.cc
    │  Marshal args, check provider handles/capabilities,
    │  use provider_executor where that bridge is wired
    ▼
-src/data/<provider>.c
+src/data/<provider>.c or provider-specific bridge state machine
    │  Execute against the driver
    ▼
-results materialized into Sloppy-owned memory, returned through bridge
+bounded materialized results or cursor-owned incremental rows
 ```
 
 ## Plan-driven setup
@@ -110,12 +110,12 @@ budget before dispatch.
 
 Native row-returning bridge calls pass `timeoutMs` to driver interruption:
 
-- SQLite `query` and `queryRaw` install a progress handler and fail with a
-  deadline diagnostic when it interrupts execution.
-- PostgreSQL `query` and `queryRaw` start a timeout watcher that calls
-  `PQcancel`.
-- SQL Server `query` and `queryRaw` set the ODBC statement query timeout and
-  call `SQLCancelHandle` from the timeout watcher.
+- SQLite `query`, `queryRaw`, and cursor stepping install a progress handler
+  and fail with a deadline diagnostic when it interrupts execution.
+- PostgreSQL `query`, `queryRaw`, and cursor operations start a timeout watcher
+  that calls `PQcancel`.
+- SQL Server `query`, `queryRaw`, and cursor operations set the ODBC statement
+  query timeout and call `SQLCancelHandle` from the timeout watcher.
 
 Already-aborted signals are honored before dispatch. In-flight driver
 interruption is timeout/deadline based.
@@ -132,8 +132,44 @@ All providers expose a bounded materialization path for `query` and `queryRaw`:
 SQLite and SQL Server enforce bounds during row fetch/materialization.
 PostgreSQL V8 uses libpq single-row mode for bounded `query` and `queryRaw`
 operations, so exceeding `maxRows` fails while rows are still being received.
-The public data-provider API returns materialized result sets rather than cursor
-streams or incremental JSON row streams.
+
+## Cursor Lifecycle
+
+Cursor APIs are the provider-neutral large-result path. `queryCursor` yields
+object rows, `queryRawCursor` yields positional raw rows, and connection
+`stream` is an alias for `queryCursor`.
+
+Cursor ownership rules:
+
+- A cursor owns the active statement/result and pins the provider connection.
+- Closing the cursor releases the statement/result and either returns the
+  connection to the pool or invalidates it when the driver cannot safely resume.
+- Close is idempotent; `next()` after close fails deterministically.
+- Early `for await` break, iterator `return()`, consumer errors, provider
+  close, runtime shutdown, and transaction teardown call the same cleanup path.
+- Cursors inside a transaction must be consumed or closed before the callback
+  returns.
+
+Provider implementations:
+
+- SQLite stores an opaque cursor resource around a prepared `sqlite3_stmt` and
+  steps one row per fetch.
+- PostgreSQL cursor mode uses libpq single-row mode. The V8 cursor resource
+  holds the request and pool connection until close/end, and early close
+  cancels or invalidates the connection rather than reusing a dirty libpq
+  result stream.
+- SQL Server cursor mode keeps the ODBC statement active and fetches with
+  `SQLFetch`; close/end/error frees the statement and returns the connection.
+
+Cursors do not apply the materialized default cap of `128` rows. They accept an
+optional `maxRows` stream cap for caller-owned runaway protection. The cursor
+metadata (`columns`, `columnNames`, `mode`, `provider`) is stable so a future
+native JSON writer can stream typed row values without materializing a
+JavaScript array first.
+
+HTTP response streaming currently integrates at the async-iterator boundary.
+No runtime helper should claim streaming behavior if it collects all rows before
+writing the response.
 
 ## Redaction
 

@@ -48,6 +48,15 @@ struct SqliteV8ConnectionResource
     std::atomic_bool closing = false;
 };
 
+struct SqliteV8CursorResource
+{
+    SqliteV8ConnectionResource* owner = nullptr;
+    SlSqliteCursor cursor = {};
+    std::vector<unsigned char> arena_storage;
+    bool raw = false;
+    bool closed = false;
+};
+
 enum class SqliteV8Operation
 {
     Exec,
@@ -449,6 +458,12 @@ bool sqlite_v8_make_resource_handle(v8::Isolate* isolate, v8::Local<v8::Context>
     return sl_v8_db_make_resource_handle(isolate, context, id, "sqlite.connection", out);
 }
 
+bool sqlite_v8_make_cursor_handle(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                  SlResourceId id, v8::Local<v8::Object>* out)
+{
+    return sl_v8_db_make_resource_handle(isolate, context, id, "sqlite.cursor", out);
+}
+
 void sqlite_v8_connection_cleanup(void* ptr, void* user)
 {
     (void)user;
@@ -459,6 +474,24 @@ void sqlite_v8_connection_cleanup(void* ptr, void* user)
         sl_sqlite_close(&resource->connection);
         delete resource;
     }
+}
+
+void sqlite_v8_cursor_cleanup(void* ptr, void* user)
+{
+    (void)user;
+
+    SqliteV8CursorResource* resource = static_cast<SqliteV8CursorResource*>(ptr);
+    if (resource == nullptr) {
+        return;
+    }
+    if (!resource->closed) {
+        sl_sqlite_cursor_close(&resource->cursor);
+        resource->closed = true;
+    }
+    if (resource->owner != nullptr) {
+        resource->owner->pending_operations.fetch_sub(1U);
+    }
+    delete resource;
 }
 
 SqliteV8ConnectionResource* sqlite_v8_lookup_connection(v8::Isolate* isolate,
@@ -484,6 +517,29 @@ SqliteV8ConnectionResource* sqlite_v8_lookup_connection(v8::Isolate* isolate,
     }
 
     return static_cast<SqliteV8ConnectionResource*>(ptr);
+}
+
+SqliteV8CursorResource* sqlite_v8_lookup_cursor(v8::Isolate* isolate,
+                                                v8::Local<v8::Context> context, SlV8Engine* backend,
+                                                v8::Local<v8::Value> handle_value)
+{
+    SlResourceId id = {};
+    SlDiag diag = {};
+    void* ptr = nullptr;
+
+    if (!sqlite_v8_get_resource_id(isolate, context, handle_value, &id)) {
+        sqlite_v8_throw_type_error(isolate, "sqlite cursor handle must be an opaque Sloppy handle");
+        return nullptr;
+    }
+
+    SlStatus status = sl_resource_table_get(&backend->resources, id,
+                                            SL_RESOURCE_KIND_SQLITE_STATEMENT, &ptr, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_throw_diag(isolate, "sqlite cursor handle is invalid", diag);
+        return nullptr;
+    }
+
+    return static_cast<SqliteV8CursorResource*>(ptr);
 }
 
 bool sqlite_v8_convert_param_values(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -624,6 +680,79 @@ bool sqlite_v8_prepare_query_options(v8::Isolate* isolate, v8::Local<v8::Context
     return sl_v8_db_parse_timeout_ms_option(
         isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
         &request->has_timeout_ms, &request->timeout_ms, operation_label);
+}
+
+bool sqlite_v8_parse_cursor_batch_size(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                       v8::Local<v8::Value> options, size_t* out,
+                                       const char* operation_label)
+{
+    if (out == nullptr) {
+        return false;
+    }
+    *out = SL_SQLITE_DEFAULT_CURSOR_BATCH_SIZE;
+    if (options->IsUndefined() || options->IsNull()) {
+        return true;
+    }
+    if (!options->IsObject() || options->IsArray()) {
+        sqlite_v8_throw_type_error(isolate, "sqlite cursor options must be an object");
+        return false;
+    }
+    v8::Local<v8::Value> batch_value;
+    if (!sl_v8_db_get_object_property(isolate, context, options.As<v8::Object>(), "batchSize",
+                                      &batch_value))
+    {
+        return false;
+    }
+    if (batch_value->IsUndefined() || batch_value->IsNull()) {
+        return true;
+    }
+    if (!batch_value->IsNumber()) {
+        std::string label = operation_label == nullptr ? "sqlite cursor" : operation_label;
+        sqlite_v8_throw_type_error(
+            isolate, (label + " batchSize option must be an integer from 1 to 4096").c_str());
+        return false;
+    }
+    double batch_size = batch_value.As<v8::Number>()->Value();
+    if (!std::isfinite(batch_size) || std::floor(batch_size) != batch_size || batch_size < 1.0 ||
+        batch_size > 4096.0)
+    {
+        std::string label = operation_label == nullptr ? "sqlite cursor" : operation_label;
+        sqlite_v8_throw_type_error(
+            isolate, (label + " batchSize option must be an integer from 1 to 4096").c_str());
+        return false;
+    }
+    *out = static_cast<size_t>(batch_size);
+    return true;
+}
+
+bool sqlite_v8_prepare_cursor_options(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                      const v8::FunctionCallbackInfo<v8::Value>& args,
+                                      SlSqliteCursorOptions* options, const char* operation_label)
+{
+    bool has_timeout = false;
+    uint32_t max_rows = 0U;
+    uint32_t timeout_ms = 0U;
+    size_t batch_size = SL_SQLITE_DEFAULT_CURSOR_BATCH_SIZE;
+    v8::Local<v8::Value> value = args.Length() >= 4 ? args[3] : v8::Undefined(isolate);
+
+    if (options == nullptr) {
+        return false;
+    }
+    if (!sl_v8_db_parse_max_rows_option(isolate, context, value, 0U, &max_rows, operation_label)) {
+        return false;
+    }
+    if (!sl_v8_db_parse_timeout_ms_option(isolate, context, value, &has_timeout, &timeout_ms,
+                                          operation_label))
+    {
+        return false;
+    }
+    if (!sqlite_v8_parse_cursor_batch_size(isolate, context, value, &batch_size, operation_label)) {
+        return false;
+    }
+    options->batch_size = batch_size;
+    options->max_rows = max_rows;
+    options->timeout_ms = has_timeout ? timeout_ms : 0U;
+    return true;
 }
 
 void sqlite_v8_refresh_param_views(SqliteV8Request* request)
@@ -846,6 +975,52 @@ bool sqlite_v8_result_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> contex
     }
 
     return sl_v8_db_make_raw_result(isolate, context, &columns, rows, out);
+}
+
+bool sqlite_v8_cursor_row_to_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                   const SlSqliteCursor* cursor, const SlSqliteRow* row, bool raw,
+                                   v8::Local<v8::Value>* out)
+{
+    SlV8DbColumnSet columns;
+    std::vector<v8::Local<v8::Value>> values;
+
+    if (cursor == nullptr || row == nullptr || out == nullptr ||
+        (cursor->column_count > 0U && row->values == nullptr))
+    {
+        return false;
+    }
+
+    if (!sl_v8_db_prepare_column_set(isolate, context, cursor->column_names, cursor->column_count,
+                                     &columns))
+    {
+        return false;
+    }
+    values.resize(cursor->column_count);
+    for (size_t column_index = 0U; column_index < cursor->column_count; column_index += 1U) {
+        if (!sqlite_v8_value_to_local(isolate, context, &row->values[column_index],
+                                      &values[column_index]))
+        {
+            return false;
+        }
+    }
+
+    if (raw) {
+        v8::Local<v8::Array> row_array;
+        if (!sl_v8_db_make_raw_row(isolate, context, values.data(), values.size(), &row_array)) {
+            return false;
+        }
+        *out = row_array;
+        return true;
+    }
+
+    v8::Local<v8::Object> row_object;
+    if (!sl_v8_db_make_row_object(isolate, context, &columns, values.data(), values.size(),
+                                  &row_object))
+    {
+        return false;
+    }
+    *out = row_object;
+    return true;
 }
 
 bool sqlite_v8_one_to_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -1500,6 +1675,241 @@ void sqlite_v8_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& arg
     args.GetReturnValue().Set(promise);
 }
 
+void sqlite_v8_cursor_open_callback_impl(const v8::FunctionCallbackInfo<v8::Value>& args, bool raw,
+                                         bool transaction)
+{
+    constexpr size_t cursor_arena_size = 131072U;
+    SlArena arena = {};
+    SlDiag diag = {};
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    std::string sql;
+    SqliteV8ConnectionResource* owner = nullptr;
+    std::unique_ptr<SqliteV8CursorResource> cursor(new (std::nothrow) SqliteV8CursorResource());
+    SqliteV8Request request;
+    SlSqliteCursorOptions options = {};
+    SlResourceId id = sl_resource_id_invalid();
+    v8::Local<v8::Object> handle;
+    SlV8DbColumnSet columns;
+
+    if (backend == nullptr || args.Length() < 2 || args.Length() > 4 || !cursor ||
+        !sqlite_v8_value_to_std_string(isolate, args[1], &sql) || sql.empty())
+    {
+        sqlite_v8_throw_type_error(
+            isolate,
+            transaction
+                ? "__sloppy.data.sqlite.transactionQueryCursor requires a handle, SQL string, "
+                  "optional params, and optional options"
+                : "__sloppy.data.sqlite.queryCursor requires a handle, SQL string, optional "
+                  "params, and optional options");
+        return;
+    }
+
+    owner = sqlite_v8_lookup_connection(isolate, context, backend, args[0]);
+    if (owner == nullptr) {
+        return;
+    }
+    if (owner->closing.load()) {
+        sqlite_v8_throw_error(isolate, "sqlite resource handle is closed");
+        return;
+    }
+    if (!sqlite_v8_prepare_param_values(isolate, context, args, &request.param_values)) {
+        return;
+    }
+    if (!sqlite_v8_prepare_cursor_options(isolate, context, args, &options,
+                                          raw ? "sqlite raw cursor" : "sqlite cursor"))
+    {
+        return;
+    }
+
+    cursor->arena_storage.assign(cursor_arena_size, 0U);
+    if (!sl_status_is_ok(
+            sl_arena_init(&arena, cursor->arena_storage.data(), cursor->arena_storage.size())))
+    {
+        sqlite_v8_throw_error(isolate, "sqlite cursor arena initialization failed");
+        return;
+    }
+    if (!sqlite_v8_check_capability(isolate, backend, &arena, owner, SL_CAPABILITY_OPERATION_READ))
+    {
+        return;
+    }
+
+    request.sql = sql;
+    sqlite_v8_refresh_param_views(&request);
+    SlStr sql_view = sl_str_from_parts(request.sql.data(), request.sql.size());
+    const SlSqliteParam* params = request.params.empty() ? nullptr : request.params.data();
+    SlStatus status =
+        transaction
+            ? sl_sqlite_transaction_cursor_open(&arena, &owner->transaction, sql_view, params,
+                                                request.params.size(), &options, &cursor->cursor,
+                                                &diag)
+            : sl_sqlite_cursor_open(&arena, &owner->connection, sql_view, params,
+                                    request.params.size(), &options, &cursor->cursor, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_throw_diag(isolate, "sqlite cursor open failed", diag);
+        return;
+    }
+
+    cursor->owner = owner;
+    cursor->raw = raw;
+    owner->pending_operations.fetch_add(1U);
+
+    status = sl_resource_table_insert(&backend->resources, SL_RESOURCE_KIND_SQLITE_STATEMENT,
+                                      cursor.get(), sqlite_v8_cursor_cleanup, nullptr, &id, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_cursor_cleanup(cursor.release(), nullptr);
+        sqlite_v8_throw_diag(isolate, "sqlite cursor registration failed", diag);
+        return;
+    }
+
+    if (!sqlite_v8_make_cursor_handle(isolate, context, id, &handle)) {
+        sl_resource_table_close_kind(&backend->resources, id, SL_RESOURCE_KIND_SQLITE_STATEMENT,
+                                     nullptr);
+        sqlite_v8_throw_error(isolate, "sqlite bridge could not create a cursor handle");
+        return;
+    }
+    if (!sl_v8_db_prepare_column_set(isolate, context, cursor->cursor.column_names,
+                                     cursor->cursor.column_count, &columns) ||
+        !handle->Set(context, v8::String::NewFromUtf8Literal(isolate, "columns"), columns.columns)
+             .FromMaybe(false) ||
+        !handle
+             ->Set(context, v8::String::NewFromUtf8Literal(isolate, "provider"),
+                   v8::String::NewFromUtf8Literal(isolate, "sqlite"))
+             .FromMaybe(false) ||
+        !handle
+             ->Set(context, v8::String::NewFromUtf8Literal(isolate, "closed"),
+                   v8::Boolean::New(isolate, false))
+             .FromMaybe(false))
+    {
+        sl_resource_table_close_kind(&backend->resources, id, SL_RESOURCE_KIND_SQLITE_STATEMENT,
+                                     nullptr);
+        sqlite_v8_throw_error(isolate, "sqlite bridge could not describe cursor");
+        return;
+    }
+
+    cursor.release();
+    args.GetReturnValue().Set(handle);
+}
+
+void sqlite_v8_query_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlite_v8_cursor_open_callback_impl(args, false, false);
+}
+
+void sqlite_v8_query_raw_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlite_v8_cursor_open_callback_impl(args, true, false);
+}
+
+void sqlite_v8_transaction_query_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlite_v8_cursor_open_callback_impl(args, false, true);
+}
+
+void sqlite_v8_transaction_query_raw_cursor_callback(
+    const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    sqlite_v8_cursor_open_callback_impl(args, true, true);
+}
+
+void sqlite_v8_cursor_next_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    constexpr size_t scratch_size = 131072U;
+    unsigned char scratch[scratch_size];
+    SlArena arena = {};
+    SlDiag diag = {};
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    SqliteV8CursorResource* cursor = nullptr;
+    SlSqliteCursorNextResult next = {};
+    v8::Local<v8::Object> result;
+
+    if (backend == nullptr || args.Length() != 1) {
+        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.cursorNext requires a cursor");
+        return;
+    }
+    cursor = sqlite_v8_lookup_cursor(isolate, context, backend, args[0]);
+    if (cursor == nullptr) {
+        return;
+    }
+    if (cursor->closed) {
+        sqlite_v8_throw_error(isolate, "sqlite cursor is closed");
+        return;
+    }
+    if (!sl_status_is_ok(sl_arena_init(&arena, scratch, sizeof(scratch)))) {
+        sqlite_v8_throw_error(isolate, "sqlite cursor scratch arena initialization failed");
+        return;
+    }
+
+    SlStatus status = sl_sqlite_cursor_next(&arena, &cursor->cursor, &next, &diag);
+    if (!sl_status_is_ok(status)) {
+        cursor->closed = true;
+        sqlite_v8_throw_diag(isolate, "sqlite cursor next failed", diag);
+        return;
+    }
+
+    result = v8::Object::New(isolate);
+    if (next.done) {
+        cursor->closed = true;
+        if (!result
+                 ->Set(context, v8::String::NewFromUtf8Literal(isolate, "done"),
+                       v8::Boolean::New(isolate, true))
+                 .FromMaybe(false))
+        {
+            sqlite_v8_throw_error(isolate, "sqlite cursor result allocation failed");
+            return;
+        }
+        args.GetReturnValue().Set(result);
+        return;
+    }
+
+    v8::Local<v8::Value> row_value;
+    if (!sqlite_v8_cursor_row_to_value(isolate, context, &cursor->cursor, &next.row, cursor->raw,
+                                       &row_value) ||
+        !result
+             ->Set(context, v8::String::NewFromUtf8Literal(isolate, "done"),
+                   v8::Boolean::New(isolate, false))
+             .FromMaybe(false) ||
+        !result->Set(context, v8::String::NewFromUtf8Literal(isolate, "value"), row_value)
+             .FromMaybe(false))
+    {
+        sqlite_v8_throw_error(isolate, "sqlite cursor result allocation failed");
+        return;
+    }
+
+    args.GetReturnValue().Set(result);
+}
+
+void sqlite_v8_cursor_close_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    SlResourceId id = {};
+    SlDiag diag = {};
+
+    if (backend == nullptr || args.Length() != 1 ||
+        !sqlite_v8_get_resource_id(isolate, context, args[0], &id))
+    {
+        sqlite_v8_throw_type_error(isolate, "__sloppy.data.sqlite.cursorClose requires a cursor");
+        return;
+    }
+
+    SlStatus status = sl_resource_table_close_kind(&backend->resources, id,
+                                                   SL_RESOURCE_KIND_SQLITE_STATEMENT, &diag);
+    if (!sl_status_is_ok(status)) {
+        sqlite_v8_throw_diag(isolate, "sqlite cursor close failed", diag);
+        return;
+    }
+
+    args.GetReturnValue().Set(v8::Undefined(isolate));
+}
+
 void sqlite_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     constexpr size_t scratch_size = 65536U;
@@ -1945,6 +2355,10 @@ void sl_v8_append_sqlite_external_references(std::vector<intptr_t>* refs)
     refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_exec_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_query_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_query_raw_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_query_cursor_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_query_raw_cursor_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_cursor_next_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_cursor_close_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_query_one_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_begin_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_commit_callback));
@@ -1952,6 +2366,8 @@ void sl_v8_append_sqlite_external_references(std::vector<intptr_t>* refs)
     refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_exec_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_query_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_query_raw_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_query_cursor_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_query_raw_cursor_callback));
     refs->push_back(reinterpret_cast<intptr_t>(sqlite_v8_transaction_query_one_callback));
 }
 
@@ -1973,6 +2389,14 @@ bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context
         !sqlite_v8_set_function(isolate, context, sqlite, "query", sqlite_v8_query_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "queryRaw",
                                 sqlite_v8_query_raw_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "queryCursor",
+                                sqlite_v8_query_cursor_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "queryRawCursor",
+                                sqlite_v8_query_raw_cursor_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "cursorNext",
+                                sqlite_v8_cursor_next_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "cursorClose",
+                                sqlite_v8_cursor_close_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "queryOne",
                                 sqlite_v8_query_one_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "transactionBegin",
@@ -1987,6 +2411,10 @@ bool sl_v8_install_sqlite_intrinsics(v8::Isolate* isolate, v8::Local<v8::Context
                                 sqlite_v8_transaction_query_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "transactionQueryRaw",
                                 sqlite_v8_transaction_query_raw_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "transactionQueryCursor",
+                                sqlite_v8_transaction_query_cursor_callback) ||
+        !sqlite_v8_set_function(isolate, context, sqlite, "transactionQueryRawCursor",
+                                sqlite_v8_transaction_query_raw_cursor_callback) ||
         !sqlite_v8_set_function(isolate, context, sqlite, "transactionQueryOne",
                                 sqlite_v8_transaction_query_one_callback) ||
         !data->Set(context, sqlite_key, sqlite).FromMaybe(false))

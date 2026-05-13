@@ -14,6 +14,7 @@ codebase itself. If you're using Sloppy to build an application, you want
 - [V8 bridge](v8-bridge.md) — boundaries, ownership rules, isolation
 - [HTTP runtime](http-runtime.md) — parser, transport, dispatch
 - [Native endpoint dispatch](native-endpoint-dispatch.md) — Plan-backed dispatch table metadata
+- [TestHost](testhost.md) — app-host, artifact, and loopback test harness boundaries
 - [Async runtime](async-runtime.md) — owner-thread model, cancellation
 - [Provider runtime](provider-runtime.md) — provider executor and bridges
 - [Scheduler](scheduler.md) — durable job storage, worker loop, locks, retries

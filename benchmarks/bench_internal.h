@@ -1,6 +1,7 @@
 #ifndef SLOPPY_BENCH_INTERNAL_H
 #define SLOPPY_BENCH_INTERNAL_H
 
+#include "sloppy/json_profile.h"
 #include "sloppy/status.h"
 
 #include <stdbool.h>
@@ -35,6 +36,7 @@ typedef struct SlBenchResult
     uint64_t reject_count;
     uint64_t schema_response_native_hits;
     uint64_t duplicate_validation_skipped_count;
+    SlJsonProfileSnapshot json_profile;
     const char* note;
 } SlBenchResult;
 
