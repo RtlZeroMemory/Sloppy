@@ -90,10 +90,18 @@ Adds:
 ```powershell
 # PostgreSQL
 $env:SLOPPY_POSTGRES_TEST_URL = "postgres://user:pass@localhost/postgres"
+.\tools\windows\test-live-postgres.ps1
 
 # SQL Server (ODBC connection string)
 $env:SLOPPY_SQLSERVER_TEST_CONNECTION_STRING = "Driver={...};..."
+.\tools\windows\test-live-sqlserver.ps1
+
+# Both providers
+.\tools\windows\test-live-providers.ps1 -Provider all
 ```
+
+Unix mirrors live under `tools/unix/test-live-postgres.sh`,
+`tools/unix/test-live-sqlserver.sh`, and `tools/unix/test-live-providers.sh`.
 
 CI exposes `live-postgres`, `live-sqlserver`, `live-providers`, and
 `full-ci` labels. Missing Docker, missing ODBC driver, or unavailable

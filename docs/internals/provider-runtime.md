@@ -11,35 +11,31 @@ JavaScript.
 include/sloppy/data.h               provider-neutral C contract
 src/data/
   common.c                          shared value/result/redaction helpers
-  sqlite.c                          SQLite (embedded, single-process)
-  postgres.c                        PostgreSQL via libpq (nonblocking)
-  sqlserver.c                       SQL Server via ODBC (async)
+  sqlite.c                          SQLite direct C provider
+  postgres.c                        PostgreSQL direct C provider via libpq
+  sqlserver.c                       SQL Server direct C provider via ODBC
 src/core/provider_executor.c        execution mode dispatch + queueing
 src/engine/v8/intrinsics_*          JS bridge for each provider
 stdlib/sloppy/data.js               public sql template + value wrappers
-stdlib/sloppy/providers/sqlite.js   SQLite-specific public surface
 ```
 
 ## Three layers
 
 ```text
 JavaScript (handler)
-   │  data.sqlite.open / sql`...` / db.query(...)
+   │  data.sqlite.open / sql`...` / db.query(...) / db.queryCursor(...)
    ▼
 stdlib/sloppy/data.js, stdlib/sloppy/providers/sqlite.js
    │  Validate args, lower sql template, delegate to bridge
    ▼
 src/engine/v8/intrinsics_<provider>.cc
-   │  Marshal args to Sloppy types, call into provider_executor
+   │  Marshal args, check provider handles/capabilities,
+   │  use provider_executor where that bridge is wired
    ▼
-src/core/provider_executor.c
-   │  Pick execution mode (serialized vs async-backed),
-   │  honor capability/access checks, deadlines, signals
-   ▼
-src/data/<provider>.c
+src/data/<provider>.c or provider-specific bridge state machine
    │  Execute against the driver
    ▼
-results materialized into Sloppy-owned memory, returned through bridge
+bounded materialized results or cursor-owned incremental rows
 ```
 
 ## Plan-driven setup
@@ -59,32 +55,32 @@ diagnostic.
 
 ## Execution modes
 
-`provider_executor.c` selects an execution mode per provider:
+Provider execution is currently split between the shared executor and
+provider-specific V8 bridges:
 
 | Mode             | Used by    | Behavior                                                  |
 | ---------------- | ---------- | --------------------------------------------------------- |
-| Serialized       | SQLite     | One operation at a time per provider instance, queued     |
-| True-async       | PostgreSQL | Nonblocking libpq state machine + Sloppy async backend    |
-| True-async (ODBC)| SQL Server | Async ODBC handles when the driver supports them          |
-| Blocking pool    | fallback   | Bounded thread pool when no async path exists             |
+| Serialized       | SQLite V8  | One operation at a time through `provider_executor`       |
+| Direct blocking  | C providers| Caller-owned connection APIs under `src/data/*`           |
+| True-async       | PostgreSQL V8 | Nonblocking libpq state machine + Sloppy async backend |
+| True-async (ODBC)| SQL Server V8 | Async ODBC handles when the driver supports them       |
 
-Mode selection is decided at provider open. SQLite is intentionally
-serialized — the underlying engine is single-writer; serializing
-operations avoids surprises. PostgreSQL and SQL Server prefer
-true-async; the blocking pool is the explicit fallback when async
-support is unavailable.
+SQLite is intentionally serialized in the V8 bridge because the provider
+instance is single-writer. PostgreSQL and SQL Server V8 bridges own their
+driver state machines directly rather than going through a generic database
+provider vtable.
 
 ## Connection management
 
 | Provider   | Pool model                                                     |
 | ---------- | -------------------------------------------------------------- |
-| SQLite     | One writer, optional readers; opened once per provider         |
-| PostgreSQL | Bounded connection pool with admission queue                   |
-| SQL Server | Bounded connection pool, async-when-available                  |
+| SQLite     | One connection per handle; V8 operations are serialized        |
+| PostgreSQL | Bounded pool; acquisition is fail-fast                         |
+| SQL Server | Bounded pool; acquisition is fail-fast                         |
 
-Pools are sized from provider config (`max-connections`, `min-connections`,
-acquisition timeout). Acquisition is fail-fast; calls that can't get a
-connection within the deadline raise a typed error.
+PostgreSQL and SQL Server pools are sized by `maxConnections`. They do not
+currently expose a wait queue, idle pruning, or acquisition timeout. If every
+connection is busy, acquisition fails immediately.
 
 ## Value and result conversion
 
@@ -107,17 +103,73 @@ representations.
 
 ## Cancellation, deadlines, late completion
 
-Provider operations honor `{ deadline, signal, timeoutMs }` options:
+The JavaScript API accepts `{ deadline, signal, timeoutMs }` operation options.
+A signal already aborted, an expired deadline, or a zero timeout rejects before
+native work starts. A finite `deadline` is reduced to the remaining timeout
+budget before dispatch.
 
-- The executor sets a per-operation deadline.
-- Cancellation cancels in-flight driver work where the driver supports
-  it (libpq `PQcancel`, ODBC `SQLCancel`).
-- A late completion (driver returns *after* deadline) does cleanup
-  only — the JS Promise has already settled with a cancellation
-  error. There is no double-settle.
+Native row-returning bridge calls pass `timeoutMs` to driver interruption:
 
-Shutdown drains in-flight operations within their deadlines, then
-forces close.
+- SQLite `query`, `queryRaw`, and cursor stepping install a progress handler
+  and fail with a deadline diagnostic when it interrupts execution.
+- PostgreSQL `query`, `queryRaw`, and cursor operations start a timeout watcher
+  that calls `PQcancel`.
+- SQL Server `query`, `queryRaw`, and cursor operations set the ODBC statement
+  query timeout and call `SQLCancelHandle` from the timeout watcher.
+
+Already-aborted signals are honored before dispatch. In-flight driver
+interruption is timeout/deadline based.
+
+## Result Bounds
+
+All providers expose a bounded materialization path for `query` and `queryRaw`:
+
+- The default provider cap is `128` rows.
+- `maxRows` can raise or lower the per-call cap.
+- Exceeding the cap fails the query rather than truncating results.
+- `queryOne` materializes at most one row.
+
+SQLite and SQL Server enforce bounds during row fetch/materialization.
+PostgreSQL V8 uses libpq single-row mode for bounded `query` and `queryRaw`
+operations, so exceeding `maxRows` fails while rows are still being received.
+
+## Cursor Lifecycle
+
+Cursor APIs are the provider-neutral large-result path. `queryCursor` yields
+object rows, `queryRawCursor` yields positional raw rows, and connection
+`stream` is an alias for `queryCursor`.
+
+Cursor ownership rules:
+
+- A cursor owns the active statement/result and pins the provider connection.
+- Closing the cursor releases the statement/result and either returns the
+  connection to the pool or invalidates it when the driver cannot safely resume.
+- Close is idempotent; `next()` after close fails deterministically.
+- Early `for await` break, iterator `return()`, consumer errors, provider
+  close, runtime shutdown, and transaction teardown call the same cleanup path.
+- Cursors inside a transaction must be consumed or closed before the callback
+  returns.
+
+Provider implementations:
+
+- SQLite stores an opaque cursor resource around a prepared `sqlite3_stmt` and
+  steps one row per fetch.
+- PostgreSQL cursor mode uses libpq single-row mode. The V8 cursor resource
+  holds the request and pool connection until close/end, and early close
+  cancels or invalidates the connection rather than reusing a dirty libpq
+  result stream.
+- SQL Server cursor mode keeps the ODBC statement active and fetches with
+  `SQLFetch`; close/end/error frees the statement and returns the connection.
+
+Cursors do not apply the materialized default cap of `128` rows. They accept an
+optional `maxRows` stream cap for caller-owned runaway protection. The cursor
+metadata (`columns`, `columnNames`, `mode`, `provider`) is stable so a future
+native JSON writer can stream typed row values without materializing a
+JavaScript array first.
+
+HTTP response streaming currently integrates at the async-iterator boundary.
+No runtime helper should claim streaming behavior if it collects all rows before
+writing the response.
 
 ## Redaction
 
@@ -144,7 +196,9 @@ Provider-specific redaction lives in each provider's `*.c` (e.g.
 | Live SQL Server (opt-in) | Real database + ODBC driver                          |
 | Stress / torture (opt-in)| Long-running workload for leak/cancellation behavior |
 
-Live and V8 lanes are opt-in. Default CI covers native and conformance.
+Live and V8 lanes are opt-in. Default CI covers native and conformance. Missing
+Docker, missing drivers, or unsupported async driver behavior is an unavailable
+live-provider lane, not a pass.
 
 ## Adding a provider
 

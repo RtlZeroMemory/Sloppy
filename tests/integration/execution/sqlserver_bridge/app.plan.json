@@ -1,6 +1,6 @@
 {
   "bundle": {
-    "hash": "sha256:64764eb101d583eddaccc72c4004b418cd9636a329c49722da55f70fc5ab55d6",
+    "hash": "sha256:976f072ff15f3784b76d40f8ae3d4f370d0f34f8b9f8f7cae96ca890164c1d1d",
     "id": "sqlserver-bridge-app-js",
     "path": "app.js"
   },

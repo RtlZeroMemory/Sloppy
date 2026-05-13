@@ -127,6 +127,9 @@ const ada  = await db.queryOne(sql`SELECT id FROM users WHERE name = ${"Ada"}`);
 | ------------------- | -------------------------------- |
 | `db.query(sql)`     | array of rows                    |
 | `db.queryRaw(sql)`  | raw result object                |
+| `db.queryCursor(sql)` | async iterable object-row cursor |
+| `db.queryRawCursor(sql)` | async iterable raw-row cursor |
+| `db.stream(sql)`    | alias for `queryCursor`          |
 | `db.queryOne(sql)`  | single row, or `null`            |
 | `db.exec(sql)`      | `{ affectedRows, lastInsertId? }`|
 | `db.transaction(fn)`| runs `fn(tx)` in a transaction   |
@@ -152,8 +155,64 @@ const result = await db.query(sql`SELECT 1 AS value, 2 AS value`, {
 ```
 
 `db.queryRaw(sql)` is the same raw result shape. Transactions expose matching
-`tx.query(...)`, `tx.queryRaw(...)`, `tx.queryOne(...)`, and `tx.exec(...)`
-methods.
+`tx.query(...)`, `tx.queryRaw(...)`, `tx.queryCursor(...)`,
+`tx.queryRawCursor(...)`, `tx.queryOne(...)`, and `tx.exec(...)` methods.
+
+### Cursors and large results
+
+`query` and `queryRaw` are materialized APIs. They keep the default `maxRows`
+cap of `128` rows and fail when a query exceeds the cap. Use a cursor for
+large result sets:
+
+```ts
+const cursor = await db.queryCursor(sql`
+    SELECT id, email FROM users ORDER BY id
+`, {
+    batchSize: 128,
+    timeoutMs: 30_000,
+});
+
+try {
+    for await (const row of cursor) {
+        // row is a plain object in object mode
+    }
+} finally {
+    await cursor.close();
+}
+```
+
+`queryRawCursor` yields positional arrays and preserves duplicate column names:
+
+```ts
+const cursor = await db.queryRawCursor(sql`SELECT 1 AS value, 2 AS value`);
+```
+
+Cursor objects are async iterables and expose:
+
+- `close()` for explicit cleanup. Closing twice is safe.
+- `closed`, `provider`, `mode`, `columns`, and `columnNames` metadata.
+- deterministic errors when `next()` is called after close.
+
+Cursors pin the active statement/result and the provider connection until they
+finish or close. Early loop break, iterator `return()`, consumer errors, and
+explicit `close()` release the provider resource. A cursor opened inside a
+transaction must be consumed or closed before the transaction callback returns.
+
+Cursor options:
+
+| Option       | Effect                                                       |
+| ------------ | ------------------------------------------------------------ |
+| `batchSize`  | Provider fetch batch hint, integer `1..4096`                 |
+| `maxRows`    | Optional hard cap for the cursor stream                      |
+| `timeoutMs`  | Abort the cursor open/fetch path after this many milliseconds|
+| `deadline`   | Abort at this absolute deadline                              |
+| `signal`     | Abort before dispatch when the signal is already cancelled   |
+| `mode`       | `queryCursor` only: `"object"` (default) or `"raw"`          |
+
+SQLite keeps a prepared statement active and steps rows incrementally.
+PostgreSQL uses libpq single-row mode for cursor reads. SQL Server keeps an
+ODBC statement active and fetches rows incrementally with `SQLFetch`. Driver
+handles stay native-only; JavaScript sees only Sloppy cursor objects.
 
 ### Migrations
 
@@ -207,9 +266,30 @@ await db.query(sql`SELECT * FROM big_table`, {
 | `deadline`   | Abort at this absolute deadline                              |
 | `signal`     | Abort when the supplied cancellation signal fires            |
 | `mode`       | `query` only: `"object"` (default) or `"raw"`                 |
+| `maxRows`    | `query`/`queryRaw` cap, or optional cursor stream cap         |
 
 `mode` is rejected on `queryRaw`, `queryOne`, and `exec`; those methods have
-fixed result shapes.
+fixed result shapes. `maxRows` must be an integer from `1` to `4294967295`.
+The default native provider cap is `128` rows. Queries that exceed the cap fail
+instead of silently truncating rows. Cursor APIs do not apply the 128-row
+materialization cap by default; pass cursor `maxRows` when a stream should have
+a hard application-level limit.
+
+The current JavaScript API checks `deadline`, `signal`, and `timeoutMs` before
+dispatching a provider call. For native `query` and `queryRaw` bridge calls,
+`timeoutMs` and finite `deadline` values are also passed to driver-level
+interruption: SQLite uses a progress handler, PostgreSQL calls `PQcancel`, and
+SQL Server uses ODBC timeout/cancel APIs. Signals are a pre-dispatch
+cancellation mechanism for data providers; use `timeoutMs`, finite deadlines,
+`maxRows`, and query-specific SQL limits for bounded in-flight behavior.
+
+HTTP response streaming is deliberately separate from database cursors. The
+current public runtime exposes database cursors as async iterables. Do not
+convert a cursor to an HTTP response by first collecting every row into an
+array. When a response streaming helper is used, it must close the cursor on
+normal completion, client cancellation, and stream errors. The cursor metadata
+shape is stable enough for a future native JSON writer to consume typed column
+values without JavaScript array materialization.
 
 ## PostgreSQL
 
@@ -217,8 +297,7 @@ fixed result shapes.
 > runtime when the app uses PostgreSQL. Live evidence is opt-in.
 
 PostgreSQL client support is optional. Current alpha packages use system or
-build-provided libpq; package-local PostgreSQL provider packages are planned
-only after binary distribution and license contents are verified.
+build-provided libpq.
 
 `data.postgres.open(...)` requires an explicit `connectionString`. Set
 `maxConnections` from 1 to 256 to size the native pool for the deployment; the

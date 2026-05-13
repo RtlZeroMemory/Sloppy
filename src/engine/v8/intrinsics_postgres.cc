@@ -14,13 +14,18 @@
 
 #include <libpq-fe.h>
 
+#include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -190,6 +195,8 @@ enum class PgV8Operation
     Exec,
     Query,
     QueryRaw,
+    QueryCursor,
+    QueryRawCursor,
     QueryOne,
     Begin,
     Commit,
@@ -197,6 +204,8 @@ enum class PgV8Operation
     TransactionExec,
     TransactionQuery,
     TransactionQueryRaw,
+    TransactionQueryCursor,
+    TransactionQueryRawCursor,
     TransactionQueryOne,
 };
 
@@ -220,8 +229,14 @@ enum class PgV8RequestState
 struct PgV8ConnectionResource;
 struct PgV8Connection;
 struct PgV8Request;
+struct PgV8CursorResource;
 
 void pg_v8_clear_result(PgV8Request* request);
+bool pg_v8_operation_allows_max_rows(PgV8Operation operation);
+bool pg_v8_operation_is_cursor(PgV8Operation operation);
+void pg_v8_finish_request(const std::shared_ptr<PgV8Request>& request, bool ok);
+void pg_v8_close_cursor_request(const std::shared_ptr<PgV8Request>& request);
+void pg_v8_cursor_cleanup(void* ptr, void* user);
 
 struct PgV8Param
 {
@@ -249,9 +264,26 @@ struct PgV8Request
     std::vector<int> param_lengths;
     std::vector<int> param_formats;
     PGresult* result = nullptr;
+    std::vector<PGresult*> row_results;
     std::string error;
+    uint32_t max_rows = SL_POSTGRES_DEFAULT_MAX_ROWS;
+    bool has_timeout_ms = false;
+    uint32_t timeout_ms = 0U;
+    std::atomic_bool terminal = false;
+    std::atomic_bool timeout_cancelled = false;
+    std::atomic_bool timeout_watch_started = false;
+    std::mutex timeout_mutex;
+    std::condition_variable timeout_cv;
+    std::thread timeout_thread;
+    bool timeout_stop_requested = false;
     bool release_after = true;
     bool transaction_terminal = false;
+    bool cursor_mode = false;
+    bool cursor_raw = false;
+    bool cursor_open_resolved = false;
+    bool cursor_done = false;
+    bool cursor_next_pending = false;
+    size_t cursor_rows_read = 0U;
 };
 
 struct PgV8Connection
@@ -260,6 +292,7 @@ struct PgV8Connection
     SlAsyncIoWatch* watch = nullptr;
     PgV8ConnectionState state = PgV8ConnectionState::Empty;
     std::shared_ptr<PgV8Request> request;
+    std::shared_ptr<std::mutex> conn_mutex = std::make_shared<std::mutex>();
     bool transaction_pinned = false;
 };
 
@@ -275,6 +308,15 @@ struct PgV8ConnectionResource
     bool transaction_active = false;
     size_t transaction_index = 0U;
 };
+
+struct PgV8CursorResource
+{
+    std::shared_ptr<PgV8Request> request;
+    bool closed = false;
+};
+
+void pg_v8_stop_timeout_watch(const std::shared_ptr<PgV8Request>& request);
+void pg_v8_clear_result(PgV8Request* request);
 
 SlStatus pg_v8_to_local_string(v8::Isolate* isolate, SlStr str, v8::Local<v8::String>* out)
 {
@@ -350,6 +392,12 @@ bool pg_v8_make_resource_handle(v8::Isolate* isolate, v8::Local<v8::Context> con
                                 SlResourceId id, v8::Local<v8::Object>* out)
 {
     return sl_v8_db_make_resource_handle(isolate, context, id, "postgres.connection", out);
+}
+
+bool pg_v8_make_cursor_handle(v8::Isolate* isolate, v8::Local<v8::Context> context, SlResourceId id,
+                              v8::Local<v8::Object>* out)
+{
+    return sl_v8_db_make_resource_handle(isolate, context, id, "postgres.cursor", out);
 }
 
 bool pg_v8_plan_provider_matches(const SlPlanDataProvider& provider, SlStr token)
@@ -463,15 +511,39 @@ PgV8ConnectionResource* pg_v8_lookup_connection(v8::Isolate* isolate,
     return static_cast<PgV8ConnectionResource*>(ptr);
 }
 
+void pg_v8_stop_timeout_watch(const std::shared_ptr<PgV8Request>& request)
+{
+    if (request == nullptr) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> guard(request->timeout_mutex);
+        request->timeout_stop_requested = true;
+    }
+    request->timeout_cv.notify_all();
+    if (request->timeout_thread.joinable() &&
+        request->timeout_thread.get_id() != std::this_thread::get_id())
+    {
+        request->timeout_thread.join();
+    }
+}
+
 void pg_v8_close_connection(PgV8Connection& connection)
 {
+    if (connection.request != nullptr) {
+        connection.request->terminal.store(true);
+        pg_v8_stop_timeout_watch(connection.request);
+    }
     if (connection.watch != nullptr) {
         sl_async_io_watch_stop(connection.watch);
         connection.watch = nullptr;
     }
-    if (connection.conn != nullptr) {
-        PQfinish(connection.conn);
-        connection.conn = nullptr;
+    {
+        std::lock_guard<std::mutex> guard(*connection.conn_mutex);
+        if (connection.conn != nullptr) {
+            PQfinish(connection.conn);
+            connection.conn = nullptr;
+        }
     }
     connection.request.reset();
     connection.transaction_pinned = false;
@@ -492,8 +564,94 @@ void pg_v8_connection_cleanup(void* ptr, void* user)
     delete resource;
 }
 
+void pg_v8_close_cursor_request(const std::shared_ptr<PgV8Request>& request)
+{
+    PgV8Connection* connection = request == nullptr ? nullptr : request->connection;
+    if (request == nullptr || connection == nullptr) {
+        return;
+    }
+    const bool natural_done = request->cursor_done;
+    request->terminal.store(true);
+    request->cursor_done = true;
+    pg_v8_stop_timeout_watch(request);
+    pg_v8_clear_result(request.get());
+    if (natural_done) {
+        if (connection->conn != nullptr) {
+            PGresult* result = nullptr;
+            while ((result = PQgetResult(connection->conn)) != nullptr) {
+                PQclear(result);
+            }
+        }
+        if (connection->request == request) {
+            connection->request.reset();
+        }
+        if (connection->state != PgV8ConnectionState::Closed) {
+            connection->state = PgV8ConnectionState::Idle;
+        }
+        return;
+    }
+    if (connection->conn != nullptr) {
+        PGcancel* cancel = PQgetCancel(connection->conn);
+        if (cancel != nullptr) {
+            char error[256] = {};
+            PQcancel(cancel, error, static_cast<int>(sizeof(error)));
+            PQfreeCancel(cancel);
+        }
+        PQconsumeInput(connection->conn);
+        PGresult* result = nullptr;
+        while ((result = PQgetResult(connection->conn)) != nullptr) {
+            PQclear(result);
+        }
+    }
+    if (request->operation == PgV8Operation::TransactionQueryCursor ||
+        request->operation == PgV8Operation::TransactionQueryRawCursor)
+    {
+        request->resource->transaction_active = false;
+    }
+    if (connection->request == request) {
+        pg_v8_close_connection(*connection);
+    }
+}
+
+void pg_v8_cursor_cleanup(void* ptr, void* user)
+{
+    PgV8CursorResource* cursor = static_cast<PgV8CursorResource*>(ptr);
+    (void)user;
+    if (cursor == nullptr) {
+        return;
+    }
+    if (!cursor->closed) {
+        cursor->closed = true;
+        pg_v8_close_cursor_request(cursor->request);
+    }
+    delete cursor;
+}
+
+PgV8CursorResource* pg_v8_lookup_cursor(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                        SlV8Engine* backend, v8::Local<v8::Value> handle_value)
+{
+    SlResourceId id = {};
+    SlDiag diag = {};
+    void* ptr = nullptr;
+
+    if (!pg_v8_get_resource_id(isolate, context, handle_value, &id)) {
+        pg_v8_throw_type_error(isolate, "postgres cursor handle must be an opaque Sloppy handle");
+        return nullptr;
+    }
+    SlStatus status = sl_resource_table_get(&backend->resources, id,
+                                            SL_RESOURCE_KIND_POSTGRES_CURSOR, &ptr, &diag);
+    if (!sl_status_is_ok(status)) {
+        pg_v8_throw_error(isolate, "postgres cursor handle is invalid");
+        return nullptr;
+    }
+    return static_cast<PgV8CursorResource*>(ptr);
+}
+
 bool pg_v8_result_status_ok(PgV8Operation operation, ExecStatusType status)
 {
+    if (status == PGRES_SINGLE_TUPLE && pg_v8_operation_allows_max_rows(operation)) {
+        return true;
+    }
     switch (operation) {
     case PgV8Operation::Exec:
     case PgV8Operation::Begin:
@@ -503,14 +661,46 @@ bool pg_v8_result_status_ok(PgV8Operation operation, ExecStatusType status)
         return status == PGRES_COMMAND_OK;
     case PgV8Operation::Query:
     case PgV8Operation::QueryRaw:
+    case PgV8Operation::QueryCursor:
+    case PgV8Operation::QueryRawCursor:
     case PgV8Operation::QueryOne:
     case PgV8Operation::TransactionQuery:
     case PgV8Operation::TransactionQueryRaw:
+    case PgV8Operation::TransactionQueryCursor:
+    case PgV8Operation::TransactionQueryRawCursor:
     case PgV8Operation::TransactionQueryOne:
         return status == PGRES_TUPLES_OK;
     default:
         return false;
     }
+}
+
+bool pg_v8_operation_allows_max_rows(PgV8Operation operation)
+{
+    return operation == PgV8Operation::Query || operation == PgV8Operation::QueryRaw ||
+           operation == PgV8Operation::QueryCursor || operation == PgV8Operation::QueryRawCursor ||
+           operation == PgV8Operation::TransactionQuery ||
+           operation == PgV8Operation::TransactionQueryRaw ||
+           operation == PgV8Operation::TransactionQueryCursor ||
+           operation == PgV8Operation::TransactionQueryRawCursor;
+}
+
+bool pg_v8_operation_is_cursor(PgV8Operation operation)
+{
+    return operation == PgV8Operation::QueryCursor || operation == PgV8Operation::QueryRawCursor ||
+           operation == PgV8Operation::TransactionQueryCursor ||
+           operation == PgV8Operation::TransactionQueryRawCursor;
+}
+
+bool pg_v8_result_exceeds_max_rows(const PgV8Request* request, PGresult* result)
+{
+    if (request == nullptr || result == nullptr ||
+        !pg_v8_operation_allows_max_rows(request->operation))
+    {
+        return false;
+    }
+    const int row_count = PQntuples(result);
+    return row_count >= 0 && static_cast<uint32_t>(row_count) > request->max_rows;
 }
 
 bool pg_v8_prepare_columns(v8::Isolate* isolate, v8::Local<v8::Context> context, PGresult* result,
@@ -696,6 +886,68 @@ bool pg_v8_result_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context,
     return true;
 }
 
+PGresult* pg_v8_request_column_result(const PgV8Request* request)
+{
+    if (request == nullptr) {
+        return nullptr;
+    }
+    if (!request->row_results.empty()) {
+        return request->row_results.front();
+    }
+    return request->result;
+}
+
+bool pg_v8_request_to_array(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                            const PgV8Request* request, v8::Local<v8::Array>* out)
+{
+    if (request == nullptr || out == nullptr) {
+        return false;
+    }
+    if (request->row_results.empty()) {
+        return pg_v8_result_to_array(isolate, context, request->result, out);
+    }
+
+    PGresult* column_result = pg_v8_request_column_result(request);
+    const int columns = column_result == nullptr ? -1 : PQnfields(column_result);
+    v8::Local<v8::Array> rows =
+        v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
+    SlV8DbColumnSet column_set;
+    std::vector<v8::Local<v8::Value>> values;
+
+    if (columns < 0 || !pg_v8_prepare_columns(isolate, context, column_result, &column_set)) {
+        return false;
+    }
+    values.resize(static_cast<size_t>(columns));
+    for (size_t row_index = 0; row_index < request->row_results.size(); row_index += 1) {
+        PGresult* row_result = request->row_results[row_index];
+        v8::Local<v8::Object> row;
+        if (row_result == nullptr || PQntuples(row_result) != 1 || PQnfields(row_result) != columns)
+        {
+            return false;
+        }
+        for (int column_index = 0; column_index < columns; column_index += 1) {
+            if (!pg_v8_cell_to_value(isolate, context, row_result, 0, column_index,
+                                     &values[static_cast<size_t>(column_index)]))
+            {
+                return false;
+            }
+        }
+        if (!sl_v8_db_make_row_object(isolate, context, &column_set, values.data(), values.size(),
+                                      &row) ||
+            !rows->Set(context, static_cast<uint32_t>(row_index), row).FromMaybe(false))
+        {
+            return false;
+        }
+    }
+    if (!sl_v8_db_attach_result_metadata(isolate, context, rows, &column_set,
+                                         SL_V8_DB_STRING_OBJECT))
+    {
+        return false;
+    }
+    *out = rows;
+    return true;
+}
+
 bool pg_v8_result_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context, PGresult* result,
                          v8::Local<v8::Object>* out)
 {
@@ -716,6 +968,89 @@ bool pg_v8_result_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context, P
         v8::Local<v8::Array> row;
         for (int column_index = 0; column_index < columns; column_index += 1) {
             if (!pg_v8_cell_to_value(isolate, context, result, row_index, column_index,
+                                     &values[static_cast<size_t>(column_index)]))
+            {
+                return false;
+            }
+        }
+        if (!sl_v8_db_make_raw_row(isolate, context, values.data(), values.size(), &row) ||
+            !rows->Set(context, static_cast<uint32_t>(row_index), row).FromMaybe(false))
+        {
+            return false;
+        }
+    }
+    return sl_v8_db_make_raw_result(isolate, context, &column_set, rows, out);
+}
+
+bool pg_v8_single_row_to_cursor_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                                      const PgV8Request* request, PGresult* result,
+                                      v8::Local<v8::Value>* out)
+{
+    const int columns = result == nullptr ? -1 : PQnfields(result);
+    SlV8DbColumnSet column_set;
+    std::vector<v8::Local<v8::Value>> values;
+
+    if (request == nullptr || out == nullptr || result == nullptr || PQntuples(result) != 1 ||
+        columns < 0 || !pg_v8_prepare_columns(isolate, context, result, &column_set))
+    {
+        return false;
+    }
+    values.resize(static_cast<size_t>(columns));
+    for (int column_index = 0; column_index < columns; column_index += 1) {
+        if (!pg_v8_cell_to_value(isolate, context, result, 0, column_index,
+                                 &values[static_cast<size_t>(column_index)]))
+        {
+            return false;
+        }
+    }
+    if (request->cursor_raw) {
+        v8::Local<v8::Array> row;
+        if (!sl_v8_db_make_raw_row(isolate, context, values.data(), values.size(), &row)) {
+            return false;
+        }
+        *out = row;
+        return true;
+    }
+    v8::Local<v8::Object> object;
+    if (!sl_v8_db_make_row_object(isolate, context, &column_set, values.data(), values.size(),
+                                  &object))
+    {
+        return false;
+    }
+    *out = object;
+    return true;
+}
+
+bool pg_v8_request_to_raw(v8::Isolate* isolate, v8::Local<v8::Context> context,
+                          const PgV8Request* request, v8::Local<v8::Object>* out)
+{
+    if (request == nullptr || out == nullptr) {
+        return false;
+    }
+    if (request->row_results.empty()) {
+        return pg_v8_result_to_raw(isolate, context, request->result, out);
+    }
+
+    PGresult* column_result = pg_v8_request_column_result(request);
+    const int columns = column_result == nullptr ? -1 : PQnfields(column_result);
+    v8::Local<v8::Array> rows =
+        v8::Array::New(isolate, static_cast<int>(request->row_results.size()));
+    SlV8DbColumnSet column_set;
+    std::vector<v8::Local<v8::Value>> values;
+
+    if (columns < 0 || !pg_v8_prepare_columns(isolate, context, column_result, &column_set)) {
+        return false;
+    }
+    values.resize(static_cast<size_t>(columns));
+    for (size_t row_index = 0; row_index < request->row_results.size(); row_index += 1) {
+        PGresult* row_result = request->row_results[row_index];
+        v8::Local<v8::Array> row;
+        if (row_result == nullptr || PQntuples(row_result) != 1 || PQnfields(row_result) != columns)
+        {
+            return false;
+        }
+        for (int column_index = 0; column_index < columns; column_index += 1) {
+            if (!pg_v8_cell_to_value(isolate, context, row_result, 0, column_index,
                                      &values[static_cast<size_t>(column_index)]))
             {
                 return false;
@@ -794,12 +1129,124 @@ bool pg_v8_exec_result(v8::Isolate* isolate, v8::Local<v8::Context> context, PGr
     return true;
 }
 
+bool pg_v8_resolve_cursor_open(const std::shared_ptr<PgV8Request>& request, PGresult* column_result)
+{
+    SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
+    v8::Isolate* isolate = backend == nullptr ? nullptr : backend->isolate;
+    if (backend == nullptr || isolate == nullptr || request->cursor_open_resolved ||
+        column_result == nullptr)
+    {
+        return false;
+    }
+
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = backend->context.Get(isolate);
+    v8::Context::Scope context_scope(context);
+    v8::Local<v8::Promise::Resolver> resolver = request->resolver.Get(isolate);
+    v8::Local<v8::Object> handle;
+    SlResourceId id = sl_resource_id_invalid();
+    SlDiag diag = {};
+    SlV8DbColumnSet columns;
+
+    auto cursor = std::make_unique<PgV8CursorResource>();
+    if (!cursor) {
+        sl_v8_db_reject_promise(isolate, context, resolver, "postgres cursor allocation failed",
+                                "postgres operation failed");
+        pg_v8_finish_request(request, false);
+        return false;
+    }
+    cursor->request = request;
+    SlStatus status =
+        sl_resource_table_insert(&backend->resources, SL_RESOURCE_KIND_POSTGRES_CURSOR,
+                                 cursor.get(), pg_v8_cursor_cleanup, nullptr, &id, &diag);
+    if (!sl_status_is_ok(status)) {
+        sl_v8_db_reject_promise(isolate, context, resolver, "postgres cursor registration failed",
+                                "postgres operation failed");
+        pg_v8_finish_request(request, false);
+        return false;
+    }
+    if (!pg_v8_make_cursor_handle(isolate, context, id, &handle) ||
+        !pg_v8_prepare_columns(isolate, context, column_result, &columns) ||
+        !handle->Set(context, v8::String::NewFromUtf8Literal(isolate, "columns"), columns.columns)
+             .FromMaybe(false) ||
+        !handle
+             ->Set(context, v8::String::NewFromUtf8Literal(isolate, "provider"),
+                   v8::String::NewFromUtf8Literal(isolate, "postgres"))
+             .FromMaybe(false) ||
+        !handle
+             ->Set(context, v8::String::NewFromUtf8Literal(isolate, "closed"),
+                   v8::Boolean::New(isolate, false))
+             .FromMaybe(false))
+    {
+        sl_resource_table_close_kind(&backend->resources, id, SL_RESOURCE_KIND_POSTGRES_CURSOR,
+                                     nullptr);
+        sl_v8_db_reject_promise(isolate, context, resolver,
+                                "postgres cursor handle creation failed",
+                                "postgres operation failed");
+        pg_v8_finish_request(request, false);
+        return false;
+    }
+    cursor.release();
+    request->cursor_open_resolved = true;
+    sl_v8_db_resolve_promise(context, resolver, handle);
+    request->resolver.Reset();
+    return true;
+}
+
+bool pg_v8_resolve_cursor_next(const std::shared_ptr<PgV8Request>& request, PGresult* row_result,
+                               bool done)
+{
+    SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
+    v8::Isolate* isolate = backend == nullptr ? nullptr : backend->isolate;
+    if (backend == nullptr || isolate == nullptr) {
+        return false;
+    }
+    request->cursor_next_pending = false;
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = backend->context.Get(isolate);
+    v8::Context::Scope context_scope(context);
+    v8::Local<v8::Promise::Resolver> resolver = request->resolver.Get(isolate);
+    v8::Local<v8::Object> result = v8::Object::New(isolate);
+
+    if (done) {
+        request->cursor_done = true;
+        pg_v8_close_cursor_request(request);
+        if (!result
+                 ->Set(context, v8::String::NewFromUtf8Literal(isolate, "done"),
+                       v8::Boolean::New(isolate, true))
+                 .FromMaybe(false))
+        {
+            return false;
+        }
+        sl_v8_db_resolve_promise(context, resolver, result);
+        request->resolver.Reset();
+        return true;
+    }
+
+    v8::Local<v8::Value> value;
+    if (!pg_v8_single_row_to_cursor_value(isolate, context, request.get(), row_result, &value) ||
+        !result
+             ->Set(context, v8::String::NewFromUtf8Literal(isolate, "done"),
+                   v8::Boolean::New(isolate, false))
+             .FromMaybe(false) ||
+        !result->Set(context, v8::String::NewFromUtf8Literal(isolate, "value"), value)
+             .FromMaybe(false))
+    {
+        return false;
+    }
+    sl_v8_db_resolve_promise(context, resolver, result);
+    request->resolver.Reset();
+    return true;
+}
+
 void pg_v8_finish_request(const std::shared_ptr<PgV8Request>& request, bool ok)
 {
     PgV8Connection* connection = request == nullptr ? nullptr : request->connection;
     if (connection == nullptr || request->resource == nullptr) {
         return;
     }
+    request->terminal.store(true);
+    pg_v8_stop_timeout_watch(request);
     if (!ok) {
         if (request->operation == PgV8Operation::Begin || request->transaction_terminal) {
             request->resource->transaction_active = false;
@@ -821,6 +1268,45 @@ void pg_v8_finish_request(const std::shared_ptr<PgV8Request>& request, bool ok)
     connection->request.reset();
 }
 
+void pg_v8_start_timeout_watch(const std::shared_ptr<PgV8Request>& request)
+{
+    if (request == nullptr || !request->has_timeout_ms || request->timeout_ms == 0U) {
+        return;
+    }
+    bool expected = false;
+    if (!request->timeout_watch_started.compare_exchange_strong(expected, true)) {
+        return;
+    }
+    request->timeout_thread = std::thread([request]() {
+        {
+            std::unique_lock<std::mutex> lock(request->timeout_mutex);
+            const auto timeout = std::chrono::milliseconds(request->timeout_ms);
+            auto should_stop = [&request]() {
+                return request->timeout_stop_requested || request->terminal.load();
+            };
+            if (request->timeout_cv.wait_for(lock, timeout, should_stop)) {
+                return;
+            }
+        }
+        PgV8Connection* connection = request->connection;
+        if (request->terminal.load() || connection == nullptr) {
+            return;
+        }
+        std::lock_guard<std::mutex> guard(*connection->conn_mutex);
+        if (request->terminal.load() || connection->conn == nullptr) {
+            return;
+        }
+        PGcancel* cancel = PQgetCancel(connection->conn);
+        if (cancel == nullptr) {
+            return;
+        }
+        char error[256] = {};
+        request->timeout_cancelled.store(true);
+        PQcancel(cancel, error, static_cast<int>(sizeof(error)));
+        PQfreeCancel(cancel);
+    });
+}
+
 void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)
 {
     SlV8Engine* backend = request == nullptr ? nullptr : request->backend;
@@ -836,6 +1322,10 @@ void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)
     if (!ok) {
         sl_v8_db_reject_promise(isolate, context, resolver, request->error,
                                 "postgres operation failed");
+        if (request->cursor_mode) {
+            pg_v8_close_cursor_request(request);
+            return;
+        }
         pg_v8_finish_request(request, false);
         return;
     }
@@ -850,14 +1340,14 @@ void pg_v8_settle_request(const std::shared_ptr<PgV8Request>& request, bool ok)
     case PgV8Operation::Query:
     case PgV8Operation::TransactionQuery: {
         v8::Local<v8::Array> rows;
-        converted = pg_v8_result_to_array(isolate, context, request->result, &rows);
+        converted = pg_v8_request_to_array(isolate, context, request.get(), &rows);
         value = rows;
         break;
     }
     case PgV8Operation::QueryRaw:
     case PgV8Operation::TransactionQueryRaw: {
         v8::Local<v8::Object> result;
-        converted = pg_v8_result_to_raw(isolate, context, request->result, &result);
+        converted = pg_v8_request_to_raw(isolate, context, request.get(), &result);
         value = result;
         break;
     }
@@ -889,6 +1379,14 @@ void pg_v8_clear_result(PgV8Request* request)
         PQclear(request->result);
         request->result = nullptr;
     }
+    if (request != nullptr) {
+        for (PGresult* result : request->row_results) {
+            if (result != nullptr) {
+                PQclear(result);
+            }
+        }
+        request->row_results.clear();
+    }
 }
 
 void pg_v8_fail_request(const std::shared_ptr<PgV8Request>& request, const char* fallback)
@@ -897,6 +1395,12 @@ void pg_v8_fail_request(const std::shared_ptr<PgV8Request>& request, const char*
         return;
     }
     const char* message = nullptr;
+    if (request->timeout_cancelled.load()) {
+        request->error = "postgres provider operation deadline was exceeded";
+        pg_v8_clear_result(request.get());
+        pg_v8_settle_request(request, false);
+        return;
+    }
     if (request->connection != nullptr && request->connection->conn != nullptr) {
         message = PQerrorMessage(request->connection->conn);
     }
@@ -1004,6 +1508,11 @@ bool pg_v8_send_query(PgV8Request* request)
                                  param_count == 0 ? nullptr : request->param_values.data(),
                                  param_count == 0 ? nullptr : request->param_lengths.data(),
                                  param_count == 0 ? nullptr : request->param_formats.data(), 0);
+    if (sent == 1 && pg_v8_operation_allows_max_rows(request->operation) &&
+        PQsetSingleRowMode(request->connection->conn) != 1)
+    {
+        return false;
+    }
     return sent == 1;
 }
 
@@ -1021,12 +1530,67 @@ void pg_v8_complete_read(PgV8Connection* connection)
         saw_result = true;
         ExecStatusType status = PQresultStatus(result);
         if (!pg_v8_result_status_ok(request->operation, status)) {
-            request->error = PQresultErrorMessage(result);
+            request->error = request->timeout_cancelled.load()
+                                 ? "postgres provider operation deadline was exceeded"
+                                 : PQresultErrorMessage(result);
             PQclear(result);
+            pg_v8_clear_result(request.get());
             pg_v8_settle_request(request, false);
             return;
         }
-        pg_v8_clear_result(request.get());
+        if (status == PGRES_SINGLE_TUPLE) {
+            if (request->cursor_mode) {
+                if (request->max_rows > 0U && request->cursor_rows_read >= request->max_rows) {
+                    request->error = "postgres provider query exceeded max rows";
+                    PQclear(result);
+                    pg_v8_settle_request(request, false);
+                    return;
+                }
+                request->cursor_rows_read += 1U;
+                if (!request->cursor_open_resolved) {
+                    request->row_results.push_back(result);
+                    pg_v8_resolve_cursor_open(request, result);
+                    return;
+                }
+                if (request->cursor_next_pending) {
+                    pg_v8_resolve_cursor_next(request, result, false);
+                    PQclear(result);
+                    return;
+                }
+                request->row_results.push_back(result);
+                return;
+            }
+            if (request->row_results.size() >= request->max_rows) {
+                request->error = "postgres provider query exceeded max rows";
+                PQclear(result);
+                pg_v8_clear_result(request.get());
+                pg_v8_settle_request(request, false);
+                return;
+            }
+            request->row_results.push_back(result);
+            continue;
+        }
+        if (request->cursor_mode) {
+            if (!request->cursor_open_resolved) {
+                pg_v8_resolve_cursor_open(request, result);
+            }
+            if (request->cursor_next_pending) {
+                pg_v8_resolve_cursor_next(request, nullptr, true);
+            }
+            request->cursor_done = true;
+            PQclear(result);
+            return;
+        }
+        if (pg_v8_result_exceeds_max_rows(request.get(), result)) {
+            request->error = "postgres provider query exceeded max rows";
+            PQclear(result);
+            pg_v8_clear_result(request.get());
+            pg_v8_settle_request(request, false);
+            return;
+        }
+        if (request->result != nullptr) {
+            PQclear(request->result);
+        }
         request->result = result;
     }
     if (!saw_result && request->result == nullptr) {
@@ -1064,6 +1628,7 @@ void pg_v8_pump_connection(PgV8Connection* connection)
             pg_v8_fail_request(request, "postgres query submission failed");
             return;
         }
+        pg_v8_start_timeout_watch(request);
     }
 
     if (request->state == PgV8RequestState::Sending) {
@@ -1124,6 +1689,7 @@ bool pg_v8_attach_request_to_connection(PgV8ConnectionResource* resource,
             request->error = "postgres query submission failed";
             return false;
         }
+        pg_v8_start_timeout_watch(request);
     }
     pg_v8_pump_connection(connection);
     return true;
@@ -1137,6 +1703,9 @@ PgV8Connection* pg_v8_acquire_connection(PgV8ConnectionResource* resource,
     }
     if (request->operation == PgV8Operation::TransactionExec ||
         request->operation == PgV8Operation::TransactionQuery ||
+        request->operation == PgV8Operation::TransactionQueryRaw ||
+        request->operation == PgV8Operation::TransactionQueryCursor ||
+        request->operation == PgV8Operation::TransactionQueryRawCursor ||
         request->operation == PgV8Operation::TransactionQueryOne ||
         request->operation == PgV8Operation::Commit ||
         request->operation == PgV8Operation::Rollback)
@@ -1658,8 +2227,22 @@ void pg_v8_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& args,
             return;
         }
         if (!pg_v8_convert_params(isolate, context,
-                                  args.Length() == 3 ? args[2] : v8::Undefined(isolate),
+                                  args.Length() >= 3 ? args[2] : v8::Undefined(isolate),
                                   &request->params))
+        {
+            return;
+        }
+        if (pg_v8_operation_allows_max_rows(operation) &&
+            !sl_v8_db_parse_max_rows_option(
+                isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
+                pg_v8_operation_is_cursor(operation) ? 0U : SL_POSTGRES_DEFAULT_MAX_ROWS,
+                &request->max_rows, "postgres query"))
+        {
+            return;
+        }
+        if (!sl_v8_db_parse_timeout_ms_option(
+                isolate, context, args.Length() >= 4 ? args[3] : v8::Undefined(isolate),
+                &request->has_timeout_ms, &request->timeout_ms, "postgres operation"))
         {
             return;
         }
@@ -1667,6 +2250,9 @@ void pg_v8_operation_callback(const v8::FunctionCallbackInfo<v8::Value>& args,
     request->backend = backend;
     request->resource = resource;
     request->operation = operation;
+    request->cursor_mode = pg_v8_operation_is_cursor(operation);
+    request->cursor_raw = operation == PgV8Operation::QueryRawCursor ||
+                          operation == PgV8Operation::TransactionQueryRawCursor;
     if (!pg_v8_make_promise(isolate, context, request, &promise)) {
         pg_v8_throw_error(isolate, "postgres bridge could not create a promise");
         return;
@@ -1710,6 +2296,90 @@ void pg_v8_query_raw_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     pg_v8_operation_callback(
         args, PgV8Operation::QueryRaw,
         "__sloppy.data.postgres.queryRaw requires a handle, SQL string, and optional params");
+}
+
+void pg_v8_query_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    pg_v8_operation_callback(
+        args, PgV8Operation::QueryCursor,
+        "__sloppy.data.postgres.queryCursor requires a handle, SQL string, and optional params");
+}
+
+void pg_v8_query_raw_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    pg_v8_operation_callback(args, PgV8Operation::QueryRawCursor,
+                             "__sloppy.data.postgres.queryRawCursor requires a handle, SQL "
+                             "string, and optional params");
+}
+
+void pg_v8_cursor_next_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    PgV8CursorResource* cursor = nullptr;
+    v8::Local<v8::Promise> promise;
+
+    if (backend == nullptr || args.Length() != 1) {
+        pg_v8_throw_type_error(isolate, "__sloppy.data.postgres.cursorNext requires a cursor");
+        return;
+    }
+    cursor = pg_v8_lookup_cursor(isolate, context, backend, args[0]);
+    if (cursor == nullptr) {
+        return;
+    }
+    if (cursor->closed || cursor->request == nullptr) {
+        pg_v8_throw_error(isolate, "postgres cursor is closed");
+        return;
+    }
+    if (cursor->request->cursor_next_pending) {
+        pg_v8_throw_error(isolate, "postgres cursor already has a pending fetch");
+        return;
+    }
+    if (!pg_v8_make_promise(isolate, context, cursor->request, &promise)) {
+        pg_v8_throw_error(isolate, "postgres bridge could not create a promise");
+        return;
+    }
+    if (!cursor->request->row_results.empty()) {
+        PGresult* result = cursor->request->row_results.front();
+        cursor->request->row_results.erase(cursor->request->row_results.begin());
+        pg_v8_resolve_cursor_next(cursor->request, result, false);
+        PQclear(result);
+        args.GetReturnValue().Set(promise);
+        return;
+    }
+    if (cursor->request->cursor_done) {
+        pg_v8_resolve_cursor_next(cursor->request, nullptr, true);
+        args.GetReturnValue().Set(promise);
+        return;
+    }
+    cursor->request->cursor_next_pending = true;
+    cursor->request->state = PgV8RequestState::Reading;
+    pg_v8_pump_connection(cursor->request->connection);
+    args.GetReturnValue().Set(promise);
+}
+
+void pg_v8_cursor_close_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    SlV8Engine* backend = static_cast<SlV8Engine*>(isolate->GetData(0));
+    SlResourceId id = {};
+    SlDiag diag = {};
+
+    if (backend == nullptr || args.Length() != 1 ||
+        !pg_v8_get_resource_id(isolate, context, args[0], &id))
+    {
+        pg_v8_throw_type_error(isolate, "__sloppy.data.postgres.cursorClose requires a cursor");
+        return;
+    }
+    SlStatus status = sl_resource_table_close_kind(&backend->resources, id,
+                                                   SL_RESOURCE_KIND_POSTGRES_CURSOR, &diag);
+    if (!sl_status_is_ok(status)) {
+        pg_v8_throw_error(isolate, "postgres cursor close failed");
+        return;
+    }
+    args.GetReturnValue().Set(v8::Undefined(isolate));
 }
 
 void pg_v8_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
@@ -1758,6 +2428,20 @@ void pg_v8_transaction_query_raw_callback(const v8::FunctionCallbackInfo<v8::Val
                              "string, and optional params");
 }
 
+void pg_v8_transaction_query_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    pg_v8_operation_callback(args, PgV8Operation::TransactionQueryCursor,
+                             "__sloppy.data.postgres.transactionQueryCursor requires a handle, "
+                             "SQL string, and optional params");
+}
+
+void pg_v8_transaction_query_raw_cursor_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    pg_v8_operation_callback(args, PgV8Operation::TransactionQueryRawCursor,
+                             "__sloppy.data.postgres.transactionQueryRawCursor requires a "
+                             "handle, SQL string, and optional params");
+}
+
 void pg_v8_transaction_query_one_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     pg_v8_operation_callback(args, PgV8Operation::TransactionQueryOne,
@@ -1791,6 +2475,10 @@ void sl_v8_append_postgres_external_references(std::vector<intptr_t>* refs)
     refs->push_back(reinterpret_cast<intptr_t>(pg_v8_exec_callback));
     refs->push_back(reinterpret_cast<intptr_t>(pg_v8_query_callback));
     refs->push_back(reinterpret_cast<intptr_t>(pg_v8_query_raw_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(pg_v8_query_cursor_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(pg_v8_query_raw_cursor_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(pg_v8_cursor_next_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(pg_v8_cursor_close_callback));
     refs->push_back(reinterpret_cast<intptr_t>(pg_v8_query_one_callback));
     refs->push_back(reinterpret_cast<intptr_t>(pg_v8_begin_callback));
     refs->push_back(reinterpret_cast<intptr_t>(pg_v8_commit_callback));
@@ -1798,6 +2486,8 @@ void sl_v8_append_postgres_external_references(std::vector<intptr_t>* refs)
     refs->push_back(reinterpret_cast<intptr_t>(pg_v8_transaction_exec_callback));
     refs->push_back(reinterpret_cast<intptr_t>(pg_v8_transaction_query_callback));
     refs->push_back(reinterpret_cast<intptr_t>(pg_v8_transaction_query_raw_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(pg_v8_transaction_query_cursor_callback));
+    refs->push_back(reinterpret_cast<intptr_t>(pg_v8_transaction_query_raw_cursor_callback));
     refs->push_back(reinterpret_cast<intptr_t>(pg_v8_transaction_query_one_callback));
 }
 
@@ -1840,6 +2530,13 @@ bool sl_v8_install_postgres_intrinsics(v8::Isolate* isolate, v8::Local<v8::Conte
         !pg_v8_set_function(isolate, context, postgres, "exec", pg_v8_exec_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "query", pg_v8_query_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "queryRaw", pg_v8_query_raw_callback) ||
+        !pg_v8_set_function(isolate, context, postgres, "queryCursor",
+                            pg_v8_query_cursor_callback) ||
+        !pg_v8_set_function(isolate, context, postgres, "queryRawCursor",
+                            pg_v8_query_raw_cursor_callback) ||
+        !pg_v8_set_function(isolate, context, postgres, "cursorNext", pg_v8_cursor_next_callback) ||
+        !pg_v8_set_function(isolate, context, postgres, "cursorClose",
+                            pg_v8_cursor_close_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "queryOne", pg_v8_query_one_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "transactionBegin", pg_v8_begin_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "transactionCommit",
@@ -1852,6 +2549,10 @@ bool sl_v8_install_postgres_intrinsics(v8::Isolate* isolate, v8::Local<v8::Conte
                             pg_v8_transaction_query_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "transactionQueryRaw",
                             pg_v8_transaction_query_raw_callback) ||
+        !pg_v8_set_function(isolate, context, postgres, "transactionQueryCursor",
+                            pg_v8_transaction_query_cursor_callback) ||
+        !pg_v8_set_function(isolate, context, postgres, "transactionQueryRawCursor",
+                            pg_v8_transaction_query_raw_cursor_callback) ||
         !pg_v8_set_function(isolate, context, postgres, "transactionQueryOne",
                             pg_v8_transaction_query_one_callback) ||
         !data->Set(context, postgres_key, postgres).FromMaybe(false))
