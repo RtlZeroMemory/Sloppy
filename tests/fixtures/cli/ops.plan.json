@@ -4,13 +4,27 @@
   "compilerVersion": "test",
   "runtimeMinimumVersion": "test",
   "stdlibVersion": "test",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-ops-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-ops-test-map",
+    "hash": "test-only"
+  },
   "handlers": [
-    { "id": 1, "displayName": "Management.Health" },
-    { "id": 2, "displayName": "Management.Live" },
-    { "id": 3, "displayName": "Management.Ready" },
-    { "id": 4, "displayName": "Management.Startup" },
-    { "id": 5, "displayName": "Management.Metrics" },
-    { "id": 6, "displayName": "Management.MetricsJson" }
+    { "id": 1, "exportName": "__sloppy_handler_1", "displayName": "Management.Health" },
+    { "id": 2, "exportName": "__sloppy_handler_2", "displayName": "Management.Live" },
+    { "id": 3, "exportName": "__sloppy_handler_3", "displayName": "Management.Ready" },
+    { "id": 4, "exportName": "__sloppy_handler_4", "displayName": "Management.Startup" },
+    { "id": 5, "exportName": "__sloppy_handler_5", "displayName": "Management.Metrics" },
+    { "id": 6, "exportName": "__sloppy_handler_6", "displayName": "Management.MetricsJson" }
   ],
   "routes": [
     {

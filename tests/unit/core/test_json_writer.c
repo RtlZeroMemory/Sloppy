@@ -112,17 +112,26 @@ static int test_codepoint_control_string_escape_mode(void)
     char storage[128];
     SlStringBuilder builder = {0};
     SlStr text = sl_str_from_cstr("line\n\t\r\b\f\x02");
-    SlStatus status = sl_string_builder_init_fixed(&builder, storage, sizeof(storage));
+    size_t length = 0U;
+    SlStatus status = sl_json_writer_escaped_string_codepoint_controls_length(text, &length);
+
+    if (expect_status(status, SL_STATUS_OK) != 0 ||
+        expect_true(length == sizeof("\"line\\u000a\\u0009\\u000d\\u0008\\u000c\\u0002\"") - 1U) !=
+            0)
+    {
+        return 90;
+    }
+    status = sl_string_builder_init_fixed(&builder, storage, sizeof(storage));
 
     if (expect_status(status, SL_STATUS_OK) != 0) {
-        return 90;
+        return 91;
     }
     status = sl_json_writer_append_escaped_string_codepoint_controls(&builder, text);
 
     return expect_status(status, SL_STATUS_OK) != 0 ||
                    expect_true(memcmp(storage, "\"line\\u000a\\u0009\\u000d\\u0008\\u000c\\u0002\"",
                                       sl_string_builder_view(&builder).length) == 0) != 0
-               ? 91
+               ? 92
                : 0;
 }
 

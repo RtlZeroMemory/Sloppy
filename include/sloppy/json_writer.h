@@ -28,6 +28,7 @@ SlStatus sl_json_writer_write_bytes(SlJsonWriter* writer, SlBytes bytes);
 SlStatus sl_json_writer_write_str(SlJsonWriter* writer, SlStr text);
 SlStatus sl_json_writer_write_char(SlJsonWriter* writer, char value);
 SlStatus sl_json_writer_escaped_string_length(SlStr text, size_t* out_length);
+SlStatus sl_json_writer_escaped_string_codepoint_controls_length(SlStr text, size_t* out_length);
 SlStatus sl_json_writer_append_escaped_string_bytes(SlByteBuilder* builder, SlStr text);
 SlStatus sl_json_writer_append_escaped_string_codepoint_controls(SlStringBuilder* builder,
                                                                  SlStr text);

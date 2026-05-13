@@ -1313,6 +1313,33 @@ static SlStatus sl_plan_parse_bool_field(SlPlanParseContext* ctx, yyjson_val* ob
     return sl_status_ok();
 }
 
+static SlStatus sl_plan_parse_bool_field_hint(SlPlanParseContext* ctx, yyjson_val* object,
+                                              const char* field_name, bool default_value,
+                                              SlStr type_hint, bool* out)
+{
+    yyjson_val* value = NULL;
+
+    if (ctx == NULL || object == NULL || field_name == NULL || out == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+
+    *out = default_value;
+    value = yyjson_obj_get(object, field_name);
+    if (value == NULL || yyjson_is_null(value)) {
+        return sl_status_ok();
+    }
+    if (!yyjson_is_bool(value)) {
+        return sl_plan_parse_field_diag(
+            ctx,
+            sl_plan_parse_literal("invalid app plan field type",
+                                  sizeof("invalid app plan field type") - 1U),
+            type_hint);
+    }
+
+    *out = yyjson_get_bool(value);
+    return sl_status_ok();
+}
+
 static SlStatus sl_plan_parse_size_field(SlPlanParseContext* ctx, yyjson_val* object,
                                          const char* field_name, size_t* out)
 {
@@ -1625,12 +1652,19 @@ static SlStatus sl_plan_parse_route_auth(SlPlanParseContext* ctx, yyjson_val* ro
     }
 
     out->auth.present = true;
-    status = sl_plan_parse_bool_field(ctx, auth, "required", false, &out->auth.required);
+    status = sl_plan_parse_bool_field_hint(
+        ctx, auth, "required", false,
+        sl_plan_parse_literal("routes[].auth.required must be a JSON boolean",
+                              sizeof("routes[].auth.required must be a JSON boolean") - 1U),
+        &out->auth.required);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status =
-        sl_plan_parse_bool_field(ctx, auth, "allowAnonymous", false, &out->auth.allow_anonymous);
+    status = sl_plan_parse_bool_field_hint(
+        ctx, auth, "allowAnonymous", false,
+        sl_plan_parse_literal("routes[].auth.allowAnonymous must be a JSON boolean",
+                              sizeof("routes[].auth.allowAnonymous must be a JSON boolean") - 1U),
+        &out->auth.allow_anonymous);
     if (!sl_status_is_ok(status)) {
         return status;
     }

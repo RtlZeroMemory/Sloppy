@@ -590,6 +590,9 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
                     " const writer = await globalThis.__sloppy.fs.openHandle("
                     "\"./sloppy-v8-fs-dir/write.txt\", \"write\", true);"
                     " await globalThis.__sloppy.fs.handleWriteText(writer, \"write-ok\");"
+                    " const sliced = new Uint8Array([120, 115, 108, 105, 99, 101]).subarray(1, "
+                    "5);"
+                    " await globalThis.__sloppy.fs.handleWriteBytes(writer, sliced);"
                     " await globalThis.__sloppy.fs.handleClose(writer);"
                     " const written = await globalThis.__sloppy.fs.readText("
                     "\"./sloppy-v8-fs-dir/write.txt\");"
@@ -649,7 +652,7 @@ static int test_filesystem_intrinsic_promise_roundtrip(void)
                                                &diag),
                       SL_STATUS_OK) != 0 ||
         result.kind != SL_ENGINE_RESULT_TEXT ||
-        !sl_str_equal(result.text, sl_str_from_cstr("a.txt:3:write-ok:created:watched.txt")))
+        !sl_str_equal(result.text, sl_str_from_cstr("a.txt:3:write-okslic:created:watched.txt")))
     {
         sl_engine_destroy(engine);
         sl_fs_delete_file(path, NULL);

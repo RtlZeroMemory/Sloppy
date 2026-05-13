@@ -67,11 +67,12 @@
         tests/fixtures/cli/ops.plan.json --format json)
     sloppy_add_cli_nonzero_stderr_test(
         sloppy.cli.health_malformed_kind
-        "route health kind must be a string" "SECRET_SHOULD_NOT_APPEAR" "SLOPPY_TEST_NOOP" "1"
+        "expected a JSON string for this app plan field" "SECRET_SHOULD_NOT_APPEAR"
+        "SLOPPY_TEST_NOOP" "1"
         health --plan tests/fixtures/cli/malformed-health-kind.plan.json --format text)
     sloppy_add_cli_nonzero_stderr_test(
         sloppy.cli.health_malformed_check_entry
-        "route health check entries must be strings" "SECRET_SHOULD_NOT_APPEAR"
+        "route health check names must be strings" "SECRET_SHOULD_NOT_APPEAR"
         "SLOPPY_TEST_NOOP" "1" health --plan
         tests/fixtures/cli/malformed-health-check-entry.plan.json --format text)
     sloppy_add_cli_nonzero_stderr_test(
@@ -428,6 +429,14 @@
             "-DSLOPPY_EXPECTED_ERROR=--strict requires complete route contracts" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.cli.openapi_strict_missing_schema
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.cli.openapi_strict_output_preserves_file
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_openapi_output_failure_preserves_file.cmake")
+    set_tests_properties(sloppy.cli.openapi_strict_output_preserves_file
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(

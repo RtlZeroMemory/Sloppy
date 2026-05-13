@@ -1509,6 +1509,17 @@ static unsigned char* sl_cli_scratch_plan_arena_storage(void)
     return storage;
 }
 
+static int sl_cli_init_scratch_plan_arena(const char* command, SlArena* arena)
+{
+    unsigned char* storage = sl_cli_scratch_plan_arena_storage();
+
+    if (sl_status_is_ok(sl_arena_init(arena, storage, SL_CLI_ARENA_BYTES))) {
+        return 0;
+    }
+    sl_cli_write_error_with_value("sloppy ", command, ": failed to initialize Plan parser arena\n");
+    return 1;
+}
+
 static SlCliMetadata* sl_cli_scratch_metadata(void)
 {
     static SlCliMetadata metadata;

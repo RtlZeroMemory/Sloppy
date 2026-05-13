@@ -94,8 +94,8 @@ typedef struct SlCliOpenApiPolicy
 } SlCliOpenApiPolicy;
 
 static void sl_cli_openapi_emit_parameter(FILE* file, SlCliSpan name, SlCliSpan location,
-                                          SlCliSpan type, bool required,
-                                          SlCliSpan description, bool* first)
+                                          SlCliSpan type, bool required, SlCliSpan description,
+                                          bool* first)
 {
     if (!*first) {
         sl_cli_write_cstr(file, ",");
@@ -134,8 +134,7 @@ typedef struct SlCliOpenApiParameterKey
 } SlCliOpenApiParameterKey;
 
 static bool sl_cli_openapi_parameter_seen(const SlCliOpenApiParameterKey* emitted,
-                                          size_t emitted_count, SlCliSpan name,
-                                          SlCliSpan location)
+                                          size_t emitted_count, SlCliSpan name, SlCliSpan location)
 {
     size_t index = 0U;
 
@@ -149,12 +148,10 @@ static bool sl_cli_openapi_parameter_seen(const SlCliOpenApiParameterKey* emitte
     return false;
 }
 
-static void sl_cli_openapi_emit_unique_parameter(FILE* file,
-                                                 SlCliOpenApiParameterKey* emitted,
+static void sl_cli_openapi_emit_unique_parameter(FILE* file, SlCliOpenApiParameterKey* emitted,
                                                  size_t* emitted_count, SlCliSpan name,
-                                                 SlCliSpan location, SlCliSpan type,
-                                                 bool required, SlCliSpan description,
-                                                 bool* first)
+                                                 SlCliSpan location, SlCliSpan type, bool required,
+                                                 SlCliSpan description, bool* first)
 {
     if (emitted == NULL || emitted_count == NULL ||
         sl_cli_openapi_parameter_seen(emitted, *emitted_count, name, location))
@@ -190,8 +187,8 @@ static const SlCliSchema* sl_cli_openapi_find_schema(const SlCliMetadata* metada
     return NULL;
 }
 
-static const SlCliSchemaProperty* sl_cli_openapi_find_schema_property(
-    const SlCliSchema* schema, SlCliSpan name)
+static const SlCliSchemaProperty* sl_cli_openapi_find_schema_property(const SlCliSchema* schema,
+                                                                      SlCliSpan name)
 {
     size_t index = 0U;
 
@@ -251,7 +248,7 @@ static bool sl_cli_openapi_route_has_validation(const SlCliRoute* route)
 }
 
 static bool sl_cli_openapi_route_has_known_json_body_schema(const SlCliMetadata* metadata,
-                                                           const SlCliRoute* route)
+                                                            const SlCliRoute* route)
 {
     size_t index = 0U;
 
@@ -264,7 +261,7 @@ static bool sl_cli_openapi_route_has_known_json_body_schema(const SlCliMetadata*
 }
 
 static bool sl_cli_openapi_route_has_known_json_response_schema(const SlCliMetadata* metadata,
-                                                               const SlCliRoute* route)
+                                                                const SlCliRoute* route)
 {
     size_t index = 0U;
 
@@ -386,35 +383,30 @@ static void sl_cli_openapi_parameters(FILE* file, const SlCliMetadata* metadata,
         const SlCliSchema* header_schema =
             sl_cli_openapi_find_schema(metadata, route->header_schemas[index]);
         SlCliSpan kind = header_schema != NULL ? header_schema->kind : sl_cli_span_cstr("string");
-        sl_cli_openapi_emit_unique_parameter(file, emitted, &emitted_count,
-                                             route->header_names[index],
-                                             sl_cli_span_cstr("header"), kind,
-                                             route->header_required[index],
-                                             route->header_descriptions[index], &first);
+        sl_cli_openapi_emit_unique_parameter(
+            file, emitted, &emitted_count, route->header_names[index], sl_cli_span_cstr("header"),
+            kind, route->header_required[index], route->header_descriptions[index], &first);
     }
     for (index = 0U; index < route->binding_count; index += 1U) {
         if (sl_cli_span_equal_cstr(route->binding_kinds[index], "query")) {
-            sl_cli_openapi_emit_unique_parameter(file, emitted, &emitted_count,
-                                                 route->binding_names[index],
-                                                 sl_cli_span_cstr("query"),
-                                                 route->binding_schemas[index], false,
-                                                 (SlCliSpan){0}, &first);
+            sl_cli_openapi_emit_unique_parameter(
+                file, emitted, &emitted_count, route->binding_names[index],
+                sl_cli_span_cstr("query"), route->binding_schemas[index], false, (SlCliSpan){0},
+                &first);
         }
         else if (sl_cli_span_equal_cstr(route->binding_kinds[index], "header")) {
-            sl_cli_openapi_emit_unique_parameter(file, emitted, &emitted_count,
-                                                 route->binding_names[index],
-                                                 sl_cli_span_cstr("header"),
-                                                 route->binding_schemas[index], false,
-                                                 (SlCliSpan){0}, &first);
+            sl_cli_openapi_emit_unique_parameter(
+                file, emitted, &emitted_count, route->binding_names[index],
+                sl_cli_span_cstr("header"), route->binding_schemas[index], false, (SlCliSpan){0},
+                &first);
         }
         else if (sl_cli_span_equal_cstr(route->binding_kinds[index], "cookie") &&
                  !sl_cli_span_empty(route->binding_names[index]))
         {
-            sl_cli_openapi_emit_unique_parameter(file, emitted, &emitted_count,
-                                                 route->binding_names[index],
-                                                 sl_cli_span_cstr("cookie"),
-                                                 sl_cli_span_cstr("string"), false,
-                                                 (SlCliSpan){0}, &first);
+            sl_cli_openapi_emit_unique_parameter(
+                file, emitted, &emitted_count, route->binding_names[index],
+                sl_cli_span_cstr("cookie"), sl_cli_span_cstr("string"), false, (SlCliSpan){0},
+                &first);
         }
     }
     if (!first) {
@@ -615,8 +607,8 @@ static void sl_cli_openapi_emit_response_content(FILE* out, const SlCliMetadata*
                                                  SlCliSpan body_schema)
 {
     SlCliSpan content_type = route->produce_count > 0U
-                                  ? route->produces[0]
-                                  : sl_cli_openapi_content_type_for_response_kind(kind);
+                                 ? route->produces[0]
+                                 : sl_cli_openapi_content_type_for_response_kind(kind);
 
     if (sl_cli_span_empty(content_type)) {
         return;
@@ -653,7 +645,8 @@ static bool sl_cli_openapi_route_has_response_status(const SlCliRoute* route, ui
     return sl_cli_openapi_response_status_seen(route, route->response_count, status);
 }
 
-static void sl_cli_openapi_emit_problem_response(FILE* out, uint64_t status, const char* description)
+static void sl_cli_openapi_emit_problem_response(FILE* out, uint64_t status,
+                                                 const char* description)
 {
     sl_cli_write_cstr(out, "          \"");
     sl_cli_write_u64(out, status);
@@ -709,8 +702,7 @@ static void sl_cli_openapi_emit_responses(FILE* out, const SlCliMetadata* metada
     sl_cli_write_cstr(out, ",\n        \"responses\": {\n");
     if (route->response_count == 0U) {
         sl_cli_openapi_emit_response(out, metadata, route, route->response_status,
-                                     route->response_kind, route->response_helper,
-                                     (SlCliSpan){0});
+                                     route->response_kind, route->response_helper, (SlCliSpan){0});
         first = false;
     }
     else {
@@ -722,10 +714,9 @@ static void sl_cli_openapi_emit_responses(FILE* out, const SlCliMetadata* metada
                 continue;
             }
             sl_cli_write_cstr(out, first ? "" : ",\n");
-            sl_cli_openapi_emit_response(out, metadata, route, status,
-                                         route->response_kinds[response],
-                                         route->response_helpers[response],
-                                         route->response_body_schemas[response]);
+            sl_cli_openapi_emit_response(
+                out, metadata, route, status, route->response_kinds[response],
+                route->response_helpers[response], route->response_body_schemas[response]);
             first = false;
         }
     }
@@ -800,7 +791,7 @@ static bool sl_cli_openapi_auth_scheme_known(const SlCliMetadata* metadata, SlCl
 }
 
 static bool sl_cli_openapi_route_has_unknown_auth_scheme(const SlCliMetadata* metadata,
-                                                        const SlCliRoute* route)
+                                                         const SlCliRoute* route)
 {
     size_t index = 0U;
 
@@ -907,8 +898,8 @@ static void sl_cli_openapi_emit_security(FILE* out, const SlCliMetadata* metadat
     }
     if (scheme_count > 0U && sl_cli_openapi_route_has_unknown_auth_scheme(metadata, route)) {
         sl_cli_openapi_emit_field_prefix(out, first);
-        sl_cli_write_cstr(
-            out, "\"x-slop-partial\": \"auth route references an unknown auth scheme\"");
+        sl_cli_write_cstr(out,
+                          "\"x-slop-partial\": \"auth route references an unknown auth scheme\"");
         return;
     }
     if (scheme_count == 0U) {
@@ -919,9 +910,8 @@ static void sl_cli_openapi_emit_security(FILE* out, const SlCliMetadata* metadat
     for (index = 0U; index < scheme_count; index += 1U) {
         sl_cli_write_cstr(out, index == 0U ? "" : ", ");
         sl_cli_write_cstr(out, "{ ");
-        sl_cli_json_escape(
-            out, route->auth_scheme_count == 0U ? metadata->auth_schemes[index].name
-                                                : route->auth_schemes[index]);
+        sl_cli_json_escape(out, route->auth_scheme_count == 0U ? metadata->auth_schemes[index].name
+                                                               : route->auth_schemes[index]);
         sl_cli_write_cstr(out, ": [] }");
     }
     sl_cli_write_cstr(out, "]");
@@ -1042,8 +1032,9 @@ static void sl_cli_openapi_emit_operation(FILE* out, const SlCliMetadata* metada
             sl_cli_json_escape(out, route->realtime_channel);
         }
         sl_cli_write_cstr(out, ", \"metadataStatus\": \"partial\", \"partialReason\": ");
-        sl_cli_json_escape(out,
-                           sl_cli_span_cstr("channel and option expressions are preserved; static event and schema extraction is not complete in this alpha"));
+        sl_cli_json_escape(
+            out, sl_cli_span_cstr("channel and option expressions are preserved; static event and "
+                                  "schema extraction is not complete in this alpha"));
         sl_cli_write_cstr(out, " }");
         sl_cli_openapi_emit_field_prefix(out, &first);
         sl_cli_write_cstr(out, "\"x-slop-transport\": ");
@@ -1205,13 +1196,15 @@ static void sl_cli_openapi_emit_property_schema(FILE* out, const SlCliSchemaProp
         sl_cli_write_cstr(out, ", \"nullable\": true");
     }
     if (property->has_min) {
-        fprintf(out, sl_cli_span_equal_cstr(property->kind, "string") ? ", \"minLength\": %.17g"
-                                                                      : ", \"minimum\": %.17g",
+        fprintf(out,
+                sl_cli_span_equal_cstr(property->kind, "string") ? ", \"minLength\": %.17g"
+                                                                 : ", \"minimum\": %.17g",
                 property->min_value);
     }
     if (property->has_max) {
-        fprintf(out, sl_cli_span_equal_cstr(property->kind, "string") ? ", \"maxLength\": %.17g"
-                                                                      : ", \"maximum\": %.17g",
+        fprintf(out,
+                sl_cli_span_equal_cstr(property->kind, "string") ? ", \"maxLength\": %.17g"
+                                                                 : ", \"maximum\": %.17g",
                 property->max_value);
     }
     sl_cli_write_cstr(out, " }");
@@ -1249,13 +1242,15 @@ static void sl_cli_openapi_emit_schema(FILE* out, const SlCliSchema* schema, boo
         sl_cli_write_cstr(out, ",\n        \"nullable\": true");
     }
     if (schema->has_min) {
-        fprintf(out, sl_cli_span_equal_cstr(schema->kind, "string") ? ",\n        \"minLength\": %.17g"
-                                                                    : ",\n        \"minimum\": %.17g",
+        fprintf(out,
+                sl_cli_span_equal_cstr(schema->kind, "string") ? ",\n        \"minLength\": %.17g"
+                                                               : ",\n        \"minimum\": %.17g",
                 schema->min_value);
     }
     if (schema->has_max) {
-        fprintf(out, sl_cli_span_equal_cstr(schema->kind, "string") ? ",\n        \"maxLength\": %.17g"
-                                                                    : ",\n        \"maximum\": %.17g",
+        fprintf(out,
+                sl_cli_span_equal_cstr(schema->kind, "string") ? ",\n        \"maxLength\": %.17g"
+                                                               : ",\n        \"maximum\": %.17g",
                 schema->max_value);
     }
     if (!sl_cli_span_empty(schema->source_path)) {
@@ -1333,7 +1328,8 @@ static void sl_cli_openapi_emit_components(FILE* out, const SlCliMetadata* metad
             sl_cli_write_cstr(out, index == 0U ? "\n      " : ",\n      ");
             sl_cli_json_escape(out, scheme->name);
             if (sl_cli_span_equal_cstr(scheme->kind, "jwtBearer") ||
-                sl_cli_span_equal_cstr(scheme->kind, "bearer")) {
+                sl_cli_span_equal_cstr(scheme->kind, "bearer"))
+            {
                 sl_cli_write_cstr(out, ": { \"type\": \"http\", \"scheme\": \"bearer\", "
                                        "\"bearerFormat\": \"JWT\" }");
             }
@@ -1353,8 +1349,9 @@ static void sl_cli_openapi_emit_components(FILE* out, const SlCliMetadata* metad
     sl_cli_write_cstr(out, "\n  }");
 }
 
-static SlCliOpenApiPolicy sl_cli_openapi_compute_policy(
-    const SlCliMetadata* metadata, const SlCliSpan openapi_paths[SL_CLI_MAX_ROUTES])
+static SlCliOpenApiPolicy
+sl_cli_openapi_compute_policy(const SlCliMetadata* metadata,
+                              const SlCliSpan openapi_paths[SL_CLI_MAX_ROUTES])
 {
     SlCliOpenApiPolicy policy = {0};
     size_t index = 0U;
@@ -1464,16 +1461,16 @@ static void sl_cli_openapi_emit_document(FILE* out, const SlCliMetadata* metadat
                            "  },\n"
                            "  \"x-slop-openapi-policy\": {\n"
                            "    \"mode\": ");
-    sl_cli_json_escape(out,
-                       policy.operations_partial == 0U ? sl_cli_span_cstr("complete")
-                                                       : sl_cli_span_cstr("partial"));
-    fprintf(out, ",\n"
-                 "    \"routesTotal\": %zu,\n"
-                 "    \"routesIncluded\": %zu,\n"
-                 "    \"routesOmitted\": %zu,\n"
-                 "    \"operationsComplete\": %zu,\n"
-                 "    \"operationsPartial\": %zu,\n"
-                 "    \"missing\": ",
+    sl_cli_json_escape(out, policy.operations_partial == 0U ? sl_cli_span_cstr("complete")
+                                                            : sl_cli_span_cstr("partial"));
+    fprintf(out,
+            ",\n"
+            "    \"routesTotal\": %zu,\n"
+            "    \"routesIncluded\": %zu,\n"
+            "    \"routesOmitted\": %zu,\n"
+            "    \"operationsComplete\": %zu,\n"
+            "    \"operationsPartial\": %zu,\n"
+            "    \"missing\": ",
             policy.routes_total, policy.routes_included, policy.routes_omitted,
             policy.operations_complete, policy.operations_partial);
     sl_cli_openapi_emit_policy_missing(out, metadata, openapi_paths);
@@ -1521,20 +1518,6 @@ static int sl_cli_command_openapi(const SlCliOptions* options)
         sl_cli_write_cstr(stderr, "sloppy openapi: failed to initialize plan validation arena\n");
         return 1;
     }
-    if (options->output_path != NULL) {
-#ifdef _MSC_VER
-        if (fopen_s(&out, options->output_path, "wb") != 0) {
-            out = NULL;
-        }
-#else
-        out = fopen(options->output_path, "wb");
-#endif
-        if (out == NULL) {
-            sl_cli_write_error_with_value(
-                "sloppy openapi: failed to open output path: ", options->output_path, "\n");
-            return 1;
-        }
-    }
     if (sl_cli_load_metadata(options->plan_path, json_storage, &plan_arena, true, &doc, metadata) !=
         0)
     {
@@ -1562,6 +1545,20 @@ static int sl_cli_command_openapi(const SlCliOptions* options)
             sl_cli_openapi_emit_policy_missing(stderr, metadata, openapi_paths);
             sl_cli_write_cstr(stderr, "\n");
             goto cleanup;
+        }
+        if (options->output_path != NULL) {
+#ifdef _MSC_VER
+            if (fopen_s(&out, options->output_path, "wb") != 0) {
+                out = NULL;
+            }
+#else
+            out = fopen(options->output_path, "wb");
+#endif
+            if (out == NULL) {
+                sl_cli_write_error_with_value(
+                    "sloppy openapi: failed to open output path: ", options->output_path, "\n");
+                goto cleanup;
+            }
         }
         if (options->openapi_summary) {
             sl_cli_openapi_emit_summary(out, metadata, openapi_paths);

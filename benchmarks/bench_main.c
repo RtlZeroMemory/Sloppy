@@ -1,8 +1,9 @@
 #include "bench_internal.h"
 
+#include "sloppy/alloc.h"
 #include "sloppy/builder.h"
-#include "sloppy/json_writer.h"
 #include "sloppy/json_profile.h"
+#include "sloppy/json_writer.h"
 #include "sloppy/platform.h"
 #include "sloppy/platform_time.h"
 #include "sloppy/status.h"
@@ -10,7 +11,6 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 typedef enum SlBenchFormat
@@ -49,6 +49,7 @@ static void sl_bench_print_json_string(const char* text)
     unsigned char stack_storage[512];
     unsigned char* storage = stack_storage;
     size_t escaped_length = 0U;
+    SlHeapBuffer heap_storage = {0};
     SlByteBuilder builder = {0};
     SlStr value = text == NULL ? sl_str_empty() : sl_str_from_cstr(text);
     SlStatus status = sl_json_writer_escaped_string_length(value, &escaped_length);
@@ -58,11 +59,12 @@ static void sl_bench_print_json_string(const char* text)
         return;
     }
     if (escaped_length > sizeof(stack_storage)) {
-        storage = (unsigned char*)malloc(escaped_length);
-        if (storage == NULL) {
+        status = sl_heap_buffer_alloc(&heap_storage, escaped_length);
+        if (!sl_status_is_ok(status)) {
             fputs("\"<out-of-memory>\"", stdout);
             return;
         }
+        storage = heap_storage.ptr;
     }
 
     status = sl_byte_builder_init_fixed(&builder, storage, escaped_length);
@@ -76,9 +78,7 @@ static void sl_bench_print_json_string(const char* text)
     else {
         fputs("\"<json-escape-error>\"", stdout);
     }
-    if (storage != stack_storage) {
-        free(storage);
-    }
+    sl_heap_buffer_dispose(&heap_storage);
 }
 
 static int sl_bench_parse_options(int argc, char** argv, SlBenchOptions* out_options)

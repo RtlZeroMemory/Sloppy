@@ -170,9 +170,29 @@
         COMMAND
             "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
             "-DSLOPPY_CLI_ARGS=routes;--plan;tests/fixtures/cli/auth-malformed-bool.plan.json"
-            "-DSLOPPY_EXPECTED_ERROR=expected a JSON boolean" -P
+            "-DSLOPPY_EXPECTED_ERROR=routes\\[\\]\\.auth\\.required must be a JSON boolean" -P
             "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
     set_tests_properties(sloppy.cli.auth_malformed_bool
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.cli.health_auth_malformed_bool
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=health;--plan;tests/fixtures/cli/auth-malformed-bool.plan.json"
+            "-DSLOPPY_EXPECTED_ERROR=routes\\[\\]\\.auth\\.required must be a JSON boolean" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.cli.health_auth_malformed_bool
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+
+    add_test(
+        NAME sloppy.cli.metrics_auth_malformed_bool
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=metrics;--plan;tests/fixtures/cli/auth-malformed-bool.plan.json"
+            "-DSLOPPY_EXPECTED_ERROR=routes\\[\\]\\.auth\\.required must be a JSON boolean" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.cli.metrics_auth_malformed_bool
                          PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
 
     add_test(
