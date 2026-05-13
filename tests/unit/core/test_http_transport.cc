@@ -2911,11 +2911,11 @@ static int test_dispatch_success_writes_response_and_closes(void)
 static int test_websocket_upgrade_writes_101_and_keeps_connection_upgraded(void)
 {
     static const char expected[] = "HTTP/1.1 101 Switching Protocols\r\n"
-                                  "Upgrade: websocket\r\n"
-                                  "Connection: Upgrade\r\n"
-                                  "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"
-                                  "Sec-WebSocket-Protocol: chat\r\n"
-                                  "\r\n";
+                                   "Upgrade: websocket\r\n"
+                                   "Connection: Upgrade\r\n"
+                                   "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n"
+                                   "Sec-WebSocket-Protocol: chat\r\n"
+                                   "\r\n";
     SlStr protocols[] = {sl_str_from_cstr("chat")};
     unsigned char storage[65536];
     SlArena arena = {};
@@ -2980,8 +2980,8 @@ static int test_websocket_upgrade_writes_101_and_keeps_connection_upgraded(void)
         stop_one_connection(&server, &client);
         return 87;
     }
-    if (expect_bytes_equal(sl_bytes_from_parts(client.read_buffer, client.read_length),
-                           expected) != 0)
+    if (expect_bytes_equal(sl_bytes_from_parts(client.read_buffer, client.read_length), expected) !=
+        0)
     {
         stop_one_connection(&server, &client);
         return 88;
@@ -3034,9 +3034,8 @@ static int test_websocket_upgrade_rejection_writes_http_error_without_dispatch(v
                                           "\r\n"),
                           &diag),
                       SL_STATUS_OK) != 0 ||
-        poll_server_and_client_until_closed(&server, &client) != 0 ||
-        upgrade.count != 1U || dispatch.count != 0U ||
-        sl_http_transport_server_active_connections(&server) != 0U ||
+        poll_server_and_client_until_closed(&server, &client) != 0 || upgrade.count != 1U ||
+        dispatch.count != 0U || sl_http_transport_server_active_connections(&server) != 0U ||
         server.backend.active_requests != 0U ||
         find_http1_header_end(sl_bytes_from_parts(client.read_buffer, client.read_length)) == 0U ||
         std::string(reinterpret_cast<char*>(client.read_buffer), client.read_length)

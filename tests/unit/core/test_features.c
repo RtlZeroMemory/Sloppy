@@ -1079,9 +1079,9 @@ static int test_realtime_required_feature_activates_native_dependencies(void)
     plan.required_feature_count = 1U;
     sl_arena_init(&diag_arena, diag_storage, sizeof(diag_storage));
 
-    if (expect_status(sl_runtime_feature_id_from_str(sl_str_from_cstr("runtime.realtime"),
-                                                     &feature_id),
-                      SL_STATUS_OK) != 0 ||
+    if (expect_status(
+            sl_runtime_feature_id_from_str(sl_str_from_cstr("runtime.realtime"), &feature_id),
+            SL_STATUS_OK) != 0 ||
         feature_id != SL_RUNTIME_FEATURE_RUNTIME_REALTIME)
     {
         return 1;

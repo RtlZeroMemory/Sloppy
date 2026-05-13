@@ -456,10 +456,10 @@ sl_feature_descriptor_with_availability(SlRuntimeFeatureId id,
                                                  SL_FEATURE_LIT("sloppy/node/zlib"));
     case SL_RUNTIME_FEATURE_RUNTIME_REALTIME:
         return sl_feature_descriptor_make(
-            id, SL_RUNTIME_FEATURE_KIND_HTTP, sl_feature_literal("runtime.realtime",
-                                                                 sizeof("runtime.realtime") - 1U),
-            sl_feature_literal("realtime runtime", sizeof("realtime runtime") - 1U),
-            sl_str_empty(), sl_str_empty(), SL_FEATURE_DEPS_REALTIME, http && libuv, false, true);
+            id, SL_RUNTIME_FEATURE_KIND_HTTP,
+            sl_feature_literal("runtime.realtime", sizeof("runtime.realtime") - 1U),
+            sl_feature_literal("realtime runtime", sizeof("realtime runtime") - 1U), sl_str_empty(),
+            sl_str_empty(), SL_FEATURE_DEPS_REALTIME, http && libuv, false, true);
     case SL_RUNTIME_FEATURE_PROVIDER_SQLITE:
     case SL_RUNTIME_FEATURE_PROVIDER_POSTGRES:
     case SL_RUNTIME_FEATURE_PROVIDER_SQLSERVER:

@@ -44,12 +44,13 @@ typedef SlStatus (*SlHttpTransportDispatchFn)(SlHttpTransportConnection* connect
                                               const SlHttpRequestLifecycle* request,
                                               SlHttpResponse* out_response, SlDiag* out_diag,
                                               void* user);
-typedef SlStatus (*SlHttpTransportWebSocketUpgradeFn)(
-    SlHttpTransportConnection* connection, SlArena* arena, const SlHttpRequestLifecycle* request,
-    SlWebSocketHandshakeResult* out_result, SlDiag* out_diag, void* user);
+typedef SlStatus (*SlHttpTransportWebSocketUpgradeFn)(SlHttpTransportConnection* connection,
+                                                      SlArena* arena,
+                                                      const SlHttpRequestLifecycle* request,
+                                                      SlWebSocketHandshakeResult* out_result,
+                                                      SlDiag* out_diag, void* user);
 typedef SlStatus (*SlHttpTransportWebSocketFrameFn)(SlHttpTransportConnection* connection,
-                                                    SlArena* arena,
-                                                    const SlWebSocketFrame* frame,
+                                                    SlArena* arena, const SlWebSocketFrame* frame,
                                                     SlDiag* out_diag, void* user);
 typedef SlStatus (*SlHttpTransportWebSocketOpenFn)(SlHttpTransportConnection* connection,
                                                    SlArena* arena,

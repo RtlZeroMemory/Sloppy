@@ -1035,15 +1035,13 @@ static int test_websocket_route_metadata_parses(void)
     }
     if (route->websocket.origin_policy != SL_PLAN_WEBSOCKET_ORIGINS_LIST ||
         route->websocket.origin_count != 1U || route->websocket.origins == NULL ||
-        !sl_str_equal(route->websocket.origins[0],
-                      sl_str_from_cstr("https://app.example.com")))
+        !sl_str_equal(route->websocket.origins[0], sl_str_from_cstr("https://app.example.com")))
     {
         return 4;
     }
     if (route->websocket.max_message_bytes != 65536U ||
         route->websocket.max_send_queue_bytes != 1048576U ||
-        route->websocket.heartbeat_ms != 15000U ||
-        route->websocket.idle_timeout_ms != 30000U ||
+        route->websocket.heartbeat_ms != 15000U || route->websocket.idle_timeout_ms != 30000U ||
         route->websocket.close_timeout_ms != 5000U ||
         route->websocket.slow_client_policy != SL_PLAN_WEBSOCKET_SLOW_CLIENT_CLOSE ||
         route->websocket.compression)

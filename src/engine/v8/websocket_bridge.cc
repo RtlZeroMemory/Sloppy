@@ -10,8 +10,7 @@
 #include <new>
 #include <thread>
 
-namespace
-{
+namespace {
 
 struct SlV8WebSocketMessage
 {
@@ -34,8 +33,7 @@ struct SlEngineWebSocketSession
     v8::Global<v8::Object> socket;
 };
 
-namespace
-{
+namespace {
 
 SlEngineWebSocketSession* ws_session_from_args(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
@@ -73,15 +71,16 @@ bool ws_set(v8::Isolate* isolate, v8::Local<v8::Context> context, v8::Local<v8::
 }
 
 bool ws_set_function(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                     v8::Local<v8::Object> object, const char* name,
-                     v8::FunctionCallback callback, SlEngineWebSocketSession* session)
+                     v8::Local<v8::Object> object, const char* name, v8::FunctionCallback callback,
+                     SlEngineWebSocketSession* session)
 {
     v8::Local<v8::String> key;
     v8::Local<v8::Function> function;
     v8::Local<v8::External> data =
         v8::External::New(isolate, session, v8::kExternalPointerTypeTagDefault);
-    if (!ws_make_string(isolate, name, &key) ||
-        !v8::FunctionTemplate::New(isolate, callback, data)->GetFunction(context).ToLocal(&function))
+    if (!ws_make_string(isolate, name, &key) || !v8::FunctionTemplate::New(isolate, callback, data)
+                                                     ->GetFunction(context)
+                                                     .ToLocal(&function))
     {
         return false;
     }
@@ -103,13 +102,12 @@ bool ws_resolved_promise(v8::Isolate* isolate, v8::Local<v8::Context> context,
 }
 
 void ws_return_resolved(v8::Isolate* isolate, v8::Local<v8::Context> context,
-                        const v8::FunctionCallbackInfo<v8::Value>& args,
-                        v8::Local<v8::Value> value)
+                        const v8::FunctionCallbackInfo<v8::Value>& args, v8::Local<v8::Value> value)
 {
     v8::Local<v8::Promise> promise;
     if (!ws_resolved_promise(isolate, context, value, &promise)) {
-        isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8Literal(
-            isolate, "SLOPPY_E_WEBSOCKET_PROMISE_FAILED")));
+        isolate->ThrowException(v8::Exception::Error(
+            v8::String::NewFromUtf8Literal(isolate, "SLOPPY_E_WEBSOCKET_PROMISE_FAILED")));
         return;
     }
     args.GetReturnValue().Set(promise);
@@ -135,8 +133,8 @@ void ws_return_rejected(v8::Isolate* isolate, v8::Local<v8::Context> context,
 {
     v8::Local<v8::Promise> promise;
     if (!ws_rejected_promise(isolate, context, message, &promise)) {
-        isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8Literal(
-            isolate, "SLOPPY_E_WEBSOCKET_PROMISE_FAILED")));
+        isolate->ThrowException(v8::Exception::Error(
+            v8::String::NewFromUtf8Literal(isolate, "SLOPPY_E_WEBSOCKET_PROMISE_FAILED")));
         return;
     }
     args.GetReturnValue().Set(promise);
@@ -159,14 +157,12 @@ bool ws_message_value(v8::Isolate* isolate, v8::Local<v8::Context> context,
         }
     }
     else {
-        v8::Local<v8::ArrayBuffer> buffer =
-            v8::ArrayBuffer::New(isolate, message.bytes.size());
+        v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, message.bytes.size());
         if (message.bytes.size() != 0U) {
             std::copy(message.bytes.begin(), message.bytes.end(),
                       static_cast<unsigned char*>(buffer->Data()));
         }
-        v8::Local<v8::Uint8Array> bytes =
-            v8::Uint8Array::New(buffer, 0, message.bytes.size());
+        v8::Local<v8::Uint8Array> bytes = v8::Uint8Array::New(buffer, 0, message.bytes.size());
         v8::Local<v8::String> kind = v8::String::NewFromUtf8Literal(isolate, "binary");
         if (!ws_set(isolate, context, value, "kind", kind) ||
             !ws_set(isolate, context, value, "type", kind) ||
@@ -234,8 +230,8 @@ SlStr ws_literal(const char* ptr, size_t length)
     return sl_str_from_parts(ptr, length);
 }
 
-SlStatus ws_write_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code,
-                       SlStatusCode failure_code, SlStr message, SlStr detail, SlStr hint)
+SlStatus ws_write_diag(SlArena* arena, SlDiag* out_diag, SlDiagCode code, SlStatusCode failure_code,
+                       SlStr message, SlStr detail, SlStr hint)
 {
     SlDiagBuilder builder;
     SlStatus status;
@@ -313,19 +309,19 @@ SlStatus ws_check_cancelled(SlEngine* engine, const SlCancellationToken* cancell
                                ? SL_DIAG_ENGINE_BACKPRESSURE
                                : SL_DIAG_ENGINE_CANCELLED;
     SlStr reason_name = sl_cancellation_reason_name(reason);
-    return ws_write_diag(engine->arena, out_diag, diag_code, status_code,
-                         ws_literal("JavaScript WebSocket handler request was cancelled",
-                                    sizeof("JavaScript WebSocket handler request was cancelled") -
-                                        1U),
-                         sl_str_empty(), reason_name);
+    return ws_write_diag(
+        engine->arena, out_diag, diag_code, status_code,
+        ws_literal("JavaScript WebSocket handler request was cancelled",
+                   sizeof("JavaScript WebSocket handler request was cancelled") - 1U),
+        sl_str_empty(), reason_name);
 }
 
 SlStatus ws_write_exception_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCode code,
                                  SlStatusCode failure_code, v8::Isolate* isolate,
                                  v8::TryCatch& try_catch, const char* fallback_message, SlStr hint)
 {
-    std::string message = fallback_message == nullptr ? "JavaScript WebSocket error"
-                                                      : fallback_message;
+    std::string message =
+        fallback_message == nullptr ? "JavaScript WebSocket error" : fallback_message;
     if (!try_catch.Exception().IsEmpty()) {
         v8::String::Utf8Value exception_text(isolate, try_catch.Exception());
         if (*exception_text != nullptr && exception_text.length() > 0) {
@@ -337,8 +333,8 @@ SlStatus ws_write_exception_diag(SlEngine* engine, SlDiag* out_diag, SlDiagCode 
                          sl_str_from_parts(message.data(), message.size()), sl_str_empty(), hint);
 }
 
-SlStatus ws_drain_microtasks(SlEngine* engine, v8::Isolate* isolate,
-                             v8::Local<v8::Context> context, SlDiag* out_diag)
+SlStatus ws_drain_microtasks(SlEngine* engine, v8::Isolate* isolate, v8::Local<v8::Context> context,
+                             SlDiag* out_diag)
 {
     (void)context;
     v8::TryCatch try_catch(isolate);
@@ -671,8 +667,7 @@ SlStatus ws_check_handler_promise(SlEngine* engine, SlEngineWebSocketSession* se
     if (promise->State() != v8::Promise::kRejected) {
         return sl_status_ok();
     }
-    return ws_write_diag(engine->arena, out_diag, SL_DIAG_ENGINE_EXCEPTION,
-                         SL_STATUS_INVALID_STATE,
+    return ws_write_diag(engine->arena, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE,
                          ws_literal("WebSocket handler promise rejected",
                                     sizeof("WebSocket handler promise rejected") - 1U),
                          sl_str_empty(),
@@ -751,8 +746,8 @@ extern "C" SlStatus sl_engine_v8_call_registered_websocket_handler_with_context(
     if (!maybe_result.ToLocal(&js_result)) {
         delete session;
         return ws_write_exception_diag(
-            engine, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE, isolate,
-            try_catch, "JavaScript WebSocket handler threw",
+            engine, out_diag, SL_DIAG_ENGINE_EXCEPTION, SL_STATUS_INVALID_STATE, isolate, try_catch,
+            "JavaScript WebSocket handler threw",
             ws_literal("Generated JavaScript locations are reported without source-map remapping.",
                        sizeof("Generated JavaScript locations are reported without source-map "
                               "remapping.") -
@@ -768,9 +763,8 @@ extern "C" SlStatus sl_engine_v8_call_registered_websocket_handler_with_context(
 }
 
 extern "C" SlStatus sl_engine_v8_websocket_receive(SlEngine* engine,
-                                                    SlEngineWebSocketSession* session,
-                                                    const SlWebSocketFrame* frame,
-                                                    SlDiag* out_diag)
+                                                   SlEngineWebSocketSession* session,
+                                                   const SlWebSocketFrame* frame, SlDiag* out_diag)
 {
     if (engine == nullptr || session == nullptr || frame == nullptr) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
@@ -824,8 +818,8 @@ extern "C" SlStatus sl_engine_v8_websocket_receive(SlEngine* engine,
 }
 
 extern "C" SlStatus sl_engine_v8_websocket_close(SlEngine* engine,
-                                                  SlEngineWebSocketSession* session,
-                                                  uint16_t code, SlStr reason, SlDiag* out_diag)
+                                                 SlEngineWebSocketSession* session, uint16_t code,
+                                                 SlStr reason, SlDiag* out_diag)
 {
     (void)code;
     (void)reason;

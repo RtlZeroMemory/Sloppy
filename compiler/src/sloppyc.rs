@@ -8,12 +8,12 @@ use std::{
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
-    Argument, ArrayExpression, ArrayExpressionElement, BinaryOperator, BindingPattern, CallExpression,
-    ChainElement, ClassElement, Declaration, ExportAllDeclaration, ExportDefaultDeclaration,
-    ExportNamedDeclaration, Expression, ExpressionStatement, ForStatementInit, ImportDeclaration,
-    ImportDeclarationSpecifier, ImportOrExportKind, MethodDefinitionKind, ModuleExportName,
-    ObjectExpression, ObjectPropertyKind, PropertyKey, PropertyKind, Statement, TSLiteral,
-    TSSignature, TSType, TSTypeName, VariableDeclaration,
+    Argument, ArrayExpression, ArrayExpressionElement, BinaryOperator, BindingPattern,
+    CallExpression, ChainElement, ClassElement, Declaration, ExportAllDeclaration,
+    ExportDefaultDeclaration, ExportNamedDeclaration, Expression, ExpressionStatement,
+    ForStatementInit, ImportDeclaration, ImportDeclarationSpecifier, ImportOrExportKind,
+    MethodDefinitionKind, ModuleExportName, ObjectExpression, ObjectPropertyKind, PropertyKey,
+    PropertyKind, Statement, TSLiteral, TSSignature, TSType, TSTypeName, VariableDeclaration,
 };
 use oxc_codegen::Codegen;
 use oxc_parser::Parser;
@@ -14569,8 +14569,7 @@ fn websocket_options_from_argument(
                 options.origins = Some(websocket_origins_from_expression(&property.value)?);
             }
             "maxMessageBytes" => {
-                options.max_message_bytes =
-                    Some(websocket_positive_integer(&property.value, key)?);
+                options.max_message_bytes = Some(websocket_positive_integer(&property.value, key)?);
             }
             "maxSendQueueBytes" => {
                 options.max_send_queue_bytes =
@@ -14709,7 +14708,9 @@ fn websocket_origins_from_expression(
     expression: &Expression<'_>,
 ) -> Result<WebSocketOriginsMetadata, Diagnostic> {
     match expression {
-        Expression::StringLiteral(value) => websocket_origin_string(value.value.as_str(), value.span),
+        Expression::StringLiteral(value) => {
+            websocket_origin_string(value.value.as_str(), value.span)
+        }
         Expression::ArrayExpression(array) => websocket_origin_array(array),
         Expression::ParenthesizedExpression(parenthesized) => {
             websocket_origins_from_expression(&parenthesized.expression)
@@ -14721,7 +14722,10 @@ fn websocket_origins_from_expression(
     }
 }
 
-fn websocket_origin_string(value: &str, span: Span) -> Result<WebSocketOriginsMetadata, Diagnostic> {
+fn websocket_origin_string(
+    value: &str,
+    span: Span,
+) -> Result<WebSocketOriginsMetadata, Diagnostic> {
     if value.is_empty() {
         return Err(websocket_options_diagnostic(
             "WebSocket origins must be non-empty strings",

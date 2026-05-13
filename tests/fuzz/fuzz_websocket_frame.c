@@ -36,8 +36,8 @@ int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     sl_websocket_parse_frame(&arena, sl_bytes_from_parts(data, size), &parse_options, &parsed,
                              &diag);
 
-    if (!sl_status_is_ok(sl_byte_builder_init_fixed(&builder, output_storage,
-                                                    sizeof(output_storage))))
+    if (!sl_status_is_ok(
+            sl_byte_builder_init_fixed(&builder, output_storage, sizeof(output_storage))))
     {
         return 0;
     }

@@ -8456,7 +8456,10 @@ export default app;
         "https://app.example.com"
     );
     assert_eq!(value["routes"][1]["websocket"]["maxMessageBytes"], 65536);
-    assert_eq!(value["routes"][1]["websocket"]["maxSendQueueBytes"], 1048576);
+    assert_eq!(
+        value["routes"][1]["websocket"]["maxSendQueueBytes"],
+        1048576
+    );
     assert_eq!(value["routes"][1]["websocket"]["heartbeatMs"], 15000);
     assert_eq!(value["routes"][1]["websocket"]["idleTimeoutMs"], 30000);
     assert_eq!(value["routes"][1]["websocket"]["closeTimeoutMs"], 5000);
@@ -8507,10 +8510,7 @@ export default app;
     ] {
         let diagnostic = extract(std::path::Path::new("app.js"), source)
             .expect_err("unsupported websocket options should fail");
-        assert_eq!(
-            diagnostic.code,
-            "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS"
-        );
+        assert_eq!(diagnostic.code, "SLOPPYC_E_UNSUPPORTED_WEBSOCKET_OPTIONS");
     }
 }
 

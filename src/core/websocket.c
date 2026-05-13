@@ -272,15 +272,15 @@ SlStatus sl_websocket_build_server_handshake(SlArena* arena, const SlHttpRequest
     }
     out_result->http_status = 400U;
     if (!sl_plan_route_is_websocket(route)) {
-        return sl_ws_diag(out_diag, sl_ws_literal("matched route is not a WebSocket route",
-                                                  sizeof("matched route is not a WebSocket route") -
-                                                      1U));
+        return sl_ws_diag(out_diag,
+                          sl_ws_literal("matched route is not a WebSocket route",
+                                        sizeof("matched route is not a WebSocket route") - 1U));
     }
     if (route->auth.present && route->auth.required && !route->auth.allow_anonymous) {
         out_result->http_status = 401U;
-        return sl_ws_diag(out_diag, sl_ws_literal("WebSocket route requires authentication",
-                                                  sizeof("WebSocket route requires authentication") -
-                                                      1U));
+        return sl_ws_diag(out_diag,
+                          sl_ws_literal("WebSocket route requires authentication",
+                                        sizeof("WebSocket route requires authentication") - 1U));
     }
     if (request->method != SL_HTTP_METHOD_GET) {
         out_result->http_status = 405U;
@@ -288,18 +288,18 @@ SlStatus sl_websocket_build_server_handshake(SlArena* arena, const SlHttpRequest
                                                   sizeof("WebSocket Upgrade requires GET") - 1U));
     }
     if (request->version_major != 1U || request->version_minor != 1U) {
-        return sl_ws_diag(out_diag, sl_ws_literal("WebSocket Upgrade requires HTTP/1.1",
-                                                  sizeof("WebSocket Upgrade requires HTTP/1.1") -
-                                                      1U));
+        return sl_ws_diag(out_diag,
+                          sl_ws_literal("WebSocket Upgrade requires HTTP/1.1",
+                                        sizeof("WebSocket Upgrade requires HTTP/1.1") - 1U));
     }
     if (!sl_ws_header_value(request, sl_str_from_cstr("Connection"), &connection) ||
         !sl_ws_header_has_token(connection, sl_str_from_cstr("Upgrade")) ||
         !sl_ws_header_value(request, sl_str_from_cstr("Upgrade"), &upgrade) ||
         !sl_str_equal_ci_ascii(sl_ws_trim(upgrade), sl_str_from_cstr("websocket")))
     {
-        return sl_ws_diag(out_diag, sl_ws_literal("invalid WebSocket Upgrade headers",
-                                                  sizeof("invalid WebSocket Upgrade headers") -
-                                                      1U));
+        return sl_ws_diag(out_diag,
+                          sl_ws_literal("invalid WebSocket Upgrade headers",
+                                        sizeof("invalid WebSocket Upgrade headers") - 1U));
     }
     if (!sl_ws_header_value(request, sl_str_from_cstr("Sec-WebSocket-Version"), &version) ||
         !sl_str_equal(sl_ws_trim(version), sl_str_from_cstr("13")))
@@ -320,14 +320,12 @@ SlStatus sl_websocket_build_server_handshake(SlArena* arena, const SlHttpRequest
         return sl_ws_diag(out_diag, sl_ws_literal("WebSocket origin is not allowed",
                                                   sizeof("WebSocket origin is not allowed") - 1U));
     }
-    sl_ws_header_value(request, sl_str_from_cstr("Sec-WebSocket-Protocol"),
-                       &requested_protocols);
+    sl_ws_header_value(request, sl_str_from_cstr("Sec-WebSocket-Protocol"), &requested_protocols);
     out_result->selected_protocol = sl_ws_select_protocol(&route->websocket, requested_protocols);
     if (route->websocket.protocol_count != 0U && sl_str_is_empty(out_result->selected_protocol)) {
-        return sl_ws_diag(
-            out_diag,
-            sl_ws_literal("WebSocket subprotocol is not allowed",
-                          sizeof("WebSocket subprotocol is not allowed") - 1U));
+        return sl_ws_diag(out_diag,
+                          sl_ws_literal("WebSocket subprotocol is not allowed",
+                                        sizeof("WebSocket subprotocol is not allowed") - 1U));
     }
     status = sl_ws_accept_key(arena, key, &accept);
     if (!sl_status_is_ok(status)) {
@@ -526,10 +524,10 @@ SlStatus sl_websocket_parse_frame(SlArena* arena, SlBytes bytes,
                                               sizeof("WebSocket frame opcode is invalid") - 1U));
     }
     if (effective.require_mask && !masked) {
-        return sl_ws_frame_diag(out_diag, SL_STATUS_INVALID_ARGUMENT,
-                                sl_ws_literal("client WebSocket frames must be masked",
-                                              sizeof("client WebSocket frames must be masked") -
-                                                  1U));
+        return sl_ws_frame_diag(
+            out_diag, SL_STATUS_INVALID_ARGUMENT,
+            sl_ws_literal("client WebSocket frames must be masked",
+                          sizeof("client WebSocket frames must be masked") - 1U));
     }
     if (sl_ws_opcode_control(opcode) && !fin) {
         return sl_ws_frame_diag(out_diag, SL_STATUS_INVALID_ARGUMENT,
@@ -586,8 +584,7 @@ SlStatus sl_websocket_parse_frame(SlArena* arena, SlBytes bytes,
         out_result->close_code = 1009U;
         return sl_ws_frame_diag(out_diag, SL_STATUS_CAPACITY_EXCEEDED,
                                 sl_ws_literal("WebSocket frame payload is too large",
-                                              sizeof("WebSocket frame payload is too large") -
-                                                  1U));
+                                              sizeof("WebSocket frame payload is too large") - 1U));
     }
     if (masked) {
         if (bytes.length < header_length + 4U) {
@@ -609,18 +606,18 @@ SlStatus sl_websocket_parse_frame(SlArena* arena, SlBytes bytes,
     }
     if (opcode == SL_WEBSOCKET_OPCODE_CLOSE) {
         if (payload.length == 1U) {
-            return sl_ws_frame_diag(out_diag, SL_STATUS_INVALID_ARGUMENT,
-                                    sl_ws_literal("WebSocket close payload is malformed",
-                                                  sizeof("WebSocket close payload is malformed") -
-                                                      1U));
+            return sl_ws_frame_diag(
+                out_diag, SL_STATUS_INVALID_ARGUMENT,
+                sl_ws_literal("WebSocket close payload is malformed",
+                              sizeof("WebSocket close payload is malformed") - 1U));
         }
         if (payload.length >= 2U) {
             uint16_t close_code = (uint16_t)(((uint16_t)payload.ptr[0] << 8U) | payload.ptr[1]);
             if (!sl_ws_close_code_valid(close_code)) {
-                return sl_ws_frame_diag(out_diag, SL_STATUS_INVALID_ARGUMENT,
-                                        sl_ws_literal("WebSocket close code is invalid",
-                                                      sizeof("WebSocket close code is invalid") -
-                                                          1U));
+                return sl_ws_frame_diag(
+                    out_diag, SL_STATUS_INVALID_ARGUMENT,
+                    sl_ws_literal("WebSocket close code is invalid",
+                                  sizeof("WebSocket close code is invalid") - 1U));
             }
             if (!sl_ws_utf8_valid(sl_bytes_from_parts(payload.ptr + 2U, payload.length - 2U))) {
                 out_result->close_code = 1007U;
@@ -634,10 +631,10 @@ SlStatus sl_websocket_parse_frame(SlArena* arena, SlBytes bytes,
     }
     if (opcode == SL_WEBSOCKET_OPCODE_TEXT && fin && !sl_ws_utf8_valid(payload)) {
         out_result->close_code = 1007U;
-        return sl_ws_frame_diag(out_diag, SL_STATUS_INVALID_ARGUMENT,
-                                sl_ws_literal("WebSocket text payload is not valid UTF-8",
-                                              sizeof("WebSocket text payload is not valid UTF-8") -
-                                                  1U));
+        return sl_ws_frame_diag(
+            out_diag, SL_STATUS_INVALID_ARGUMENT,
+            sl_ws_literal("WebSocket text payload is not valid UTF-8",
+                          sizeof("WebSocket text payload is not valid UTF-8") - 1U));
     }
 
     out_result->frame.fin = fin;
@@ -663,8 +660,8 @@ static SlStatus sl_ws_write_u16(SlByteBuilder* builder, uint64_t value)
 static SlStatus sl_ws_write_u64(SlByteBuilder* builder, uint64_t value)
 {
     for (int shift = 56; shift >= 0; shift -= 8) {
-        SlStatus status =
-            sl_byte_builder_append_byte(builder, (unsigned char)((value >> (unsigned)shift) & 0xFFU));
+        SlStatus status = sl_byte_builder_append_byte(
+            builder, (unsigned char)((value >> (unsigned)shift) & 0xFFU));
         if (!sl_status_is_ok(status)) {
             return status;
         }
@@ -736,8 +733,7 @@ SlStatus sl_websocket_write_frame(SlByteBuilder* builder,
         return status;
     }
     if (options->mask) {
-        status =
-            sl_byte_builder_append_bytes(builder, sl_bytes_from_parts(options->mask_key, 4U));
+        status = sl_byte_builder_append_bytes(builder, sl_bytes_from_parts(options->mask_key, 4U));
         if (!sl_status_is_ok(status)) {
             return status;
         }

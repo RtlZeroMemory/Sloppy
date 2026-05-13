@@ -282,8 +282,7 @@ static SlStatus sl_http_dispatch_websocket_requires_upgrade(SlArena* arena, SlDi
     return sl_http_dispatch_write_diag(
         arena, out_diag, SL_DIAG_INVALID_HTTP_REQUEST,
         sl_http_dispatch_literal("WebSocket route requires an HTTP Upgrade request",
-                                 sizeof("WebSocket route requires an HTTP Upgrade request") -
-                                     1U),
+                                 sizeof("WebSocket route requires an HTTP Upgrade request") - 1U),
         sl_http_dispatch_literal("send Upgrade: websocket with the required WebSocket headers",
                                  sizeof("send Upgrade: websocket with the required WebSocket "
                                         "headers") -
@@ -3037,8 +3036,8 @@ SlStatus sl_http_dispatch_match_route(SlArena* arena, const SlPlan* plan,
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
 
-    status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding,
-                                         &method_mismatch, &route_match, &has_route_match);
+    status = sl_http_dispatch_find_route(arena, dispatch_table, request, &binding, &method_mismatch,
+                                         &route_match, &has_route_match);
     if (!sl_status_is_ok(status)) {
         if (sl_status_code(status) == SL_STATUS_INTERNAL) {
             return sl_http_dispatch_write_diag(

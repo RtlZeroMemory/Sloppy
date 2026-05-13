@@ -639,8 +639,8 @@ static SlStatus sl_plan_intern_route_health(SlArena* arena, SlInternTable* table
     return sl_status_ok();
 }
 
-static SlStatus sl_plan_intern_str_array(SlArena* arena, SlInternTable* table,
-                                         const SlStr** values, size_t count)
+static SlStatus sl_plan_intern_str_array(SlArena* arena, SlInternTable* table, const SlStr** values,
+                                         size_t count)
 {
     SlStr* copied = NULL;
     SlStatus status;
@@ -655,8 +655,8 @@ static SlStatus sl_plan_intern_str_array(SlArena* arena, SlInternTable* table,
     if (*values == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
     }
-    status = sl_plan_alloc_copy(arena, *values, count, sizeof(SlStr), _Alignof(SlStr),
-                                (void**)&copied);
+    status =
+        sl_plan_alloc_copy(arena, *values, count, sizeof(SlStr), _Alignof(SlStr), (void**)&copied);
     if (!sl_status_is_ok(status)) {
         return status;
     }

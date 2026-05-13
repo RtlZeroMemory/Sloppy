@@ -2451,10 +2451,9 @@ static void sl_http_transport_complete_write(SlHttpPlatformConnection* platform,
         if (completed_upgrade_request) {
             connection->state = SL_HTTP_TRANSPORT_CONNECTION_STATE_UPGRADED;
             if (server != NULL && server->config.websocket_open != NULL) {
-                SlStatus open_status =
-                    server->config.websocket_open(connection, &connection->request_arena,
-                                                  &connection->request, &diag,
-                                                  server->config.websocket_open_user);
+                SlStatus open_status = server->config.websocket_open(
+                    connection, &connection->request_arena, &connection->request, &diag,
+                    server->config.websocket_open_user);
                 if (!sl_status_is_ok(open_status)) {
                     sl_http_transport_fail_and_close(connection, &diag);
                     return;
@@ -3407,8 +3406,7 @@ sl_http_transport_write_websocket_handshake(SlHttpTransportConnection* connectio
         (server != NULL && result->response_bytes.length > server->config.max_pending_write_bytes))
     {
         return sl_http_transport_connection_diag(
-            connection, out_diag, SL_DIAG_HTTP_RESPONSE_BACKPRESSURE,
-            SL_STATUS_CAPACITY_EXCEEDED,
+            connection, out_diag, SL_DIAG_HTTP_RESPONSE_BACKPRESSURE, SL_STATUS_CAPACITY_EXCEEDED,
             sl_http_transport_literal("WebSocket handshake exceeded pending write cap",
                                       sizeof("WebSocket handshake exceeded pending write cap") -
                                           1U),
@@ -3966,8 +3964,7 @@ static SlStatus sl_http_transport_parse_accumulated(SlHttpTransportConnection* c
     }
     {
         bool websocket_upgraded = false;
-        status =
-            sl_http_transport_try_websocket_upgrade(connection, &websocket_upgraded, out_diag);
+        status = sl_http_transport_try_websocket_upgrade(connection, &websocket_upgraded, out_diag);
         if (!sl_status_is_ok(status) || websocket_upgraded) {
             return status;
         }
@@ -5479,8 +5476,8 @@ static SlStatus sl_http_transport_websocket_dispatch_frame(SlHttpTransportConnec
         return sl_http_transport_websocket_send_close(connection, 1003U, out_diag);
     }
 
-    status = server->config.websocket_frame(connection, &connection->request_arena, frame,
-                                            out_diag, server->config.websocket_frame_user);
+    status = server->config.websocket_frame(connection, &connection->request_arena, frame, out_diag,
+                                            server->config.websocket_frame_user);
     if (!sl_status_is_ok(status)) {
         return sl_http_transport_websocket_send_close(connection, 1011U, out_diag);
     }
@@ -5546,8 +5543,7 @@ static SlStatus sl_http_transport_websocket_receive(SlHttpTransportConnection* c
         remaining = connection->accumulation_length - parsed.consumed;
         if (remaining != 0U) {
             for (size_t index = 0U; index < remaining; index += 1U) {
-                connection->accumulation[index] =
-                    connection->accumulation[parsed.consumed + index];
+                connection->accumulation[index] = connection->accumulation[parsed.consumed + index];
             }
         }
         connection->accumulation_length = remaining;

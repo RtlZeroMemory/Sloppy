@@ -9,7 +9,8 @@ static bool bytes_contains(SlBytes bytes, const char* needle)
 {
     size_t needle_length = sl_str_from_cstr(needle).length;
 
-    if (bytes.ptr == NULL || needle == NULL || needle_length == 0U || needle_length > bytes.length) {
+    if (bytes.ptr == NULL || needle == NULL || needle_length == 0U || needle_length > bytes.length)
+    {
         return false;
     }
     for (size_t index = 0U; index + needle_length <= bytes.length; index += 1U) {
@@ -130,8 +131,8 @@ static int test_invalid_handshake_inputs_are_rejected_before_101(void)
         header("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ=="),
         header("Origin", "https://blocked.example.com"),
     };
-    SlHttpRequestHead request =
-        websocket_request(bad_origin_headers, sizeof(bad_origin_headers) / sizeof(bad_origin_headers[0]));
+    SlHttpRequestHead request = websocket_request(
+        bad_origin_headers, sizeof(bad_origin_headers) / sizeof(bad_origin_headers[0]));
     SlStatus status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
 
     if (!sl_status_is_ok(status)) {
@@ -238,9 +239,8 @@ static int test_frame_parser_unmasks_client_text(void)
     SlDiag diag = {0};
     SlStatus status = sl_arena_init(&arena, arena_storage, sizeof(arena_storage));
 
-    if (!sl_status_is_ok(status) ||
-        !sl_status_is_ok(sl_byte_builder_init_fixed(&builder, frame_storage,
-                                                    sizeof(frame_storage))))
+    if (!sl_status_is_ok(status) || !sl_status_is_ok(sl_byte_builder_init_fixed(
+                                        &builder, frame_storage, sizeof(frame_storage))))
     {
         return 1;
     }
@@ -256,8 +256,8 @@ static int test_frame_parser_unmasks_client_text(void)
     if (!sl_status_is_ok(status)) {
         return 2;
     }
-    status = sl_websocket_parse_frame(&arena, sl_byte_builder_view(&builder), &parse, &result,
-                                      &diag);
+    status =
+        sl_websocket_parse_frame(&arena, sl_byte_builder_view(&builder), &parse, &result, &diag);
     if (!sl_status_is_ok(status) || diag.code != SL_DIAG_NONE ||
         result.frame.opcode != SL_WEBSOCKET_OPCODE_TEXT || !result.frame.fin ||
         !result.frame.masked || result.consumed != sl_byte_builder_length(&builder) ||
@@ -305,33 +305,30 @@ static int test_frame_parser_rejects_protocol_errors(void)
     if (!sl_status_is_ok(sl_arena_init(&arena, arena_storage, sizeof(arena_storage)))) {
         return 1;
     }
-    if (expect_status(sl_websocket_parse_frame(&arena, sl_bytes_from_parts(bad_opcode,
-                                                                           sizeof(bad_opcode)),
+    if (expect_status(sl_websocket_parse_frame(&arena,
+                                               sl_bytes_from_parts(bad_opcode, sizeof(bad_opcode)),
                                                &parse, &result, &diag),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 2;
     }
-    if (expect_status(sl_websocket_parse_frame(&arena,
-                                               sl_bytes_from_parts(fragmented_ping,
-                                                                   sizeof(fragmented_ping)),
-                                               &parse, &result, &diag),
+    if (expect_status(sl_websocket_parse_frame(
+                          &arena, sl_bytes_from_parts(fragmented_ping, sizeof(fragmented_ping)),
+                          &parse, &result, &diag),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 3;
     }
-    if (expect_status(sl_websocket_parse_frame(&arena,
-                                               sl_bytes_from_parts(close_one_byte,
-                                                                   sizeof(close_one_byte)),
-                                               &parse, &result, &diag),
+    if (expect_status(sl_websocket_parse_frame(
+                          &arena, sl_bytes_from_parts(close_one_byte, sizeof(close_one_byte)),
+                          &parse, &result, &diag),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 4;
     }
-    if (expect_status(sl_websocket_parse_frame(&arena,
-                                               sl_bytes_from_parts(close_bad_code,
-                                                                   sizeof(close_bad_code)),
-                                               &parse, &result, &diag),
+    if (expect_status(sl_websocket_parse_frame(
+                          &arena, sl_bytes_from_parts(close_bad_code, sizeof(close_bad_code)),
+                          &parse, &result, &diag),
                       SL_STATUS_INVALID_ARGUMENT) != 0)
     {
         return 5;

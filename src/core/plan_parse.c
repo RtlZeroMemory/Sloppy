@@ -1357,11 +1357,10 @@ static bool sl_plan_parse_websocket_protocol_token_valid(SlStr value)
     }
     for (size_t index = 0U; index < value.length; index += 1U) {
         unsigned char ch = (unsigned char)value.ptr[index];
-        if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
-            (ch >= '0' && ch <= '9') || ch == '!' || ch == '#' || ch == '$' ||
-            ch == '%' || ch == '&' || ch == '\'' || ch == '*' || ch == '+' ||
-            ch == '-' || ch == '.' || ch == '^' || ch == '_' || ch == '`' ||
-            ch == '|' || ch == '~')
+        if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+            ch == '!' || ch == '#' || ch == '$' || ch == '%' || ch == '&' || ch == '\'' ||
+            ch == '*' || ch == '+' || ch == '-' || ch == '.' || ch == '^' || ch == '_' ||
+            ch == '`' || ch == '|' || ch == '~')
         {
             continue;
         }
@@ -1415,8 +1414,7 @@ static SlStatus sl_plan_parse_str_array_field(SlPlanParseContext* ctx, yyjson_va
                                          "present") -
                                       1U));
     }
-    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlStr), _Alignof(SlStr),
-                                       (void**)&values);
+    status = sl_plan_parse_alloc_array(ctx, count, sizeof(SlStr), _Alignof(SlStr), (void**)&values);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1500,9 +1498,9 @@ static SlStatus sl_plan_parse_route_websocket(SlPlanParseContext* ctx, yyjson_va
                                   sizeof("routes[].websocket must be a JSON object") - 1U));
     }
 
-    status = sl_plan_parse_str_array_field(ctx, websocket, "protocols", false, true,
-                                           &out->websocket.protocols,
-                                           &out->websocket.protocol_count);
+    status =
+        sl_plan_parse_str_array_field(ctx, websocket, "protocols", false, true,
+                                      &out->websocket.protocols, &out->websocket.protocol_count);
     if (!sl_status_is_ok(status)) {
         return status;
     }
@@ -1551,13 +1549,12 @@ static SlStatus sl_plan_parse_route_websocket(SlPlanParseContext* ctx, yyjson_va
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_plan_parse_size_field(ctx, websocket, "heartbeatMs",
-                                      &out->websocket.heartbeat_ms);
+    status = sl_plan_parse_size_field(ctx, websocket, "heartbeatMs", &out->websocket.heartbeat_ms);
     if (!sl_status_is_ok(status)) {
         return status;
     }
-    status = sl_plan_parse_size_field(ctx, websocket, "idleTimeoutMs",
-                                      &out->websocket.idle_timeout_ms);
+    status =
+        sl_plan_parse_size_field(ctx, websocket, "idleTimeoutMs", &out->websocket.idle_timeout_ms);
     if (!sl_status_is_ok(status)) {
         return status;
     }

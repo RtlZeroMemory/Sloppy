@@ -311,8 +311,7 @@ typedef struct TestWebSocketBridge
     size_t close_reason_length;
 } TestWebSocketBridge;
 
-static SlStatus test_websocket_bridge_send(void* user,
-                                           const SlWebSocketFrameWriteOptions* options,
+static SlStatus test_websocket_bridge_send(void* user, const SlWebSocketFrameWriteOptions* options,
                                            SlDiag* out_diag)
 {
     TestWebSocketBridge* bridge = (TestWebSocketBridge*)user;

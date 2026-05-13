@@ -565,7 +565,8 @@ SlStatus sl_engine_websocket_close(SlEngine* engine, SlEngineWebSocketSession* s
     if (!engine->active) {
         return sl_engine_write_invalid_lifecycle_diag(
             engine->arena, out_diag,
-            sl_engine_literal("sl_engine_websocket_close", sizeof("sl_engine_websocket_close") - 1U));
+            sl_engine_literal("sl_engine_websocket_close",
+                              sizeof("sl_engine_websocket_close") - 1U));
     }
     if (engine->kind != SL_ENGINE_KIND_V8) {
         return sl_engine_write_unsupported_diag(
