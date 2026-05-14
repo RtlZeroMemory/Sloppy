@@ -524,6 +524,7 @@ static bool sl_http_response_try_write_fast_200(const SlHttpResponse* response,
         connection_policy == SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE ? "keep-alive" : "close";
     size_t total = 0U;
     unsigned char* cursor = buffer;
+    SlStatus status = sl_status_ok();
 
     if (response == NULL || buffer == NULL || out_bytes == NULL || out_status == NULL) {
         return false;
@@ -546,11 +547,47 @@ static bool sl_http_response_try_write_fast_200(const SlHttpResponse* response,
         return false;
     }
 
-    total = sizeof("HTTP/1.1 200 OK\r\nConnection: ") - 1U + strlen(connection) +
-            sizeof("\r\nContent-Type: ") - 1U + strlen(content_type) +
-            sizeof("\r\nContent-Length: ") - 1U +
-            sl_http_response_decimal_length(response->body.length) + sizeof("\r\n\r\n") - 1U +
-            response->body.length;
+    status = sl_checked_add_size(total, sizeof("HTTP/1.1 200 OK\r\nConnection: ") - 1U, &total);
+    if (!sl_status_is_ok(status)) {
+        *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        return true;
+    }
+    status = sl_checked_add_size(total, strlen(connection), &total);
+    if (!sl_status_is_ok(status)) {
+        *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        return true;
+    }
+    status = sl_checked_add_size(total, sizeof("\r\nContent-Type: ") - 1U, &total);
+    if (!sl_status_is_ok(status)) {
+        *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        return true;
+    }
+    status = sl_checked_add_size(total, strlen(content_type), &total);
+    if (!sl_status_is_ok(status)) {
+        *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        return true;
+    }
+    status = sl_checked_add_size(total, sizeof("\r\nContent-Length: ") - 1U, &total);
+    if (!sl_status_is_ok(status)) {
+        *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        return true;
+    }
+    status = sl_checked_add_size(total, sl_http_response_decimal_length(response->body.length),
+                                 &total);
+    if (!sl_status_is_ok(status)) {
+        *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        return true;
+    }
+    status = sl_checked_add_size(total, sizeof("\r\n\r\n") - 1U, &total);
+    if (!sl_status_is_ok(status)) {
+        *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        return true;
+    }
+    status = sl_checked_add_size(total, response->body.length, &total);
+    if (!sl_status_is_ok(status)) {
+        *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        return true;
+    }
     if (total > capacity) {
         *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
         return true;

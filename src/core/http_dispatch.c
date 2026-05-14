@@ -3249,8 +3249,7 @@ static SlHttpDispatchContextNeeds sl_http_dispatch_context_needs(const SlPlanRou
                 needs.body = true;
             }
             else if (sl_str_equal(route->bindings[index].name, sl_str_from_cstr("request"))) {
-                needs.request = true;
-                needs.request_fields = SL_HTTP_REQUEST_FIELDS_ALL;
+                sl_http_dispatch_context_needs_all(&needs);
             }
             else {
                 uint32_t request_field =

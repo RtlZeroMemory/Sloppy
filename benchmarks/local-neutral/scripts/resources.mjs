@@ -142,9 +142,9 @@ export function startResourceSampler(pid, { intervalMs = 500 } = {}) {
   return {
     sample,
     stop() {
+      sample();
       running = false;
       if (timer != null) clearInterval(timer);
-      sample();
       return {
         samples,
         summary: summarizeResourceSamples(samples),

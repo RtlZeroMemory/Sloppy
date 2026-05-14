@@ -113,16 +113,22 @@ No runtime Fast API path was kept.
 | Command | Result |
 | --- | --- |
 | `tools/windows/dev.ps1 build -Preset windows-relwithdebinfo` | PASS |
-| `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^(core\.request_validation|core\.http\.response|core\.http\.dispatch|conformance\.http\.default_dispatch|engine\.v8\.smoke|conformance\.v8\.runtime_bridge|http\.dispatch\.execution|conformance\.v8\.http_dispatch_execution|benchmarks\.local_neutral\.contract)$" --output-on-failure` | PASS |
+| `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^(core\.request_validation\|core\.http\.response\|core\.http\.dispatch\|conformance\.http\.default_dispatch\|engine\.v8\.smoke\|conformance\.v8\.runtime_bridge\|http\.dispatch\.execution\|conformance\.v8\.http_dispatch_execution\|benchmarks\.local_neutral\.contract)$" --output-on-failure` | PASS |
 | `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^alpha\.golden\.compiler\." --output-on-failure` | PASS |
 | `tests/scripts/test_local_neutral_benchmark_contract.ps1 -RepoRoot .` | PASS |
 | `node benchmarks/local-neutral/scripts/run.mjs --check-tools --json` | PASS |
 | `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload health,json-small,route-param,post-json-validated,mixed-realistic --connections 64 --duration 8s --warmup 2s --repeats 2 --claim-mode local --base-port 43400 --out artifacts/benchmarks/pass2-final-text-only-20260514 --json` | PASS |
 | `git diff --check` | PASS |
-| `node tests/contracts/runner/contract-runner.mjs --area http --tier pr` | UNAVAILABLE: runner path is absent in this checkout |
-| `node tests/contracts/runner/contract-runner.mjs --area all --tier pr` | UNAVAILABLE: runner path is absent in this checkout |
-| `tools/windows/test-engine.ps1 -Area v8 -Tier pr` | FAIL: V8 configure/build passed, broad suite then failed unrelated stale alpha/template/example/source-input lanes; focused V8 lanes above passed |
-| `cargo test --manifest-path compiler/Cargo.toml framework_runtime --release --quiet` | FAIL: direct Cargo link cannot find `msvcrt.lib` in this shell; CMake compiler goldens passed |
+| `node tests/contracts/runner/contract-runner.mjs --area http --tier pr` | UNAVAILABLE |
+| `node tests/contracts/runner/contract-runner.mjs --area all --tier pr` | UNAVAILABLE |
+| `tools/windows/test-engine.ps1 -Area v8 -Tier pr` | FAIL |
+| `cargo test --manifest-path compiler/Cargo.toml framework_runtime --release --quiet` | FAIL |
+
+Notes: the contract runner path was absent in this checkout. The V8 engine lane
+configured and built successfully, then the broad suite failed unrelated stale
+alpha/template/example/source-input lanes; focused V8 lanes above passed.
+Direct Cargo testing failed because this shell could not find `msvcrt.lib`;
+CMake-backed compiler goldens passed.
 
 ## Remaining Bottlenecks
 

@@ -10,8 +10,6 @@ The kept changes reduce JS wrapper work for simple typed framework handlers and
 skip native request-validation setup when all bindings are already trivially
 satisfied string/context/injection bindings.
 
-No PR was opened.
-
 ## Profiling Signal
 
 Opt-in HTTP/JSON profiling showed three ceilings:
@@ -118,17 +116,23 @@ would have required unsafe context-wrapper work without measured benefit.
 | `tools/windows/dev.ps1 build -Preset windows-relwithdebinfo` | PASS |
 | `tools/windows/dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8` | PASS |
 | `tools/windows/dev.ps1 build -Preset windows-relwithdebinfo` | PASS |
-| `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^(core\\.request_validation|core\\.http\\.dispatch|http_dispatch_execution)$" --output-on-failure` | PASS |
+| `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^(core\\.request_validation\|core\\.http\\.dispatch\|http_dispatch_execution)$" --output-on-failure` | PASS |
 | `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^alpha\\.golden\\.compiler\\." --output-on-failure` | PASS |
 | `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^benchmarks\\.local_neutral\\.contract$" --output-on-failure` | PASS |
-| `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^(engine\\.v8\\.smoke|engine_v8_smoke|http_dispatch_execution)$" --output-on-failure` | PASS |
+| `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^(engine\\.v8\\.smoke\|engine_v8_smoke\|http_dispatch_execution)$" --output-on-failure` | PASS |
 | `tests/scripts/test_local_neutral_benchmark_contract.ps1 -RepoRoot .` | PASS |
 | `node benchmarks/local-neutral/scripts/run.mjs --check-tools --json` | PASS |
 | `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload health,json-small,route-param,post-json-validated,mixed-realistic --connections 64 --duration 8s --warmup 2s --repeats 2 --claim-mode local --out artifacts/benchmarks/focused-kept-v8-rerun-20260514 --json` | PASS |
-| `tools/windows/test-engine.ps1 -Area v8 -Tier pr` | UNAVAILABLE: `SLOPPY_V8_ROOT` is not set |
-| `tools/windows/dev.ps1 test -Preset windows-relwithdebinfo` | FAIL: broad alpha/template/example goldens are stale outside this slice; focused compiler goldens pass |
-| `cargo test --manifest-path compiler/Cargo.toml framework_runtime --release --quiet` | FAIL: direct Rust test link cannot find `msvcrt.lib` in this shell |
+| `tools/windows/test-engine.ps1 -Area v8 -Tier pr` | UNAVAILABLE |
+| `tools/windows/dev.ps1 test -Preset windows-relwithdebinfo` | FAIL |
+| `cargo test --manifest-path compiler/Cargo.toml framework_runtime --release --quiet` | FAIL |
 | `git diff --check` | PASS |
+
+Notes: `tools/windows/test-engine.ps1 -Area v8 -Tier pr` was unavailable because
+`SLOPPY_V8_ROOT` was not set. The broad `tools/windows/dev.ps1 test` lane failed
+on alpha/template/example goldens outside this slice; focused compiler goldens
+passed. Direct Cargo testing failed because this shell could not find
+`msvcrt.lib`; CMake-backed lanes covered the compiler changes.
 
 ## Public Readiness
 

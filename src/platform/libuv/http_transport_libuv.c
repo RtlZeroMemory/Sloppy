@@ -45,6 +45,7 @@ struct SlHttpPlatformConnection
     uv_timer_t body_timer;
     uv_timer_t request_timer;
     uv_timer_t write_timer;
+    uv_timer_t fast_write_completion_timer;
     uv_timer_t idle_timer;
     SlHttpTransportConnection* owner;
     unsigned char* read_buffer;
@@ -61,6 +62,7 @@ struct SlHttpPlatformConnection
     bool body_timer_initialized;
     bool request_timer_initialized;
     bool write_timer_initialized;
+    bool fast_write_completion_timer_initialized;
     bool idle_timer_initialized;
     bool closing;
     bool reading;
@@ -890,6 +892,9 @@ static void sl_http_transport_write_timeout_cb(uv_timer_t* timer);
 static void sl_http_transport_idle_timeout_cb(uv_timer_t* timer);
 static void sl_http_transport_write_cb(uv_write_t* request, int status);
 static void sl_http_transport_complete_write(SlHttpPlatformConnection* platform, int status);
+static void sl_http_transport_fast_write_complete_cb(uv_timer_t* timer);
+static SlStatus sl_http_transport_schedule_fast_write_completion(
+    SlHttpPlatformConnection* platform);
 static void sl_http_transport_tls_write_cb(uv_write_t* request, int status);
 static void sl_http_transport_tls_shutdown_write_cb(uv_write_t* request, int status);
 static SlStatus sl_http_transport_restart_keep_alive_read(SlHttpTransportConnection* connection,
@@ -1525,7 +1530,12 @@ static SlStatus sl_http_transport_start_write_bytes(SlHttpTransportConnection* c
         if (rc == (int)bytes.length) {
             connection->platform->writing = true;
             connection->write_started = true;
-            sl_http_transport_complete_write(connection->platform, 0);
+            status = sl_http_transport_schedule_fast_write_completion(connection->platform);
+            if (!sl_status_is_ok(status)) {
+                connection->platform->writing = false;
+                connection->write_started = false;
+                return status;
+            }
             return sl_status_ok();
         }
         if (rc > 0) {
@@ -2666,6 +2676,8 @@ static void sl_http_transport_stop_connection_timers(SlHttpPlatformConnection* p
     sl_http_transport_stop_timer(&platform->body_timer, &platform->body_timer_initialized);
     sl_http_transport_stop_timer(&platform->request_timer, &platform->request_timer_initialized);
     sl_http_transport_stop_timer(&platform->write_timer, &platform->write_timer_initialized);
+    sl_http_transport_stop_timer(&platform->fast_write_completion_timer,
+                                 &platform->fast_write_completion_timer_initialized);
     sl_http_transport_stop_timer(&platform->idle_timer, &platform->idle_timer_initialized);
 }
 
@@ -2678,6 +2690,8 @@ static void sl_http_transport_close_connection_timers(SlHttpPlatformConnection* 
     sl_http_transport_close_timer(&platform->body_timer, &platform->body_timer_initialized);
     sl_http_transport_close_timer(&platform->request_timer, &platform->request_timer_initialized);
     sl_http_transport_close_timer(&platform->write_timer, &platform->write_timer_initialized);
+    sl_http_transport_close_timer(&platform->fast_write_completion_timer,
+                                  &platform->fast_write_completion_timer_initialized);
     sl_http_transport_close_timer(&platform->idle_timer, &platform->idle_timer_initialized);
 }
 
@@ -2701,6 +2715,43 @@ static SlStatus sl_http_transport_start_timer(SlHttpPlatformConnection* platform
         return sl_status_ok();
     }
     if (uv_timer_start(timer, callback, timeout_ms, 0U) != 0) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    return sl_status_ok();
+}
+
+static void sl_http_transport_fast_write_complete_cb(uv_timer_t* timer)
+{
+    SlHttpPlatformConnection* platform =
+        timer == NULL ? NULL : (SlHttpPlatformConnection*)timer->data;
+
+    if (platform == NULL) {
+        return;
+    }
+    uv_timer_stop(timer);
+    sl_http_transport_complete_write(platform, 0);
+}
+
+static SlStatus sl_http_transport_schedule_fast_write_completion(
+    SlHttpPlatformConnection* platform)
+{
+    int rc;
+
+    if (platform == NULL) {
+        return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (!platform->fast_write_completion_timer_initialized) {
+        rc = uv_timer_init(platform->handle.loop, &platform->fast_write_completion_timer);
+        if (rc != 0) {
+            return sl_status_from_code(SL_STATUS_INTERNAL);
+        }
+        platform->fast_write_completion_timer.data = platform;
+        platform->fast_write_completion_timer_initialized = true;
+    }
+    uv_timer_stop(&platform->fast_write_completion_timer);
+    rc = uv_timer_start(&platform->fast_write_completion_timer,
+                        sl_http_transport_fast_write_complete_cb, 0U, 0U);
+    if (rc != 0) {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     return sl_status_ok();

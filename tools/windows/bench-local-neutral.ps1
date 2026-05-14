@@ -35,46 +35,47 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = (Resolve-Path (Join-Path $scriptRoot "..\..")).Path
 $runner = Join-Path $repoRoot "benchmarks\local-neutral\scripts\run.mjs"
 
-$args = @($runner, "--tool", $Tool, "--preset", $Preset, "--host", $HostName, "--base-port", [string]$BasePort, "--claim-mode", $ClaimMode, "--load-host-kind", $LoadHostKind, "--resource-interval-ms", [string]$ResourceIntervalMs)
+$nodeArgs = @($runner, "--tool", $Tool, "--preset", $Preset, "--host", $HostName, "--base-port", [string]$BasePort, "--claim-mode", $ClaimMode, "--load-host-kind", $LoadHostKind, "--resource-interval-ms", [string]$ResourceIntervalMs)
 
 if ($Runtime.Count -gt 0) {
-    $args += @("--runtime", ($Runtime -join ","))
+    $nodeArgs += @("--runtime", ($Runtime -join ","))
 }
 if ($Workload.Count -gt 0) {
-    $args += @("--workload", ($Workload -join ","))
+    $nodeArgs += @("--workload", ($Workload -join ","))
 }
 if ($Connections.Count -gt 0) {
-    $args += @("--connections", ($Connections -join ","))
+    $nodeArgs += @("--connections", ($Connections -join ","))
 }
 if (-not [string]::IsNullOrWhiteSpace($Duration)) {
-    $args += @("--duration", $Duration)
+    $nodeArgs += @("--duration", $Duration)
 }
 if (-not [string]::IsNullOrWhiteSpace($Warmup)) {
-    $args += @("--warmup", $Warmup)
+    $nodeArgs += @("--warmup", $Warmup)
 }
 if ($Repeats -gt 0) {
-    $args += @("--repeats", [string]$Repeats)
+    $nodeArgs += @("--repeats", [string]$Repeats)
 }
 if (-not [string]::IsNullOrWhiteSpace($SloppyExe)) {
-    $args += @("--sloppy-bin", (Resolve-Path -LiteralPath $SloppyExe).Path)
+    $sloppyExePath = if ([System.IO.Path]::IsPathRooted($SloppyExe)) { $SloppyExe } else { Join-Path $repoRoot $SloppyExe }
+    $nodeArgs += @("--sloppy-bin", (Resolve-Path -LiteralPath $sloppyExePath).Path)
 }
 if (-not [string]::IsNullOrWhiteSpace($Out)) {
     $outPath = if ([System.IO.Path]::IsPathRooted($Out)) { $Out } else { Join-Path $repoRoot $Out }
-    $args += @("--out", $outPath)
+    $nodeArgs += @("--out", $outPath)
 }
 if ($NoResources) {
-    $args += "--no-resources"
+    $nodeArgs += "--no-resources"
 }
 if ($CheckTools) {
-    $args += "--check-tools"
+    $nodeArgs += "--check-tools"
 }
 if ($Json) {
-    $args += "--json"
+    $nodeArgs += "--json"
 }
 
 Push-Location $repoRoot
 try {
-    & node @args
+    & node @nodeArgs
     exit $LASTEXITCODE
 }
 finally {

@@ -1256,7 +1256,7 @@ export default app;
 }
 
 #[test]
-fn typed_framework_context_only_bindings_emit_sync_wrapper() {
+fn typed_framework_context_only_bindings_keep_request_scope() {
     let source = r#"import { Sloppy, Results, RequestContext } from "sloppy";
 const app = Sloppy.create();
 app.get("/method", (ctx: RequestContext) => Results.text(ctx.request.method));
@@ -1274,11 +1274,11 @@ export default app;
         .contains("globalThis.__sloppy_handler_1 = (ctx) =>"));
     assert!(emitted_js
         .source
-        .contains("return (ctx) => __sloppy_typed_handler(ctx)"));
-    assert!(!emitted_js
+        .contains("const __sloppy_scope = __sloppy_framework_services.createScope(ctx); ctx.services = __sloppy_scope"));
+    assert!(emitted_js
         .source
         .contains("const __sloppy_args = await Promise.all(["));
-    assert!(!emitted_js
+    assert!(emitted_js
         .source
         .contains("__sloppy_framework_services.createScope(ctx)"));
 }

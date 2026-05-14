@@ -93,7 +93,9 @@ conversion, and a safe native request wrapper for future V8 Fast API work.
 | Route-param current A/B | `artifacts/benchmarks/pass4-route-param-body-json-current-20260514` | PASS |
 | Clean Sloppy-only focused matrix | `artifacts/benchmarks/pass4-clean-sloppy-focused-20260514` | PASS |
 | Local all-runtime comparison | `artifacts/benchmarks/pass4-all-runtimes-focused-20260514` | PASS |
-| HTTP contract runner | `node tests/contracts/runner/contract-runner.mjs --area http --tier pr` | UNAVAILABLE: this checkout lacks `tests/contracts/runner/contract-runner.mjs` |
+| HTTP contract runner | `node tests/contracts/runner/contract-runner.mjs --area http --tier pr` | UNAVAILABLE |
+
+Note: this checkout lacks `tests/contracts/runner/contract-runner.mjs`.
 
 Focused CTest command:
 

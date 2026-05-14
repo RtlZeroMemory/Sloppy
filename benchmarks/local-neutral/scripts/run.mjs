@@ -416,6 +416,9 @@ async function main() {
             workload,
             baseUrl: `http://${options.host}:${port}`,
           });
+          if (contractValidation.status !== "PASS") {
+            throw new Error(`contract validation failed before load execution: ${contractValidation.status}`);
+          }
           await runAdapter(tool, {
             toolPath: tools[tool].path,
             runtime,
@@ -433,24 +436,29 @@ async function main() {
             const sampler = options.resourceSampling
               ? startResourceSampler(server.pid, { intervalMs: options.resourceIntervalMs })
               : null;
-            const row = await runAdapter(tool, {
-              toolPath: tools[tool].path,
-              runtime,
-              workload,
-              url: `http://${options.host}:${port}${workload.path ?? ""}`,
-              connections,
-              duration: matrix.duration,
-              repeat,
-              tempDir,
-              runLabel: [runtime, workload.name, connections, repeat].map(safeToken).join("-"),
-            });
-            let resourceRun = null;
-            if (sampler != null) {
-              resourceRun = sampler.stop();
-              const samplePath = path.join(logDir, `resources-repeat-${repeat}.json`);
-              await fs.writeFile(samplePath, `${JSON.stringify(resourceRun.samples, null, 2)}\n`, "utf8");
-              row.serverResources = resourceRun.summary;
-              row.serverResourceSamplesPath = samplePath;
+            let row = null;
+            try {
+              row = await runAdapter(tool, {
+                toolPath: tools[tool].path,
+                runtime,
+                workload,
+                url: `http://${options.host}:${port}${workload.path ?? ""}`,
+                connections,
+                duration: matrix.duration,
+                repeat,
+                tempDir,
+                runLabel: [runtime, workload.name, connections, repeat].map(safeToken).join("-"),
+              });
+            } finally {
+              if (sampler != null) {
+                const resourceRun = sampler.stop();
+                const samplePath = path.join(logDir, `resources-repeat-${repeat}.json`);
+                await fs.writeFile(samplePath, `${JSON.stringify(resourceRun.samples, null, 2)}\n`, "utf8");
+                if (row != null) {
+                  row.serverResources = resourceRun.summary;
+                  row.serverResourceSamplesPath = samplePath;
+                }
+              }
             }
             results.push({
               ...row,

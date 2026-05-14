@@ -50,6 +50,10 @@ if ($Report) {
     if (-not [System.IO.Path]::IsPathRooted($reportPath)) {
         $reportPath = Join-Path $Root $reportPath
     }
+    $reportDir = Split-Path -Parent $reportPath
+    if (-not [string]::IsNullOrWhiteSpace($reportDir)) {
+        New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
+    }
     $reportArgs = @("--input", $outPath, "--out", $reportPath)
     if ($Compare -ne "") {
         $comparePath = $Compare

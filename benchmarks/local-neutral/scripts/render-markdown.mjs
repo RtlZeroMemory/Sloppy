@@ -123,11 +123,14 @@ export function renderMarkdown(report) {
   lines.push("## Public Claim Readiness");
   lines.push("");
   if (report.publicClaimReadiness) {
+    const criteria = Array.isArray(report.publicClaimReadiness.criteria)
+      ? report.publicClaimReadiness.criteria
+      : [];
     lines.push(`Status: \`${report.publicClaimReadiness.status}\``);
     lines.push("");
     lines.push(report.publicClaimReadiness.summary);
     lines.push("");
-    lines.push(table(["Criterion", "Status", "Details"], report.publicClaimReadiness.criteria.map((row) => [
+    lines.push(table(["Criterion", "Status", "Details"], criteria.map((row) => [
       row.name,
       row.status,
       row.details ?? "",

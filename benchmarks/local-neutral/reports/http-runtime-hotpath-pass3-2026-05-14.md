@@ -103,7 +103,7 @@ median RPS in `artifacts/benchmarks/pass3-body-request-json-20260514`.
 | --- | --- |
 | `tools/windows/dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8` | PASS |
 | `tools/windows/dev.ps1 build -Preset windows-relwithdebinfo` | PASS |
-| `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^(core\.request_validation|core\.http\.dispatch|engine\.v8\.smoke|conformance\.v8\.runtime_bridge|http\.dispatch\.execution|conformance\.v8\.http_dispatch_execution|benchmarks\.local_neutral\.contract)$" --output-on-failure` | PASS |
+| `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^(core\.request_validation\|core\.http\.dispatch\|engine\.v8\.smoke\|conformance\.v8\.runtime_bridge\|http\.dispatch\.execution\|conformance\.v8\.http_dispatch_execution\|benchmarks\.local_neutral\.contract)$" --output-on-failure` | PASS |
 | `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^alpha\.golden\.compiler\." --output-on-failure` | PASS |
 | `tests/scripts/test_local_neutral_benchmark_contract.ps1 -RepoRoot .` | PASS |
 | `node benchmarks/local-neutral/scripts/run.mjs --check-tools --json` | PASS |
@@ -113,7 +113,9 @@ median RPS in `artifacts/benchmarks/pass3-body-request-json-20260514`.
 | `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload post-json-validated,mixed-realistic --connections 64 --duration 15s --warmup 3s --repeats 5 --claim-mode local --base-port 44400 --out artifacts/benchmarks/pass3-body-request-json-20260514 --json` | PASS |
 | `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload route-param,post-json-validated,mixed-realistic --connections 64 --duration 15s --warmup 3s --repeats 5 --claim-mode local --base-port 44600 --out artifacts/benchmarks/pass3-final-focused-20260514 --json` | PASS |
 | `git diff --check` | PASS |
-| `node tests/contracts/runner/contract-runner.mjs --area http --tier pr` | UNAVAILABLE: runner path is absent in this checkout |
+| `node tests/contracts/runner/contract-runner.mjs --area http --tier pr` | UNAVAILABLE |
+
+Note: the HTTP contract runner path was absent in this checkout.
 
 During development, the first focused V8/native CTest run failed with a segfault
 after the new `needs_body_facade` bit was added. The failure exposed stale
