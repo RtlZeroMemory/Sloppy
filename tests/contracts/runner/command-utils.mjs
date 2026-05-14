@@ -40,6 +40,7 @@ export function parseRunnerArgs(argv) {
             "auth",
             "cache",
             "data",
+            "ffi",
             "http",
             "jobs",
             "openapi",
@@ -71,12 +72,13 @@ export async function writeJsonReport(out, report, repoRoot) {
 }
 
 export function printHelp() {
-    process.stdout.write(`Usage: node tests/contracts/runner/contract-runner.mjs --area auth|cache|data|http|jobs|openapi|package|realtime|release|static-files|webhooks|all --tier pr|extended|torture [--format json|markdown] [--out path]
+    process.stdout.write(`Usage: node tests/contracts/runner/contract-runner.mjs --area auth|cache|data|ffi|http|jobs|openapi|package|realtime|release|static-files|webhooks|all --tier pr|extended|torture [--format json|markdown] [--out path]
 
 Examples:
   node tests/contracts/runner/contract-runner.mjs --area auth --tier pr
   node tests/contracts/runner/contract-runner.mjs --area cache --tier pr
   node tests/contracts/runner/contract-runner.mjs --area data --tier pr
+  node tests/contracts/runner/contract-runner.mjs --area ffi --tier pr
   node tests/contracts/runner/contract-runner.mjs --area http --tier pr
   node tests/contracts/runner/contract-runner.mjs --area jobs --tier pr
   node tests/contracts/runner/contract-runner.mjs --area openapi --tier pr

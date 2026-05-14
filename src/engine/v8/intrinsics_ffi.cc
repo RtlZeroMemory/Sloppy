@@ -8,6 +8,8 @@
 #include "engine_v8_internal.h"
 #include "string_interop.h"
 
+#include <ffi.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -15,6 +17,7 @@
 #include <memory>
 #include <new>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -27,7 +30,8 @@ enum class FfiResourceKind
     Utf16,
     Struct,
     StructLayout,
-    NativePointer
+    NativePointer,
+    Callback
 };
 
 enum class FfiMarshalError
@@ -42,6 +46,9 @@ struct FfiStructField
     std::string name;
     SlPlanFfiType type = SL_PLAN_FFI_TYPE_UNKNOWN;
     size_t offset = 0U;
+    size_t byte_size = 0U;
+    size_t byte_alignment = 1U;
+    std::vector<FfiStructField> nested_fields;
 };
 
 struct SlV8FfiResource
@@ -50,8 +57,23 @@ struct SlV8FfiResource
     SlPlanFfiType type = SL_PLAN_FFI_TYPE_PTR;
     std::vector<unsigned char> bytes;
     std::vector<FfiStructField> fields;
+    std::vector<SlPlanFfiType> callback_parameters;
+    std::vector<ffi_type*> callback_ffi_parameters;
+    std::vector<SlPlanFfiType> dispatch_parameters;
+    std::vector<ffi_type*> dispatch_ffi_parameters;
+    ffi_cif dispatch_cif = {};
+    SlFfiFunction dispatch_function = {};
+    SlPlanFfiType callback_return_type = SL_PLAN_FFI_TYPE_VOID;
+    ffi_cif callback_cif = {};
+    ffi_closure* callback_closure = nullptr;
+    void* callback_code = nullptr;
+    v8::Global<v8::Function>* callback_function = nullptr;
+    v8::Global<v8::Context>* callback_context = nullptr;
+    v8::Isolate* callback_isolate = nullptr;
+    std::thread::id callback_owner_thread = {};
     void* native_pointer = nullptr;
     size_t byte_length = 0U;
+    size_t byte_alignment = 1U;
     bool disposed = false;
 };
 
@@ -162,6 +184,22 @@ SlV8FfiResource* ffi_new_resource(SlV8Engine* backend, FfiResourceKind kind)
     resource->kind = kind;
     backend->ffi_resources.push_back(resource);
     return resource;
+}
+
+void ffi_release_resource(SlV8FfiResource* resource)
+{
+    if (resource == nullptr) {
+        return;
+    }
+    if (resource->callback_closure != nullptr) {
+        ffi_closure_free(resource->callback_closure);
+        resource->callback_closure = nullptr;
+        resource->callback_code = nullptr;
+    }
+    delete resource->callback_function;
+    resource->callback_function = nullptr;
+    delete resource->callback_context;
+    resource->callback_context = nullptr;
 }
 
 bool ffi_set_resource(v8::Isolate* isolate, v8::Local<v8::Context> context,
@@ -453,7 +491,9 @@ bool ffi_pointer_from_value(v8::Isolate* isolate, v8::Local<v8::Value> value, vo
     {
         return false;
     }
-    if (resource->kind == FfiResourceKind::NativePointer) {
+    if (resource->kind == FfiResourceKind::NativePointer ||
+        resource->kind == FfiResourceKind::Callback)
+    {
         *out = resource->native_pointer;
         return true;
     }
@@ -1098,6 +1138,7 @@ void ffi_dispose_resource_callback(const v8::FunctionCallbackInfo<v8::Value>& ar
 {
     SlV8FfiResource* resource = ffi_resource_from_value(args.GetIsolate(), args.This());
     if (resource != nullptr) {
+        ffi_release_resource(resource);
         resource->disposed = true;
         resource->bytes.clear();
         resource->byte_length = 0U;
@@ -1339,8 +1380,19 @@ void ffi_struct_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
     const FfiStructField* field = ffi_struct_field(resource, name);
-    if (field == nullptr || field->offset + sl_ffi_type_size(field->type) > resource->byte_length) {
+    size_t field_size = field == nullptr ? 0U : field->byte_size;
+    if (field == nullptr || field->offset + field_size > resource->byte_length) {
         ffi_throw_type_error(isolate, "unsafeFfi.struct field is not present.");
+        return;
+    }
+    if (!field->nested_fields.empty() || field_size != sl_ffi_type_size(field->type)) {
+        v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, field_size);
+        std::shared_ptr<v8::BackingStore> backing = buffer->GetBackingStore();
+        if (backing != nullptr && backing->ByteLength() >= field_size) {
+            std::copy_n(resource->bytes.data() + field->offset, field_size,
+                        static_cast<unsigned char*>(backing->Data()));
+        }
+        args.GetReturnValue().Set(v8::Uint8Array::New(buffer, 0, field_size));
         return;
     }
     args.GetReturnValue().Set(
@@ -1360,8 +1412,24 @@ void ffi_struct_set_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         return;
     }
     const FfiStructField* field = ffi_struct_field(resource, name);
-    if (field == nullptr || field->offset + sl_ffi_type_size(field->type) > resource->byte_length ||
-        !ffi_write_value_to_bytes(isolate, field->type, args[1],
+    size_t field_size = field == nullptr ? 0U : field->byte_size;
+    if (field == nullptr || field->offset + field_size > resource->byte_length) {
+        ffi_throw_type_error(isolate, "unsafeFfi.struct field is not present.");
+        return;
+    }
+    if (!field->nested_fields.empty() || field_size != sl_ffi_type_size(field->type)) {
+        const unsigned char* bytes = nullptr;
+        size_t length = 0U;
+        if (!ffi_copy_uint8_array(args[1], &bytes, &length) || length != field_size) {
+            ffi_throw_type_error(isolate,
+                                 "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: invalid struct value.");
+            return;
+        }
+        std::copy_n(bytes, length, resource->bytes.data() + field->offset);
+        args.GetReturnValue().Set(args.This());
+        return;
+    }
+    if (!ffi_write_value_to_bytes(isolate, field->type, args[1],
                                   resource->bytes.data() + field->offset,
                                   resource->byte_length - field->offset))
     {
@@ -1656,6 +1724,386 @@ bool ffi_field_type(v8::Isolate* isolate, v8::Local<v8::Value> value, SlPlanFfiT
            *out != SL_PLAN_FFI_TYPE_MUT_BYTES;
 }
 
+ffi_type* ffi_closure_type_for_plan_type(SlPlanFfiType type)
+{
+    switch (type) {
+    case SL_PLAN_FFI_TYPE_VOID:
+        return &ffi_type_void;
+    case SL_PLAN_FFI_TYPE_I32:
+        return &ffi_type_sint32;
+    case SL_PLAN_FFI_TYPE_U32:
+        return &ffi_type_uint32;
+    case SL_PLAN_FFI_TYPE_PTR:
+        return &ffi_type_pointer;
+    default:
+        return nullptr;
+    }
+}
+
+ffi_type* ffi_callback_return_type_for_plan_type(SlPlanFfiType type)
+{
+    switch (type) {
+    case SL_PLAN_FFI_TYPE_VOID:
+        return &ffi_type_void;
+    case SL_PLAN_FFI_TYPE_I32:
+        return &ffi_type_sint32;
+    case SL_PLAN_FFI_TYPE_U32:
+        return &ffi_type_uint32;
+    default:
+        return nullptr;
+    }
+}
+
+ffi_type* ffi_callback_parameter_type_for_plan_type(SlPlanFfiType type)
+{
+    switch (type) {
+    case SL_PLAN_FFI_TYPE_I32:
+        return &ffi_type_sint32;
+    case SL_PLAN_FFI_TYPE_U32:
+        return &ffi_type_uint32;
+    default:
+        return nullptr;
+    }
+}
+
+void ffi_write_callback_default_return(SlV8FfiResource* resource, void* ret)
+{
+    if (resource == nullptr || ret == nullptr) {
+        return;
+    }
+    switch (resource->callback_return_type) {
+    case SL_PLAN_FFI_TYPE_I32:
+        *static_cast<int32_t*>(ret) = 0;
+        break;
+    case SL_PLAN_FFI_TYPE_U32:
+        *static_cast<uint32_t*>(ret) = 0U;
+        break;
+    default:
+        break;
+    }
+}
+
+void ffi_callback_trampoline(ffi_cif* cif, void* ret, void** args, void* user_data)
+{
+    (void)cif;
+    SlV8FfiResource* resource = static_cast<SlV8FfiResource*>(user_data);
+    if (resource == nullptr || resource->disposed || resource->callback_function == nullptr ||
+        resource->callback_context == nullptr)
+    {
+        ffi_write_callback_default_return(resource, ret);
+        return;
+    }
+    if (std::this_thread::get_id() != resource->callback_owner_thread) {
+        ffi_write_callback_default_return(resource, ret);
+        return;
+    }
+    v8::Isolate* isolate = resource->callback_isolate;
+    if (isolate == nullptr) {
+        ffi_write_callback_default_return(resource, ret);
+        return;
+    }
+    v8::HandleScope handle_scope(isolate);
+    v8::Local<v8::Context> context = resource->callback_context->Get(isolate);
+    v8::Context::Scope context_scope(context);
+    std::vector<v8::Local<v8::Value>> js_args;
+    js_args.reserve(resource->callback_parameters.size());
+    for (size_t index = 0U; index < resource->callback_parameters.size(); index += 1U) {
+        SlPlanFfiType type = resource->callback_parameters[index];
+        if (type == SL_PLAN_FFI_TYPE_I32) {
+            js_args.push_back(v8::Integer::New(isolate, *static_cast<int32_t*>(args[index])));
+        }
+        else if (type == SL_PLAN_FFI_TYPE_U32) {
+            js_args.push_back(
+                v8::Integer::NewFromUnsigned(isolate, *static_cast<uint32_t*>(args[index])));
+        }
+        else {
+            ffi_write_callback_default_return(resource, ret);
+            return;
+        }
+    }
+    v8::TryCatch try_catch(isolate);
+    v8::Local<v8::Value> result;
+    if (!resource->callback_function->Get(isolate)
+             ->Call(context, v8::Undefined(isolate), static_cast<int>(js_args.size()),
+                    js_args.data())
+             .ToLocal(&result) ||
+        try_catch.HasCaught())
+    {
+        ffi_write_callback_default_return(resource, ret);
+        return;
+    }
+    if (ret != nullptr && resource->callback_return_type == SL_PLAN_FFI_TYPE_I32) {
+        int64_t value = 0;
+        if (ffi_i64_from_value(isolate, result, INT32_MIN, INT32_MAX, &value)) {
+            *static_cast<int32_t*>(ret) = static_cast<int32_t>(value);
+        }
+        else {
+            *static_cast<int32_t*>(ret) = 0;
+        }
+    }
+    else if (ret != nullptr && resource->callback_return_type == SL_PLAN_FFI_TYPE_U32) {
+        uint64_t value = 0;
+        if (ffi_u64_from_value(isolate, result, UINT32_MAX, &value)) {
+            *static_cast<uint32_t*>(ret) = static_cast<uint32_t>(value);
+        }
+        else {
+            *static_cast<uint32_t*>(ret) = 0U;
+        }
+    }
+}
+
+void ffi_callback_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = ffi_backend(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    if (backend == nullptr || args.Length() < 2 || !args[0]->IsObject() || !args[1]->IsFunction()) {
+        ffi_throw_type_error(isolate, "unsafeFfi.callback requires a descriptor and function.");
+        return;
+    }
+    v8::Local<v8::Object> descriptor = args[0].As<v8::Object>();
+    std::string return_name;
+    std::vector<std::string> parameters;
+    SlPlanFfiType return_type = SL_PLAN_FFI_TYPE_UNKNOWN;
+    if (!ffi_object_string(isolate, context, descriptor, "returnType", &return_name) ||
+        !ffi_plan_type_from_name(return_name, &return_type) ||
+        !ffi_object_string_array(isolate, context, descriptor, "parameters", &parameters))
+    {
+        ffi_throw_type_error(isolate, "unsafeFfi.callback descriptor is invalid.");
+        return;
+    }
+    std::vector<ffi_type*> ffi_parameters;
+    std::vector<SlPlanFfiType> plan_parameters;
+    for (const std::string& parameter : parameters) {
+        SlPlanFfiType type = SL_PLAN_FFI_TYPE_UNKNOWN;
+        if (!ffi_plan_type_from_name(parameter, &type)) {
+            ffi_throw_type_error(isolate, "unsafeFfi.callback parameter type is invalid.");
+            return;
+        }
+        ffi_type* ffi_type = ffi_callback_parameter_type_for_plan_type(type);
+        if (ffi_type == nullptr) {
+            ffi_throw_type_error(isolate,
+                                 "SLOPPY_E_FFI_UNSUPPORTED_CALLBACK: callback type unsupported.");
+            return;
+        }
+        plan_parameters.push_back(type);
+        ffi_parameters.push_back(ffi_type);
+    }
+    ffi_type* ffi_return = ffi_callback_return_type_for_plan_type(return_type);
+    if (ffi_return == nullptr) {
+        ffi_throw_type_error(isolate,
+                             "SLOPPY_E_FFI_UNSUPPORTED_CALLBACK: callback return unsupported.");
+        return;
+    }
+    SlV8FfiResource* resource = ffi_new_resource(backend, FfiResourceKind::Callback);
+    v8::Local<v8::Object> object;
+    if (resource == nullptr) {
+        ffi_throw_error(isolate, "SLOPPY_E_FFI_CALL_FAILED: failed to allocate FFI callback.");
+        return;
+    }
+    resource->callback_parameters = plan_parameters;
+    resource->callback_ffi_parameters = ffi_parameters;
+    resource->callback_return_type = return_type;
+    resource->callback_closure =
+        static_cast<ffi_closure*>(ffi_closure_alloc(sizeof(ffi_closure), &resource->callback_code));
+    if (resource->callback_closure == nullptr ||
+        ffi_prep_cif(&resource->callback_cif, FFI_DEFAULT_ABI,
+                     static_cast<unsigned int>(resource->callback_ffi_parameters.size()),
+                     ffi_return,
+                     resource->callback_ffi_parameters.empty()
+                         ? nullptr
+                         : resource->callback_ffi_parameters.data()) != FFI_OK ||
+        ffi_prep_closure_loc(resource->callback_closure, &resource->callback_cif,
+                             ffi_callback_trampoline, resource, resource->callback_code) != FFI_OK)
+    {
+        ffi_release_resource(resource);
+        resource->disposed = true;
+        ffi_throw_error(isolate, "SLOPPY_E_FFI_CALL_FAILED: failed to prepare FFI callback.");
+        return;
+    }
+    resource->native_pointer = resource->callback_code;
+    resource->callback_isolate = isolate;
+    resource->callback_owner_thread = std::this_thread::get_id();
+    resource->callback_function =
+        new (std::nothrow) v8::Global<v8::Function>(isolate, args[1].As<v8::Function>());
+    resource->callback_context = new (std::nothrow) v8::Global<v8::Context>(isolate, context);
+    if (resource->callback_function == nullptr || resource->callback_context == nullptr ||
+        !ffi_make_resource_object(isolate, context, resource, &object))
+    {
+        ffi_release_resource(resource);
+        resource->disposed = true;
+        ffi_throw_error(isolate, "SLOPPY_E_FFI_CALL_FAILED: failed to create FFI callback.");
+        return;
+    }
+    args.GetReturnValue().Set(object);
+}
+
+void ffi_dispatch_table_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    SlV8Engine* backend = ffi_backend(isolate);
+    v8::Local<v8::Context> context = isolate->GetCurrentContext();
+    if (backend == nullptr || args.Length() < 2 || !args[1]->IsObject()) {
+        ffi_throw_type_error(isolate, "unsafeFfi.dispatchTable requires a name and descriptor.");
+        return;
+    }
+    v8::Local<v8::Object> descriptor = args[1].As<v8::Object>();
+    v8::Local<v8::Value> resolver_value;
+    v8::Local<v8::Value> symbols_value;
+    if (!ffi_object_value(isolate, context, descriptor, "resolver", &resolver_value) ||
+        !resolver_value->IsFunction() ||
+        !ffi_object_value(isolate, context, descriptor, "symbols", &symbols_value) ||
+        !symbols_value->IsObject())
+    {
+        ffi_throw_type_error(isolate, "unsafeFfi.dispatchTable descriptor is invalid.");
+        return;
+    }
+    v8::Local<v8::Function> resolver = resolver_value.As<v8::Function>();
+    v8::Local<v8::Object> symbols = symbols_value.As<v8::Object>();
+    v8::Local<v8::Array> names;
+    v8::Local<v8::Object> output = v8::Object::New(isolate);
+    if (!symbols->GetOwnPropertyNames(context).ToLocal(&names)) {
+        ffi_throw_error(isolate, "SLOPPY_E_FFI_CALL_FAILED: failed to enumerate dispatch symbols.");
+        return;
+    }
+    for (uint32_t index = 0U; index < names->Length(); index += 1U) {
+        v8::Local<v8::Value> key;
+        v8::Local<v8::Value> descriptor_value;
+        std::string symbol_name;
+        if (!names->Get(context, index).ToLocal(&key) ||
+            !ffi_string_value(isolate, key, &symbol_name) ||
+            !symbols->Get(context, key).ToLocal(&descriptor_value) || !descriptor_value->IsObject())
+        {
+            ffi_throw_type_error(isolate, "unsafeFfi.dispatchTable symbol descriptor is invalid.");
+            return;
+        }
+        v8::Local<v8::Object> fn_descriptor = descriptor_value.As<v8::Object>();
+        std::string native_symbol_name = symbol_name;
+        v8::Local<v8::Value> native_symbol_value;
+        if (ffi_object_value(isolate, context, fn_descriptor, "symbol", &native_symbol_value) &&
+            !native_symbol_value->IsUndefined())
+        {
+            if (!ffi_string_value(isolate, native_symbol_value, &native_symbol_name) ||
+                native_symbol_name.empty())
+            {
+                ffi_throw_type_error(isolate, "unsafeFfi.dispatchTable symbol name is invalid.");
+                return;
+            }
+        }
+        v8::Local<v8::Value> resolver_args[1] = {
+            v8::String::NewFromUtf8(isolate, native_symbol_name.c_str(), v8::NewStringType::kNormal,
+                                    static_cast<int>(native_symbol_name.size()))
+                .ToLocalChecked()};
+        v8::Local<v8::Value> pointer_value;
+        if (!resolver->Call(context, v8::Undefined(isolate), 1, resolver_args)
+                 .ToLocal(&pointer_value))
+        {
+            return;
+        }
+        SlV8FfiResource* pointer_resource = ffi_resource_from_value(isolate, pointer_value);
+        if (pointer_resource == nullptr || pointer_resource->native_pointer == nullptr) {
+            ffi_throw_error(isolate, "SLOPPY_E_FFI_SYMBOL_NOT_FOUND: dispatch symbol missing.");
+            return;
+        }
+        std::string return_type_name;
+        std::vector<std::string> parameter_names;
+        SlPlanFfiType return_type = SL_PLAN_FFI_TYPE_UNKNOWN;
+        if (!ffi_object_string(isolate, context, fn_descriptor, "returnType", &return_type_name) ||
+            !ffi_plan_type_from_name(return_type_name, &return_type) ||
+            !ffi_object_string_array(isolate, context, fn_descriptor, "parameters",
+                                     &parameter_names))
+        {
+            ffi_throw_type_error(isolate, "unsafeFfi.dispatchTable symbol signature is invalid.");
+            return;
+        }
+        SlV8FfiResource* resource = ffi_new_resource(backend, FfiResourceKind::NativePointer);
+        if (resource == nullptr) {
+            ffi_throw_error(isolate,
+                            "SLOPPY_E_FFI_CALL_FAILED: failed to allocate dispatch symbol.");
+            return;
+        }
+        resource->dispatch_parameters.reserve(parameter_names.size());
+        resource->dispatch_ffi_parameters.reserve(parameter_names.size());
+        for (const std::string& parameter_name : parameter_names) {
+            SlPlanFfiType parameter = SL_PLAN_FFI_TYPE_UNKNOWN;
+            if (!ffi_plan_type_from_name(parameter_name, &parameter)) {
+                ffi_throw_type_error(isolate, "unsafeFfi.dispatchTable parameter type is invalid.");
+                return;
+            }
+            ffi_type* ffi_parameter = ffi_closure_type_for_plan_type(parameter);
+            if (ffi_parameter == nullptr) {
+                ffi_throw_type_error(isolate,
+                                     "unsafeFfi.dispatchTable parameter type unsupported.");
+                return;
+            }
+            resource->dispatch_parameters.push_back(parameter);
+            resource->dispatch_ffi_parameters.push_back(ffi_parameter);
+        }
+        ffi_type* ffi_return = ffi_closure_type_for_plan_type(return_type);
+        if (ffi_return == nullptr ||
+            ffi_prep_cif(&resource->dispatch_cif, FFI_DEFAULT_ABI,
+                         static_cast<unsigned int>(resource->dispatch_ffi_parameters.size()),
+                         ffi_return,
+                         resource->dispatch_ffi_parameters.empty()
+                             ? nullptr
+                             : resource->dispatch_ffi_parameters.data()) != FFI_OK)
+        {
+            ffi_throw_error(isolate,
+                            "SLOPPY_E_FFI_CALL_FAILED: failed to prepare dispatch symbol.");
+            return;
+        }
+        resource->dispatch_function.return_type = return_type;
+        resource->dispatch_function.parameters = resource->dispatch_parameters.data();
+        resource->dispatch_function.parameter_count = resource->dispatch_parameters.size();
+        resource->dispatch_function.native_cif = &resource->dispatch_cif;
+        resource->dispatch_function.native_parameters = resource->dispatch_ffi_parameters.data();
+        resource->dispatch_function.symbol_ptr = pointer_resource->native_pointer;
+        v8::Local<v8::Function> callable;
+        if (!v8::FunctionTemplate::New(isolate, ffi_call_callback,
+                                       v8::External::New(isolate, &resource->dispatch_function,
+                                                         v8::kExternalPointerTypeTagDefault))
+                 ->GetFunction(context)
+                 .ToLocal(&callable) ||
+            !output->Set(context, key, callable).FromMaybe(false))
+        {
+            ffi_throw_error(isolate, "SLOPPY_E_FFI_CALL_FAILED: failed to bind dispatch symbol.");
+            return;
+        }
+    }
+    args.GetReturnValue().Set(output);
+}
+
+bool ffi_checked_mul_size(size_t left, size_t right, size_t* out)
+{
+    if (out == nullptr || (right != 0U && left > SIZE_MAX / right)) {
+        return false;
+    }
+    *out = left * right;
+    return true;
+}
+
+bool ffi_checked_add_size(size_t left, size_t right, size_t* out)
+{
+    if (out == nullptr || left > SIZE_MAX - right) {
+        return false;
+    }
+    *out = left + right;
+    return true;
+}
+
+bool ffi_checked_align_up_size(size_t value, size_t alignment, size_t* out)
+{
+    if (alignment == 0U || (alignment & (alignment - 1U)) != 0U) {
+        return false;
+    }
+    size_t adjusted = 0U;
+    if (!ffi_checked_add_size(value, alignment - 1U, &adjusted)) {
+        return false;
+    }
+    *out = adjusted & ~(alignment - 1U);
+    return true;
+}
+
 void ffi_struct_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
@@ -1706,27 +2154,78 @@ void ffi_struct_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         v8::Local<v8::Value> type_value;
         std::string name;
         SlPlanFfiType type = SL_PLAN_FFI_TYPE_UNKNOWN;
+        size_t repeat = 1U;
+        std::vector<FfiStructField> nested_fields;
         if (!names->Get(context, index).ToLocal(&key) || !ffi_string_value(isolate, key, &name) ||
-            !fields->Get(context, key).ToLocal(&type_value) ||
-            !ffi_field_type(isolate, type_value, &type))
+            !fields->Get(context, key).ToLocal(&type_value))
         {
             ffi_throw_type_error(isolate, "unsafeFfi.struct fields must use sized FFI types.");
             return;
         }
+        if (!ffi_field_type(isolate, type_value, &type)) {
+            if (!type_value->IsObject()) {
+                ffi_throw_type_error(isolate, "unsafeFfi.struct fields must use sized FFI types.");
+                return;
+            }
+            SlV8FfiResource* nested = ffi_resource_from_value(isolate, type_value);
+            if (nested != nullptr && nested->kind == FfiResourceKind::StructLayout) {
+                type = SL_PLAN_FFI_TYPE_U8;
+                repeat = nested->byte_length;
+                nested_fields = nested->fields;
+            }
+            else {
+                v8::Local<v8::Object> field_descriptor = type_value.As<v8::Object>();
+                std::string kind;
+                v8::Local<v8::Value> element_value;
+                v8::Local<v8::Value> length_value;
+                uint64_t length = 0U;
+                if (!ffi_object_string(isolate, context, field_descriptor, "kind", &kind) ||
+                    kind != "array" ||
+                    !ffi_object_value(isolate, context, field_descriptor, "element",
+                                      &element_value) ||
+                    !ffi_type_from_value(isolate, element_value, &type) ||
+                    !ffi_object_value(isolate, context, field_descriptor, "length",
+                                      &length_value) ||
+                    !ffi_u64_from_value(isolate, length_value, UINT64_MAX, &length) ||
+                    length == 0U || length > SIZE_MAX)
+                {
+                    ffi_throw_type_error(isolate,
+                                         "unsafeFfi.struct fields must use sized FFI types.");
+                    return;
+                }
+                repeat = static_cast<size_t>(length);
+            }
+        }
         size_t alignment = sl_ffi_type_alignment(type);
-        size_t size = sl_ffi_type_size(type);
+        if (!nested_fields.empty()) {
+            SlV8FfiResource* nested = ffi_resource_from_value(isolate, type_value);
+            alignment = nested == nullptr ? 1U : nested->byte_alignment;
+        }
         if (pack > 0U && alignment > pack) {
             alignment = pack;
         }
         if (alignment > max_alignment) {
             max_alignment = alignment;
         }
-        offset = (offset + alignment - 1U) & ~(alignment - 1U);
-        layout->fields.push_back({name, type, offset});
-        offset += size;
+        size_t size = 0U;
+        if (!ffi_checked_mul_size(sl_ffi_type_size(type), repeat, &size) ||
+            !ffi_checked_align_up_size(offset, alignment, &offset))
+        {
+            ffi_throw_error(isolate, "SLOPPY_E_FFI_LAYOUT_OVERFLOW: struct layout overflow.");
+            return;
+        }
+        layout->fields.push_back({name, type, offset, size, alignment, nested_fields});
+        if (!ffi_checked_add_size(offset, size, &offset)) {
+            ffi_throw_error(isolate, "SLOPPY_E_FFI_LAYOUT_OVERFLOW: struct layout overflow.");
+            return;
+        }
     }
-    offset = (offset + max_alignment - 1U) & ~(max_alignment - 1U);
+    if (!ffi_checked_align_up_size(offset, max_alignment, &offset)) {
+        ffi_throw_error(isolate, "SLOPPY_E_FFI_LAYOUT_OVERFLOW: struct layout overflow.");
+        return;
+    }
     layout->byte_length = offset;
+    layout->byte_alignment = max_alignment;
     layout->bytes.resize(offset == 0U ? 1U : offset);
     v8::Local<v8::Object> object;
     if (!ffi_make_resource_object(isolate, context, layout, &object)) {
@@ -1756,6 +2255,8 @@ bool sl_v8_install_ffi_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> co
         !ffi_set_function(isolate, context, ffi, "cstringBuffer", ffi_cstring_buffer_callback) ||
         !ffi_set_function(isolate, context, ffi, "utf16Buffer", ffi_utf16_buffer_callback) ||
         !ffi_set_function(isolate, context, ffi, "struct", ffi_struct_callback) ||
+        !ffi_set_function(isolate, context, ffi, "callback", ffi_callback_callback) ||
+        !ffi_set_function(isolate, context, ffi, "dispatchTable", ffi_dispatch_table_callback) ||
         !sl_status_is_ok(sl_v8_string_from_native_view(backend, sl_str_from_cstr("ffi"), &key)))
     {
         return false;
@@ -1769,7 +2270,9 @@ void sl_v8_ffi_dispose(SlV8Engine* backend)
         return;
     }
     for (void* ptr : backend->ffi_resources) {
-        delete static_cast<SlV8FfiResource*>(ptr);
+        SlV8FfiResource* resource = static_cast<SlV8FfiResource*>(ptr);
+        ffi_release_resource(resource);
+        delete resource;
     }
     backend->ffi_resources.clear();
     if (backend->ffi_registry_initialized) {

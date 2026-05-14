@@ -17,6 +17,7 @@ node tests/contracts/runner/contract-runner.mjs --area release --tier pr
 node tests/contracts/runner/contract-runner.mjs --area static-files --tier pr
 node tests/contracts/runner/contract-runner.mjs --area cache --tier pr
 node tests/contracts/runner/contract-runner.mjs --area webhooks --tier pr
+node tests/contracts/runner/contract-runner.mjs --area ffi --tier pr
 node tests/contracts/runner/contract-runner.mjs --area all --tier pr
 node tests/contracts/runner/contract-runner.mjs --area openapi --tier pr --format markdown
 node tests/contracts/runner/contract-runner.mjs --area webhooks --tier pr --format markdown

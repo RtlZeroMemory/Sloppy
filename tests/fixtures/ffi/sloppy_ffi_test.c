@@ -1,5 +1,7 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
 
 #if defined(_WIN32)
 #define SLOPPY_FFI_EXPORT __declspec(dllexport)
@@ -13,6 +15,34 @@ typedef struct SloppyFfiPoint
     int32_t y;
 } SloppyFfiPoint;
 
+typedef struct SloppyFfiMatrix
+{
+    float values[16];
+} SloppyFfiMatrix;
+
+typedef struct SloppyFfiNested
+{
+    SloppyFfiPoint origin;
+    SloppyFfiPoint size;
+    uint32_t flags;
+} SloppyFfiNested;
+
+typedef struct SloppyFfiTaggedPoint
+{
+    uint8_t tag;
+    SloppyFfiPoint point;
+} SloppyFfiTaggedPoint;
+
+typedef struct SloppyFfiCounter
+{
+    int32_t value;
+} SloppyFfiCounter;
+
+typedef int32_t (*SloppyFfiCallback)(int32_t value, void* user_data);
+typedef int32_t (*SloppyFfiI32Callback)(int32_t value);
+typedef uint32_t (*SloppyFfiU32Callback)(uint32_t value);
+typedef void (*SloppyFfiVoidCallback)(int32_t value);
+
 static SloppyFfiPoint sloppy_ffi_static_point = {19, 23};
 
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_add_i32(int32_t left, int32_t right);
@@ -25,6 +55,30 @@ SLOPPY_FFI_EXPORT void sloppy_ffi_write_u32(uint32_t* value);
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_point_sum(const SloppyFfiPoint* point);
 SLOPPY_FFI_EXPORT void* sloppy_ffi_null_pointer(void);
 SLOPPY_FFI_EXPORT void* sloppy_ffi_static_point_pointer(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_sizeof_point(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_point_x(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_point_y(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_sizeof_matrix(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_matrix_values(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_sizeof_nested(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_nested_origin(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_nested_size(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_nested_flags(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_sizeof_tagged_point(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_tagged_point_tag(void);
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_tagged_point_point(void);
+SLOPPY_FFI_EXPORT SloppyFfiCounter* sloppy_ffi_counter_create(int32_t initial);
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_counter_add(SloppyFfiCounter* counter, int32_t delta);
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_counter_value(SloppyFfiCounter* counter);
+SLOPPY_FFI_EXPORT void sloppy_ffi_counter_destroy(SloppyFfiCounter* counter);
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_call_callback(SloppyFfiCallback callback, void* user_data,
+                                                   int32_t value);
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_call_i32_callback(SloppyFfiI32Callback callback,
+                                                       int32_t value);
+SLOPPY_FFI_EXPORT uint32_t sloppy_ffi_call_u32_callback(SloppyFfiU32Callback callback,
+                                                        uint32_t value);
+SLOPPY_FFI_EXPORT void sloppy_ffi_call_void_callback(SloppyFfiVoidCallback callback, int32_t value);
+SLOPPY_FFI_EXPORT void* sloppy_ffi_resolve_symbol(const char* name);
 
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_add_i32(int32_t left, int32_t right)
 {
@@ -97,4 +151,127 @@ SLOPPY_FFI_EXPORT void* sloppy_ffi_null_pointer(void)
 SLOPPY_FFI_EXPORT void* sloppy_ffi_static_point_pointer(void)
 {
     return &sloppy_ffi_static_point;
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_sizeof_point(void)
+{
+    return sizeof(SloppyFfiPoint);
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_point_x(void)
+{
+    return offsetof(SloppyFfiPoint, x);
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_point_y(void)
+{
+    return offsetof(SloppyFfiPoint, y);
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_sizeof_matrix(void)
+{
+    return sizeof(SloppyFfiMatrix);
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_matrix_values(void)
+{
+    return offsetof(SloppyFfiMatrix, values);
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_sizeof_nested(void)
+{
+    return sizeof(SloppyFfiNested);
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_nested_origin(void)
+{
+    return offsetof(SloppyFfiNested, origin);
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_nested_size(void)
+{
+    return offsetof(SloppyFfiNested, size);
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_nested_flags(void)
+{
+    return offsetof(SloppyFfiNested, flags);
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_sizeof_tagged_point(void)
+{
+    return sizeof(SloppyFfiTaggedPoint);
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_tagged_point_tag(void)
+{
+    return offsetof(SloppyFfiTaggedPoint, tag);
+}
+
+SLOPPY_FFI_EXPORT size_t sloppy_ffi_offsetof_tagged_point_point(void)
+{
+    return offsetof(SloppyFfiTaggedPoint, point);
+}
+
+SLOPPY_FFI_EXPORT SloppyFfiCounter* sloppy_ffi_counter_create(int32_t initial)
+{
+    SloppyFfiCounter* counter = (SloppyFfiCounter*)malloc(sizeof(SloppyFfiCounter));
+    if (counter != NULL) {
+        counter->value = initial;
+    }
+    return counter;
+}
+
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_counter_add(SloppyFfiCounter* counter, int32_t delta)
+{
+    if (counter == NULL) {
+        return 0;
+    }
+    counter->value += delta;
+    return counter->value;
+}
+
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_counter_value(SloppyFfiCounter* counter)
+{
+    return counter == NULL ? 0 : counter->value;
+}
+
+SLOPPY_FFI_EXPORT void sloppy_ffi_counter_destroy(SloppyFfiCounter* counter)
+{
+    free(counter);
+}
+
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_call_callback(SloppyFfiCallback callback, void* user_data,
+                                                   int32_t value)
+{
+    return callback == NULL ? 0 : callback(value, user_data);
+}
+
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_call_i32_callback(SloppyFfiI32Callback callback, int32_t value)
+{
+    return callback == NULL ? 0 : callback(value);
+}
+
+SLOPPY_FFI_EXPORT uint32_t sloppy_ffi_call_u32_callback(SloppyFfiU32Callback callback,
+                                                        uint32_t value)
+{
+    return callback == NULL ? 0U : callback(value);
+}
+
+SLOPPY_FFI_EXPORT void sloppy_ffi_call_void_callback(SloppyFfiVoidCallback callback, int32_t value)
+{
+    if (callback != NULL) {
+        callback(value);
+    }
+}
+
+SLOPPY_FFI_EXPORT void* sloppy_ffi_resolve_symbol(const char* name)
+{
+    if (name == NULL) {
+        return NULL;
+    }
+    if (strcmp(name, "sloppy_ffi_add_i32") == 0) {
+        return (void*)&sloppy_ffi_add_i32;
+    }
+    return NULL;
 }
