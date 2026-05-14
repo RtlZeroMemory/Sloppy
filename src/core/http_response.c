@@ -24,6 +24,7 @@
 #include "sloppy/json_profile.h"
 
 #include <stdbool.h>
+#include <string.h>
 
 static SlBytes sl_http_response_body_from_str(SlStr text)
 {
@@ -464,6 +465,114 @@ static SlStatus sl_http_response_append_content_length(SlByteBuilder* builder, s
     return sl_http_response_append_cstr(builder, "\r\n");
 }
 
+static bool sl_http_response_content_type_is(SlStr actual, const char* expected)
+{
+    size_t length = 0U;
+
+    if (actual.ptr == NULL || expected == NULL) {
+        return false;
+    }
+    length = strlen(expected);
+    return actual.length == length && memcmp(actual.ptr, expected, length) == 0;
+}
+
+static size_t sl_http_response_decimal_length(size_t value)
+{
+    size_t length = 1U;
+
+    while (value >= 10U) {
+        value /= 10U;
+        length += 1U;
+    }
+    return length;
+}
+
+static void sl_http_response_write_decimal(unsigned char** cursor, size_t value)
+{
+    char digits[32];
+    size_t count = 0U;
+
+    do {
+        digits[count] = (char)('0' + (value % 10U));
+        value /= 10U;
+        count += 1U;
+    } while (value != 0U && count < sizeof(digits));
+
+    while (count > 0U) {
+        count -= 1U;
+        **cursor = (unsigned char)digits[count];
+        *cursor += 1;
+    }
+}
+
+static void sl_http_response_copy_literal(unsigned char** cursor, const char* text)
+{
+    size_t length = strlen(text);
+
+    memcpy(*cursor, text, length);
+    *cursor += length;
+}
+
+static bool sl_http_response_try_write_fast_200(const SlHttpResponse* response,
+                                                SlHttpResponseConnectionPolicy connection_policy,
+                                                bool suppress_body, unsigned char* buffer,
+                                                size_t capacity, SlBytes* out_bytes,
+                                                SlStatus* out_status)
+{
+    const char* content_type = NULL;
+    const char* connection =
+        connection_policy == SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE ? "keep-alive" : "close";
+    size_t total = 0U;
+    unsigned char* cursor = buffer;
+
+    if (response == NULL || buffer == NULL || out_bytes == NULL || out_status == NULL) {
+        return false;
+    }
+    if (response->status != 200U || response->header_count != 0U || suppress_body ||
+        response->kind == SL_HTTP_RESPONSE_STREAM)
+    {
+        return false;
+    }
+    if (response->body.ptr == NULL && response->body.length != 0U) {
+        *out_status = sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+        return true;
+    }
+    if (response->kind == SL_HTTP_RESPONSE_TEXT &&
+        sl_http_response_content_type_is(response->content_type, "text/plain; charset=utf-8"))
+    {
+        content_type = "text/plain; charset=utf-8";
+    }
+    else {
+        return false;
+    }
+
+    total = sizeof("HTTP/1.1 200 OK\r\nConnection: ") - 1U + strlen(connection) +
+            sizeof("\r\nContent-Type: ") - 1U + strlen(content_type) +
+            sizeof("\r\nContent-Length: ") - 1U +
+            sl_http_response_decimal_length(response->body.length) + sizeof("\r\n\r\n") - 1U +
+            response->body.length;
+    if (total > capacity) {
+        *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
+        return true;
+    }
+
+    sl_http_response_copy_literal(&cursor, "HTTP/1.1 200 OK\r\nConnection: ");
+    sl_http_response_copy_literal(&cursor, connection);
+    sl_http_response_copy_literal(&cursor, "\r\nContent-Type: ");
+    sl_http_response_copy_literal(&cursor, content_type);
+    sl_http_response_copy_literal(&cursor, "\r\nContent-Length: ");
+    sl_http_response_write_decimal(&cursor, response->body.length);
+    sl_http_response_copy_literal(&cursor, "\r\n\r\n");
+    if (response->body.length != 0U) {
+        memcpy(cursor, response->body.ptr, response->body.length);
+        cursor += response->body.length;
+    }
+
+    *out_bytes = sl_bytes_from_parts(buffer, (size_t)(cursor - buffer));
+    *out_status = sl_status_ok();
+    return true;
+}
+
 static SlStatus sl_http_response_append_stream_body(SlByteBuilder* builder,
                                                     const SlHttpResponse* response)
 {
@@ -582,6 +691,32 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
     body = no_body_status ? sl_bytes_empty() : response->body;
     wire_body = suppress_body || is_stream_response ? sl_bytes_empty() : body;
     has_content_type = response->content_type.length != 0U && !no_body_status;
+
+    header_start =
+        profile_enabled
+            ? sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_HTTP_RESPONSE_HEADER_WRITE)
+            : 0U;
+    if (!is_stream_response && !no_body_status &&
+        sl_http_response_try_write_fast_200(response, connection_policy, suppress_body, buffer,
+                                           capacity, out_bytes, &status))
+    {
+        if (profile_enabled) {
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_HTTP_RESPONSE_HEADER_WRITE,
+                                      header_start);
+        }
+        if (!sl_status_is_ok(status) && sl_status_code(status) == SL_STATUS_CAPACITY_EXCEEDED &&
+            profile_enabled)
+        {
+            uint64_t failure_start =
+                sl_json_profile_phase_begin(SL_JSON_PROFILE_PHASE_CAPACITY_FAILURE);
+            sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_CAPACITY_FAILURE, failure_start);
+        }
+        return status;
+    }
+    if (profile_enabled && header_start != 0U) {
+        sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_HTTP_RESPONSE_HEADER_WRITE, header_start);
+        header_start = 0U;
+    }
 
     status = sl_byte_builder_init_fixed(&builder, buffer, capacity);
     if (!sl_status_is_ok(status)) {

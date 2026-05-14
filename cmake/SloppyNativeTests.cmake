@@ -243,6 +243,11 @@
             COMMAND $<TARGET_FILE:engine_v8_async_scheduler>)
         set_tests_properties(
             conformance.v8.native_async_scheduler PROPERTIES LABELS "conformance;v8;async")
+        add_executable(engine_v8_fast_api_probe tests/unit/engine/test_v8_fast_api_probe.cc)
+        target_link_libraries(engine_v8_fast_api_probe PRIVATE Sloppy::V8)
+        target_compile_features(engine_v8_fast_api_probe PRIVATE cxx_std_20)
+        sloppy_apply_warnings(engine_v8_fast_api_probe)
+        sloppy_apply_sanitizers(engine_v8_fast_api_probe)
         sloppy_add_c_unit_test(
             execution_handwritten_artifact execution.handwritten_artifact
             tests/integration/execution/test_handwritten_artifact_execution.c)

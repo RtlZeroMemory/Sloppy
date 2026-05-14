@@ -1300,6 +1300,39 @@ export default app;
 }
 
 #[test]
+fn typed_framework_inferred_string_route_binding_uses_direct_route_lookup() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+const app = Sloppy.create();
+app.get("/users/:slug", (slug: string) => Results.ok({ slug }));
+export default app;
+"#;
+    let app =
+        extract(std::path::Path::new("app.ts"), source).expect("typed route handler should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("return (ctx) => __sloppy_typed_handler(ctx.route[\"slug\"])"));
+}
+
+#[test]
+fn typed_framework_constrained_route_binding_keeps_generic_coercion() {
+    let source = r#"import { Sloppy, Results, Route } from "sloppy";
+const app = Sloppy.create();
+app.get("/users/:id:int", (id: Route<number>) => Results.ok({ id }));
+export default app;
+"#;
+    let app =
+        extract(std::path::Path::new("app.ts"), source).expect("typed route handler should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("__sloppy_framework_arg(ctx, undefined, {\"capability\":null,\"injectionKind\":null,\"kind\":\"route\",\"name\":\"id\""));
+    assert!(!emitted_js
+        .source
+        .contains("__sloppy_typed_handler(ctx.route[\"id\"])"));
+}
+
+#[test]
 fn typed_framework_header_bindings_use_header_facade() {
     let source = r#"import { Sloppy, Results, Header } from "sloppy";
 const app = Sloppy.create();

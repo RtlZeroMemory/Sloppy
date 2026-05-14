@@ -1265,8 +1265,8 @@ static bool sl_request_validation_bindings_are_trivially_satisfied(
             break;
         case SL_PLAN_REQUEST_BINDING_CONTEXT:
         case SL_PLAN_REQUEST_BINDING_INJECTION:
-        case SL_PLAN_REQUEST_BINDING_UNKNOWN:
             break;
+        case SL_PLAN_REQUEST_BINDING_UNKNOWN:
         default:
             return false;
         }

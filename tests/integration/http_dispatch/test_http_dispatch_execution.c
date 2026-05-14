@@ -6,7 +6,7 @@
 #include <string.h>
 
 #define TEST_ARENA_SIZE 32768U
-#define TEST_FILE_SIZE 524288U
+#define TEST_FILE_SIZE 1048576U
 
 static int expect_true(bool condition)
 {
@@ -105,7 +105,7 @@ static SlEngineOptions v8_options(void)
 
 static int load_plan(SlArena* plan_arena, SlPlan* out_plan, SlDiag* out_diag)
 {
-    unsigned char json_storage[TEST_FILE_SIZE];
+    static unsigned char json_storage[TEST_FILE_SIZE];
     SlBytes json = {0};
     SlPlanParseOptions options = {0};
 
@@ -123,7 +123,7 @@ static int load_plan(SlArena* plan_arena, SlPlan* out_plan, SlDiag* out_diag)
 
 static int eval_app(SlEngine* engine, SlDiag* out_diag)
 {
-    unsigned char js_storage[TEST_FILE_SIZE];
+    static unsigned char js_storage[TEST_FILE_SIZE];
     SlBytes js = {0};
     SlStr source = {0};
 
