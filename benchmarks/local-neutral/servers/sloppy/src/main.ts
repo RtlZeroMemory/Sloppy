@@ -1,4 +1,4 @@
-import { Sloppy, Results, Body, Route, Auth } from "sloppy";
+import { Sloppy, Results, Route, Auth, RequestContext } from "sloppy";
 
 const app = Sloppy.create();
 
@@ -24,9 +24,10 @@ app.use(Auth.apiKey({
 app.get("/health", () => Results.text("ok"));
 app.get("/json-small", () => Results.json({ ok: true, message: "hello", count: 3 }));
 app.get("/users/{id}", (id: Route<string>) => Results.json({ id, name: "Ada" }));
-app.post("/users", (body: Body<any>) => {
+app.post("/users", (ctx: RequestContext) => {
+  const body = ctx.request.json();
   if (!validUser(body)) {
-    return Results.status(400, { error: "invalid user" });
+    return Results.status(400, { error: String(body?.name ?? "invalid user") });
   }
   return Results.json({ id: 1, name: body.name, email: body.email });
 });

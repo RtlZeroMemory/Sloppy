@@ -27,6 +27,7 @@ Invoke-Node @("--check", "benchmarks/local-neutral/scripts/render-markdown.mjs")
 Invoke-Node @("--check", "benchmarks/local-neutral/scripts/load-k6.mjs")
 Invoke-Node @("--check", "benchmarks/local-neutral/scripts/load-wrk.mjs")
 Invoke-Node @("--check", "benchmarks/local-neutral/scripts/load-vegeta.mjs")
+Invoke-Node @("--check", "benchmarks/local-neutral/scripts/validate-workload.mjs")
 
 $runnerSource = Get-Content -LiteralPath (Join-Path $repo "benchmarks/local-neutral/scripts/run.mjs") -Raw
 foreach ($required in @("results.partial.json", "summary.partial.json", "report.partial.md", "progress.json", "runLabel")) {
@@ -40,6 +41,53 @@ foreach ($adapter in @("load-k6.mjs", "load-wrk.mjs", "load-vegeta.mjs")) {
     if (-not $adapterSource.Contains("runtime") -or -not $adapterSource.Contains("runLabel")) {
         throw "local-neutral adapter $adapter must include runtime/runLabel in temporary artifact names"
     }
+}
+
+$validationProbe = @'
+import http from "node:http";
+import { validateWorkload } from "./benchmarks/local-neutral/scripts/validate-workload.mjs";
+const server = http.createServer(async (req, res) => {
+  if (req.method === "POST" && req.url === "/users") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const input = JSON.parse(body);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ id: 1, name: input.name }));
+    return;
+  }
+  res.writeHead(404, { "content-type": "application/json" });
+  res.end(JSON.stringify({ error: "not found" }));
+});
+await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+try {
+  const { port } = server.address();
+  const result = await validateWorkload({
+    baseUrl: `http://127.0.0.1:${port}`,
+    workload: {
+      name: "probe",
+      method: "POST",
+      path: "/users",
+      headers: { "content-type": "application/json" },
+      body: "{\"name\":\"Ada\"}",
+      expectedStatus: 200,
+      expectedJson: { id: 1, name: "Ada" }
+    }
+  });
+  if (result.status !== "PASS" || result.checked.length !== 1) throw new Error("unexpected validation result");
+  console.log("PASS");
+} finally {
+  server.close();
+}
+'@
+Push-Location $repo
+try {
+    $validationOutput = $validationProbe | node --input-type=module -
+    if ($LASTEXITCODE -ne 0 -or ($validationOutput | Select-Object -Last 1) -ne "PASS") {
+        throw "workload validation probe failed: $validationOutput"
+    }
+}
+finally {
+    Pop-Location
 }
 
 $resourceProbe = @'

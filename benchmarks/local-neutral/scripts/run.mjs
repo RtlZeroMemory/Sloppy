@@ -12,6 +12,7 @@ import { runVegeta } from "./load-vegeta.mjs";
 import { renderMarkdown } from "./render-markdown.mjs";
 import { comparisons, summarize } from "./summarize.mjs";
 import { startResourceSampler } from "./resources.mjs";
+import { validateWorkload } from "./validate-workload.mjs";
 
 const benchRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const repoRoot = path.resolve(benchRoot, "..", "..");
@@ -411,6 +412,10 @@ async function main() {
           const command = serverCommand(runtime, tools, options, port, workDir);
           server = await startServer({ ...command, logDir, host: options.host, port });
           stopHandlers.push(() => stopServer(server.child));
+          const contractValidation = await validateWorkload({
+            workload,
+            baseUrl: `http://${options.host}:${port}`,
+          });
           await runAdapter(tool, {
             toolPath: tools[tool].path,
             runtime,
@@ -453,6 +458,7 @@ async function main() {
               workload: workload.name,
               connections,
               durationSeconds: seconds(matrix.duration),
+              contractValidation,
               server: { pid: server.pid, command: server.command, startupMs: server.startupMs, stdoutPath: server.stdoutPath, stderrPath: server.stderrPath },
             });
             currentProgress = { runtime, workload: workload.name, connections, repeat, status: row.status };

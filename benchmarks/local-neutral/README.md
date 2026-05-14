@@ -134,6 +134,12 @@ Reports include RPS, p50/p95/p99 latency when the selected tool provides those
 values, errors, non-2xx counts when available, server CPU and memory samples,
 and explicit skipped rows.
 
+Before each measured runtime/workload/concurrency row, the harness sends the
+declared workload request once and validates the configured status/body/JSON
+expectation. Mixed workloads validate every constituent request. Contract
+failures stop that row before warmup or load so 4xx/5xx responses cannot be
+counted as successful throughput.
+
 Temporary load-generator files under `tmp/` include the runtime, workload,
 connection count, and repeat in their names so interrupted runs can be inspected
 without Node/Bun/Deno rows overwriting earlier Sloppy files.
