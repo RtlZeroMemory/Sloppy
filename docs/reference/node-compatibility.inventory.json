@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "builtins": [
+    {
+      "specifier": "node:fs",
+      "status": "partial",
+      "backing": "sloppy/node/fs",
+      "substrate": "sloppy/fs",
+      "implementationPath": "async callback facade plus sealed-asset sync subset",
+      "coverage": ["package-fs-promises", "fs-sync-package-asset-runtime"],
+      "limits": ["watch APIs are not implemented", "sync APIs are sealed-asset policy only"]
+    },
+    {
+      "specifier": "node:fs/promises",
+      "status": "partial",
+      "backing": "sloppy/node/fs/promises",
+      "substrate": "sloppy/fs",
+      "implementationPath": "async promise facade over File and Directory primitives",
+      "coverage": ["package-fs-promises"],
+      "limits": ["lstat, mkdtemp, and realpath are explicit unsupported members"]
+    },
+    {
+      "specifier": "node:http",
+      "status": "partial",
+      "backing": "sloppy/node/http",
+      "substrate": "sloppy/net HttpClient",
+      "implementationPath": "ClientRequest and IncomingMessage facade over HttpClient request",
+      "coverage": ["package-node-builtins-more"],
+      "limits": ["client path only", "response body is buffered", "server APIs are not implemented", "redirects are disabled by default to match Node request semantics"]
+    },
+    {
+      "specifier": "node:https",
+      "status": "partial",
+      "backing": "sloppy/node/https",
+      "substrate": "sloppy/net HttpClient with outbound TLS",
+      "implementationPath": "HTTPS ClientRequest facade over the same HttpClient-backed client path",
+      "coverage": ["registry/docs parity"],
+      "limits": ["client path only", "depends on Sloppy outbound TLS bridge availability", "server APIs are not implemented"]
+    },
+    {
+      "specifier": "node:child_process",
+      "status": "unsupported",
+      "backing": null,
+      "substrate": "sloppy/os Process.run and Process.start",
+      "implementationPath": "future spawn/execFile facade over ProcessHandle without sync APIs",
+      "coverage": ["unsupported-builtin-child_process"],
+      "limits": ["facade not built yet", "sync process APIs need a real sync substrate"]
+    },
+    {
+      "specifier": "node:net",
+      "status": "unsupported",
+      "backing": null,
+      "substrate": "sloppy/net TcpClient, TcpListener, TcpConnection, LocalEndpoint",
+      "implementationPath": "future Socket and Server facade over TCP/local IPC primitives",
+      "coverage": ["unsupported builtin diagnostics"],
+      "limits": ["facade not built yet", "Node stream/backpressure semantics still incomplete"]
+    },
+    {
+      "specifier": "node:crypto",
+      "status": "partial",
+      "backing": "sloppy/node/crypto",
+      "substrate": "sloppy/crypto",
+      "implementationPath": "Random, Hash, Hmac, ConstantTime facade",
+      "coverage": ["package-crypto-basic", "crypto-runtime"],
+      "limits": ["hash and HMAC digests are async", "no ciphers, WebCrypto, PBKDF2, or scrypt"]
+    },
+    {
+      "specifier": "node:stream",
+      "status": "partial",
+      "backing": "sloppy/node/stream",
+      "substrate": "pure JavaScript EventEmitter facade",
+      "implementationPath": "small Readable/Writable/PassThrough/pipeline subset",
+      "coverage": ["package-stream-basic", "stream-runtime"],
+      "limits": ["no full backpressure contract", "no Transform or Duplex parity"]
+    }
+  ],
+  "packageGauntlet": [
+    { "package": "zod", "category": "utilities", "state": "target", "reason": "pure JavaScript package shape target" },
+    { "package": "date-fns", "category": "utilities", "state": "target", "reason": "pure JavaScript package shape target" },
+    { "package": "nanoid", "category": "utilities", "state": "target", "reason": "Buffer/crypto package smoke target" },
+    { "package": "uuid", "category": "utilities", "state": "target", "reason": "crypto and package exports smoke target" },
+    { "package": "debug", "category": "utilities", "state": "target", "reason": "process/env/util package smoke target" },
+    { "package": "dotenv", "category": "cli-config", "state": "target", "reason": "fs package smoke target" },
+    { "package": "semver", "category": "cli-config", "state": "target", "reason": "pure CommonJS package smoke target" },
+    { "package": "commander", "category": "cli-config", "state": "target", "reason": "process/stdout limitation probe" },
+    { "package": "fs-extra", "category": "fs", "state": "target", "reason": "fs facade breadth probe" },
+    { "package": "readable-stream", "category": "stream-buffer", "state": "target", "reason": "stream contract gap probe" },
+    { "package": "axios", "category": "http-client", "state": "target", "reason": "http/https client facade probe" },
+    { "package": "follow-redirects", "category": "http-client", "state": "target", "reason": "http/https redirect semantics probe" }
+  ]
+}

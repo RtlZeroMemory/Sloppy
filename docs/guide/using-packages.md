@@ -27,9 +27,10 @@ The current Node compatibility layer covers practical subsets of common
 pure-JavaScript package assumptions: explicit `node:process`, `node:buffer`,
 `node:fs/promises`, `node:assert`, `node:stream`, `node:stream/promises`,
 `node:crypto`, `node:module`, `node:string_decoder`, `node:zlib`,
-`node:diagnostics_channel`, path/events, and related utility shims. `node:http`,
-`node:https`, and `node:tty` are importable stubs with clear unsupported or
-non-TTY behavior. See the
+`node:diagnostics_channel`, path/events, and related utility shims.
+`node:http` and `node:https` expose a partial client facade over Sloppy's
+`HttpClient`; server APIs are still unsupported. `node:tty` is importable and
+reports clear non-TTY behavior. See the
 [Node compatibility reference](../reference/node-compatibility.md) for exact
 members and known differences from Node.
 
@@ -159,9 +160,9 @@ summary for package review.
 - No registry install or package manager integration.
 - No native Node addons or N-API. Obvious native addon shapes are rejected, but
   detection is not a complete native-package classifier.
-- No full Node builtin parity. The stream and crypto shims are partial, and
-  full HTTP, sockets, TLS, DNS, workers, VM, child process, inspector, REPL,
-  and Node internals remain unsupported.
+- No full Node builtin parity. The stream, crypto, and HTTP client shims are
+  partial, and full HTTP server parity, sockets, TLS, DNS, workers, VM, child
+  process, inspector, REPL, and Node internals remain unsupported.
 - No process-wide Node runtime identity. Bundled package runs install only
   `global`, `process`, and `Buffer` while the generated Sloppy program entry is
   executing.

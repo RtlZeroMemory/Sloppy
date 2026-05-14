@@ -1189,6 +1189,10 @@ impl ModuleGraph {
                 "time" => self.uses_time_runtime = true,
                 "cache" => self.uses_cache_runtime = true,
                 "net" => self.uses_net_runtime = true,
+                "httpclient" => {
+                    self.uses_http_client_runtime = true;
+                    self.uses_net_runtime = true;
+                }
                 "redis" => {
                     self.uses_redis_runtime = true;
                     self.uses_net_runtime = true;

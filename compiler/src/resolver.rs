@@ -270,8 +270,8 @@ pub(crate) fn resolve_node_builtin(specifier: &str) -> Option<NodeBuiltinResolut
         "node:process" => ("partial", Some("sloppy/node/process"), Some("os")),
         "node:crypto" => ("partial", Some("sloppy/node/crypto"), Some("crypto")),
         "node:diagnostics_channel" => ("partial", Some("sloppy/node/diagnostics_channel"), None),
-        "node:http" => ("stubbed", Some("sloppy/node/http"), Some("net")),
-        "node:https" => ("stubbed", Some("sloppy/node/https"), Some("net")),
+        "node:http" => ("partial", Some("sloppy/node/http"), Some("httpclient")),
+        "node:https" => ("partial", Some("sloppy/node/https"), Some("httpclient")),
         "node:module" => ("partial", Some("sloppy/node/module"), None),
         "node:perf_hooks" => ("partial", Some("sloppy/node/perf_hooks"), Some("time")),
         "node:assert" => ("partial", Some("sloppy/node/assert"), None),
@@ -1036,8 +1036,8 @@ mod tests {
             ("node:zlib", "partial", "sloppy/node/zlib"),
             ("node:perf_hooks", "partial", "sloppy/node/perf_hooks"),
             ("node:tty", "stubbed", "sloppy/node/tty"),
-            ("node:http", "stubbed", "sloppy/node/http"),
-            ("node:https", "stubbed", "sloppy/node/https"),
+            ("node:http", "partial", "sloppy/node/http"),
+            ("node:https", "partial", "sloppy/node/https"),
         ];
         for (specifier, expected_status, expected_backing) in entries {
             let resolution = resolve_node_builtin(specifier)

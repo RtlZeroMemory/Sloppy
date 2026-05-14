@@ -309,9 +309,15 @@ export default async function checkMoreBuiltins() {
   channel.publish({ kind: "diagnostic-ok" });
   let httpStub = false;
   try {
-    http.get("http://example.test");
-  } catch (error) {
-    httpStub = /SLOPPY_E_NODE_HTTP_UNSUPPORTED/.test(error.message);
+    const req = http.request("http://example.test/fixture", { method: "POST", headers: { "x-fixture": "ok" } });
+    req.setHeader("x-extra", "1");
+    httpStub = req.getHeader("x-extra") === "1" &&
+      typeof req.write === "function" &&
+      typeof req.end === "function" &&
+      typeof http.globalAgent.destroy === "function";
+    req.destroy();
+  } catch {
+    httpStub = false;
   }
   consoleModule.log("node-builtins-more");
   const perfOk = performance.now() >= 0 && performance.timeOrigin > 0;

@@ -1,11 +1,23 @@
-function unsupported(name) {
-    return () => {
-        throw new Error(`SLOPPY_E_NODE_HTTPS_UNSUPPORTED: node:https.${name} is not implemented by Sloppy's Node compatibility shim.`);
-    };
+import { Agent, ClientRequest, IncomingMessage } from "./http.js";
+
+const globalAgent = new Agent({ keepAlive: false, protocol: "https:" });
+
+function request(input, options = undefined, callback = undefined) {
+    if (typeof options === "function") {
+        callback = options;
+        options = undefined;
+    }
+    const mergedOptions = typeof options === "object" && options !== null
+        ? { ...options, protocol: "https:" }
+        : { protocol: "https:" };
+    return new ClientRequest("https:", input, mergedOptions, callback);
 }
 
-const request = unsupported("request");
-const get = unsupported("get");
+function get(input, options = undefined, callback = undefined) {
+    const req = request(input, options, callback);
+    req.end();
+    return req;
+}
 
-export { get, request };
-export default { get, request };
+export { Agent, ClientRequest, IncomingMessage, get, globalAgent, request };
+export default { Agent, ClientRequest, IncomingMessage, get, globalAgent, request };

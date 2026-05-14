@@ -44,13 +44,23 @@ packages unrestricted access to Node internals.
 | `node:perf_hooks`, `perf_hooks` | `partial` | `sloppy/node/perf_hooks` | Minimal `performance.now()` and `timeOrigin`. |
 | `node:diagnostics_channel`, `diagnostics_channel` | `partial` | `sloppy/node/diagnostics_channel` | In-process channel publish/subscribe for package instrumentation hooks. |
 | `node:tty`, `tty` | `stubbed` | `sloppy/node/tty` | `isatty()` and stream classes report non-TTY. |
-| `node:http`, `http` | `stubbed` | `sloppy/node/http` | Importable client/server entry points throw `SLOPPY_E_NODE_HTTP_UNSUPPORTED`. |
-| `node:https`, `https` | `stubbed` | `sloppy/node/https` | Importable client/server entry points throw `SLOPPY_E_NODE_HTTPS_UNSUPPORTED`. |
+| `node:http`, `http` | `partial` | `sloppy/node/http` | Client `request()`/`get()` facade over `sloppy/net` `HttpClient`; `ClientRequest`, `IncomingMessage`, `Agent`, `globalAgent`, headers, buffered response bodies, `setHeader`/`getHeader`/`removeHeader`, `write`/`end`, `destroy`, and callback response handling. Redirects are disabled by default for Node request semantics. Server APIs are not implemented. |
+| `node:https`, `https` | `partial` | `sloppy/node/https` | HTTPS client facade over the same `HttpClient` path. TLS availability follows Sloppy's outbound TLS bridge and policy. Server APIs are not implemented. |
 
 Unsupported families include `node:http2`, `node:net`, `node:tls`,
 `node:dns`, `node:worker_threads`,
 `node:child_process`, `node:vm`, `node:inspector`, `node:test`,
-`node:repl`, and Node internal modules.
+`node:repl`, and Node internal modules. Some unsupported families already have
+Sloppy substrate: `node:child_process` can eventually map to `sloppy/os`
+`Process.run`/`Process.start`, and `node:net` can eventually map to
+`sloppy/net` TCP and local IPC primitives. They remain unsupported because the
+Node-shaped facade and tests do not exist yet, not because Sloppy lacks every
+underlying runtime primitive.
+
+The machine-readable compatibility inventory is
+[`node-compatibility.inventory.json`](node-compatibility.inventory.json). It
+records current shim status, known Sloppy substrate, tested fixture groups,
+and recommended implementation paths for the adoption-critical builtins.
 
 ## Runtime Globals
 
@@ -129,6 +139,7 @@ The runtime matrix proves selected package behaviors execute after packaging.
 | `crypto` | 1 | `createHash("sha256")`, `randomBytes`, `timingSafeEqual`. |
 | `stream` | 1 | `Readable.from` and `PassThrough` only; backpressure and Transform are out of scope. |
 | `zlib` | 1 | Async callback `gzip` and `gunzip` round-trip. |
+| `http-client` | 1 | `node:http` request object shape, headers, agent, and destroy-before-network behavior; live client transport is covered by Sloppy `HttpClient` tests rather than package smoke. |
 | `fs` | 1 | Sync `fs.readFileSync`/`existsSync`/`statSync` against the sealed bundled asset map (currently `stubbed` pending compile-time asset baking). |
 | `negative` | 7 | Native addon rejection, unsupported `node:` builtin, computed `require` without `moduleInclude`, missing package asset, `createRequire`/`require.resolve` on unknown package, sync `fs` outside sealed policy. |
 
