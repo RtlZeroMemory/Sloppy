@@ -1,0 +1,674 @@
+{
+  "requests": [
+    {
+      "name": "static-text",
+      "request": {
+        "method": "GET",
+        "path": "/text"
+      },
+      "generic": {
+        "status": 200,
+        "body": "hello from static text",
+        "contentType": "text/plain; charset=utf-8",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "content-length": "22"
+        },
+        "route": {
+          "routePattern": "/text",
+          "routeName": "Static.Text",
+          "method": "GET",
+          "handlerId": 1
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "hello from static text",
+        "contentType": "text/plain; charset=utf-8",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "content-length": "22"
+        },
+        "route": {
+          "routePattern": "/text",
+          "routeName": "Static.Text",
+          "method": "GET",
+          "handlerId": 1
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "static-json",
+      "request": {
+        "method": "GET",
+        "path": "/json"
+      },
+      "generic": {
+        "status": 200,
+        "body": "{\"ok\":true,\"source\":\"static\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "29"
+        },
+        "route": {
+          "routePattern": "/json",
+          "routeName": "Static.Json",
+          "method": "GET",
+          "handlerId": 2
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "{\"ok\":true,\"source\":\"static\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "29"
+        },
+        "route": {
+          "routePattern": "/json",
+          "routeName": "Static.Json",
+          "method": "GET",
+          "handlerId": 2
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "static-empty",
+      "request": {
+        "method": "DELETE",
+        "path": "/empty"
+      },
+      "generic": {
+        "status": 204,
+        "body": "",
+        "contentType": "",
+        "headers": {
+          "content-length": "0"
+        },
+        "route": {
+          "routePattern": "/empty",
+          "routeName": "Static.Empty",
+          "method": "DELETE",
+          "handlerId": 3
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 204,
+        "body": "",
+        "contentType": "",
+        "headers": {
+          "content-length": "0"
+        },
+        "route": {
+          "routePattern": "/empty",
+          "routeName": "Static.Empty",
+          "method": "DELETE",
+          "handlerId": 3
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "problem-details",
+      "request": {
+        "method": "GET",
+        "path": "/problem"
+      },
+      "generic": {
+        "status": 400,
+        "body": "{\"type\":\"https://sloppy.dev/problems/bad-request\",\"title\":\"Bad Request\",\"status\":400}",
+        "contentType": "application/problem+json; charset=utf-8",
+        "headers": {
+          "content-type": "application/problem+json; charset=utf-8",
+          "content-length": "85"
+        },
+        "route": {
+          "routePattern": "/problem",
+          "routeName": "Static.Problem",
+          "method": "GET",
+          "handlerId": 4
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 400,
+        "body": "{\"type\":\"https://sloppy.dev/problems/bad-request\",\"title\":\"Bad Request\",\"status\":400}",
+        "contentType": "application/problem+json; charset=utf-8",
+        "headers": {
+          "content-type": "application/problem+json; charset=utf-8",
+          "content-length": "85"
+        },
+        "route": {
+          "routePattern": "/problem",
+          "routeName": "Static.Problem",
+          "method": "GET",
+          "handlerId": 4
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "dynamic-json",
+      "request": {
+        "method": "GET",
+        "path": "/dynamic"
+      },
+      "generic": {
+        "status": 200,
+        "body": "{\"kind\":\"dynamic\",\"count\":2}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "28"
+        },
+        "route": {
+          "routePattern": "/dynamic",
+          "routeName": "Dynamic.Json",
+          "method": "GET",
+          "handlerId": 5
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "{\"kind\":\"dynamic\",\"count\":2}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "28"
+        },
+        "route": {
+          "routePattern": "/dynamic",
+          "routeName": "Dynamic.Json",
+          "method": "GET",
+          "handlerId": 5
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "route-param-url-decoding",
+      "request": {
+        "method": "GET",
+        "path": "/users/Ada%20Lovelace"
+      },
+      "generic": {
+        "status": 200,
+        "body": "{\"id\":\"Ada Lovelace\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "21"
+        },
+        "route": {
+          "routePattern": "/users/{id}",
+          "routeName": "Users.Get",
+          "method": "GET",
+          "handlerId": 6,
+          "params": {
+            "id": "Ada Lovelace"
+          }
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "{\"id\":\"Ada Lovelace\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "21"
+        },
+        "route": {
+          "routePattern": "/users/{id}",
+          "routeName": "Users.Get",
+          "method": "GET",
+          "handlerId": 6,
+          "params": {
+            "id": "Ada Lovelace"
+          }
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "query-params",
+      "request": {
+        "method": "GET",
+        "path": "/search?q=sloppy%20runtime&tag=blue&tag=green"
+      },
+      "generic": {
+        "status": 200,
+        "body": "{\"q\":\"sloppy runtime\",\"tag\":[\"blue\",\"green\"]}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "45"
+        },
+        "route": {
+          "routePattern": "/search",
+          "routeName": "Search.Query",
+          "method": "GET",
+          "handlerId": 7
+        },
+        "query": {
+          "q": "sloppy runtime",
+          "tag": [
+            "blue",
+            "green"
+          ]
+        }
+      },
+      "optimized": {
+        "status": 200,
+        "body": "{\"q\":\"sloppy runtime\",\"tag\":[\"blue\",\"green\"]}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "45"
+        },
+        "route": {
+          "routePattern": "/search",
+          "routeName": "Search.Query",
+          "method": "GET",
+          "handlerId": 7
+        },
+        "query": {
+          "q": "sloppy runtime",
+          "tag": [
+            "blue",
+            "green"
+          ]
+        }
+      }
+    },
+    {
+      "name": "header-binding",
+      "request": {
+        "method": "GET",
+        "path": "/headers",
+        "headers": {
+          "x-trace": "abc123"
+        }
+      },
+      "generic": {
+        "status": 200,
+        "body": "{\"trace\":\"abc123\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "18"
+        },
+        "route": {
+          "routePattern": "/headers",
+          "routeName": "Headers.Get",
+          "method": "GET",
+          "handlerId": 8
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "{\"trace\":\"abc123\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "18"
+        },
+        "route": {
+          "routePattern": "/headers",
+          "routeName": "Headers.Get",
+          "method": "GET",
+          "handlerId": 8
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "post-json-body",
+      "request": {
+        "method": "POST",
+        "path": "/echo",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": "{\"name\":\"Ada\"}"
+      },
+      "generic": {
+        "status": 201,
+        "body": "{\"name\":\"Ada\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "14"
+        },
+        "route": {
+          "routePattern": "/echo",
+          "routeName": "Echo.Post",
+          "method": "POST",
+          "handlerId": 9
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 201,
+        "body": "{\"name\":\"Ada\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "14"
+        },
+        "route": {
+          "routePattern": "/echo",
+          "routeName": "Echo.Post",
+          "method": "POST",
+          "handlerId": 9
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "route-group",
+      "request": {
+        "method": "GET",
+        "path": "/group/items"
+      },
+      "generic": {
+        "status": 200,
+        "body": "group item",
+        "contentType": "text/plain; charset=utf-8",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "content-length": "10"
+        },
+        "route": {
+          "routePattern": "/group/items",
+          "routeName": "Group.Items",
+          "method": "GET",
+          "handlerId": 10
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "group item",
+        "contentType": "text/plain; charset=utf-8",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "content-length": "10"
+        },
+        "route": {
+          "routePattern": "/group/items",
+          "routeName": "Group.Items",
+          "method": "GET",
+          "handlerId": 10
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "middleware",
+      "request": {
+        "method": "GET",
+        "path": "/middleware"
+      },
+      "generic": {
+        "status": 200,
+        "body": "{\"middleware\":[\"app:before\",\"group:before\",\"group:after\",\"app:after\"]}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "70",
+          "x-middleware": "app,group"
+        },
+        "route": {
+          "routePattern": "/middleware",
+          "routeName": "Middleware.Get",
+          "method": "GET",
+          "handlerId": 11
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "{\"middleware\":[\"app:before\",\"group:before\",\"group:after\",\"app:after\"]}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "70",
+          "x-middleware": "app,group"
+        },
+        "route": {
+          "routePattern": "/middleware",
+          "routeName": "Middleware.Get",
+          "method": "GET",
+          "handlerId": 11
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "static-beats-param",
+      "request": {
+        "method": "GET",
+        "path": "/precedence/static"
+      },
+      "generic": {
+        "status": 200,
+        "body": "static wins",
+        "contentType": "text/plain; charset=utf-8",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "content-length": "11"
+        },
+        "route": {
+          "routePattern": "/precedence/static",
+          "routeName": "Precedence.Static",
+          "method": "GET",
+          "handlerId": 12
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "static wins",
+        "contentType": "text/plain; charset=utf-8",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "content-length": "11"
+        },
+        "route": {
+          "routePattern": "/precedence/static",
+          "routeName": "Precedence.Static",
+          "method": "GET",
+          "handlerId": 12
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "param-fallback",
+      "request": {
+        "method": "GET",
+        "path": "/precedence/custom"
+      },
+      "generic": {
+        "status": 200,
+        "body": "{\"id\":\"custom\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "15"
+        },
+        "route": {
+          "routePattern": "/precedence/{id}",
+          "routeName": "Precedence.Param",
+          "method": "GET",
+          "handlerId": 13,
+          "params": {
+            "id": "custom"
+          }
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "{\"id\":\"custom\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "15"
+        },
+        "route": {
+          "routePattern": "/precedence/{id}",
+          "routeName": "Precedence.Param",
+          "method": "GET",
+          "handlerId": 13,
+          "params": {
+            "id": "custom"
+          }
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "multi-get",
+      "request": {
+        "method": "GET",
+        "path": "/multi"
+      },
+      "generic": {
+        "status": 200,
+        "body": "{\"method\":\"GET\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "16"
+        },
+        "route": {
+          "routePattern": "/multi",
+          "routeName": "Multi.Get",
+          "method": "GET",
+          "handlerId": 14
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "{\"method\":\"GET\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "16"
+        },
+        "route": {
+          "routePattern": "/multi",
+          "routeName": "Multi.Get",
+          "method": "GET",
+          "handlerId": 14
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "multi-post",
+      "request": {
+        "method": "POST",
+        "path": "/multi"
+      },
+      "generic": {
+        "status": 200,
+        "body": "{\"method\":\"POST\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "17"
+        },
+        "route": {
+          "routePattern": "/multi",
+          "routeName": "Multi.Post",
+          "method": "POST",
+          "handlerId": 15
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "{\"method\":\"POST\"}",
+        "contentType": "application/json; charset=utf-8",
+        "headers": {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": "17"
+        },
+        "route": {
+          "routePattern": "/multi",
+          "routeName": "Multi.Post",
+          "method": "POST",
+          "handlerId": 15
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "not-found",
+      "request": {
+        "method": "GET",
+        "path": "/missing"
+      },
+      "generic": {
+        "status": 404,
+        "body": "{\"type\":\"about:blank\",\"title\":\"Not Found\",\"status\":404}",
+        "contentType": "application/problem+json; charset=utf-8",
+        "headers": {
+          "content-type": "application/problem+json; charset=utf-8",
+          "content-length": "55"
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 404,
+        "body": "{\"type\":\"about:blank\",\"title\":\"Not Found\",\"status\":404}",
+        "contentType": "application/problem+json; charset=utf-8",
+        "headers": {
+          "content-type": "application/problem+json; charset=utf-8",
+          "content-length": "55"
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "method-not-allowed",
+      "request": {
+        "method": "PUT",
+        "path": "/multi"
+      },
+      "generic": {
+        "status": 405,
+        "body": "{\"type\":\"about:blank\",\"title\":\"Method Not Allowed\",\"status\":405}",
+        "contentType": "application/problem+json; charset=utf-8",
+        "headers": {
+          "content-type": "application/problem+json; charset=utf-8",
+          "content-length": "64"
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 405,
+        "body": "{\"type\":\"about:blank\",\"title\":\"Method Not Allowed\",\"status\":405}",
+        "contentType": "application/problem+json; charset=utf-8",
+        "headers": {
+          "content-type": "application/problem+json; charset=utf-8",
+          "content-length": "64"
+        },
+        "query": {}
+      }
+    }
+  ]
+}

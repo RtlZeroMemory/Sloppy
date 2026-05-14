@@ -10,10 +10,13 @@ stress_seconds="0"
 out=""
 failed=0
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+v8_preset_prepared=0
+v8_preset_available=0
+v8_resolved_root=""
 
 usage() {
   cat <<'USAGE'
-Usage: tools/unix/test-engine.sh [--tier pr|extended|torture] [--area all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [--seed N] [--fuzz-iterations N] [--stress-seconds N] [--out PATH]
+Usage: tools/unix/test-engine.sh [--tier pr|extended|torture] [--area all|static|native|compiler|js|fuzz|http2|package|contracts|contracts-http|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [--seed N] [--fuzz-iterations N] [--stress-seconds N] [--out PATH]
 
 Examples:
   tools/unix/test-engine.sh --tier pr
@@ -70,7 +73,7 @@ case "$tier" in
 esac
 
 case "$area" in
-  all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics) ;;
+  all|static|native|compiler|js|fuzz|http2|package|contracts|contracts-http|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics) ;;
   *) echo "test-engine: invalid --area '$area'" >&2; exit 2 ;;
 esac
 
@@ -151,8 +154,10 @@ run_lane() {
   duration="$(duration_ms_since "$start")"
   if [[ "$code" -eq 0 ]]; then
     add_lane "$id" "pass" "$duration" "$command_text" ""
+    return 0
   else
     add_lane "$id" "fail" "$duration" "$command_text" "exit code $code"
+    return 1
   fi
 }
 
@@ -181,8 +186,8 @@ alpha_proof_ctest_lane() {
   local preset
   preset="$(host_preset)"
   local command_text="ctest --preset $preset --output-on-failure --no-tests=error $*"
-  if [[ -z "${SLOPPY_V8_ROOT:-}" ]]; then
-    add_lane "$id" "unavailable" "0" "$command_text" "alpha proof runner is a Sloppy Program Mode tool and requires a V8-enabled build"
+  if ! ensure_v8_preset; then
+    add_lane "$id" "unavailable" "0" "$command_text" "V8 SDK preset could not be prepared; see v8.configure/v8.build"
     return
   fi
   if [[ ! -d "$repo_root/build/$preset" ]]; then
@@ -225,6 +230,46 @@ alpha_proof_ctest_lane() {
   else
     add_lane "$id" "fail" "$duration" "$command_text" "exit code $code"
   fi
+}
+
+resolve_v8_root_for_test_engine() {
+  if [[ -n "$v8_resolved_root" ]]; then
+    printf '%s\n' "$v8_resolved_root"
+    return 0
+  fi
+  local resolved
+  if ! resolved="$("$repo_root/tools/unix/resolve-v8-sdk.sh" --mode REQUIRED --quiet 2>/dev/null)"; then
+    return 1
+  fi
+  v8_resolved_root="$resolved"
+  printf '%s\n' "$v8_resolved_root"
+}
+
+ensure_v8_preset() {
+  if [[ "$v8_preset_prepared" -eq 1 ]]; then
+    [[ "$v8_preset_available" -eq 1 ]]
+    return
+  fi
+
+  v8_preset_prepared=1
+  local resolved
+  if ! resolved="$(resolve_v8_root_for_test_engine)"; then
+    add_lane "v8.configure" "unavailable" "0" "tools/unix/dev.sh configure --enable-v8" "no compatible Sloppy V8 SDK resolved; run tools/unix/dev.sh build-v8 or set SLOPPY_V8_ROOT"
+    v8_preset_available=0
+    return 1
+  fi
+
+  if ! run_lane "v8.configure" bash tools/unix/dev.sh configure --enable-v8 --v8-root "$resolved"; then
+    v8_preset_available=0
+    return 1
+  fi
+  if ! run_lane "v8.build" bash tools/unix/dev.sh build --enable-v8 --v8-root "$resolved"; then
+    v8_preset_available=0
+    return 1
+  fi
+
+  v8_preset_available=1
+  return 0
 }
 
 tier_iterations() {
@@ -388,6 +433,7 @@ run_native() {
 }
 
 run_compiler() {
+  run_lane "compiler.contract" cargo test --manifest-path compiler/Cargo.toml --test compiler_contract_validation
   run_lane "compiler.cargo_tests" cargo test --manifest-path compiler/Cargo.toml
   ctest_lane "compiler.ctest_fixtures" "$(host_preset)" -R 'compiler|source_input'
 }
@@ -419,6 +465,14 @@ run_package() {
   run_lane "package.outside_checkout" bash tools/unix/dev.sh test-package --package-path "$package_path"
 }
 
+run_contracts() {
+  run_lane "contracts.all" node tests/contracts/runner/contract-runner.mjs --area all --tier "$tier"
+}
+
+run_contracts_http() {
+  run_lane "contracts.http" node tests/contracts/runner/contract-runner.mjs --area http --tier "$tier"
+}
+
 run_sanitizer() {
   mkdir -p "$repo_root/artifacts/test-engine/sanitizers"
   run_lane "sanitizer.linux.configure" bash tools/unix/dev.sh configure --preset linux-sanitizers
@@ -434,13 +488,11 @@ run_stress() {
 }
 
 run_v8() {
-  if [[ -z "${SLOPPY_V8_ROOT:-}" ]]; then
-    add_lane "v8.gated" "unavailable" "0" "tools/unix/dev.sh configure --enable-v8" "SLOPPY_V8_ROOT is not set"
+  if ! ensure_v8_preset; then
+    add_lane "v8.test" "unavailable" "0" "tools/unix/dev.sh test --enable-v8" "V8 SDK preset could not be prepared; see v8.configure/v8.build"
     return
   fi
-  run_lane "v8.configure" bash tools/unix/dev.sh configure --enable-v8 --v8-root "$SLOPPY_V8_ROOT"
-  run_lane "v8.build" bash tools/unix/dev.sh build --enable-v8 --v8-root "$SLOPPY_V8_ROOT"
-  run_lane "v8.test" bash tools/unix/dev.sh test --enable-v8 --v8-root "$SLOPPY_V8_ROOT"
+  run_lane "v8.test" bash tools/unix/dev.sh test --enable-v8 --v8-root "$v8_resolved_root"
 }
 
 run_provider() {
@@ -466,6 +518,8 @@ should_run fuzz && run_fuzz
 should_run http2 && run_http2
 should_run stress && run_stress
 if [[ "$area" == "package" || ( "$area" == "all" && "$tier" != "pr" ) ]]; then run_package; fi
+should_run contracts && run_contracts
+if [[ "$area" == "contracts-http" ]]; then run_contracts_http; fi
 if [[ "$area" == "sanitizer" || ( "$area" == "all" && "$tier" != "pr" ) ]]; then run_sanitizer; fi
 if [[ "$area" == "v8" || ( "$area" == "all" && "$tier" == "torture" ) ]]; then run_v8; fi
 if [[ "$area" == "provider" || ( "$area" == "all" && "$tier" != "pr" ) ]]; then run_provider; fi

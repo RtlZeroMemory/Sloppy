@@ -1,0 +1,133 @@
+{
+  "exitCode": 0,
+  "stderr": "",
+  "stdout": {
+    "checks": [
+      {
+        "id": "bootstrap.assets",
+        "message": "bootstrap runtime asset found",
+        "status": "ok"
+      },
+      {
+        "id": "engine.v8",
+        "message": "V8 bridge disabled in this build; V8 runtime tests not run",
+        "status": "warn"
+      },
+      {
+        "id": "providers.live",
+        "message": "live provider checks are not configured by default and no live DB was contacted",
+        "status": "warn"
+      },
+      {
+        "id": "package.runtime",
+        "message": "package release status requires package smoke",
+        "status": "warn"
+      },
+      {
+        "id": "app.plan.parse",
+        "message": "app plan parsed by native Plan v1 parser",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.routes",
+        "message": "route metadata present",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.providers",
+        "message": "provider metadata present",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.capabilities",
+        "message": "capability metadata present",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.config",
+        "message": "configuration requirements are Plan-visible",
+        "status": "ok"
+      },
+      {
+        "id": "config.Sloppy:Providers:sqlite:main:database",
+        "message": "Config Sloppy:Providers:sqlite:main:database is present from inline required by main.js:13 (redaction: none)",
+        "status": "ok"
+      },
+      {
+        "id": "sqlite.provider",
+        "message": "SQLite is embedded; SQLite providers do not require PostgreSQL, SQL Server, libpq, or ODBC",
+        "status": "ok"
+      },
+      {
+        "id": "app.plan.completeness",
+        "message": "Plan completeness is complete",
+        "status": "ok"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Projects.List JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Projects.Create JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Projects.Get JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Apps.List JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Apps.Create JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Apps.Get JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Builds.Create JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Builds.List JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Deployments.Create JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Diagnostics.Recent JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "optimization.native-json-candidate",
+        "message": "route has response metadata for future native JSON analysis",
+        "status": "ok"
+      },
+      {
+        "id": "optimization.provider-route-candidate",
+        "message": "route has provider/effect metadata for future route analysis",
+        "status": "ok"
+      },
+      {
+        "id": "dependency.graph",
+        "message": "Dependency graph emitted with 0 package(s), 7 module(s), and 0 Node compatibility binding(s).",
+        "status": "info"
+      }
+    ]
+  }
+}

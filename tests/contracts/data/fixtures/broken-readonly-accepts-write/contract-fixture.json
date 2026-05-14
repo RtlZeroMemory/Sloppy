@@ -1,0 +1,6 @@
+{
+  "mode": "behavior",
+  "scenario": "readonly-accepts-write",
+  "expected": "fail",
+  "expectedInvariants": ["data.readonly.rejects-write"]
+}

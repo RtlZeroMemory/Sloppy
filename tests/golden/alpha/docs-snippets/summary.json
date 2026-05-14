@@ -5,7 +5,7 @@
   },
   "documents": [
     {
-      "checked": 3,
+      "checked": 8,
       "executed": 0,
       "path": "README.md",
       "proofLane": "alpha.docs.snippets",
@@ -25,7 +25,7 @@
       ]
     },
     {
-      "checked": 4,
+      "checked": 5,
       "executed": 0,
       "path": "docs/install.md",
       "proofLane": "alpha.docs.snippets",
@@ -59,7 +59,7 @@
       "skippedReasons": []
     },
     {
-      "checked": 4,
+      "checked": 5,
       "executed": 0,
       "path": "docs/guide/static-assets.md",
       "proofLane": "alpha.docs.snippets",

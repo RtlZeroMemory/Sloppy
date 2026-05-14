@@ -1,0 +1,5 @@
+{
+  "expected": "pass",
+  "plan": "../../../../fixtures/cli/framework-feature-matrix.plan.json",
+  "openapi": "../../../../golden/cli/framework-feature-matrix-openapi.json"
+}

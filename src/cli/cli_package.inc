@@ -168,6 +168,58 @@ static int sl_package_create_parent_directory(const char* path)
     return 0;
 }
 
+static bool sl_package_path_has_directory(SlCliSpan path)
+{
+    size_t index = 0U;
+
+    if (path.ptr == NULL || path.length == 0U) {
+        return false;
+    }
+    for (index = 0U; index < path.length; index += 1U) {
+        if (path.ptr[index] == '/' || path.ptr[index] == '\\') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int sl_package_create_sqlite_database_dirs(const char* package_dir, const SlRunApp* app)
+{
+    if (package_dir == NULL || app == NULL || app->plan.data_provider_count == 0U) {
+        return 0;
+    }
+
+    for (size_t index = 0U; index < app->plan.data_provider_count; index += 1U) {
+        const SlPlanDataProvider* provider = &app->plan.data_providers[index];
+        SlCliSpan database = sl_run_str_span(provider->database);
+        char database_path[SL_RUN_PATH_MAX_BYTES];
+
+        if (!sl_str_equal(provider->provider, sl_str_from_cstr("sqlite")) ||
+            sl_cli_span_empty(database) || sl_cli_span_equal_cstr(database, ":memory:") ||
+            sl_run_path_span_is_absolute(database))
+        {
+            continue;
+        }
+        if (!sl_run_relative_artifact_path_is_safe(database)) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy package: unsafe relative SQLite database path in Plan\n");
+            return 1;
+        }
+        if (!sl_package_path_has_directory(database)) {
+            continue;
+        }
+        if (!sl_run_join_path(database_path, sizeof(database_path), package_dir, database)) {
+            sl_cli_write_cstr(stderr, "sloppy package: SQLite database path is too long\n");
+            return 1;
+        }
+        if (sl_package_create_parent_directory(database_path) != 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static const SlSloppyFfiLibraryConfig*
 sl_package_find_ffi_library_config(const SlSloppyRunConfig* config, SlStr name)
 {
@@ -905,6 +957,10 @@ static int sl_package_copy_artifacts(const char* out_dir, const char* package_di
         return 1;
     }
     if (sl_package_copy_migrations(package_dir, config_dir, project_config) != 0) {
+        sl_package_cleanup_partial(package_dir);
+        return 1;
+    }
+    if (sl_package_create_sqlite_database_dirs(package_dir, app) != 0) {
         sl_package_cleanup_partial(package_dir);
         return 1;
     }

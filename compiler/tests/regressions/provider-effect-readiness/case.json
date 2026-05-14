@@ -1,0 +1,10 @@
+{
+  "name": "provider-effect-readiness",
+  "input": "input.ts",
+  "invariant": "routes with provider effects must dispatch through v8-handler",
+  "expected": {
+    "routes": 1,
+    "providerEffectRoutes": 1,
+    "nativeNoJsEndpoints": 0
+  }
+}

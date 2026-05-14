@@ -1,0 +1,10 @@
+{
+  "name": "@slopware/sloppy-win32-x64",
+  "version": "1.2.3-alpha.4",
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ]
+}

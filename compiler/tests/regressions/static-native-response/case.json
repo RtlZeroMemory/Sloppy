@@ -1,0 +1,10 @@
+{
+  "name": "static-native-response",
+  "input": "input.ts",
+  "invariant": "native static response specialization is only for effect-free deterministic handlers",
+  "expected": {
+    "routes": 2,
+    "providerEffectRoutes": 0,
+    "nativeNoJsEndpoints": 2
+  }
+}

@@ -211,31 +211,16 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
         endif()
     endforeach()
     if(public_template STREQUAL "package-api")
-        # --omit=dev keeps the smoke offline-safe before the first @slopware
-        # alpha is published: only the local file:./fixtures dependency is
-        # required to build and run the template.
-        if(SLOPPY_TEST_NODE AND EXISTS "${SLOPPY_TEST_NODE}" AND DEFINED SLOPPY_TEST_NPM_CLI AND EXISTS "${SLOPPY_TEST_NPM_CLI}")
-            execute_process(
-                COMMAND "${SLOPPY_TEST_NODE}" "${SLOPPY_TEST_NPM_CLI}" install --ignore-scripts --no-audit --omit=dev
-                WORKING_DIRECTORY "${public_project_dir}"
-                TIMEOUT 120
-                RESULT_VARIABLE public_npm_result
-                OUTPUT_VARIABLE public_npm_stdout
-                ERROR_VARIABLE public_npm_stderr)
-        elseif(SLOPPY_TEST_NPM)
-            execute_process(
-                COMMAND "${SLOPPY_TEST_NPM}" install --ignore-scripts --no-audit --omit=dev
-                WORKING_DIRECTORY "${public_project_dir}"
-                TIMEOUT 120
-                RESULT_VARIABLE public_npm_result
-                OUTPUT_VARIABLE public_npm_stdout
-                ERROR_VARIABLE public_npm_stderr)
-        else()
-            message(FATAL_ERROR "package-api template test requires node and npm to install the local file dependency")
+        # Keep this smoke offline-safe before the current @slopware alpha is
+        # published. The template only needs its local fixture package at build
+        # time; the @slopware/sloppy dev dependency is for editor declarations.
+        set(public_validator_src "${public_project_dir}/fixtures/validator-lite")
+        set(public_validator_dest "${public_project_dir}/node_modules/validator-lite")
+        if(NOT EXISTS "${public_validator_src}/package.json")
+            message(FATAL_ERROR "package-api template fixture package is missing: ${public_validator_src}")
         endif()
-        if(NOT public_npm_result EQUAL 0)
-            message(FATAL_ERROR "package-api npm install failed\nstdout:\n${public_npm_stdout}\nstderr:\n${public_npm_stderr}")
-        endif()
+        file(MAKE_DIRECTORY "${public_project_dir}/node_modules")
+        file(COPY "${public_validator_src}/" DESTINATION "${public_validator_dest}")
     endif()
     execute_process(
         COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_SLOPPYC=${SLOPPYC_EXECUTABLE}" "${SLOPPY_CLI}" build
@@ -364,8 +349,7 @@ foreach(public_template IN ITEMS api minimal-api program cli package-api node-co
         if(NOT api_package_manifest MATCHES "\"migrations\"")
             message(FATAL_ERROR "api template package manifest did not include migrations metadata\n${api_package_manifest}")
         endif()
-        file(MAKE_DIRECTORY "${public_project_dir}/.sloppy/package/data")
-        file(COPY_FILE "${public_project_dir}/data/app.db" "${public_project_dir}/.sloppy/package/data/app.db")
+        assert_sloppy_command_success("api template package db migrate" "${public_project_dir}" "applied" db migrate .sloppy/package --provider main)
         assert_sloppy_command_success("api template package db status" "${public_project_dir}" "applied" db status .sloppy/package --provider main)
         assert_sloppy_command_success("api template package db status with token" "${public_project_dir}" "applied" db status .sloppy/package --provider data.main)
         assert_sloppy_command_success("api template package db status absolute target from outside project" "${work_dir}" "applied" db status "${public_project_dir}/.sloppy/package" --provider main)

@@ -7,7 +7,7 @@ alpha releases.
 
 Current emitted/compiled version markers:
 
-- runtime CLI version string: `0.1.0-alpha.1`
+- runtime CLI version string: `0.1.0-alpha.3`
 - compiler version: `sloppyc-0.8.0`
 - plan runtime minimum version: `0.1.0`
 - plan stdlib version: `0.1.0`

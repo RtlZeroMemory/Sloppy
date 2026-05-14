@@ -1,0 +1,16 @@
+{
+  "name": "@slopware/sloppy-linux-x64",
+  "version": "1.2.3-alpha.4",
+  "license": "Apache-2.0",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/",
+    "README.md",
+    "package.json"
+  ]
+}

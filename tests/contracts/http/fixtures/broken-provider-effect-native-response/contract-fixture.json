@@ -1,0 +1,22 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "native-response.provider-effects-no-native-response"
+  ],
+  "baseFixture": "valid-http-dispatch",
+  "planReplacements": [
+    {
+      "path": [
+        "routes",
+        15,
+        "nativeResponse"
+      ],
+      "value": {
+        "kind": "json",
+        "status": 200,
+        "contentType": "application/json; charset=utf-8",
+        "body": "{\"id\":\"1\"}"
+      }
+    }
+  ]
+}

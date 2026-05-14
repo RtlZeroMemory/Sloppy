@@ -2,26 +2,32 @@ param(
     [ValidateSet("pr", "extended", "torture")]
     [string]$Tier = "pr",
 
-    [ValidateSet("all", "static", "native", "compiler", "js", "fuzz", "http2", "package", "sanitizer", "stress", "v8", "provider", "meta", "golden", "integration", "examples", "templates", "alpha-flow", "diagnostics")]
+    [ValidateSet("all", "static", "native", "compiler", "js", "fuzz", "http2", "package", "contracts", "contracts-http", "sanitizer", "stress", "v8", "provider", "meta", "golden", "integration", "examples", "templates", "alpha-flow", "diagnostics")]
     [string]$Area = "all",
 
     [int]$Seed = 12345,
     [int]$FuzzIterations = 0,
     [int]$StressSeconds = 0,
+    [string]$V8Root = "",
     [string]$Out = "",
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "v8-sdk.ps1")
+
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $Tier = $Tier.ToLowerInvariant()
 $Area = $Area.ToLowerInvariant()
 $StartedAt = (Get-Date).ToUniversalTime()
 $FailedLaneCount = 0
+$LastLaneStatus = ""
+$V8PresetPrepared = $false
+$V8PresetAvailable = $false
 
 function Write-TestEngineHelp {
-    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-Out path]"
+    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|contracts|contracts-http|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-V8Root path] [-Out path]"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  tools/windows/test-engine.ps1 -Tier pr"
@@ -108,6 +114,7 @@ function Add-Lane {
     if ($Status -eq "fail") {
         $script:FailedLaneCount += 1
     }
+    $script:LastLaneStatus = $Status
     Write-Host "$Id`t$($Status.ToUpperInvariant())`t$Notes"
 }
 
@@ -207,6 +214,46 @@ function Invoke-PowerShellLane {
     Invoke-ExternalLane $Id $powerShell.Source $invokeArgs
 }
 
+function Ensure-V8Preset {
+    if ($script:V8PresetPrepared) {
+        return $script:V8PresetAvailable
+    }
+
+    $script:V8PresetPrepared = $true
+    $devScript = Join-Path $Root "tools/windows/dev.ps1"
+    $resolvedV8Root = Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root
+    if ([string]::IsNullOrWhiteSpace($resolvedV8Root)) {
+        $configureArgs = @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8")
+        if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
+            $configureArgs += @("-V8Root", $V8Root)
+        }
+        $commandText = Join-CommandText $devScript $configureArgs
+        $note = if ([string]::IsNullOrWhiteSpace($V8Root)) {
+            "no compatible Sloppy V8 SDK resolved"
+        } else {
+            "explicit V8 SDK root does not exist or is incompatible: $V8Root"
+        }
+        Add-Lane "v8.configure" "unavailable" 0 $commandText $note
+        $script:V8PresetAvailable = $false
+        return $false
+    }
+
+    Invoke-PowerShellLane "v8.configure" $devScript @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8", "-V8Root", $resolvedV8Root)
+    if ($script:LastLaneStatus -ne "pass") {
+        $script:V8PresetAvailable = $false
+        return $false
+    }
+
+    Invoke-PowerShellLane "v8.build" $devScript @("build", "-Preset", "windows-relwithdebinfo")
+    if ($script:LastLaneStatus -ne "pass") {
+        $script:V8PresetAvailable = $false
+        return $false
+    }
+
+    $script:V8PresetAvailable = $true
+    return $true
+}
+
 function Invoke-CtestLane {
     param(
         [string]$Id,
@@ -232,6 +279,10 @@ function Invoke-AlphaProofCtestLane {
     $preset = "windows-relwithdebinfo"
     $buildDir = Join-Path (Join-Path $Root "build") $preset
     $commandText = Join-CommandText "ctest" (@("--preset", $preset, "--output-on-failure", "--no-tests=error") + $Arguments)
+    if (-not (Ensure-V8Preset)) {
+        Add-Lane $Id "unavailable" 0 $commandText "V8 SDK preset could not be prepared; see v8.configure/v8.build"
+        return
+    }
     if (-not (Test-Path -LiteralPath $buildDir -PathType Container)) {
         Add-Lane $Id "unavailable" 0 $commandText "build preset directory does not exist: $buildDir"
         return
@@ -470,6 +521,7 @@ function Invoke-NativeArea {
 }
 
 function Invoke-CompilerArea {
+    Invoke-ExternalLane "compiler.contract" "cargo" @("test", "--manifest-path", (Join-Path $Root "compiler/Cargo.toml"), "--test", "compiler_contract_validation") -UnavailableNote "cargo is not available"
     Invoke-ExternalLane "compiler.cargo_tests" "cargo" @("test", "--manifest-path", (Join-Path $Root "compiler/Cargo.toml")) -UnavailableNote "cargo is not available"
     Invoke-CtestLane "compiler.ctest_fixtures" "windows-dev" @("-R", "compiler|source_input")
 }
@@ -503,6 +555,14 @@ function Invoke-PackageArea {
     Invoke-PowerShellLane "package.outside_checkout" (Join-Path $Root "tools/windows/dev.ps1") @("test-package", "-PackagePath", $packages[0].FullName)
 }
 
+function Invoke-ContractsArea {
+    Invoke-ExternalLane "contracts.all" "node" @((Join-Path $Root "tests/contracts/runner/contract-runner.mjs"), "--area", "all", "--tier", $Tier) -UnavailableNote "node is not available"
+}
+
+function Invoke-ContractsHttpArea {
+    Invoke-ExternalLane "contracts.http" "node" @((Join-Path $Root "tests/contracts/runner/contract-runner.mjs"), "--area", "http", "--tier", $Tier) -UnavailableNote "node is not available"
+}
+
 function Invoke-SanitizerArea {
     $artifactRoot = Join-Path $Root "artifacts/test-engine/sanitizers"
     New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
@@ -521,12 +581,10 @@ function Invoke-StressArea {
 }
 
 function Invoke-V8Area {
-    if ([string]::IsNullOrWhiteSpace($env:SLOPPY_V8_ROOT)) {
-        Add-Lane "v8.gated" "unavailable" 0 "tools/windows/dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8" "SLOPPY_V8_ROOT is not set"
+    if (-not (Ensure-V8Preset)) {
+        Add-Lane "v8.test" "unavailable" 0 "tools/windows/dev.ps1 test -Preset windows-relwithdebinfo" "V8 SDK preset could not be prepared; see v8.configure/v8.build"
         return
     }
-    Invoke-PowerShellLane "v8.configure" (Join-Path $Root "tools/windows/dev.ps1") @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8", "-V8Root", $env:SLOPPY_V8_ROOT)
-    Invoke-PowerShellLane "v8.build" (Join-Path $Root "tools/windows/dev.ps1") @("build", "-Preset", "windows-relwithdebinfo")
     Invoke-PowerShellLane "v8.test" (Join-Path $Root "tools/windows/dev.ps1") @("test", "-Preset", "windows-relwithdebinfo")
 }
 
@@ -615,6 +673,12 @@ if (Should-Run "stress") {
 }
 if ($Area -eq "package" -or ($Area -eq "all" -and $Tier -ne "pr")) {
     Invoke-PackageArea
+}
+if (Should-Run "contracts") {
+    Invoke-ContractsArea
+}
+if ($Area -eq "contracts-http") {
+    Invoke-ContractsHttpArea
 }
 if ($Area -eq "sanitizer" -or ($Area -eq "all" -and $Tier -ne "pr")) {
     Invoke-SanitizerArea

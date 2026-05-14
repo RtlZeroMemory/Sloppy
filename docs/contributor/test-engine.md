@@ -22,6 +22,7 @@ Windows:
 .\tools\windows\test-engine.ps1 -Tier pr -Out artifacts\test-engine\pr.json
 .\tools\windows\test-engine.ps1 -Tier extended -Area fuzz -Seed 12345
 .\tools\windows\test-engine.ps1 -Tier torture -Area stress -StressSeconds 300
+.\tools\windows\test-engine.ps1 -Area contracts -Tier pr
 ```
 
 Unix:
@@ -30,6 +31,7 @@ Unix:
 tools/unix/test-engine.sh --tier pr --out artifacts/test-engine/pr.json
 tools/unix/test-engine.sh --tier extended --area fuzz --seed 12345
 tools/unix/test-engine.sh --tier torture --area stress --stress-seconds 300
+tools/unix/test-engine.sh --area contracts --tier pr
 ```
 
 The supported tiers are:
@@ -41,9 +43,16 @@ The supported tiers are:
 | `torture` | Manual pressure evidence. Uses the largest default fuzz/property and stress budgets and also asks for the V8 area when `all` is selected. |
 
 The supported areas are `all`, `static`, `native`, `compiler`, `js`, `fuzz`,
-`http2`, `package`, `sanitizer`, `stress`, `v8`, `provider`, `meta`,
+`http2`, `package`, `contracts`, `sanitizer`, `stress`, `v8`, `provider`, `meta`,
 `golden`, `integration`, `examples`, `templates`, `alpha-flow`, and
 `diagnostics`.
+
+The `contracts` area runs semantic artifact validators under
+`tests/contracts/`. PR-tier currently validates semantic contract fixtures for
+package/runtime artifacts, release/npm package metadata, web routes, auth,
+cache, data, jobs, OpenAPI, realtime/WebSocket, static files, and webhooks.
+Contract reports use lower-case `pass`, `fail`, `skip`, and `unavailable`
+statuses and keep warnings separate from failures.
 
 The alpha proof areas wrap focused CTest selections:
 

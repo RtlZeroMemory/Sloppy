@@ -1,0 +1,1 @@
+# Platform missing binary fixture

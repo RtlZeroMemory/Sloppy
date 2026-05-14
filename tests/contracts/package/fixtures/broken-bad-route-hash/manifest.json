@@ -1,0 +1,12 @@
+{
+  "schema": "sloppy.app-package.v1",
+  "kind": "web",
+  "dependencyMode": "bundled",
+  "entry": "artifacts/app.plan.json",
+  "artifacts": {
+    "plan": "artifacts/app.plan.json",
+    "bundle": "artifacts/app.js",
+    "routeDispatch": "artifacts/routes.slrt"
+  },
+  "createdBy": "sloppy package"
+}

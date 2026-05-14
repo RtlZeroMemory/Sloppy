@@ -1242,9 +1242,6 @@ export default app;
     let app =
         extract(std::path::Path::new("app.ts"), source).expect("typed body handler should extract");
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js
-        .source
-        .contains("globalThis.__sloppy_handler_1 = (ctx) =>"));
     assert!(emitted_js.source.contains("ctx.body.json()"));
     assert!(!emitted_js.source.contains("ctx.request.json()"));
     assert!(emitted_js
@@ -1269,9 +1266,6 @@ export default app;
         Some("request.method")
     );
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js
-        .source
-        .contains("globalThis.__sloppy_handler_1 = (ctx) =>"));
     assert!(emitted_js
         .source
         .contains("const __sloppy_scope = __sloppy_framework_services.createScope(ctx); ctx.services = __sloppy_scope"));

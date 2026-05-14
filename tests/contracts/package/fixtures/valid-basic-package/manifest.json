@@ -1,0 +1,36 @@
+{
+  "schema": "sloppy.app-package.v1",
+  "kind": "web",
+  "dependencyMode": "bundled",
+  "entry": "artifacts/app.plan.json",
+  "artifacts": {
+    "plan": "artifacts/app.plan.json",
+    "bundle": "artifacts/app.js",
+    "sourceMap": "artifacts/app.js.map",
+    "routeDispatch": "artifacts/routes.slrt"
+  },
+  "native": {
+    "libraries": [
+      {
+        "id": "demo",
+        "platform": "windows-x64",
+        "path": "artifacts/native/demo.dll",
+        "sha256": "sha256:df61d659dc21fbf97465a73da7e237281b42dcdff4aa42596f9cba5c159290a6"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "provider": "main",
+      "providerKind": "sqlite",
+      "path": "migrations/*.sql",
+      "files": [
+        {
+          "path": "migrations/001_init.sql",
+          "sha256": "sha256:e2275a5caacf7902b6d86ec3f16a5964b13430a381f754f05c10167b964a184b"
+        }
+      ]
+    }
+  ],
+  "createdBy": "sloppy package"
+}

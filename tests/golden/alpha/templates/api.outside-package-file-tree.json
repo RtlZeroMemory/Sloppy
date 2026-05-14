@@ -4,6 +4,7 @@
   "artifacts/app.plan.json",
   "artifacts/assets/public/hello.txt",
   "artifacts/deps.graph.json",
+  "artifacts/routes.slrt",
   "manifest.json",
   "migrations/0001_create_users.sql"
 ]

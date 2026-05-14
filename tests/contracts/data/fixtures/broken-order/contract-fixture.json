@@ -1,0 +1,4 @@
+{
+  "expected": "fail",
+  "expectedInvariants": ["data.migration.order-deterministic"]
+}

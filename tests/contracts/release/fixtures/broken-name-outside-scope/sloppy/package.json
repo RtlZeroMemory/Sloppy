@@ -1,0 +1,8 @@
+{
+  "name": "sloppy",
+  "version": "1.2.3-alpha.4",
+  "bin": {
+    "sloppy": "bin/sloppy.js"
+  },
+  "types": "types/index.d.ts"
+}

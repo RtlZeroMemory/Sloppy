@@ -1,0 +1,10 @@
+{
+  "name": "package-dependency-resolution",
+  "input": "src/main.ts",
+  "invariant": "package dependency graph entries must stay emitted and resolvable",
+  "expected": {
+    "routes": 1,
+    "providerEffectRoutes": 0,
+    "nativeNoJsEndpoints": 0
+  }
+}

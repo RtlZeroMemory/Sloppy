@@ -1,0 +1,4 @@
+{
+  "expected": "fail",
+  "expectedInvariants": ["manifest.migrations.file.exists"]
+}

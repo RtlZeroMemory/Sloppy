@@ -2,6 +2,7 @@
 
 pub mod bundle_emit;
 pub mod capability_inference;
+pub mod compiler_contract;
 pub mod diagnostic;
 pub mod effects;
 pub mod fixtures;

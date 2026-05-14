@@ -2,6 +2,7 @@
   "artifacts": {
     "bundle": "artifacts/app.js",
     "plan": "artifacts/app.plan.json",
+    "routeDispatch": "artifacts/routes.slrt",
     "sourceMap": "artifacts/app.js.map"
   },
   "createdBy": "sloppy package",

@@ -1,0 +1,6 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "npm.bin.exists"
+  ]
+}

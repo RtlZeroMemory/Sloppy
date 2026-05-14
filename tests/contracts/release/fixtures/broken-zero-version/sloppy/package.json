@@ -1,0 +1,9 @@
+{
+  "name": "@slopware/sloppy",
+  "version": "0.0.0",
+  "bin": {
+    "sloppy": "bin/sloppy.js"
+  },
+  "types": "types/index.d.ts",
+  "optionalDependencies": {}
+}

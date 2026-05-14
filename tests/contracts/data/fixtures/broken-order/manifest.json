@@ -1,0 +1,22 @@
+{
+  "schema": "sloppy.app-package.v1",
+  "artifacts": {
+    "plan": "artifacts/app.plan.json",
+    "bundle": "artifacts/app.js"
+  },
+  "migrations": [
+    {
+      "provider": "main",
+      "providerKind": "sqlite",
+      "path": "migrations/*.sql",
+      "files": [
+        {
+          "path": "migrations/0002_second.sql"
+        },
+        {
+          "path": "migrations/0001_first.sql"
+        }
+      ]
+    }
+  ]
+}

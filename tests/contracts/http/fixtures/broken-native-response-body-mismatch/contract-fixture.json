@@ -1,0 +1,18 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "native-response.body-equivalence"
+  ],
+  "baseFixture": "valid-http-dispatch",
+  "planReplacements": [
+    {
+      "path": [
+        "routes",
+        0,
+        "nativeResponse",
+        "body"
+      ],
+      "value": "wrong body"
+    }
+  ]
+}

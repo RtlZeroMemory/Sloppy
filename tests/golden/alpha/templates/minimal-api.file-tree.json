@@ -3,5 +3,6 @@
   "README.md",
   "package.json",
   "sloppy.json",
-  "src/main.ts"
+  "src/main.ts",
+  "tsconfig.json"
 ]

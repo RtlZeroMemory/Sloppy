@@ -55,6 +55,8 @@ target/
 
 # Logs and temporary artifacts
 artifacts/
+!tests/contracts/package/fixtures/**/artifacts/
+!tests/contracts/package/fixtures/**/artifacts/**
 logs/
 node_modules/
 # Hand-authored compatibility fixtures intentionally mirror a node_modules
@@ -63,6 +65,10 @@ node_modules/
 !tests/fixtures/npm-compat/**/node_modules/**
 !tests/fixtures/npm-runtime/**/node_modules/
 !tests/fixtures/npm-runtime/**/node_modules/**
+!compiler/tests/regressions/**/node_modules/
+!compiler/tests/regressions/**/node_modules/**
+!tests/dogfood/**/node_modules/
+!tests/dogfood/**/node_modules/**
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 *.log

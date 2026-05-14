@@ -2,5 +2,6 @@
   "artifacts/app.js",
   "artifacts/app.js.map",
   "artifacts/app.plan.json",
+  "artifacts/routes.slrt",
   "manifest.json"
 ]
