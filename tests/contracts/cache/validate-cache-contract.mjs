@@ -113,6 +113,12 @@ function deterministicRedisBridge() {
         return [...(sets.get(name) ?? new Set())];
     }
 
+    function consumeForcedReleaseFailure() {
+        const shouldFail = forceReleaseFailure;
+        forceReleaseFailure = false;
+        return shouldFail;
+    }
+
     function integer(value) {
         return `:${value}\r\n`;
     }
@@ -233,7 +239,7 @@ function deterministicRedisBridge() {
             return integer(entries.length);
         }
         if (loadedScript.includes("PEXPIRE")) {
-            if (forceReleaseFailure) {
+            if (consumeForcedReleaseFailure()) {
                 return integer(0);
             }
             if (values.get(keys[0]) !== args[0]) {
@@ -242,7 +248,7 @@ function deterministicRedisBridge() {
             expirations.set(keys[0], now() + Number(args[1]));
             return integer(1);
         }
-        if (forceReleaseFailure) {
+        if (consumeForcedReleaseFailure()) {
             return integer(0);
         }
         if (values.get(keys[0]) !== args[0]) {
