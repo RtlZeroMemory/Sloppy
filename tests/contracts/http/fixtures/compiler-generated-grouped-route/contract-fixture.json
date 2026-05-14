@@ -1,0 +1,8 @@
+{
+  "expected": "pass",
+  "expectedInvariants": [],
+  "compilerGenerated": {
+    "planPath": "../../../../../compiler/tests/fixtures/grouped-route/expected/app.plan.json",
+    "routeArtifactPath": "../../../../../compiler/tests/fixtures/grouped-route/expected/routes.slrt"
+  }
+}
