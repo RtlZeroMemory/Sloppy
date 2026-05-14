@@ -7,5 +7,6 @@
   "sloppy.json",
   "src/main.ts",
   "src/routes/health.ts",
-  "src/routes/users.ts"
+  "src/routes/users.ts",
+  "tsconfig.json"
 ]

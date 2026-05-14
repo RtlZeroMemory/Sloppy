@@ -49,6 +49,11 @@
         "status": "ok"
       },
       {
+        "id": "route.json.response",
+        "message": "route Di.Get JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
         "id": "optimization.native-json-candidate",
         "message": "route has response metadata for future native JSON analysis",
         "status": "ok"
