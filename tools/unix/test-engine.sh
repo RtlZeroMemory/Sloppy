@@ -16,7 +16,7 @@ v8_resolved_root=""
 
 usage() {
   cat <<'USAGE'
-Usage: tools/unix/test-engine.sh [--tier pr|extended|torture] [--area all|static|native|compiler|js|fuzz|http2|package|contracts|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [--seed N] [--fuzz-iterations N] [--stress-seconds N] [--out PATH]
+Usage: tools/unix/test-engine.sh [--tier pr|extended|torture] [--area all|static|native|compiler|js|fuzz|http2|package|contracts|contracts-http|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [--seed N] [--fuzz-iterations N] [--stress-seconds N] [--out PATH]
 
 Examples:
   tools/unix/test-engine.sh --tier pr
@@ -73,7 +73,7 @@ case "$tier" in
 esac
 
 case "$area" in
-  all|static|native|compiler|js|fuzz|http2|package|contracts|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics) ;;
+  all|static|native|compiler|js|fuzz|http2|package|contracts|contracts-http|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics) ;;
   *) echo "test-engine: invalid --area '$area'" >&2; exit 2 ;;
 esac
 
@@ -466,8 +466,11 @@ run_package() {
 }
 
 run_contracts() {
-  run_lane "contracts.package" node tests/contracts/runner/contract-runner.mjs --area package --tier "$tier"
-  run_lane "contracts.static_files" node tests/contracts/runner/contract-runner.mjs --area static-files --tier "$tier"
+  run_lane "contracts.all" node tests/contracts/runner/contract-runner.mjs --area all --tier "$tier"
+}
+
+run_contracts_http() {
+  run_lane "contracts.http" node tests/contracts/runner/contract-runner.mjs --area http --tier "$tier"
 }
 
 run_sanitizer() {
@@ -516,6 +519,7 @@ should_run http2 && run_http2
 should_run stress && run_stress
 if [[ "$area" == "package" || ( "$area" == "all" && "$tier" != "pr" ) ]]; then run_package; fi
 should_run contracts && run_contracts
+if [[ "$area" == "contracts-http" ]]; then run_contracts_http; fi
 if [[ "$area" == "sanitizer" || ( "$area" == "all" && "$tier" != "pr" ) ]]; then run_sanitizer; fi
 if [[ "$area" == "v8" || ( "$area" == "all" && "$tier" == "torture" ) ]]; then run_v8; fi
 if [[ "$area" == "provider" || ( "$area" == "all" && "$tier" != "pr" ) ]]; then run_provider; fi

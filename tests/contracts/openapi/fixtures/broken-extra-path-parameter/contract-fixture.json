@@ -1,0 +1,13 @@
+{
+  "expected": "fail",
+  "expectedInvariants": ["openapi.path-param-agreement"],
+  "plan": "../../../../fixtures/cli/framework-feature-matrix.plan.json",
+  "openapi": "../../../../golden/cli/framework-feature-matrix-openapi.json",
+  "mutations": [
+    {
+      "op": "append",
+      "path": ["paths", "/orders/{id}", "get", "parameters"],
+      "value": { "name": "extra", "in": "path", "required": true, "schema": { "type": "string" } }
+    }
+  ]
+}

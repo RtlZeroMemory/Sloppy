@@ -1,0 +1,5 @@
+{
+  "expected": "pass",
+  "plan": "../../../../fixtures/cli/openapi-missing-schema.plan.json",
+  "openapi": "../../../../golden/cli/openapi-missing-schema.json"
+}
