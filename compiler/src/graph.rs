@@ -214,6 +214,9 @@ pub(crate) struct AppGraph {
     pub(crate) uses_ffi_runtime: bool,
     pub(crate) ffi: Vec<FfiLibraryMetadata>,
     pub(crate) ffi_structs: Vec<FfiStructMetadata>,
+    pub(crate) ffi_handles: Vec<FfiHandleMetadata>,
+    pub(crate) ffi_callbacks: Vec<FfiCallbackMetadata>,
+    pub(crate) ffi_dispatch_tables: Vec<FfiDispatchTableMetadata>,
     pub(crate) uses_health: bool,
     pub(crate) auth: AuthMetadata,
     pub(crate) problem_details: Option<ProblemDetailsDescriptor>,
@@ -554,6 +557,9 @@ pub(crate) struct FfiFunctionMetadata {
     pub(crate) convention: String,
     pub(crate) return_type: String,
     pub(crate) parameters: Vec<String>,
+    pub(crate) return_descriptor: Option<Value>,
+    pub(crate) parameter_descriptors: Vec<Value>,
+    pub(crate) dispose: Option<String>,
     pub(crate) source_name: String,
     pub(crate) source: String,
     pub(crate) span: Span,
@@ -574,6 +580,36 @@ pub(crate) struct FfiStructMetadata {
 pub(crate) struct FfiStructFieldMetadata {
     pub(crate) name: String,
     pub(crate) type_name: String,
+    pub(crate) descriptor: Option<Value>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FfiHandleMetadata {
+    pub(crate) name: String,
+    pub(crate) source_name: String,
+    pub(crate) source: String,
+    pub(crate) span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FfiCallbackMetadata {
+    pub(crate) id: String,
+    pub(crate) return_type: String,
+    pub(crate) parameters: Vec<String>,
+    pub(crate) thread: String,
+    pub(crate) source_name: String,
+    pub(crate) source: String,
+    pub(crate) span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FfiDispatchTableMetadata {
+    pub(crate) name: String,
+    pub(crate) resolver: String,
+    pub(crate) symbols: Vec<FfiFunctionMetadata>,
+    pub(crate) source_name: String,
+    pub(crate) source: String,
+    pub(crate) span: Span,
 }
 
 #[derive(Debug, Clone)]

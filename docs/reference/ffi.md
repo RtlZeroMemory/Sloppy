@@ -5,7 +5,8 @@ Sloppy FFI is an experimental, unsafe native interop surface. It is closer to
 declared up front, typed, marshaled explicitly, cached by the runtime, and
 visible in the Plan.
 
-Use it only with trusted C ABI libraries. A wrong signature can crash the
+Use it only with trusted C ABI libraries. C ABI only: Sloppy does not support
+C++ ABI calls or variadic functions. A wrong signature can crash the
 process. Sloppy validates declarations and JavaScript values, but it cannot
 prove the native function actually has the signature you wrote.
 
@@ -86,8 +87,53 @@ native addresses are not exposed as JavaScript numbers.
 Returned non-null `ptr` values are borrowed `NativePointer` objects with
 `isNull()`. They can be passed back to `ptr` parameters, but they do not expose
 arithmetic, numeric addresses, or `dispose()` because ownership is unknown.
-Returned `cstring`, `utf16`, `bytes`, and `mutBytes` are rejected in v1. Return
+Returned `cstring`, `utf16`, `bytes`, and `mutBytes` are rejected. Return
 strings or buffers through caller-owned out parameters instead.
+
+## Owned Handles And Scoped Disposal
+
+Owned handles make pointer ownership explicit without exposing raw addresses:
+
+```ts
+const Counter = ffi.handle("Counter");
+
+const native = ffi.library("sloppy_ffi_test", {
+  createCounter: ffi.fn(Counter.owned, [t.i32], {
+    symbol: "sloppy_ffi_counter_create",
+    dispose: "destroyCounter",
+  }),
+  addCounter: ffi.fn(t.i32, [Counter, t.i32], {
+    symbol: "sloppy_ffi_counter_add",
+  }),
+  counterValue: ffi.fn(t.i32, [Counter], {
+    symbol: "sloppy_ffi_counter_value",
+  }),
+  destroyCounter: ffi.fn(t.void, [Counter], {
+    symbol: "sloppy_ffi_counter_destroy",
+  }),
+});
+```
+
+`unsafeFfi remains unsafe`: the handle type records the review contract and the
+Plan metadata, not a runtime proof that the native pointer really has that C
+type. Owned handles expose `.ptr` for interop, `.dispose()` for explicit
+cleanup, and a `disposed` state. Use-after-dispose is rejected before Sloppy
+calls native code. Double dispose is a deterministic no-op.
+
+Use scoped disposal for short lifetimes:
+
+```ts
+ffi.using(native.createCounter(1), (counter) => {
+  native.addCounter(counter, 2);
+  return native.counterValue(counter);
+});
+```
+
+Scoped disposal is the preferred pattern for owned native resources whose
+lifetime fits in one synchronous or asynchronous operation.
+
+`ffi.using(resource, callback)` disposes on success and on throw. If the
+callback returns a promise, disposal happens after settlement.
 
 ## Refs, Buffers, And Structs
 
@@ -121,16 +167,86 @@ try {
 }
 ```
 
-Struct fields support fixed-size primitive and pointer-like field types. Unions,
-bitfields, nested struct-by-value fields, struct-by-value params/returns, and
-callbacks are not supported.
+Struct fields support fixed-size primitive and pointer-like field types. Fixed
+arrays and nested structs are supported for pointer-based layouts:
+
+```ts
+const Matrix = ffi.struct("Matrix", {
+  values: ffi.array(t.f32, 16),
+});
+
+const Rect = ffi.struct("Rect", {
+  origin: Point,
+  size: Point,
+  flags: t.u32,
+});
+```
+
+Fixed arrays reserve contiguous inline storage. Nested structs preserve the
+nested layout alignment when placed inline. Fixed
+arrays and nested structs are inline layout fields. They do not enable
+struct-by-value parameters or returns.
+
+## Callbacks
+
+Callbacks allow synchronous native-to-JavaScript calls when native code invokes
+the callback on the same Sloppy runtime thread:
+
+```ts
+const callback = ffi.callback(t.i32, [t.i32], (value) => {
+  return value + 1;
+}, { thread: "runtime" });
+```
+
+Callbacks are explicit-lifetime resources. Pass them to `ptr` callback
+parameters and call `.dispose()` when the native side must stop invoking them.
+Callback return values are marshaled and range checked. The current callback
+surface supports `void`, `i32`, and `u32` returns, and `i32` and `u32`
+parameters. Pointer callback parameters and pointer callback returns are rejected
+for now because raw callback pointer arguments need stricter ownership rules.
+JavaScript exceptions do not cross the C ABI; Sloppy returns the documented
+zero/default value for the callback return type and keeps the process alive.
+
+Foreign-thread callback entry is still unsupported. Native code must not call
+Sloppy callbacks after runtime shutdown or from arbitrary worker threads. The
+native bridge checks the callback owner thread before entering V8 and returns a
+default value instead of touching the isolate from a foreign thread.
+
+## Dispatch Tables
+
+Dispatch tables support declaration-first function pointer resolution through a
+typed resolver. They are for loader-style C APIs while still avoiding raw public
+`GetProcAddress` or `dlsym` from JavaScript:
+
+```ts
+const native = ffi.library("sloppy_ffi_test", {
+  resolveSymbol: ffi.fn(t.ptr, [t.cstring], {
+    symbol: "sloppy_ffi_resolve_symbol",
+  }),
+});
+
+const dispatch = ffi.dispatchTable("ffiDispatch", {
+  resolver: native.resolveSymbol,
+  symbols: {
+    addI32: ffi.fn(t.i32, [t.i32, t.i32], {
+      symbol: "sloppy_ffi_add_i32",
+    }),
+  },
+});
+```
+
+Symbol names and signatures are static and Plan-visible. Missing symbols fail
+with an FFI error. Function pointer addresses are cached internally and are not
+serialized or exposed as numbers.
 
 ## Plan Metadata
 
 The compiler emits `requiredFeatures: ["stdlib.ffi"]`, `capabilities` entries
 for `ffi/use`, and `native.ffi` metadata with library names, symbols, return
 types, parameter types, conventions, and source locations. Struct layouts are
-emitted under `native.ffiStructs`.
+emitted under `native.ffiStructs`; handles, callbacks, and dispatch tables are
+emitted under `native.ffiHandles`, `native.ffiCallbacks`, and
+`native.ffiDispatchTables`.
 
 The runtime resolves each library once, resolves each symbol once, prepares one
 libffi call interface per function, and then reuses those descriptors for calls.
@@ -158,14 +274,25 @@ libraries can be mapped in `sloppy.json`:
 `manifest.json`, and `sloppy run <package>` resolves the Plan library ID to the
 packaged path after verifying the hash.
 
+## Contracts
+
+The FFI contract area validates the unsafe boundary as artifact semantics, not
+format trivia. It checks declaration visibility, package-safe native library
+paths and hashes, struct size/offset metadata, fixed arrays, nested structs,
+refs and buffers, embedded-NUL rejection, BigInt requirements for 64-bit
+integers, no raw pointer address exposure, owned handle disposal, synchronous
+callbacks, dispatch resolution, and redacted diagnostics.
+
 ## Not Supported
+
+These surfaces are still unsupported:
 
 - Node native addons and N-API
 - raw public `GetProcAddress` / `dlsym` calls
-- callbacks from native code into JavaScript
 - variadic functions
 - C++ ABI calls
 - struct-by-value params or returns
 - automatic ownership/freeing of arbitrary returned pointers
 - async/off-thread FFI calls
+- foreign-thread callback entry into JavaScript
 - native library download or remote loading

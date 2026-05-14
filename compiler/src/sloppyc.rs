@@ -419,6 +419,9 @@ struct AppState {
     ffi_imported: bool,
     ffi_libraries: Vec<FfiLibraryMetadata>,
     ffi_structs: Vec<FfiStructMetadata>,
+    ffi_handles: Vec<FfiHandleMetadata>,
+    ffi_callbacks: Vec<FfiCallbackMetadata>,
+    ffi_dispatch_tables: Vec<FfiDispatchTableMetadata>,
     problem_details_imported: bool,
     auth_imported: bool,
     config_imported: bool,
@@ -491,6 +494,9 @@ impl AppState {
             ffi_imported: false,
             ffi_libraries: Vec::new(),
             ffi_structs: Vec::new(),
+            ffi_handles: Vec::new(),
+            ffi_callbacks: Vec::new(),
+            ffi_dispatch_tables: Vec::new(),
             problem_details_imported: false,
             auth_imported: false,
             config_imported: false,
@@ -1061,6 +1067,9 @@ struct ModuleGraph {
     uses_ffi_runtime: bool,
     ffi_libraries: Vec<FfiLibraryMetadata>,
     ffi_structs: Vec<FfiStructMetadata>,
+    ffi_handles: Vec<FfiHandleMetadata>,
+    ffi_callbacks: Vec<FfiCallbackMetadata>,
+    ffi_dispatch_tables: Vec<FfiDispatchTableMetadata>,
 }
 
 #[derive(Debug, Clone)]
@@ -1115,6 +1124,9 @@ impl ModuleGraph {
             uses_ffi_runtime: false,
             ffi_libraries: Vec::new(),
             ffi_structs: Vec::new(),
+            ffi_handles: Vec::new(),
+            ffi_callbacks: Vec::new(),
+            ffi_dispatch_tables: Vec::new(),
         }
     }
 
@@ -1704,8 +1716,13 @@ fn extract_entry(
         source,
         &source_name,
         &parsed.program.body,
-        &mut state.ffi_libraries,
-        &mut state.ffi_structs,
+        FfiMetadataSink {
+            libraries: &mut state.ffi_libraries,
+            structs: &mut state.ffi_structs,
+            handles: &mut state.ffi_handles,
+            callbacks: &mut state.ffi_callbacks,
+            dispatch_tables: &mut state.ffi_dispatch_tables,
+        },
     )?;
 
     for statement in &parsed.program.body {
@@ -2028,6 +2045,21 @@ fn extract_entry(
             ffi_structs.extend(state.ffi_structs);
             ffi_structs
         },
+        ffi_handles: {
+            let mut ffi_handles = graph.ffi_handles.clone();
+            ffi_handles.extend(state.ffi_handles);
+            ffi_handles
+        },
+        ffi_callbacks: {
+            let mut ffi_callbacks = graph.ffi_callbacks.clone();
+            ffi_callbacks.extend(state.ffi_callbacks);
+            ffi_callbacks
+        },
+        ffi_dispatch_tables: {
+            let mut ffi_dispatch_tables = graph.ffi_dispatch_tables.clone();
+            ffi_dispatch_tables.extend(state.ffi_dispatch_tables);
+            ffi_dispatch_tables
+        },
         uses_health: state.uses_health,
         auth: state.auth,
         problem_details: state.problem_details.clone(),
@@ -2090,7 +2122,7 @@ use imports::{
     validate_module_sloppy_webhooks_import, validate_module_sloppy_workers_import,
 };
 mod ffi;
-use ffi::extract_ffi_declarations_from_statements;
+use ffi::{extract_ffi_declarations_from_statements, FfiMetadataSink};
 fn extract_variable_declaration(
     path: &Path,
     source: &str,
