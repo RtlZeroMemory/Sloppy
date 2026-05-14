@@ -442,6 +442,68 @@ try {
 }
 
 {
+    let touched = 0;
+    let unsafeHits = 0;
+    let record;
+    const store = {
+        async create(value) {
+            record = { ...value };
+        },
+        async load(id) {
+            return record?.id === id ? { ...record } : undefined;
+        },
+        async touch(id, lastSeenAt, idleExpiresAt) {
+            touched += 1;
+            if (record?.id === id) {
+                record = { ...record, lastSeenAt, idleExpiresAt };
+                return { ...record };
+            }
+            return undefined;
+        },
+        async revoke(id, revokedAt) {
+            if (record?.id === id) {
+                record = { ...record, revokedAt };
+            }
+        },
+        async cleanup() {},
+    };
+    const app = Sloppy.create();
+    app.use(Auth.cookieSession({
+        secret: "csrf-refresh-secret",
+        store,
+        idleTimeoutMs: 1_000,
+        absoluteTimeoutMs: 5_000,
+        csrf: true,
+        clock: () => 1_700_000_000_000,
+    }));
+    app.post("/login", (ctx) => Auth.signIn(ctx, { sub: "csrf-refresh-user" }));
+    app.post("/unsafe", () => {
+        unsafeHits += 1;
+        return Results.ok({ ok: true });
+    }).requireAuth();
+
+    const host = Testing.createHost(app);
+    const login = await host.post("/login");
+    const cookies = setCookies(login);
+    const session = namedCookieValue(cookies, "sloppy.session");
+    const csrf = namedCookieValue(cookies, "__Host-sloppy_csrf");
+    assert.equal((await requestJson(host, "POST", "/unsafe", {
+        headers: { cookie: `sloppy.session=${session}; __Host-sloppy_csrf=${csrf}` },
+    })).response.status, 403);
+    assert.equal(touched, 0);
+    assert.equal(unsafeHits, 0);
+    assert.equal((await requestJson(host, "POST", "/unsafe", {
+        headers: {
+            cookie: `sloppy.session=${session}; __Host-sloppy_csrf=${csrf}`,
+            "x-csrf-token": csrf,
+        },
+    })).response.status, 200);
+    assert.equal(touched, 1);
+    assert.equal(unsafeHits, 1);
+    await host.close();
+}
+
+{
     let sessionClock = 1_700_000_000_000;
     const app = Sloppy.create();
     app.use(Auth.cookieSession({
