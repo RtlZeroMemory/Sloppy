@@ -1,0 +1,1 @@
+# Platform binary traversal fixture

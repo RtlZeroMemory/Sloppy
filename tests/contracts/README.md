@@ -13,6 +13,7 @@ node tests/contracts/runner/contract-runner.mjs --area openapi --tier pr
 node tests/contracts/runner/contract-runner.mjs --area http --tier pr
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr
 node tests/contracts/runner/contract-runner.mjs --area realtime --tier pr
+node tests/contracts/runner/contract-runner.mjs --area release --tier pr
 node tests/contracts/runner/contract-runner.mjs --area static-files --tier pr
 node tests/contracts/runner/contract-runner.mjs --area cache --tier pr
 node tests/contracts/runner/contract-runner.mjs --area webhooks --tier pr
@@ -57,13 +58,15 @@ validator should return a report for one subsystem and should use the shared
 runner helpers for reporting, fixture loading, path checks, and redaction.
 
 PR-tier contracts should be deterministic and should not require Docker, Redis,
-live providers, or long-running servers. Use `extended` or `torture` for slow
-or environment-backed checks.
+live providers, npm publishing, or long-running servers. Use `extended` or
+`torture` for slow or environment-backed checks.
 
 Area notes:
 
 - `package` — packaged artifact shape, relocatability, and expected negative
   fixtures.
+- `release` — npm package release metadata, files, scripts, and archive
+  contents.
 - `webhooks` — event descriptors, outbox semantics, delivery states,
   signatures, destination safety, and redaction. See
   `tests/contracts/webhooks/README.md` for the current fake-provider boundary.

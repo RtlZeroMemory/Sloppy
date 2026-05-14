@@ -27,7 +27,7 @@ not an implementation transcript. Structured JSON goldens should
 assert stable semantic fields; text goldens are reserved for deliberate UX
 surfaces. Do not update a golden only because current output changed.
 
-Compiler artifact goldens must pass the semantic compiler-contract validator
+Compiler artifact goldens must pass the semantic contract validator
 before snapshot comparison. A validator failure means the compiler or fixture
 expectation is wrong; do not bless the failure by updating `app.plan.json`,
 `routes.slrt`, dependency graph, or alpha/template goldens.
