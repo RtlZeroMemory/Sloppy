@@ -17,7 +17,8 @@ cookies, authorization headers, bearer tokens, API keys, TLS-sensitive material,
 environment values, secret process args, captured process output, raw native handles,
 pid-as-handle capabilities, release publishing statements, or benchmark comparisons.
 
-Golden files should be reviewed like public API changes.
+Golden files are a semantic contract and should be reviewed like public API
+changes.
 
 ## Golden Policy
 
