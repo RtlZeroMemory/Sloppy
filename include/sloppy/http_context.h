@@ -85,6 +85,7 @@ typedef struct SlHttpRequestContext
     unsigned needs_query_params : 1;
     unsigned needs_headers : 1;
     unsigned needs_body : 1;
+    unsigned needs_body_facade : 1;
     unsigned needs_header_facade : 1;
     unsigned needs_cookies : 1;
     unsigned needs_request : 1;

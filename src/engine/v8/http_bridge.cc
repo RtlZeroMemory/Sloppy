@@ -3867,12 +3867,14 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
             sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_BODY_JSON_MATERIALIZATION,
                                          sl_http_profile_now_ns() - started_ns);
         }
-        sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_BODY_FACADE_MATERIALIZED, 1U);
-        sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_BODY_FACADE_MATERIALIZATION,
-                                     sl_http_profile_now_ns() - started_ns);
+        if (request_context->needs_body_facade) {
+            sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_BODY_FACADE_MATERIALIZED, 1U);
+            sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_BODY_FACADE_MATERIALIZATION,
+                                         sl_http_profile_now_ns() - started_ns);
+        }
     }
 
-    if (request_context->needs_body) {
+    if (request_context->needs_body && request_context->needs_body_facade) {
         body_object = v8::Object::New(isolate);
         if (!http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_BODY,
                                       &body_prototype) ||
@@ -3962,8 +3964,9 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
             return false;
         }
         if (request_context->needs_body) {
-            if (!http_v8_set_object_property_key(isolate, context, request, SL_V8_HTTP_STRING_BODY,
-                                                 body_object) ||
+            if ((request_context->needs_body && request_context->needs_body_facade &&
+                 !http_v8_set_object_property_key(isolate, context, request,
+                                                  SL_V8_HTTP_STRING_BODY, body_object)) ||
                 !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY_BYTES,
                                            body_bytes_value) ||
                 !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY,
@@ -4023,7 +4026,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     {
         return false;
     }
-    if (request_context->needs_body &&
+    if (request_context->needs_body && request_context->needs_body_facade &&
         !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_BODY,
                                          body_object))
     {

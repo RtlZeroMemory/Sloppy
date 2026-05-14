@@ -3123,6 +3123,7 @@ typedef struct SlHttpDispatchContextNeeds
     bool query_params;
     bool headers;
     bool body;
+    bool body_facade;
     bool header_facade;
     bool cookies;
     bool request;
@@ -3145,6 +3146,7 @@ static void sl_http_dispatch_context_needs_all(SlHttpDispatchContextNeeds* needs
     needs->query_params = true;
     needs->headers = true;
     needs->body = true;
+    needs->body_facade = true;
     needs->header_facade = true;
     needs->cookies = true;
     needs->request = true;
@@ -3229,10 +3231,12 @@ static SlHttpDispatchContextNeeds sl_http_dispatch_context_needs(const SlPlanRou
             break;
         case SL_PLAN_REQUEST_BINDING_BODY_JSON:
             needs.body = true;
+            needs.body_facade = true;
             break;
         case SL_PLAN_REQUEST_BINDING_BODY_FORM:
         case SL_PLAN_REQUEST_BINDING_BODY_MULTIPART:
             needs.body = true;
+            needs.body_facade = true;
             needs.request = true;
             break;
         case SL_PLAN_REQUEST_BINDING_COOKIE:
@@ -3240,7 +3244,11 @@ static SlHttpDispatchContextNeeds sl_http_dispatch_context_needs(const SlPlanRou
             needs.cookies = true;
             break;
         case SL_PLAN_REQUEST_BINDING_CONTEXT:
-            if (sl_str_equal(route->bindings[index].name, sl_str_from_cstr("request"))) {
+            if (sl_str_equal(route->bindings[index].name, sl_str_from_cstr("request.body.json"))) {
+                needs.request = true;
+                needs.body = true;
+            }
+            else if (sl_str_equal(route->bindings[index].name, sl_str_from_cstr("request"))) {
                 needs.request = true;
                 needs.request_fields = SL_HTTP_REQUEST_FIELDS_ALL;
             }
@@ -3675,6 +3683,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     request_context.needs_query_params = needs.query_params;
     request_context.needs_headers = needs.headers;
     request_context.needs_body = needs.body;
+    request_context.needs_body_facade = needs.body_facade;
     if (needs.body) {
         sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_MATERIALIZATIONS, 1U);
     }

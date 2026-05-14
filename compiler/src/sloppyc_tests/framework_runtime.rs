@@ -1284,6 +1284,28 @@ export default app;
 }
 
 #[test]
+fn typed_framework_request_json_context_binding_stays_request_scoped() {
+    let source = r#"import { Sloppy, Results, RequestContext, schema } from "sloppy";
+const UserCreate = schema.object({ name: schema.string(), email: schema.string() });
+const app = Sloppy.create();
+app.post("/users", (ctx: RequestContext) => {
+  const body = ctx.request.json(UserCreate);
+  return Results.json({ name: body.name, email: body.email });
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.ts"), source)
+        .expect("typed request json handler should extract");
+    assert_eq!(
+        app.routes[0].handler.bindings[0].name.as_deref(),
+        Some("request.body.json")
+    );
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js.source.contains("ctx.request.json(undefined)"));
+    assert!(!emitted_js.source.contains("ctx.body.json()"));
+}
+
+#[test]
 fn typed_framework_string_route_binding_uses_direct_route_lookup() {
     let source = r#"import { Sloppy, Results, Route } from "sloppy";
 const app = Sloppy.create();

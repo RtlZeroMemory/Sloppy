@@ -323,6 +323,7 @@ static SlHttpRequestContext test_request_context(const SlHttpRequestHead* reques
     context.needs_query_params = true;
     context.needs_headers = true;
     context.needs_body = true;
+    context.needs_body_facade = true;
     context.needs_request = true;
     context.needs_connection = true;
     context.needs_signal = true;
@@ -4358,6 +4359,7 @@ static int test_request_context_profile_counts_only_requested_facets(void)
     SlDiag diag = {0};
     SlHttpHeader headers[1];
     SlHttpQueryParam query_params[1];
+    static const unsigned char body[] = "{\"name\":\"Ada\"}";
     SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
     SlHttpRequestContext context = {0};
     TestEnvValue profile_env = {0};
@@ -4387,7 +4389,10 @@ static int test_request_context_profile_counts_only_requested_facets(void)
                 sl_str_from_cstr(
                     "globalThis.profileNoCtx = function () { return 'ok'; };"
                     "globalThis.profileQuery = function (ctx) { return ctx.query.q; };"
-                    "globalThis.profileHeader = function (ctx) { return ctx.header.xTrace; };"),
+                    "globalThis.profileHeader = function (ctx) { return ctx.header.xTrace; };"
+                    "globalThis.profileRequestJson = function (ctx) {"
+                    "  return ctx.request.json().name;"
+                    "};"),
                 &diag),
             SL_STATUS_OK) != 0)
     {
@@ -4484,9 +4489,39 @@ static int test_request_context_profile_counts_only_requested_facets(void)
         }
     }
 
+    sl_arena_reset(&result_arena);
+    result = (SlEngineResult){0};
+    request.body = sl_bytes_from_parts(body, sizeof(body) - 1U);
+    context.needs_header_facade = false;
+    context.needs_request = true;
+    context.needs_body = true;
+    context.needs_body_facade = false;
+    context.body_kind = SL_HTTP_REQUEST_BODY_JSON;
+    sl_http_profile_reset();
+    if (expect_status(sl_engine_call_function_with_context(engine, &result_arena,
+                                                           sl_str_from_cstr("profileRequestJson"),
+                                                           &context, &result, &diag),
+                      SL_STATUS_OK) != 0 ||
+        result.kind != SL_ENGINE_RESULT_TEXT ||
+        expect_str_equal(result.text, sl_str_from_cstr("Ada")) != 0)
+    {
+        sl_engine_destroy(engine);
+        restore_http_profile(&profile_env);
+        return 447;
+    }
+    {
+        const char* expected[] = {"\"bodyFacadeMaterialized\": 0",
+                                  "\"bodyJsonMaterialized\": 1"};
+        if (profile_json_contains_all(expected, sizeof(expected) / sizeof(expected[0])) != 0) {
+            sl_engine_destroy(engine);
+            restore_http_profile(&profile_env);
+            return 448;
+        }
+    }
+
     sl_engine_destroy(engine);
     if (restore_http_profile(&profile_env) != 0) {
-        return 447;
+        return 449;
     }
     return 0;
 }

@@ -88,3 +88,17 @@ registered as a runtime test and is not wired into production request handling.
    fallbacks.
 5. Keep the experiment only if `route-param` or `mixed-realistic` improves and
    contracts pass with Fast API disabled or unsupported.
+
+## Pass 3 Prototype Finding
+
+A JS-level route-slot helper was prototyped before adding a true native wrapper.
+It stored route slot metadata on the context and let generated wrappers request
+params by slot instead of materializing `ctx.route` in user code. That proved the
+compiler/V8 plumbing shape, but it did not solve the real Fast API blocker:
+there was still no native internal-field request handle or request lifetime
+invalidation model.
+
+The prototype was reverted after measurement. `route-param @ 64` measured
+47,409 median RPS with roughly 214 MiB peak RSS, below the pass-2 reference and
+well above the normal memory band. The next route-param attempt should start
+with the native wrapper, not another JS object/private-value helper.

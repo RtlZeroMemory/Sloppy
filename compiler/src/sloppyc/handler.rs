@@ -2920,6 +2920,9 @@ pub(super) fn request_binding_from_call(
 ) -> Option<RequestBinding> {
     let chain = static_member_chain(&call.callee)?;
     if chain.len() == 3 && chain[0] == ctx_name && chain[1] == "request" {
+        if chain[2] == "json" && call.arguments.len() <= 1 {
+            return Some(request_facade_context_binding(Some("body.json")));
+        }
         let kind = match chain[2] {
             "form" if call.arguments.is_empty() => Some("body.form"),
             "multipart" if call.arguments.is_empty() => Some("body.multipart"),
