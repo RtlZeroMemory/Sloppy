@@ -173,7 +173,15 @@ class WebhookDb {
             return row === undefined ? null : { secretRef: row.secretRef };
         }
         if (sql.includes("from sloppy_webhook_outbox where idempotency_key = ?")) {
-            return null;
+            const row = this.outbox.find((entry) => entry.idempotencyKey === params[0]);
+            return row === undefined
+                ? null
+                : {
+                    id: row.id,
+                    eventName: row.eventName,
+                    eventVersion: row.eventVersion,
+                    payloadHash: row.payloadHash,
+                };
         }
         if (sql.includes("from sloppy_webhook_outbox where id = ? and locked_by = ?")) {
             return this.outbox.find((entry) => entry.id === params[0] && entry.lockedBy === params[1] && entry.status === "delivering") ?? null;
@@ -342,6 +350,19 @@ async function runOutboxContracts(collector) {
         );
         assert(db.events.at(-1) === "rollback", "transaction did not roll back");
         assert(db.outbox.length === 0, "rollback still published an outbox row");
+    });
+
+    await check(collector, "webhooks.outbox.idempotency-key", "duplicate idempotency keys return existing outbox metadata without a second row", async () => {
+        const db = new WebhookDb();
+        const webhooks = createWebhookApp(db).services.get(Webhooks.token());
+        const first = await db.transaction((tx) =>
+            webhooks.publish(tx, OrderCreated, { orderId: "ord_idempotent", total: 42 }, { idempotencyKey: "order:ord_idempotent" }));
+        const second = await db.transaction((tx) =>
+            webhooks.publish(tx, OrderCreated, { orderId: "ord_idempotent", total: 42 }, { idempotencyKey: "order:ord_idempotent" }));
+        assert(db.outbox.length === 1, "duplicate idempotency key created another outbox row");
+        assert(second.id === first.id, "duplicate publish did not return existing event id");
+        assert(second.payloadHash === first.payloadHash, "duplicate publish did not return existing payload hash");
+        assert(second.idempotent === true, "duplicate publish was not marked idempotent");
     });
 }
 
