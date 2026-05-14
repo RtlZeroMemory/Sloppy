@@ -57,8 +57,8 @@ function table(headers, rows) {
 }
 
 function runtimeLabel(runtime) {
-  if (runtime === "sloppy:loopback:native_json") return "Sloppy native";
-  if (runtime === "sloppy:loopback:generic_json") return "Sloppy generic";
+  if (runtime === "sloppy:loopback:native_json") return "Sloppy loopback native JSON";
+  if (runtime === "sloppy:loopback:generic_json") return "Sloppy loopback generic JSON";
   if (runtime === "node:http") return "Node http";
   if (runtime === "node:express") return "Express";
   if (runtime === "node:fastify") return "Fastify";
@@ -100,6 +100,8 @@ function selectedRuntimes(report) {
     "sloppy:loopback:native_json",
     "sloppy:loopback:generic_json",
     "node:http",
+    "node:express",
+    "node:fastify",
     "bun",
     "deno",
   ].filter((runtime) => present.has(runtime));
@@ -141,6 +143,18 @@ function runtimeStatusRows(report) {
   ]);
 }
 
+function labelValidationRows(report) {
+  const validation = report.labelValidation;
+  if (!validation) {
+    return [["UNAVAILABLE", "-", "older report did not include label validation metadata"]];
+  }
+  return [[
+    validation.status ?? "-",
+    validation.checkedRows ?? 0,
+    (validation.failures ?? []).length === 0 ? "native/generic row prefixes and metadata matched" : validation.failures.join("; "),
+  ]];
+}
+
 function profileCounter(profile, name) {
   const value = profile.counters?.[name];
   return value == null ? null : Number(value);
@@ -161,26 +175,43 @@ function topPhase(profile) {
 async function readProfiles(profileReport) {
   const profile = profileReport?.httpProfile;
   if (!profile?.enabled || !profile?.outDir || !profile?.runId) {
-    return { rows: [], unavailable: ["No HTTP profile run was attached."] };
+    return { rows: [], checks: [], unavailable: ["No HTTP profile run was attached."] };
   }
   let entries = [];
   try {
     entries = await fs.readdir(profile.outDir);
   } catch (error) {
-    return { rows: [], unavailable: [`Profile directory unavailable: ${error.message}`] };
+    return { rows: [], checks: [], unavailable: [`Profile directory unavailable: ${error.message}`] };
   }
   const files = entries
     .filter((entry) => entry.startsWith(`http-profile-${profile.runId}-`) && entry.endsWith(".json"))
     .sort();
   const rows = [];
+  const checks = [];
   const unavailable = [];
   for (const file of files) {
     const filePath = path.join(profile.outDir, file);
     try {
       const parsed = await readJson(filePath);
       const top = topPhase(parsed);
+      const scenario = parsed.scenario ?? file;
+      const v8Calls = profileCounter(parsed, "v8HandlerCalls") ?? 0;
+      const noJsHits = profileCounter(parsed, "noJsResponsePlanHits") ?? 0;
+      const isStaticNoJs = /\.static_(json|text|status|problem)/.test(scenario);
+      const isDynamicV8 =
+        /\.(dynamic_|ctx_|plain_object|exception|large|route_table|small|medium)/.test(scenario);
+      if (isStaticNoJs || isDynamicV8) {
+        const pass = isStaticNoJs ? noJsHits > 0 && v8Calls === 0 : v8Calls > 0;
+        checks.push([
+          scenario,
+          pass ? "PASS" : "FAIL",
+          isStaticNoJs ? "static no-JS route" : "dynamic/V8 route",
+          formatCount(v8Calls),
+          formatCount(noJsHits),
+        ]);
+      }
       rows.push([
-        parsed.scenario ?? file,
+        scenario,
         formatCount(parsed.requests),
         formatCount(profileCounter(parsed, "keepAliveReused")),
         formatCount(profileCounter(parsed, "connectionsOpened")),
@@ -194,7 +225,7 @@ async function readProfiles(profileReport) {
       unavailable.push(`${file}: ${error.message}`);
     }
   }
-  return { rows: rows.slice(0, topProfileRows), unavailable };
+  return { rows: rows.slice(0, topProfileRows), checks, unavailable };
 }
 
 function commandLine({ report, baseline, profileReport }) {
@@ -225,6 +256,10 @@ lines.push(table(["Field", "Value"], [
   ["Timing input", path.normalize(inputPath)],
   ["Baseline input", baselinePath ? path.normalize(baselinePath) : "none"],
   ["Profile input", profileInputPath ? path.normalize(profileInputPath) : "same as timing input"],
+  ["Git commit", report.git?.commit ?? "-"],
+  ["Git branch", report.git?.branch ?? "-"],
+  ["Dirty checkout", report.git?.dirty === true ? "yes" : report.git?.dirty === false ? "no" : "-"],
+  ["Sloppy executable", report.sloppyExecutable ?? "-"],
   ["Generated at", report.generatedAtUtc ?? "-"],
   ["Command shape", commandLine({ report, baseline, profileReport })],
   ["Client", report.client ?? "-"],
@@ -235,6 +270,10 @@ lines.push(table(["Field", "Value"], [
 lines.push("## Runtime Status");
 lines.push("");
 lines.push(table(["Runtime", "Status", "Version", "Reason"], runtimeStatusRows(report)));
+
+lines.push("## Label Verification");
+lines.push("");
+lines.push(table(["Status", "Checked rows", "Details"], labelValidationRows(report)));
 
 lines.push("## Median ns/op By Scenario");
 lines.push("");
@@ -267,6 +306,12 @@ lines.push(table([
   "Top total",
   "Top avg",
 ], profiles.rows));
+if (profiles.checks.length > 0) {
+  lines.push("");
+  lines.push("Profile expectation checks:");
+  lines.push("");
+  lines.push(table(["Scenario", "Status", "Expected path", "V8 calls", "No-JS hits"], profiles.checks));
+}
 if (profiles.unavailable.length > 0) {
   lines.push("");
   lines.push("Unavailable profile details:");

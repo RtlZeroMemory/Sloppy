@@ -309,7 +309,10 @@ node benchmarks/competitors/report-json-local.mjs `
 
 The report is local evidence for review. The non-profile JSON is the timing
 source of truth. The profile JSON is phase/counter evidence only because profile
-snapshot writes can change latency.
+snapshot writes can change latency. The JSON runner records the harness git
+commit, branch, dirty state, resolved Sloppy executable, explicit loopback
+measurement metadata, and a label validation result proving that Sloppy
+native/generic rows use the expected prefixes and JSON dispatch mode metadata.
 
 Common HTTP/V8 profile counters have narrow meanings:
 

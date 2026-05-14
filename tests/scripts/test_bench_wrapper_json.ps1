@@ -149,7 +149,7 @@ try {
         throw "json competitor report renderer failed with exit code $LASTEXITCODE"
     }
     $competitorReportMarkdown = Get-Content -LiteralPath $competitorReportOut -Raw
-    foreach ($expected in @("JSON Competitor Benchmark Report", "Sloppy Before/After Delta", "HTTP Profile Evidence", "No-JS hits")) {
+    foreach ($expected in @("JSON Competitor Benchmark Report", "Sloppy Before/After Delta", "HTTP Profile Evidence", "Label Verification", "Profile expectation checks", "No-JS hits")) {
         if ($competitorReportMarkdown -notlike "*$expected*") {
             throw "json competitor report missing expected text: $expected"
         }

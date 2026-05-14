@@ -39,7 +39,8 @@ The harness records versions, OS/CPU details, SKIPPED entries for unavailable
 runtimes or optional dependencies, response-correctness failures, and
 machine-readable JSON results. The report renderer reads those JSON files and
 summarizes runtime status, median per-scenario timings, Sloppy before/after
-deltas, and HTTP profile counters without making public performance claims.
+deltas, checked native/generic row labels, and HTTP profile counters without
+making public performance claims.
 
 Rows in this harness include client/server/socket/event-loop overhead and are
 not directly comparable to in-process `sloppy_bench` JSON rows. Use the

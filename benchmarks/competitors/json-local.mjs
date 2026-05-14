@@ -30,6 +30,9 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..");
 const httpProfileOutDir = path.resolve(repoRoot, httpProfileOut);
 const httpProfileRunId = `${Date.now().toString(36)}-${process.pid.toString(36)}`;
+const benchmarkFamily = "json-loopback-competitor";
+const measurementKind = "loopback-http";
+const comparatorScope = "local-dev-machine";
 
 const payloads = {
   small: { username: "ada", password: "correct horse battery staple" },
@@ -58,6 +61,24 @@ function detectCommand(command, args = ["--version"]) {
     return { available: false, version: null };
   }
   return { available: true, version: (result.stdout || result.stderr).trim() };
+}
+
+function gitValue(commandArgs) {
+  const result = spawnSync("git", commandArgs, { cwd: repoRoot, encoding: "utf8" });
+  if (result.error || result.status !== 0) {
+    return null;
+  }
+  return result.stdout.trim();
+}
+
+function gitMetadata() {
+  const dirty = spawnSync("git", ["diff", "--quiet"], { cwd: repoRoot, encoding: "utf8" });
+  const stagedDirty = spawnSync("git", ["diff", "--cached", "--quiet"], { cwd: repoRoot, encoding: "utf8" });
+  return {
+    commit: gitValue(["rev-parse", "HEAD"]),
+    branch: gitValue(["branch", "--show-current"]) || "detached",
+    dirty: dirty.status !== 0 || stagedDirty.status !== 0,
+  };
 }
 
 function optionalPackage(name) {
@@ -654,6 +675,40 @@ function runtimeRowPrefix(runtime) {
   return `${runtime.replaceAll(":", "_")}.loopback`;
 }
 
+function runtimeBenchmarkMetadata(runtime) {
+  if (runtime === "sloppy:loopback:native_json") {
+    return {
+      benchmarkFamily,
+      measurementKind,
+      comparatorScope,
+      runtimeKind: "sloppy",
+      sloppyJsonDispatchMode: "native",
+      rowPrefix: "sloppy.loopback.native_json",
+      label: "Sloppy loopback native JSON",
+    };
+  }
+  if (runtime === "sloppy:loopback:generic_json") {
+    return {
+      benchmarkFamily,
+      measurementKind,
+      comparatorScope,
+      runtimeKind: "sloppy",
+      sloppyJsonDispatchMode: "generic",
+      rowPrefix: "sloppy.loopback.generic_json",
+      label: "Sloppy loopback generic JSON",
+    };
+  }
+  return {
+    benchmarkFamily,
+    measurementKind,
+    comparatorScope,
+    runtimeKind: runtime.startsWith("node:") ? "node" : runtime,
+    sloppyJsonDispatchMode: null,
+    rowPrefix: runtimeRowPrefix(runtime),
+    label: runtime,
+  };
+}
+
 function profilePathFor(runtime, scenario, repeatIndex) {
   const name = `${runtimeRowPrefix(runtime)}.${scenarioRowSegment(scenario)}`.replaceAll(/[^\w.-]/g, "_");
   return path.join(httpProfileOutDir, `http-profile-${httpProfileRunId}-${name}-repeat-${repeatIndex}.json`);
@@ -687,6 +742,10 @@ function summarizeRows(results) {
       version: group.version,
       name: group.name,
       scenario: group.scenario,
+      benchmarkFamily: group.rows[0]?.benchmarkFamily ?? benchmarkFamily,
+      measurementKind: group.rows[0]?.measurementKind ?? measurementKind,
+      comparatorScope: group.rows[0]?.comparatorScope ?? comparatorScope,
+      sloppyJsonDispatchMode: group.rows[0]?.sloppyJsonDispatchMode ?? null,
       repeats: group.rows.length,
       passRepeats: passed.length,
       status: group.rows.every((row) => row.status === "PASS") ? "PASS" : "FAIL",
@@ -695,6 +754,38 @@ function summarizeRows(results) {
       maxNsPerOp: nsValues.length > 0 ? Math.max(...nsValues) : null,
     };
   });
+}
+
+function validateBenchmarkLabels(report) {
+  const failures = [];
+  let checkedRows = 0;
+  for (const result of report.results ?? []) {
+    const metadata = result.benchmarkMetadata ?? runtimeBenchmarkMetadata(result.runtime);
+    for (const row of result.rows ?? []) {
+      checkedRows += 1;
+      if (row.benchmarkFamily !== benchmarkFamily) {
+        failures.push(`${row.name ?? result.runtime}: benchmarkFamily=${row.benchmarkFamily}`);
+      }
+      if (row.measurementKind !== measurementKind) {
+        failures.push(`${row.name ?? result.runtime}: measurementKind=${row.measurementKind}`);
+      }
+      if (!String(row.name ?? "").startsWith(`${metadata.rowPrefix}.`)) {
+        failures.push(`${row.name ?? result.runtime}: expected prefix ${metadata.rowPrefix}.`);
+      }
+      if (result.runtime.startsWith("sloppy:loopback:") &&
+          row.sloppyJsonDispatchMode !== metadata.sloppyJsonDispatchMode) {
+        failures.push(
+          `${row.name ?? result.runtime}: expected Sloppy JSON mode ${metadata.sloppyJsonDispatchMode}, got ${row.sloppyJsonDispatchMode}`,
+        );
+      }
+    }
+  }
+  return {
+    status: failures.length === 0 ? "PASS" : "FAIL",
+    checkedRows,
+    failures,
+    sloppyModes: ["native", "generic"],
+  };
 }
 
 async function runRuntime(name, version, start) {
@@ -718,6 +809,7 @@ async function runRuntime(name, version, start) {
     "exception",
     "route-table",
   ];
+  const metadata = runtimeBenchmarkMetadata(name);
   try {
     if (httpProfile && name.startsWith("sloppy:loopback:")) {
       server = await start();
@@ -735,6 +827,7 @@ async function runRuntime(name, version, start) {
             const row = await runScenario(server, scenario);
             row.name = rowName;
             row.repeat = repeatIndex;
+            Object.assign(row, metadata);
             rows.push(row);
           } catch (error) {
             rows.push({
@@ -755,7 +848,7 @@ async function runRuntime(name, version, start) {
         }
       }
       const status = rows.every((row) => row.status === "PASS") ? "PASS" : "FAIL";
-      return { runtime: name, version, status, rows };
+      return { runtime: name, version, status, benchmarkMetadata: metadata, rows };
     }
     server = await start();
     const rows = [];
@@ -765,6 +858,7 @@ async function runRuntime(name, version, start) {
           const row = await runScenario(server, scenario);
           row.name = `${runtimeRowPrefix(name)}.${scenarioRowSegment(scenario)}`;
           row.repeat = repeatIndex;
+          Object.assign(row, metadata);
           rows.push(row);
         } catch (error) {
           rows.push({
@@ -780,9 +874,9 @@ async function runRuntime(name, version, start) {
       }
     }
     const status = rows.every((row) => row.status === "PASS") ? "PASS" : "FAIL";
-    return { runtime: name, version, status, rows };
+    return { runtime: name, version, status, benchmarkMetadata: metadata, rows };
   } catch (error) {
-    return { runtime: name, version, status: "SKIPPED", reason: error.message, rows: [] };
+    return { runtime: name, version, status: "SKIPPED", reason: error.message, benchmarkMetadata: metadata, rows: [] };
   } finally {
     if (server != null) {
       await server.close();
@@ -851,35 +945,71 @@ if (sloppyInfo.available) {
     ),
   );
 } else {
-  results.push({ runtime: "sloppy:loopback:native_json", status: "SKIPPED", reason: "sloppy executable not found", rows: [] });
-  results.push({ runtime: "sloppy:loopback:generic_json", status: "SKIPPED", reason: "sloppy executable not found", rows: [] });
+  results.push({
+    runtime: "sloppy:loopback:native_json",
+    status: "SKIPPED",
+    reason: "sloppy executable not found",
+    benchmarkMetadata: runtimeBenchmarkMetadata("sloppy:loopback:native_json"),
+    rows: [],
+  });
+  results.push({
+    runtime: "sloppy:loopback:generic_json",
+    status: "SKIPPED",
+    reason: "sloppy executable not found",
+    benchmarkMetadata: runtimeBenchmarkMetadata("sloppy:loopback:generic_json"),
+    rows: [],
+  });
 }
 const nodeVersion = detectCommand("node");
 if (nodeVersion.available) {
   results.push(await runRuntime("node:http", nodeVersion.version, startNodeHttpServer));
 } else {
-  results.push({ runtime: "node:http", status: "SKIPPED", reason: "node executable not found", rows: [] });
+  results.push({
+    runtime: "node:http",
+    status: "SKIPPED",
+    reason: "node executable not found",
+    benchmarkMetadata: runtimeBenchmarkMetadata("node:http"),
+    rows: [],
+  });
 }
 
 const expressInfo = optionalPackage("express");
 if (nodeVersion.available && expressInfo.available) {
   results.push(await runRuntime("node:express", `${nodeVersion.version}; express ${expressInfo.version}`, startExpressServer));
 } else {
-  results.push({ runtime: "node:express", status: "SKIPPED", reason: "express dependency not installed", rows: [] });
+  results.push({
+    runtime: "node:express",
+    status: "SKIPPED",
+    reason: "express dependency not installed",
+    benchmarkMetadata: runtimeBenchmarkMetadata("node:express"),
+    rows: [],
+  });
 }
 
 const fastifyInfo = optionalPackage("fastify");
 if (nodeVersion.available && fastifyInfo.available) {
   results.push(await runRuntime("node:fastify", `${nodeVersion.version}; fastify ${fastifyInfo.version}`, startFastifyServer));
 } else {
-  results.push({ runtime: "node:fastify", status: "SKIPPED", reason: "fastify dependency not installed", rows: [] });
+  results.push({
+    runtime: "node:fastify",
+    status: "SKIPPED",
+    reason: "fastify dependency not installed",
+    benchmarkMetadata: runtimeBenchmarkMetadata("node:fastify"),
+    rows: [],
+  });
 }
 
 const bunInfo = detectCommand("bun");
 if (bunInfo.available) {
   results.push(await runRuntime("bun", bunInfo.version, () => startExternalServer("bun", ["bun-server.mjs"])));
 } else {
-  results.push({ runtime: "bun", status: "SKIPPED", reason: "bun executable not found", rows: [] });
+  results.push({
+    runtime: "bun",
+    status: "SKIPPED",
+    reason: "bun executable not found",
+    benchmarkMetadata: runtimeBenchmarkMetadata("bun"),
+    rows: [],
+  });
 }
 
 const denoInfo = detectCommand("deno");
@@ -890,7 +1020,13 @@ if (denoInfo.available) {
     ),
   );
 } else {
-  results.push({ runtime: "deno", status: "SKIPPED", reason: "deno executable not found", rows: [] });
+  results.push({
+    runtime: "deno",
+    status: "SKIPPED",
+    reason: "deno executable not found",
+    benchmarkMetadata: runtimeBenchmarkMetadata("deno"),
+    rows: [],
+  });
 }
 
 const report = {
@@ -898,6 +1034,7 @@ const report = {
   label: "local dev-machine JSON competitor benchmark",
   localDevMachineMeasurements: true,
   generatedAtUtc: new Date().toISOString(),
+  git: gitMetadata(),
   iterations,
   warmupIterations,
   repeat,
@@ -906,6 +1043,7 @@ const report = {
     outDir: httpProfile ? httpProfileOutDir : null,
     runId: httpProfile ? httpProfileRunId : null,
   },
+  sloppyExecutable: sloppyInfo.available ? sloppyInfo.path : null,
   client: "node fetch loop, one awaited request at a time",
   scenarios: {
     small: "POST /small with a small JSON login payload; validates JSON echo response",
@@ -935,6 +1073,10 @@ const report = {
   results,
   summary: summarizeRows(results),
 };
+report.labelValidation = validateBenchmarkLabels(report);
+if (report.labelValidation.status !== "PASS") {
+  throw new Error(`benchmark label validation failed: ${report.labelValidation.failures.join("; ")}`);
+}
 
 await fs.mkdir(path.dirname(outPath), { recursive: true });
 await fs.writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");

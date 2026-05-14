@@ -51,8 +51,10 @@ tools/windows/bench-json-competitors.ps1 `
 
 The wrapper writes `report.md` next to the timing JSON unless `-ReportOut` is
 provided. The report renderer summarizes runtime status, scenario medians,
-Sloppy before/after deltas, and HTTP profile counters without turning local
-evidence into public claims.
+Sloppy before/after deltas, label validation, and HTTP profile counters without
+turning local evidence into public claims. Label validation is part of the
+runner JSON and checks that Sloppy native/generic loopback rows use the expected
+row prefixes and dispatch-mode metadata.
 
 The profiler is a process-global engineering probe for the current single
 Sloppy HTTP server loop and V8 owner-thread path. Do not use one profiled
