@@ -136,7 +136,19 @@ class WebhookDb {
             return this.subscriptions.filter((entry) => event === null || entry.eventName === event);
         }
         if (sql.startsWith("select id, event_name as eventName")) {
-            return this.outbox.filter((entry) => entry.status === "pending" || entry.status === "failed").slice(0, params[3]);
+            const availableNow = Date.parse(String(params[0]));
+            const retryNow = Date.parse(String(params[1]));
+            const lockNow = Date.parse(String(params[2]));
+            const limit = Number(params[3]);
+            return this.outbox
+                .filter((entry) => {
+                    const statusOk = entry.status === "pending" || entry.status === "failed";
+                    const availableOk = entry.availableAt === null || Date.parse(entry.availableAt) <= availableNow;
+                    const retryOk = entry.nextAttemptAt === null || Date.parse(entry.nextAttemptAt) <= retryNow;
+                    const lockOk = entry.lockedUntil === null || Date.parse(entry.lockedUntil) <= lockNow;
+                    return statusOk && availableOk && retryOk && lockOk;
+                })
+                .slice(0, limit);
         }
         if (sql.includes("from sloppy_webhook_subscriptions where event_name = ?")) {
             return this.subscriptions.filter((entry) => entry.eventName === params[0] && entry.enabled === 1);
@@ -398,6 +410,10 @@ async function runDeliveryContracts(collector) {
         const summary = await webhooks.deliverPending({ client: mock.createClient("webhooks") });
         assert(summary.failed === 1, "429 was not treated as retryable");
         assert(Date.parse(db.outbox[0].nextAttemptAt) - started >= 2500, "Retry-After was not reflected in nextAttemptAt");
+        const attemptsBeforeEarlyRun = db.attempts.length;
+        const earlySummary = await webhooks.deliverPending({ client: TestHttp.mock().createClient("webhooks") });
+        assert(earlySummary.claimed === 0, "row was claimed before Retry-After elapsed");
+        assert(db.attempts.length === attemptsBeforeEarlyRun, "early retry recorded another attempt");
     });
 }
 
