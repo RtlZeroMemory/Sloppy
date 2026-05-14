@@ -377,6 +377,7 @@ pub(super) fn route_json_response_plan(
     response: Option<&ResponseMetadata>,
     responses: &[ResponseMetadata],
     resolved_schemas: &BTreeMap<String, Value>,
+    allow_native_static: bool,
 ) -> Value {
     let json_responses = if responses.is_empty() {
         response
@@ -395,16 +396,17 @@ pub(super) fn route_json_response_plan(
             "writer": "none"
         });
     }
-    if json_responses.len() == 1 && json_responses[0].native_body.is_some() {
+    if allow_native_static && json_responses.len() == 1 && json_responses[0].native_body.is_some() {
         return json!({
             "mode": "native-static",
             "writer": "preencoded",
             "contentType": "application/json"
         });
     }
-    if json_responses
-        .iter()
-        .any(|candidate| candidate.native_body.is_some())
+    if allow_native_static
+        && json_responses
+            .iter()
+            .any(|candidate| candidate.native_body.is_some())
     {
         return json!({
             "mode": "fallback",
@@ -530,7 +532,12 @@ pub(super) fn route_dispatch_json(
             .response
             .as_ref()
             .and_then(|response| response.native_body.as_deref());
-        if route_execution_kind(response_kind, native_body) != RouteExecutionKind::V8Handler {
+        if route_execution_kind(
+            response_kind,
+            native_body,
+            !route.handler.effects.is_empty(),
+        ) != RouteExecutionKind::V8Handler
+        {
             native_no_js_endpoints += 1;
         }
 
@@ -549,6 +556,7 @@ pub(super) fn route_dispatch_json(
             route.handler.response.as_ref(),
             &route.handler.responses,
             resolved_schemas,
+            route.handler.effects.is_empty(),
         );
         match route_json_mode(&response_plan) {
             "native-static" | "native-schema" => response_native_json_routes += 1,

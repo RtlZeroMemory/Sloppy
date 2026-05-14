@@ -47,7 +47,7 @@
         "resolvedImports": [
           {
             "kind": "package",
-            "resolvedId": "fixtures/validator-lite/index.js",
+            "resolvedId": "node_modules/validator-lite/index.js",
             "specifier": "validator-lite"
           }
         ],
@@ -56,22 +56,22 @@
       {
         "dynamicImports": [],
         "format": "esm",
-        "id": "fixtures/validator-lite/index.js",
+        "id": "node_modules/validator-lite/index.js",
         "imports": [],
         "includedBy": "src/routes/users.ts",
         "package": "validator-lite",
         "resolvedImports": [],
-        "source": "fixtures/validator-lite/index.js"
+        "source": "node_modules/validator-lite/index.js"
       }
     ],
     "nodeBuiltins": [],
     "packages": [
       {
-        "entry": "fixtures/validator-lite/index.js",
+        "entry": "node_modules/validator-lite/index.js",
         "format": "esm",
         "name": "validator-lite",
-        "packageJson": "fixtures/validator-lite/package.json",
-        "root": "fixtures/validator-lite",
+        "packageJson": "node_modules/validator-lite/package.json",
+        "root": "node_modules/validator-lite",
         "source": "installed",
         "version": "0.0.0"
       }
