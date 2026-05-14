@@ -407,6 +407,15 @@
     sloppy_add_cli_golden_test(
         sloppy.cli.audit_ffi_json tests/golden/cli/audit-ffi-json.json audit --plan
         tests/fixtures/cli/ffi-policy.plan.json --format json)
+    add_test(
+        NAME sloppy.cli.ffi_dispatch_symbols_malformed
+        COMMAND
+            "${CMAKE_COMMAND}" "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>"
+            "-DSLOPPY_CLI_ARGS=doctor;--plan;tests/fixtures/cli/ffi-dispatch-malformed-symbols.plan.json"
+            "-DSLOPPY_EXPECTED_ERROR=native.ffiDispatchTables symbols must be an array" -P
+            "${PROJECT_SOURCE_DIR}/tests/cmake/check_cli_failure.cmake")
+    set_tests_properties(sloppy.cli.ffi_dispatch_symbols_malformed
+                         PROPERTIES WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
     sloppy_add_cli_golden_test(
         sloppy.cli.openapi_json tests/golden/cli/openapi.json openapi --plan
         tests/fixtures/cli/route-metadata.plan.json)

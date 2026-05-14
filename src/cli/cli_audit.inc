@@ -798,7 +798,11 @@ static void sl_cli_audit_ffi(const SlCliOptions* options, const SlCliMetadata* m
 {
     bool has_ffi_feature = sl_cli_metadata_requires_feature(metadata, "stdlib.ffi");
 
-    if (!has_ffi_feature && metadata->ffi_library_count == 0U && metadata->ffi_struct_count == 0U) {
+    if (!has_ffi_feature && metadata->ffi_library_count == 0U &&
+        metadata->ffi_function_count == 0U && metadata->ffi_struct_count == 0U &&
+        metadata->ffi_handle_count == 0U && metadata->ffi_callback_count == 0U &&
+        metadata->ffi_dispatch_table_count == 0U)
+    {
         return;
     }
 
@@ -816,6 +820,20 @@ static void sl_cli_audit_ffi(const SlCliOptions* options, const SlCliMetadata* m
                           "FFI metadata exposes symbols and typed signatures, not raw pointer "
                           "addresses",
                           "native.ffi", findings, errors);
+    }
+    for (size_t index = 0U; index < metadata->ffi_library_count; index += 1U) {
+        const SlCliFfiLibrary* library = &metadata->ffi_libraries[index];
+        if (!sl_cli_span_empty(library->package_path)) {
+            sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FFI_PACKAGE_PATH_VISIBLE",
+                              "packaged native FFI path metadata is visible and redacted by "
+                              "normal CLI output rules",
+                              "native.ffi", findings, errors);
+        }
+        if (!sl_cli_span_empty(library->sha256) || !sl_cli_span_empty(library->hash_status)) {
+            sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FFI_SHA256_VISIBLE",
+                              "packaged native FFI SHA-256 verification state is visible",
+                              "native.ffi", findings, errors);
+        }
     }
     for (size_t outer = 0U; outer < metadata->ffi_function_count; outer += 1U) {
         const SlCliFfiFunction* function = &metadata->ffi_functions[outer];
@@ -836,6 +854,26 @@ static void sl_cli_audit_ffi(const SlCliOptions* options, const SlCliMetadata* m
                                   errors);
             }
         }
+    }
+    if (metadata->ffi_struct_count > 0U) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FFI_STRUCT_LAYOUT_VISIBLE",
+                          "FFI struct size, alignment, and fields are visible in Plan metadata",
+                          "native.ffiStructs", findings, errors);
+    }
+    if (metadata->ffi_handle_count > 0U) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FFI_HANDLES_VISIBLE",
+                          "FFI handle ownership metadata is visible in the Plan",
+                          "native.ffiHandles", findings, errors);
+    }
+    if (metadata->ffi_callback_count > 0U) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FFI_CALLBACKS_VISIBLE",
+                          "FFI callback type metadata is visible in the Plan",
+                          "native.ffiCallbacks", findings, errors);
+    }
+    if (metadata->ffi_dispatch_table_count > 0U) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FFI_DISPATCH_VISIBLE",
+                          "FFI dispatch table symbols are Plan-visible without public dlsym access",
+                          "native.ffiDispatchTables", findings, errors);
     }
 }
 

@@ -331,7 +331,7 @@ fn extract_ffi_function_declaration(
         ffi_type_descriptor_from_expression(context.path, return_expression, bindings)?;
     if ffi_return_type_unsupported(&return_type) {
         return Err(Diagnostic::new(
-            "SLOPPYC_E_FFI_UNSUPPORTED_TYPE",
+            "SLOPPY_E_FFI_UNSUPPORTED_TYPE",
             format!("unsupported FFI return type \"{return_type}\""),
         )
         .with_path(context.path)
@@ -359,7 +359,7 @@ fn extract_ffi_function_declaration(
             ffi_type_descriptor_from_expression(context.path, expression, bindings)?;
         if parameter_type == "void" {
             return Err(Diagnostic::new(
-                "SLOPPYC_E_FFI_UNSUPPORTED_TYPE",
+                "SLOPPY_E_FFI_UNSUPPORTED_TYPE",
                 "FFI parameters cannot use void",
             )
             .with_path(context.path)
@@ -376,7 +376,7 @@ fn extract_ffi_function_declaration(
         .unwrap_or(false)
     {
         return Err(Diagnostic::new(
-            "SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK",
+            "SLOPPY_E_FFI_UNSUPPORTED_CALLBACK",
             "FFI callbacks are not supported",
         )
         .with_path(context.path)
@@ -389,7 +389,7 @@ fn extract_ffi_function_declaration(
         .unwrap_or(false)
     {
         return Err(Diagnostic::new(
-            "SLOPPYC_E_FFI_UNSUPPORTED_VARIADIC",
+            "SLOPPY_E_FFI_UNSUPPORTED_VARIADIC",
             "FFI variadic functions are not supported",
         )
         .with_path(context.path)
@@ -490,7 +490,7 @@ fn extract_ffi_struct_declaration(
             ffi_struct_field_descriptor_from_expression(context.path, &property.value, bindings)?;
         if descriptor.is_none() && !ffi_struct_field_type_supported(&type_name) {
             return Err(Diagnostic::new(
-                "SLOPPYC_E_FFI_UNSUPPORTED_STRUCT_BY_VALUE",
+                "SLOPPY_E_FFI_UNSUPPORTED_TYPE",
                 format!("unsupported FFI struct field type \"{type_name}\""),
             )
             .with_path(context.path)
@@ -566,7 +566,7 @@ fn extract_ffi_struct_options(
                 };
                 if value.value.as_str() != "sequential" {
                     return Err(Diagnostic::new(
-                        "SLOPPYC_E_FFI_UNSUPPORTED_STRUCT_BY_VALUE",
+                        "SLOPPY_E_FFI_UNSUPPORTED_TYPE",
                         "FFI structs only support sequential layout",
                     )
                     .with_path(path)
@@ -591,7 +591,7 @@ fn extract_ffi_struct_options(
                     || value.value > 16.0
                 {
                     return Err(Diagnostic::new(
-                        "SLOPPYC_E_FFI_UNSUPPORTED_STRUCT_BY_VALUE",
+                        "SLOPPY_E_FFI_UNSUPPORTED_TYPE",
                         "FFI struct pack must be 1, 2, 4, 8, or 16",
                     )
                     .with_path(path)
@@ -652,7 +652,7 @@ fn extract_ffi_callback_declaration(
     let return_type = ffi_type_name_from_expression(context.path, return_expression, bindings)?;
     if !ffi_callback_return_type_supported(&return_type) {
         return Err(Diagnostic::new(
-            "SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK",
+            "SLOPPY_E_FFI_UNSUPPORTED_CALLBACK",
             format!("unsupported FFI callback return type \"{return_type}\""),
         )
         .with_path(context.path)
@@ -678,7 +678,7 @@ fn extract_ffi_callback_declaration(
         let parameter_type = ffi_type_name_from_expression(context.path, expression, bindings)?;
         if !ffi_callback_parameter_type_supported(&parameter_type) {
             return Err(Diagnostic::new(
-                "SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK",
+                "SLOPPY_E_FFI_UNSUPPORTED_CALLBACK",
                 format!("unsupported FFI callback parameter type \"{parameter_type}\""),
             )
             .with_path(context.path)
@@ -828,7 +828,7 @@ fn ffi_type_name_from_expression(
 ) -> Result<String, Diagnostic> {
     let Expression::StaticMemberExpression(member) = expression else {
         return Err(Diagnostic::new(
-            "SLOPPYC_E_FFI_INVALID_TYPE",
+            "SLOPPY_E_FFI_INVALID_DECLARATION",
             "FFI types must be static properties from the t namespace",
         )
         .with_path(path)
@@ -836,7 +836,7 @@ fn ffi_type_name_from_expression(
     };
     let Expression::Identifier(object) = &member.object else {
         return Err(Diagnostic::new(
-            "SLOPPYC_E_FFI_INVALID_TYPE",
+            "SLOPPY_E_FFI_INVALID_DECLARATION",
             "FFI types must be static properties from the t namespace",
         )
         .with_path(path)
@@ -844,7 +844,7 @@ fn ffi_type_name_from_expression(
     };
     if !bindings.type_names.contains(object.name.as_str()) {
         return Err(Diagnostic::new(
-            "SLOPPYC_E_FFI_INVALID_TYPE",
+            "SLOPPY_E_FFI_INVALID_DECLARATION",
             "FFI type declarations must use the imported t namespace",
         )
         .with_path(path)
@@ -853,7 +853,7 @@ fn ffi_type_name_from_expression(
     let name = member.property.name.as_str();
     if !ffi_type_supported(name) {
         return Err(Diagnostic::new(
-            "SLOPPYC_E_FFI_INVALID_TYPE",
+            "SLOPPY_E_FFI_INVALID_DECLARATION",
             format!("unsupported FFI type \"{name}\""),
         )
         .with_path(path)
@@ -880,7 +880,7 @@ fn ffi_type_descriptor_from_expression(
             if let Expression::Identifier(object) = &member.object {
                 let Some(handle_name) = bindings.handle_names.get(object.name.as_str()) else {
                     return Err(Diagnostic::new(
-                        "SLOPPYC_E_FFI_INVALID_TYPE",
+                        "SLOPPY_E_FFI_INVALID_DECLARATION",
                         "owned FFI handle descriptors must reference a static unsafeFfi.handle declaration",
                     )
                     .with_path(path)
@@ -921,14 +921,14 @@ fn ffi_type_descriptor_from_expression(
             ));
         }
         return Err(Diagnostic::new(
-            "SLOPPYC_E_FFI_INVALID_TYPE",
+            "SLOPPY_E_FFI_INVALID_DECLARATION",
             "FFI identifier descriptors must reference static unsafeFfi.handle or unsafeFfi.callback declarations",
         )
         .with_path(path)
         .with_span(expression.span()));
     }
     Err(Diagnostic::new(
-        "SLOPPYC_E_FFI_INVALID_TYPE",
+        "SLOPPY_E_FFI_INVALID_DECLARATION",
         "FFI declarations must use static t aliases, handle descriptors, or callback descriptors",
     )
     .with_path(path)
@@ -988,7 +988,7 @@ fn ffi_struct_field_descriptor_from_expression(
     if let Expression::Identifier(identifier) = expression {
         let Some(struct_name) = bindings.struct_names.get(identifier.name.as_str()) else {
             return Err(Diagnostic::new(
-                "SLOPPYC_E_FFI_INVALID_TYPE",
+                "SLOPPY_E_FFI_INVALID_DECLARATION",
                 "nested FFI struct fields must reference a static unsafeFfi.struct declaration",
             )
             .with_path(path)
@@ -1092,7 +1092,7 @@ fn validate_ffi_dispatch_symbol(
 ) -> Result<(), Diagnostic> {
     if !ffi_dispatch_return_type_supported(&symbol.return_type) {
         return Err(Diagnostic::new(
-            "SLOPPYC_E_FFI_UNSUPPORTED_TYPE",
+            "SLOPPY_E_FFI_UNSUPPORTED_TYPE",
             format!(
                 "unsupported FFI dispatch-table return type \"{}\"",
                 symbol.return_type
@@ -1105,7 +1105,7 @@ fn validate_ffi_dispatch_symbol(
     for parameter in &symbol.parameters {
         if !ffi_dispatch_parameter_type_supported(parameter) {
             return Err(Diagnostic::new(
-                "SLOPPYC_E_FFI_UNSUPPORTED_TYPE",
+                "SLOPPY_E_FFI_UNSUPPORTED_TYPE",
                 format!("unsupported FFI dispatch-table parameter type \"{parameter}\""),
             )
             .with_path(context.path)
@@ -1121,7 +1121,7 @@ fn validate_ffi_convention(path: &Path, span: Span, convention: &str) -> Result<
         return Ok(());
     }
     Err(Diagnostic::new(
-        "SLOPPYC_E_FFI_UNSUPPORTED_CALLING_CONVENTION",
+        "SLOPPY_E_FFI_UNSUPPORTED_CALLING_CONVENTION",
         format!("unsupported FFI calling convention \"{convention}\""),
     )
     .with_path(path)
@@ -1206,7 +1206,7 @@ fn ffi_bool_option(
 }
 
 fn ffi_dynamic_declaration_diag(path: &Path, span: Span, message: impl Into<String>) -> Diagnostic {
-    Diagnostic::new("SLOPPYC_E_FFI_DYNAMIC_DECLARATION", message)
+    Diagnostic::new("SLOPPY_E_FFI_INVALID_DECLARATION", message)
         .with_path(path)
         .with_span(span)
         .with_hint("FFI declarations must be static so the compiler can emit Plan metadata.")

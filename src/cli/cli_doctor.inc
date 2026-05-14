@@ -356,7 +356,9 @@ static void sl_cli_doctor_emit_ffi(const SlCliOptions* options, SlArena* arena,
                                    const SlCliMetadata* metadata, bool* emitted)
 {
     if (!sl_cli_metadata_requires_feature(metadata, "stdlib.ffi") &&
-        metadata->ffi_library_count == 0U && metadata->ffi_struct_count == 0U)
+        metadata->ffi_library_count == 0U && metadata->ffi_function_count == 0U &&
+        metadata->ffi_struct_count == 0U && metadata->ffi_handle_count == 0U &&
+        metadata->ffi_callback_count == 0U && metadata->ffi_dispatch_table_count == 0U)
     {
         return;
     }
@@ -366,10 +368,16 @@ static void sl_cli_doctor_emit_ffi(const SlCliOptions* options, SlArena* arena,
             options, arena, sl_cli_span_cstr("stdlib.ffi.required"), sl_cli_span_cstr("ok"),
             sl_cli_span_cstr("native FFI runtime feature metadata is Plan-visible"), emitted);
     }
-    if (metadata->ffi_library_count > 0U || metadata->ffi_struct_count > 0U) {
+    if (metadata->ffi_library_count > 0U || metadata->ffi_function_count > 0U ||
+        metadata->ffi_struct_count > 0U || metadata->ffi_handle_count > 0U ||
+        metadata->ffi_callback_count > 0U || metadata->ffi_dispatch_table_count > 0U)
+    {
         sl_cli_doctor_emit(
             options, arena, sl_cli_span_cstr("stdlib.ffi.metadata"), sl_cli_span_cstr("ok"),
-            sl_cli_span_cstr("native FFI library and struct metadata is Plan-visible"), emitted);
+            sl_cli_span_cstr(
+                "native FFI libraries, symbols, structs, handles, callbacks, and dispatch tables "
+                "are Plan-visible"),
+            emitted);
     }
     for (size_t library_index = 0U; library_index < metadata->ffi_library_count;
          library_index += 1U)
@@ -381,17 +389,52 @@ static void sl_cli_doctor_emit_ffi(const SlCliOptions* options, SlArena* arena,
             sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.ffi.library"),
                                sl_cli_span_cstr("error"),
                                sl_cli_span_cstr("native FFI library could not be loaded"), emitted);
-            continue;
         }
-        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.ffi.library"),
-                           sl_cli_span_cstr("ok"), sl_cli_span_cstr("native FFI library loads"),
-                           emitted);
+        else {
+            sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.ffi.library"),
+                               sl_cli_span_cstr("ok"), sl_cli_span_cstr("native FFI library loads"),
+                               emitted);
+        }
+        if (!sl_cli_span_empty(library->package_path)) {
+            sl_cli_doctor_emit(
+                options, arena, sl_cli_span_cstr("stdlib.ffi.package-path"), sl_cli_span_cstr("ok"),
+                sl_cli_span_cstr("packaged native FFI path is recorded without raw addresses"),
+                emitted);
+        }
+        if (!sl_cli_span_empty(library->sha256) || !sl_cli_span_empty(library->hash_status)) {
+            SlCliSpan hash_check_status = sl_cli_span_cstr("warn");
+            SlCliSpan hash_check_message =
+                sl_cli_span_cstr("packaged native FFI SHA-256 verification is not confirmed");
+            if (sl_cli_span_equal_cstr(library->hash_status, "verified")) {
+                hash_check_status = sl_cli_span_cstr("ok");
+                hash_check_message =
+                    sl_cli_span_cstr("packaged native FFI SHA-256 verification succeeded");
+            }
+            else if (sl_cli_span_equal_cstr(library->hash_status, "mismatch")) {
+                hash_check_status = sl_cli_span_cstr("error");
+                hash_check_message =
+                    sl_cli_span_cstr("packaged native FFI SHA-256 verification failed");
+            }
+            else if (sl_cli_span_equal_cstr(library->hash_status, "missing")) {
+                hash_check_message =
+                    sl_cli_span_cstr("packaged native FFI SHA-256 verification is missing");
+            }
+            else if (sl_cli_span_equal_cstr(library->hash_status, "unverified")) {
+                hash_check_message =
+                    sl_cli_span_cstr("packaged native FFI SHA-256 verification is unverified");
+            }
+            sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.ffi.sha256"),
+                               hash_check_status, hash_check_message, emitted);
+        }
         for (size_t index = 0U; index < library->function_count; index += 1U) {
             const SlCliFfiFunction* function =
                 &metadata->ffi_functions[library->first_function + index];
             void* symbol = NULL;
-            status = sl_platform_dynlib_symbol(&handle, sl_cli_span_str(function->symbol), &symbol,
-                                               NULL);
+            status = sl_status_from_code(SL_STATUS_INVALID_STATE);
+            if (handle.handle != NULL) {
+                status = sl_platform_dynlib_symbol(&handle, sl_cli_span_str(function->symbol),
+                                                   &symbol, NULL);
+            }
             sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.ffi.symbol"),
                                sl_status_is_ok(status) ? sl_cli_span_cstr("ok")
                                                        : sl_cli_span_cstr("error"),
@@ -399,8 +442,41 @@ static void sl_cli_doctor_emit_ffi(const SlCliOptions* options, SlArena* arena,
                                    ? sl_cli_span_cstr("native FFI symbol resolves")
                                    : sl_cli_span_cstr("native FFI symbol could not be resolved"),
                                emitted);
+            sl_cli_doctor_emit(
+                options, arena, sl_cli_span_cstr("stdlib.ffi.convention"), sl_cli_span_cstr("ok"),
+                sl_cli_span_cstr("native FFI calling convention is Plan-visible"), emitted);
+            if (function->parameter_count > 0U) {
+                sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.ffi.parameters"),
+                                   sl_cli_span_cstr("ok"),
+                                   sl_cli_span_cstr("native FFI parameter metadata is visible"),
+                                   emitted);
+            }
         }
-        sl_platform_dynlib_close(&handle);
+        if (handle.handle != NULL) {
+            sl_platform_dynlib_close(&handle);
+        }
+    }
+    if (metadata->ffi_struct_count > 0U) {
+        sl_cli_doctor_emit(options, arena, sl_cli_span_cstr("stdlib.ffi.struct"),
+                           sl_cli_span_cstr("ok"),
+                           sl_cli_span_cstr("native FFI struct size, alignment, and fields are "
+                                            "Plan-visible"),
+                           emitted);
+    }
+    if (metadata->ffi_handle_count > 0U) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.ffi.handle"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("native FFI handle ownership metadata is visible"), emitted);
+    }
+    if (metadata->ffi_callback_count > 0U) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.ffi.callback"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("native FFI callback type metadata is visible"), emitted);
+    }
+    if (metadata->ffi_dispatch_table_count > 0U) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.ffi.dispatch-table"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("native FFI dispatch table metadata is visible"), emitted);
     }
 }
 

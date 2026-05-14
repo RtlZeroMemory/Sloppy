@@ -32,6 +32,10 @@ export const t = Object.freeze(Object.fromEntries(TYPE_NAMES.map((name) => [name
 const STRUCT_RESERVED_FIELDS = new Set(["ptr", "get", "set"]);
 const HANDLE_RESERVED_NAMES = new Set(["", "ptr"]);
 
+function ffiTypeError(code, message) {
+    return new TypeError(`${code}: ${message}`);
+}
+
 function ffiBridge(operation) {
     const bridge = globalThis.__sloppy?.ffi ?? null;
     if (bridge === null) {
@@ -98,14 +102,14 @@ function primitiveTypeName(value, operation) {
         typeof value.name !== "string" ||
         t[value.name] !== value
     ) {
-        throw new TypeError(`${operation} requires FFI types from sloppy/ffi t.`);
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", `${operation} requires FFI types from sloppy/ffi t.`);
     }
     return value.name;
 }
 
 function fn(returnType, parameters, options = undefined) {
     if (!Array.isArray(parameters)) {
-        throw new TypeError("unsafeFfi.fn parameters must be an array of FFI types.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.fn parameters must be an array of FFI types.");
     }
     const normalizedReturn = typeDescriptor(returnType, "unsafeFfi.fn");
     const normalizedParameters = parameters.map((parameter) => typeDescriptor(parameter, "unsafeFfi.fn"));
@@ -126,10 +130,10 @@ function fn(returnType, parameters, options = undefined) {
 
 function library(name, functions, options = undefined) {
     if (typeof name !== "string" || name.length === 0) {
-        throw new TypeError("unsafeFfi.library name must be a non-empty string.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.library name must be a non-empty string.");
     }
     if (functions === null || typeof functions !== "object" || Array.isArray(functions)) {
-        throw new TypeError("unsafeFfi.library functions must be an object.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.library functions must be an object.");
     }
     const bound = ffiBridge("unsafeFfi.library").library(name, functions, options ?? {});
     return wrapLibrary(bound, functions);
@@ -151,6 +155,14 @@ function ref(type, initialValue = undefined) {
         value: cell,
     });
     return cell;
+}
+
+function out(type) {
+    return ref(type);
+}
+
+function inout(type, initialValue) {
+    return ref(type, initialValue);
 }
 
 function buffer(byteLength) {
@@ -182,15 +194,15 @@ function utf16Buffer(valueOrCodeUnits) {
 
 function struct(name, fields, options = undefined) {
     if (typeof name !== "string" || name.length === 0) {
-        throw new TypeError("unsafeFfi.struct name must be a non-empty string.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.struct name must be a non-empty string.");
     }
     if (fields === null || typeof fields !== "object" || Array.isArray(fields)) {
-        throw new TypeError("unsafeFfi.struct fields must be an object.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.struct fields must be an object.");
     }
     const normalized = Object.fromEntries(
         Object.entries(fields).map(([field, fieldType]) => {
             if (STRUCT_RESERVED_FIELDS.has(field)) {
-                throw new TypeError(`unsafeFfi.struct field '${field}' is reserved.`);
+                throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", `unsafeFfi.struct field '${field}' is reserved.`);
             }
             return [field, normalizeStructField(fieldType)];
         }),
@@ -248,7 +260,7 @@ function normalizeStructField(fieldType) {
 
 function array(element, length) {
     if (!Number.isInteger(length) || length <= 0) {
-        throw new TypeError("unsafeFfi.array length must be a positive integer.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.array length must be a positive integer.");
     }
     return Object.freeze({
         kind: "ffi.array",
@@ -259,7 +271,7 @@ function array(element, length) {
 
 function handle(name) {
     if (typeof name !== "string" || HANDLE_RESERVED_NAMES.has(name)) {
-        throw new TypeError("unsafeFfi.handle name must be a non-empty string.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.handle name must be a non-empty string.");
     }
     const descriptor = {
         kind: "ffi.handle",
@@ -354,10 +366,10 @@ function wrapOwnedHandleResult(result, descriptor, libraryObject) {
 
 function using(resource, callback) {
     if (resource === null || typeof resource !== "object" || typeof resource.dispose !== "function") {
-        throw new TypeError("unsafeFfi.using requires a disposable FFI resource.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE", "unsafeFfi.using requires a disposable FFI resource.");
     }
     if (typeof callback !== "function") {
-        throw new TypeError("unsafeFfi.using requires a callback.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE", "unsafeFfi.using requires a callback.");
     }
     let result;
     try {
@@ -375,7 +387,7 @@ function using(resource, callback) {
 
 function callbackType(returnType, parameters) {
     if (!Array.isArray(parameters)) {
-        throw new TypeError("unsafeFfi.callbackType parameters must be an array.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.callbackType parameters must be an array.");
     }
     const returnName = typeName(returnType, "unsafeFfi.callbackType");
     if (!["void", "i32", "u32"].includes(returnName)) {
@@ -400,10 +412,10 @@ function callback(returnTypeOrDescriptor, parameters, fnValue, options = undefin
         descriptor = { returns: returnTypeOrDescriptor, parameters, fn: fnValue, ...(options ?? {}) };
     }
     if (typeof descriptor.fn !== "function") {
-        throw new TypeError("unsafeFfi.callback requires a JavaScript function.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.callback requires a JavaScript function.");
     }
     if (!Array.isArray(descriptor.parameters)) {
-        throw new TypeError("unsafeFfi.callback parameters must be an array.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.callback parameters must be an array.");
     }
     const callbackDescriptor = {
         returnType: typeName(descriptor.returns, "unsafeFfi.callback"),
@@ -426,13 +438,13 @@ function callback(returnTypeOrDescriptor, parameters, fnValue, options = undefin
 
 function dispatchTable(name, descriptor) {
     if (typeof name !== "string" || name.length === 0) {
-        throw new TypeError("unsafeFfi.dispatchTable name must be a non-empty string.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.dispatchTable name must be a non-empty string.");
     }
     if (descriptor === null || typeof descriptor !== "object" || typeof descriptor.resolver !== "function") {
-        throw new TypeError("unsafeFfi.dispatchTable requires a typed resolver function.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.dispatchTable requires a typed resolver function.");
     }
     if (descriptor.symbols === null || typeof descriptor.symbols !== "object" || Array.isArray(descriptor.symbols)) {
-        throw new TypeError("unsafeFfi.dispatchTable symbols must be an object.");
+        throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.dispatchTable symbols must be an object.");
     }
     const bound = ffiBridge("unsafeFfi.dispatchTable").dispatchTable(name, descriptor);
     return wrapLibrary(bound, descriptor.symbols);
@@ -444,6 +456,8 @@ export const unsafeFfi = Object.freeze({
     handle,
     array,
     ref,
+    out,
+    inout,
     buffer,
     cstringBuffer,
     utf16Buffer,

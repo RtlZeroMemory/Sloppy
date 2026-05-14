@@ -180,6 +180,14 @@ assert.equal(Object.prototype.propertyIsEnumerable.call(cell, "ptr"), false);
 assert.equal(cell.value, 1);
 cell.value = 7;
 assert.equal(cell.value, 7);
+const outCell = unsafeFfi.out(t.u32);
+assert.equal(outCell.ptr, outCell);
+assert.equal(outCell.value, undefined);
+outCell.value = 9;
+assert.equal(outCell.value, 9);
+const inoutCell = unsafeFfi.inout(t.i32, -2);
+assert.equal(inoutCell.ptr, inoutCell);
+assert.equal(inoutCell.value, -2);
 
 const buffer = unsafeFfi.buffer(3);
 assert.equal(buffer.ptr, buffer);

@@ -1,5 +1,7 @@
-#include <stdint.h>
+#include <limits.h>
+#include <math.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -52,7 +54,17 @@ SLOPPY_FFI_EXPORT uint32_t sloppy_ffi_strlen(const char* text);
 SLOPPY_FFI_EXPORT uint32_t sloppy_ffi_sum_bytes(const uint8_t* bytes, uintptr_t length);
 SLOPPY_FFI_EXPORT void sloppy_ffi_fill(uint8_t* bytes, uintptr_t length, uint8_t value);
 SLOPPY_FFI_EXPORT void sloppy_ffi_write_u32(uint32_t* value);
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_write_out_values(int32_t* signed_value,
+                                                      uint32_t* unsigned_value,
+                                                      size_t* length_value);
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_counter_create_out(int32_t initial,
+                                                        SloppyFfiCounter** out_counter);
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_copy_message(const char* text, char* output,
+                                                  size_t output_length, size_t* written);
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_mutate_bytes(uint8_t* bytes, size_t length);
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_point_sum(const SloppyFfiPoint* point);
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_nested_total(const SloppyFfiNested* nested);
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_matrix_first4_sum(const SloppyFfiMatrix* matrix);
 SLOPPY_FFI_EXPORT void* sloppy_ffi_null_pointer(void);
 SLOPPY_FFI_EXPORT void* sloppy_ffi_static_point_pointer(void);
 SLOPPY_FFI_EXPORT size_t sloppy_ffi_sizeof_point(void);
@@ -75,6 +87,7 @@ SLOPPY_FFI_EXPORT int32_t sloppy_ffi_call_callback(SloppyFfiCallback callback, v
                                                    int32_t value);
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_call_i32_callback(SloppyFfiI32Callback callback,
                                                        int32_t value);
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_visit_i32(int32_t count, SloppyFfiI32Callback callback);
 SLOPPY_FFI_EXPORT uint32_t sloppy_ffi_call_u32_callback(SloppyFfiU32Callback callback,
                                                         uint32_t value);
 SLOPPY_FFI_EXPORT void sloppy_ffi_call_void_callback(SloppyFfiVoidCallback callback, int32_t value);
@@ -138,9 +151,107 @@ SLOPPY_FFI_EXPORT void sloppy_ffi_write_u32(uint32_t* value)
     }
 }
 
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_write_out_values(int32_t* signed_value,
+                                                      uint32_t* unsigned_value,
+                                                      size_t* length_value)
+{
+    if (signed_value == NULL || unsigned_value == NULL || length_value == NULL) {
+        return -1;
+    }
+    *signed_value = -17;
+    *unsigned_value = 42U;
+    *length_value = 9U;
+    return 0;
+}
+
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_counter_create_out(int32_t initial,
+                                                        SloppyFfiCounter** out_counter)
+{
+    SloppyFfiCounter* counter = NULL;
+
+    if (out_counter == NULL) {
+        return -1;
+    }
+    counter = sloppy_ffi_counter_create(initial);
+    if (counter == NULL) {
+        *out_counter = NULL;
+        return -2;
+    }
+    *out_counter = counter;
+    return 0;
+}
+
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_copy_message(const char* text, char* output,
+                                                  size_t output_length, size_t* written)
+{
+    size_t length = 0U;
+    size_t copy_length = 0U;
+
+    if (text == NULL || output == NULL || written == NULL || output_length == 0U) {
+        return -1;
+    }
+    length = strlen(text);
+    *written = length;
+
+    copy_length = length;
+    if (copy_length >= output_length) {
+        copy_length = output_length - 1U;
+    }
+    if (copy_length > 0U) {
+        memcpy(output, text, copy_length);
+    }
+    output[copy_length] = '\0';
+    return length >= output_length ? 1 : 0;
+}
+
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_mutate_bytes(uint8_t* bytes, size_t length)
+{
+    if (bytes == NULL) {
+        return -1;
+    }
+    for (size_t index = 0U; index < length; index += 1U) {
+        bytes[index] = (uint8_t)(bytes[index] + 1U);
+    }
+    return 0;
+}
+
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_point_sum(const SloppyFfiPoint* point)
 {
     return point == NULL ? 0 : point->x + point->y;
+}
+
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_nested_total(const SloppyFfiNested* nested)
+{
+    int64_t total = 0;
+
+    if (nested == NULL) {
+        return -1;
+    }
+    if (nested->flags > (uint32_t)INT32_MAX) {
+        return -2;
+    }
+    total = (int64_t)nested->origin.x + (int64_t)nested->origin.y + (int64_t)nested->size.x +
+            (int64_t)nested->size.y + (int64_t)nested->flags;
+    if (total < INT32_MIN || total > INT32_MAX) {
+        return -2;
+    }
+    return (int32_t)total;
+}
+
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_matrix_first4_sum(const SloppyFfiMatrix* matrix)
+{
+    double total = 0.0;
+
+    if (matrix == NULL) {
+        return -1;
+    }
+    for (size_t index = 0U; index < 4U; index += 1U) {
+        total += (double)matrix->values[index];
+    }
+    if (!isfinite(total) || total < (double)INT32_MIN || total > (double)INT32_MAX) {
+        return -2;
+    }
+    return (int32_t)total;
 }
 
 SLOPPY_FFI_EXPORT void* sloppy_ffi_null_pointer(void)
@@ -250,6 +361,22 @@ SLOPPY_FFI_EXPORT int32_t sloppy_ffi_call_callback(SloppyFfiCallback callback, v
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_call_i32_callback(SloppyFfiI32Callback callback, int32_t value)
 {
     return callback == NULL ? 0 : callback(value);
+}
+
+SLOPPY_FFI_EXPORT int32_t sloppy_ffi_visit_i32(int32_t count, SloppyFfiI32Callback callback)
+{
+    int64_t total = 0;
+
+    if (callback == NULL || count < 0) {
+        return -1;
+    }
+    for (int32_t value = 0; value < count; value += 1) {
+        total += callback(value);
+        if (total < INT32_MIN || total > INT32_MAX) {
+            return -2;
+        }
+    }
+    return (int32_t)total;
 }
 
 SLOPPY_FFI_EXPORT uint32_t sloppy_ffi_call_u32_callback(SloppyFfiU32Callback callback,

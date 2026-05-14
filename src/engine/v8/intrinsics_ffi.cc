@@ -38,6 +38,8 @@ enum class FfiMarshalError
 {
     InvalidType,
     IntegerOutOfRange,
+    BigIntRequired,
+    UseAfterDispose,
     StringNul
 };
 
@@ -486,9 +488,10 @@ bool ffi_pointer_from_value(v8::Isolate* isolate, v8::Local<v8::Value> value, vo
         return true;
     }
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, value);
-    if (resource == nullptr || resource->disposed ||
-        resource->kind == FfiResourceKind::StructLayout)
-    {
+    if (resource == nullptr || resource->kind == FfiResourceKind::StructLayout) {
+        return false;
+    }
+    if (resource->disposed) {
         return false;
     }
     if (resource->kind == FfiResourceKind::NativePointer ||
@@ -678,7 +681,29 @@ v8::Local<v8::Value> ffi_value_from_bytes(v8::Isolate* isolate, SlPlanFfiType ty
         return v8::Number::New(isolate, ffi_load<double>(data));
     case SL_PLAN_FFI_TYPE_PTR: {
         void* pointer = ffi_load<void*>(data);
-        return pointer == nullptr ? v8::Null(isolate) : v8::Undefined(isolate);
+        if (pointer == nullptr) {
+            return v8::Null(isolate);
+        }
+        SlV8Engine* backend = ffi_backend(isolate);
+        v8::Local<v8::Context> context = isolate->GetCurrentContext();
+        v8::Local<v8::Object> object;
+        SlV8FfiResource* resource = backend == nullptr
+                                        ? nullptr
+                                        : ffi_new_resource(backend, FfiResourceKind::NativePointer);
+        if (resource == nullptr) {
+            ffi_throw_error(isolate,
+                            "SLOPPY_E_FFI_CALL_FAILED: failed to allocate NativePointer resource.");
+            return v8::Undefined(isolate);
+        }
+        resource->native_pointer = pointer;
+        if (!ffi_make_resource_object(isolate, context, resource, &object)) {
+            ffi_release_resource(resource);
+            resource->disposed = true;
+            ffi_throw_error(isolate,
+                            "SLOPPY_E_FFI_CALL_FAILED: failed to create NativePointer resource.");
+            return v8::Undefined(isolate);
+        }
+        return object;
     }
     default:
         return v8::Undefined(isolate);
@@ -896,14 +921,19 @@ FfiMarshalError ffi_marshal_error_for_value(v8::Isolate* isolate, SlPlanFfiType 
                    ? FfiMarshalError::IntegerOutOfRange
                    : FfiMarshalError::InvalidType;
     case SL_PLAN_FFI_TYPE_I64:
-        return value->IsBigInt() && ffi_signed_integer_out_of_range(
-                                        isolate, value, std::numeric_limits<int64_t>::min(),
-                                        std::numeric_limits<int64_t>::max())
+        if (!value->IsBigInt()) {
+            return FfiMarshalError::BigIntRequired;
+        }
+        return ffi_signed_integer_out_of_range(isolate, value, std::numeric_limits<int64_t>::min(),
+                                               std::numeric_limits<int64_t>::max())
                    ? FfiMarshalError::IntegerOutOfRange
                    : FfiMarshalError::InvalidType;
     case SL_PLAN_FFI_TYPE_U64:
-        return value->IsBigInt() && ffi_unsigned_integer_out_of_range(
-                                        isolate, value, std::numeric_limits<uint64_t>::max())
+        if (!value->IsBigInt()) {
+            return FfiMarshalError::BigIntRequired;
+        }
+        return ffi_unsigned_integer_out_of_range(isolate, value,
+                                                 std::numeric_limits<uint64_t>::max())
                    ? FfiMarshalError::IntegerOutOfRange
                    : FfiMarshalError::InvalidType;
     case SL_PLAN_FFI_TYPE_ISIZE:
@@ -941,6 +971,17 @@ FfiMarshalError ffi_marshal_error_for_value(v8::Isolate* isolate, SlPlanFfiType 
             }
         }
         return FfiMarshalError::InvalidType;
+    case SL_PLAN_FFI_TYPE_PTR: {
+        SlV8FfiResource* resource = ffi_resource_from_value(isolate, value);
+        return resource != nullptr && resource->disposed ? FfiMarshalError::UseAfterDispose
+                                                         : FfiMarshalError::InvalidType;
+    }
+    case SL_PLAN_FFI_TYPE_BYTES:
+    case SL_PLAN_FFI_TYPE_MUT_BYTES: {
+        SlV8FfiResource* resource = ffi_resource_from_value(isolate, value);
+        return resource != nullptr && resource->disposed ? FfiMarshalError::UseAfterDispose
+                                                         : FfiMarshalError::InvalidType;
+    }
     default:
         return FfiMarshalError::InvalidType;
     }
@@ -951,6 +992,10 @@ const char* ffi_marshal_error_message(FfiMarshalError error)
     switch (error) {
     case FfiMarshalError::IntegerOutOfRange:
         return "SLOPPY_E_FFI_INTEGER_OUT_OF_RANGE: FFI integer argument is out of range.";
+    case FfiMarshalError::BigIntRequired:
+        return "SLOPPY_E_FFI_BIGINT_REQUIRED: FFI 64-bit integer arguments require BigInt.";
+    case FfiMarshalError::UseAfterDispose:
+        return "SLOPPY_E_FFI_USE_AFTER_DISPOSE: FFI resource is disposed.";
     case FfiMarshalError::StringNul:
         return "SLOPPY_E_FFI_STRING_NUL: FFI strings cannot contain NUL.";
     case FfiMarshalError::InvalidType:
@@ -1010,6 +1055,8 @@ v8::Local<v8::Value> ffi_return_value(v8::Isolate* isolate, const SlFfiFunction*
             }
             resource->native_pointer = result->value.ptr;
             if (!ffi_make_resource_object(isolate, context, resource, &object)) {
+                ffi_release_resource(resource);
+                resource->disposed = true;
                 ffi_throw_error(
                     isolate, "SLOPPY_E_FFI_CALL_FAILED: failed to create NativePointer resource.");
                 return v8::Undefined(isolate);
@@ -1073,7 +1120,9 @@ void ffi_library_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     if (args.Length() < 2 || !ffi_string_value(isolate, args[0], &library_name) ||
         !args[1]->IsObject())
     {
-        ffi_throw_type_error(isolate, "unsafeFfi.library requires a name and descriptor object.");
+        ffi_throw_type_error(isolate,
+                             "SLOPPY_E_FFI_INVALID_DECLARATION: unsafeFfi.library requires a name "
+                             "and descriptor object.");
         return;
     }
 
@@ -1093,7 +1142,7 @@ void ffi_library_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
             !ffi_string_value(isolate, key_value, &function_name) ||
             !descriptors->Get(context, key_value).ToLocal(&descriptor_value))
         {
-            ffi_throw_error(isolate, "SLOPPY_E_FFI_CALL_FAILED: invalid FFI descriptor.");
+            ffi_throw_error(isolate, "SLOPPY_E_FFI_INVALID_DECLARATION: invalid FFI descriptor.");
             return;
         }
         SlStatus status = sl_ffi_registry_find(
@@ -1151,7 +1200,8 @@ void ffi_native_pointer_is_null_callback(const v8::FunctionCallbackInfo<v8::Valu
     v8::Isolate* isolate = args.GetIsolate();
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, args.This());
     if (resource == nullptr || resource->kind != FfiResourceKind::NativePointer) {
-        ffi_throw_type_error(isolate, "NativePointer resource is invalid.");
+        ffi_throw_type_error(
+            isolate, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: NativePointer resource is invalid.");
         return;
     }
     args.GetReturnValue().Set(v8::Boolean::New(isolate, resource->native_pointer == nullptr));
@@ -1178,10 +1228,13 @@ void ffi_ref_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, args.This());
-    if (resource == nullptr || resource->disposed || resource->kind != FfiResourceKind::Ref ||
-        resource->bytes.empty())
-    {
-        ffi_throw_type_error(isolate, "unsafeFfi.ref resource is disposed or invalid.");
+    if (resource == nullptr || resource->kind != FfiResourceKind::Ref || resource->bytes.empty()) {
+        ffi_throw_type_error(
+            isolate, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: unsafeFfi.ref resource is invalid.");
+        return;
+    }
+    if (resource->disposed) {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_USE_AFTER_DISPOSE: unsafeFfi.ref is disposed.");
         return;
     }
     args.GetReturnValue().Set(
@@ -1192,8 +1245,16 @@ void ffi_ref_set_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, args.This());
-    if (resource == nullptr || resource->disposed || resource->kind != FfiResourceKind::Ref ||
-        resource->bytes.empty() || args.Length() < 1 ||
+    if (resource == nullptr || resource->kind != FfiResourceKind::Ref || resource->bytes.empty()) {
+        ffi_throw_type_error(
+            isolate, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: unsafeFfi.ref resource is invalid.");
+        return;
+    }
+    if (resource->disposed) {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_USE_AFTER_DISPOSE: unsafeFfi.ref is disposed.");
+        return;
+    }
+    if (args.Length() < 1 ||
         !ffi_write_value_to_bytes(isolate, resource->type, args[0], resource->bytes.data(),
                                   resource->byte_length))
     {
@@ -1207,11 +1268,16 @@ void ffi_buffer_read_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, args.This());
-    if (resource == nullptr || resource->disposed ||
+    if (resource == nullptr ||
         (resource->kind != FfiResourceKind::Buffer && resource->kind != FfiResourceKind::CString &&
          resource->kind != FfiResourceKind::Utf16 && resource->kind != FfiResourceKind::Struct))
     {
-        ffi_throw_type_error(isolate, "FFI buffer resource is disposed or invalid.");
+        ffi_throw_type_error(isolate,
+                             "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: FFI buffer resource is invalid.");
+        return;
+    }
+    if (resource->disposed) {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_USE_AFTER_DISPOSE: FFI buffer is disposed.");
         return;
     }
     v8::Local<v8::ArrayBuffer> buffer = v8::ArrayBuffer::New(isolate, resource->byte_length);
@@ -1240,10 +1306,18 @@ void ffi_buffer_write_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         ffi_throw_type_error(isolate, "FFI buffer offset must be a non-negative integer.");
         return;
     }
-    if (resource == nullptr || resource->disposed ||
+    if (resource == nullptr ||
         (resource->kind != FfiResourceKind::Buffer && resource->kind != FfiResourceKind::CString &&
-         resource->kind != FfiResourceKind::Utf16 && resource->kind != FfiResourceKind::Struct) ||
-        !ffi_copy_uint8_array(args[0], &data, &length) || offset > resource->byte_length ||
+         resource->kind != FfiResourceKind::Utf16 && resource->kind != FfiResourceKind::Struct))
+    {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: invalid buffer write.");
+        return;
+    }
+    if (resource->disposed) {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_USE_AFTER_DISPOSE: FFI buffer is disposed.");
+        return;
+    }
+    if (!ffi_copy_uint8_array(args[0], &data, &length) || offset > resource->byte_length ||
         length > resource->byte_length - (size_t)offset)
     {
         ffi_throw_type_error(isolate, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: invalid buffer write.");
@@ -1259,8 +1333,14 @@ void ffi_cstring_read_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, args.This());
-    if (resource == nullptr || resource->disposed || resource->kind != FfiResourceKind::CString) {
-        ffi_throw_type_error(isolate, "unsafeFfi.cstringBuffer resource is disposed or invalid.");
+    if (resource == nullptr || resource->kind != FfiResourceKind::CString) {
+        ffi_throw_type_error(isolate,
+                             "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: C string buffer is invalid.");
+        return;
+    }
+    if (resource->disposed) {
+        ffi_throw_type_error(isolate,
+                             "SLOPPY_E_FFI_USE_AFTER_DISPOSE: C string buffer is disposed.");
         return;
     }
     size_t length = 0U;
@@ -1283,8 +1363,17 @@ void ffi_cstring_write_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::Isolate* isolate = args.GetIsolate();
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, args.This());
     std::string value;
-    if (resource == nullptr || resource->disposed || resource->kind != FfiResourceKind::CString ||
-        args.Length() < 1 || !ffi_string_value(isolate, args[0], &value) || ffi_has_nul(value) ||
+    if (resource == nullptr || resource->kind != FfiResourceKind::CString) {
+        ffi_throw_type_error(isolate,
+                             "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: C string buffer is invalid.");
+        return;
+    }
+    if (resource->disposed) {
+        ffi_throw_type_error(isolate,
+                             "SLOPPY_E_FFI_USE_AFTER_DISPOSE: C string buffer is disposed.");
+        return;
+    }
+    if (args.Length() < 1 || !ffi_string_value(isolate, args[0], &value) || ffi_has_nul(value) ||
         value.size() + 1U > resource->byte_length)
     {
         ffi_throw_type_error(isolate, "SLOPPY_E_FFI_STRING_NUL: invalid C string buffer value.");
@@ -1300,10 +1389,15 @@ void ffi_utf16_read_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, args.This());
-    if (resource == nullptr || resource->disposed || resource->kind != FfiResourceKind::Utf16 ||
+    if (resource == nullptr || resource->kind != FfiResourceKind::Utf16 ||
         resource->byte_length % sizeof(uint16_t) != 0U)
     {
-        ffi_throw_type_error(isolate, "unsafeFfi.utf16Buffer resource is disposed or invalid.");
+        ffi_throw_type_error(isolate,
+                             "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: UTF-16 buffer is invalid.");
+        return;
+    }
+    if (resource->disposed) {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_USE_AFTER_DISPOSE: UTF-16 buffer is disposed.");
         return;
     }
     size_t units = resource->byte_length / sizeof(uint16_t);
@@ -1329,9 +1423,16 @@ void ffi_utf16_write_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, args.This());
-    if (resource == nullptr || resource->disposed || resource->kind != FfiResourceKind::Utf16 ||
-        args.Length() < 1 || !args[0]->IsString())
-    {
+    if (resource == nullptr || resource->kind != FfiResourceKind::Utf16) {
+        ffi_throw_type_error(isolate,
+                             "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: UTF-16 buffer is invalid.");
+        return;
+    }
+    if (resource->disposed) {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_USE_AFTER_DISPOSE: UTF-16 buffer is disposed.");
+        return;
+    }
+    if (args.Length() < 1 || !args[0]->IsString()) {
         ffi_throw_type_error(isolate, "unsafeFfi.utf16Buffer.writeString requires text.");
         return;
     }
@@ -1393,9 +1494,15 @@ void ffi_struct_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::Isolate* isolate = args.GetIsolate();
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, args.This());
     std::string name;
-    if (resource == nullptr || resource->disposed || resource->kind != FfiResourceKind::Struct ||
-        args.Length() < 1 || !ffi_string_value(isolate, args[0], &name))
-    {
+    if (resource == nullptr || resource->kind != FfiResourceKind::Struct) {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: FFI struct is invalid.");
+        return;
+    }
+    if (resource->disposed) {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_USE_AFTER_DISPOSE: FFI struct is disposed.");
+        return;
+    }
+    if (args.Length() < 1 || !ffi_string_value(isolate, args[0], &name)) {
         ffi_throw_type_error(isolate, "unsafeFfi.struct instance get requires a field name.");
         return;
     }
@@ -1426,9 +1533,15 @@ void ffi_struct_set_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     v8::Isolate* isolate = args.GetIsolate();
     SlV8FfiResource* resource = ffi_resource_from_value(isolate, args.This());
     std::string name;
-    if (resource == nullptr || resource->disposed || resource->kind != FfiResourceKind::Struct ||
-        args.Length() < 2 || !ffi_string_value(isolate, args[0], &name))
-    {
+    if (resource == nullptr || resource->kind != FfiResourceKind::Struct) {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: FFI struct is invalid.");
+        return;
+    }
+    if (resource->disposed) {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_USE_AFTER_DISPOSE: FFI struct is disposed.");
+        return;
+    }
+    if (args.Length() < 2 || !ffi_string_value(isolate, args[0], &name)) {
         ffi_throw_type_error(isolate,
                              "unsafeFfi.struct instance set requires a field name and value.");
         return;
@@ -1456,10 +1569,14 @@ void ffi_struct_alloc_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     SlV8Engine* backend = ffi_backend(isolate);
     v8::Local<v8::Context> context = isolate->GetCurrentContext();
     SlV8FfiResource* layout = ffi_resource_from_value(isolate, args.This());
-    if (backend == nullptr || layout == nullptr || layout->disposed ||
-        layout->kind != FfiResourceKind::StructLayout)
-    {
-        ffi_throw_type_error(isolate, "unsafeFfi.struct layout is disposed or invalid.");
+    if (backend == nullptr || layout == nullptr || layout->kind != FfiResourceKind::StructLayout) {
+        ffi_throw_type_error(
+            isolate, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: unsafeFfi.struct layout is invalid.");
+        return;
+    }
+    if (layout->disposed) {
+        ffi_throw_type_error(isolate,
+                             "SLOPPY_E_FFI_USE_AFTER_DISPOSE: FFI struct layout is disposed.");
         return;
     }
     SlV8FfiResource* resource = ffi_new_resource(backend, FfiResourceKind::Struct);

@@ -197,6 +197,9 @@ typedef struct SlCliFfiLibrary
 {
     SlCliSpan name;
     SlCliSpan convention;
+    SlCliSpan package_path;
+    SlCliSpan sha256;
+    SlCliSpan hash_status;
     size_t first_function;
     size_t function_count;
 } SlCliFfiLibrary;
@@ -205,14 +208,41 @@ typedef struct SlCliFfiStructField
 {
     SlCliSpan name;
     SlCliSpan type;
+    uint64_t offset;
+    uint64_t size;
+    uint64_t alignment;
 } SlCliFfiStructField;
 
 typedef struct SlCliFfiStruct
 {
     SlCliSpan name;
+    uint64_t size;
+    uint64_t alignment;
     SlCliFfiStructField fields[SL_CLI_MAX_FFI_STRUCT_FIELDS];
     size_t field_count;
 } SlCliFfiStruct;
+
+typedef struct SlCliFfiHandle
+{
+    SlCliSpan name;
+} SlCliFfiHandle;
+
+typedef struct SlCliFfiCallback
+{
+    SlCliSpan id;
+    SlCliSpan return_type;
+    SlCliSpan thread;
+    SlCliSpan parameters[SL_CLI_MAX_FFI_PARAMETERS];
+    size_t parameter_count;
+} SlCliFfiCallback;
+
+typedef struct SlCliFfiDispatchTable
+{
+    SlCliSpan name;
+    SlCliSpan resolver;
+    SlCliSpan symbols[SL_CLI_MAX_FFI_DISPATCH_SYMBOLS];
+    size_t symbol_count;
+} SlCliFfiDispatchTable;
 
 typedef struct SlCliSchemaProperty
 {
@@ -310,6 +340,12 @@ typedef struct SlCliMetadata
     size_t ffi_function_count;
     SlCliFfiStruct ffi_structs[SL_CLI_MAX_FFI_STRUCTS];
     size_t ffi_struct_count;
+    SlCliFfiHandle ffi_handles[SL_CLI_MAX_FFI_HANDLES];
+    size_t ffi_handle_count;
+    SlCliFfiCallback ffi_callbacks[SL_CLI_MAX_FFI_CALLBACKS];
+    size_t ffi_callback_count;
+    SlCliFfiDispatchTable ffi_dispatch_tables[SL_CLI_MAX_FFI_DISPATCH_TABLES];
+    size_t ffi_dispatch_table_count;
     SlCliRouteDispatch route_dispatch;
     SlCliSpan kind;
     SlCliSpan completeness;
