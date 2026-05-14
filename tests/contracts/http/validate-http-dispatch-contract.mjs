@@ -169,6 +169,44 @@ function byRouteKey(routes) {
     return new Map(routes.map((route) => [routeKey(route), route]));
 }
 
+async function filesEqual(leftPath, rightPath) {
+    const [left, right] = await Promise.all([fs.readFile(leftPath), fs.readFile(rightPath)]);
+    return left.equals(right);
+}
+
+async function assertCompilerGeneratedProvenance(collector, root, config, resolvedPlanPath, resolvedArtifactPath) {
+    const provenance = config.compilerGenerated;
+    if (provenance === undefined) {
+        return;
+    }
+    const expectedPlanPath = path.resolve(root, provenance.planPath ?? "");
+    if (await filesEqual(resolvedPlanPath, expectedPlanPath)) {
+        collector.pass("fixture.compiler-generated-plan", "fixture Plan matches compiler-generated Plan golden", {
+            path: provenance.planPath,
+        });
+    } else {
+        collector.fail("fixture.compiler-generated-plan", "fixture Plan must match compiler-generated Plan golden", {
+            path: provenance.planPath,
+        });
+    }
+    if (provenance.routeArtifactPath === undefined || resolvedArtifactPath === undefined) {
+        collector.fail("fixture.compiler-generated-route-artifact", "compiler-generated fixture must compare routes.slrt provenance", {
+            path: provenance.routeArtifactPath,
+        });
+        return;
+    }
+    const expectedArtifactPath = path.resolve(root, provenance.routeArtifactPath);
+    if (await filesEqual(resolvedArtifactPath, expectedArtifactPath)) {
+        collector.pass("fixture.compiler-generated-route-artifact", "fixture routes.slrt matches compiler-generated route artifact golden", {
+            path: provenance.routeArtifactPath,
+        });
+    } else {
+        collector.fail("fixture.compiler-generated-route-artifact", "fixture routes.slrt must match compiler-generated route artifact golden", {
+            path: provenance.routeArtifactPath,
+        });
+    }
+}
+
 function routeSpecificity(pattern) {
     const segments = pattern.split("/").filter(Boolean);
     let staticSegments = 0;
@@ -527,10 +565,11 @@ async function validateHttpDispatchFixture({ root, fixture }) {
     const routeMap = byRouteKey(routes);
     const routeDispatch = plan.routeDispatch ?? {};
     let artifactEntries = [];
+    let resolvedArtifactPath;
     if (routeDispatch.artifact?.path !== undefined) {
         const artifactPath = path.join(root, routeDispatch.artifact.path);
         const baseArtifactPath = path.join(baseRoot, routeDispatch.artifact.path);
-        const resolvedArtifactPath = (await exists(artifactPath)) ? artifactPath : baseArtifactPath;
+        resolvedArtifactPath = (await exists(artifactPath)) ? artifactPath : baseArtifactPath;
         if (config.removeRouteArtifact === true || !(await exists(resolvedArtifactPath))) {
             collector.fail("dispatch.route-artifact-present", "Plan routeDispatch artifact must exist", {
                 path: routeDispatch.artifact.path,
@@ -559,6 +598,8 @@ async function validateHttpDispatchFixture({ root, fixture }) {
     } else {
         collector.fail("dispatch.route-artifact-present", "HTTP dispatch contracts require Plan routeDispatch artifact metadata");
     }
+
+    await assertCompilerGeneratedProvenance(collector, root, config, resolvedPlanPath, resolvedArtifactPath);
 
     if (artifactEntries.length === routes.length) {
         collector.pass("dispatch.route-count", "native dispatch route count matches Plan route count", {
@@ -756,7 +797,7 @@ async function validateHttpDispatchFixture({ root, fixture }) {
 
     collector.warn(
         "native-response.v8-call-counter-unavailable",
-        "runtime counters are not available in this fixture lane, so the contract validates semantic equivalence instead of claiming V8 calls are zero",
+        "runtime counters are not available in this fixture lane; semantic equivalence is checked now, and zero V8 calls need runtime counters or profiling support",
     );
 
     return collector.findings;
