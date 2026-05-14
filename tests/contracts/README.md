@@ -12,6 +12,7 @@ node tests/contracts/runner/contract-runner.mjs --area auth --tier pr
 node tests/contracts/runner/contract-runner.mjs --area openapi --tier pr
 node tests/contracts/runner/contract-runner.mjs --area http --tier pr
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr
+node tests/contracts/runner/contract-runner.mjs --area static-files --tier pr
 node tests/contracts/runner/contract-runner.mjs --area cache --tier pr
 node tests/contracts/runner/contract-runner.mjs --area webhooks --tier pr
 node tests/contracts/runner/contract-runner.mjs --area all --tier pr

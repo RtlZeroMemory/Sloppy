@@ -7,6 +7,7 @@ import { runAuthContract } from "../auth/validate-auth-contract.mjs";
 import { runHttpDispatchContract } from "../http/validate-http-dispatch-contract.mjs";
 import { runOpenApiContract } from "../openapi/validate-openapi-contract.mjs";
 import { runPackageContract } from "../package/validate-package-contract.mjs";
+import { runStaticFilesContract } from "../static-files/validate-static-files-contract.mjs";
 import { runWebhooksContract } from "../webhooks/validate-webhooks-contract.mjs";
 
 const AREA_RUNNERS = new Map([
@@ -16,6 +17,7 @@ const AREA_RUNNERS = new Map([
     ["http", runHttpDispatchContract],
     ["openapi", runOpenApiContract],
     ["package", runPackageContract],
+    ["static-files", runStaticFilesContract],
     ["webhooks", runWebhooksContract],
 ]);
 

@@ -34,7 +34,7 @@ export function parseRunnerArgs(argv) {
             throw new Error(`unknown option: ${arg}`);
         }
     }
-    if (!["all", "auth", "cache", "data", "http", "openapi", "package", "webhooks"].includes(options.area)) {
+    if (!["all", "auth", "cache", "data", "http", "openapi", "package", "static-files", "webhooks"].includes(options.area)) {
         throw new Error(`invalid --area: ${options.area}`);
     }
     if (!["pr", "extended", "torture"].includes(options.tier)) {
@@ -56,7 +56,7 @@ export async function writeJsonReport(out, report, repoRoot) {
 }
 
 export function printHelp() {
-    process.stdout.write(`Usage: node tests/contracts/runner/contract-runner.mjs --area auth|cache|data|http|openapi|package|webhooks|all --tier pr|extended|torture [--format json|markdown] [--out path]
+    process.stdout.write(`Usage: node tests/contracts/runner/contract-runner.mjs --area auth|cache|data|http|openapi|package|static-files|webhooks|all --tier pr|extended|torture [--format json|markdown] [--out path]
 
 Examples:
   node tests/contracts/runner/contract-runner.mjs --area auth --tier pr
@@ -65,6 +65,7 @@ Examples:
   node tests/contracts/runner/contract-runner.mjs --area http --tier pr
   node tests/contracts/runner/contract-runner.mjs --area openapi --tier pr
   node tests/contracts/runner/contract-runner.mjs --area package --tier pr
+  node tests/contracts/runner/contract-runner.mjs --area static-files --tier pr
   node tests/contracts/runner/contract-runner.mjs --area webhooks --tier pr
   node tests/contracts/runner/contract-runner.mjs --area all --tier pr
   node tests/contracts/runner/contract-runner.mjs --area openapi --tier pr --format markdown
