@@ -242,6 +242,26 @@ function responseMetadataUnknown(route) {
     return !isObject(route.response) && (!Array.isArray(route.responses) || route.responses.length === 0);
 }
 
+function configuredAuthSchemeNames(plan) {
+    return new Set((Array.isArray(plan?.auth?.schemes) ? plan.auth.schemes : []).map((scheme) => scheme?.name).filter(Boolean));
+}
+
+function routeRequiredAuthSchemes(route) {
+    return Array.isArray(route.auth?.schemes) ? route.auth.schemes.filter((scheme) => typeof scheme === "string") : [];
+}
+
+function routeHasKnownAuthMetadata(plan, route) {
+    if (route.auth?.required !== true) {
+        return true;
+    }
+    const routeSchemes = routeRequiredAuthSchemes(route);
+    if (routeSchemes.length === 0) {
+        return false;
+    }
+    const configuredSchemes = configuredAuthSchemeNames(plan);
+    return routeSchemes.every((scheme) => configuredSchemes.has(scheme));
+}
+
 function routeIsPlanComplete(plan, route) {
     const completeness = isObject(route.completeness) ? route.completeness.status : route.completeness;
     return (
@@ -249,7 +269,7 @@ function routeIsPlanComplete(plan, route) {
         (!routeHasBodyBinding(route) || routeHasKnownBodySchema(plan, route)) &&
         !responseNeedsSchema(plan, route) &&
         !responseMetadataUnknown(route) &&
-        (!route.auth?.required || Array.isArray(plan?.auth?.schemes))
+        routeHasKnownAuthMetadata(plan, route)
     );
 }
 
@@ -420,25 +440,39 @@ function validateRoute(openapi, plan, route, collector) {
         });
     }
 
+    const actualAuthSchemes = Array.isArray(operation.security)
+        ? operation.security.flatMap((entry) => (isObject(entry) ? Object.keys(entry) : []))
+        : [];
+    const extensionAuthSchemes = Array.isArray(operation["x-slop-auth"]?.schemes)
+        ? operation["x-slop-auth"].schemes
+        : [];
     if (route.auth?.required === true) {
-        const expectedSchemes = Array.isArray(route.auth.schemes) ? route.auth.schemes : [];
-        const actualSchemes = Array.isArray(operation.security)
-            ? operation.security.flatMap((entry) => (isObject(entry) ? Object.keys(entry) : []))
-            : [];
-        const extensionSchemes = Array.isArray(operation["x-slop-auth"]?.schemes)
-            ? operation["x-slop-auth"].schemes
-            : [];
-        if (!sameStringSet(expectedSchemes, actualSchemes) || !sameStringSet(expectedSchemes, extensionSchemes)) {
-            collector.fail("openapi.auth-agreement", "Protected Plan routes must preserve OpenAPI security metadata", {
+        const expectedSchemes = routeRequiredAuthSchemes(route);
+        if (routeHasKnownAuthMetadata(plan, route)) {
+            if (!sameStringSet(expectedSchemes, actualAuthSchemes) || !sameStringSet(expectedSchemes, extensionAuthSchemes)) {
+                collector.fail("openapi.auth-agreement", "Protected Plan routes must preserve OpenAPI security metadata", {
+                    route: label,
+                    expectedSchemes,
+                    actualSchemes: actualAuthSchemes,
+                    extensionSchemes: extensionAuthSchemes,
+                });
+            } else {
+                collector.pass("openapi.auth-agreement", "OpenAPI auth metadata agrees with protected Plan route metadata", {
+                    route: label,
+                    schemes: expectedSchemes,
+                });
+            }
+        } else if (actualAuthSchemes.length > 0 || extensionAuthSchemes.length > 0) {
+            collector.fail("openapi.auth-agreement", "OpenAPI must not invent concrete security schemes when Plan auth metadata is partial", {
                 route: label,
                 expectedSchemes,
-                actualSchemes,
-                extensionSchemes,
+                actualSchemes: actualAuthSchemes,
+                extensionSchemes: extensionAuthSchemes,
             });
         } else {
-            collector.pass("openapi.auth-agreement", "OpenAPI auth metadata agrees with protected Plan route metadata", {
+            collector.pass("openapi.auth-agreement", "Protected route auth metadata is partial and does not assert concrete security schemes", {
                 route: label,
-                schemes: expectedSchemes,
+                partial: true,
             });
         }
     } else {

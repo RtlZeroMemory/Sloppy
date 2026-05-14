@@ -1,0 +1,10 @@
+{
+  "expected": "fail",
+  "expectedInvariants": ["openapi.partial-honesty"],
+  "plan": "../../../../fixtures/cli/openapi-auth-missing-schemes.plan.json",
+  "openapi": "../../../../golden/cli/openapi-auth-missing-schemes.json",
+  "mutations": [
+    { "op": "set", "path": ["paths", "/protected", "get", "x-slop-completeness"], "value": "complete" },
+    { "op": "delete", "path": ["paths", "/protected", "get", "x-slop-missing"] }
+  ]
+}
