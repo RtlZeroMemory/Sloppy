@@ -14,11 +14,16 @@ function run(file, args) {
   });
 }
 
-export async function runK6({ toolPath, workload, url, connections, duration, repeat, tempDir }) {
-  const summaryPath = path.join(tempDir, `k6-${workload.name}-${connections}-${repeat}.json`);
+function safeToken(value) {
+  return path.basename(String(value)).replace(/[^A-Za-z0-9._-]/g, "_") || "0";
+}
+
+export async function runK6({ toolPath, workload, url, connections, duration, repeat, tempDir, runtime = "runtime", runLabel = null }) {
+  const label = safeToken(runLabel ?? [runtime, workload.name, connections, repeat].join("-"));
+  const summaryPath = path.join(tempDir, `k6-${label}.json`);
   const requests = workload.mixed ? workload.requests : [workload];
   const baseUrl = new URL(url).origin;
-  const scriptPath = path.join(tempDir, `k6-${workload.name}-${repeat}.js`);
+  const scriptPath = path.join(tempDir, `k6-${label}.js`);
   await fs.writeFile(scriptPath, `
 import http from "k6/http";
 import { sleep } from "k6";

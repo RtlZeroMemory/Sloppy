@@ -29,9 +29,10 @@ function safeToken(value) {
   return path.basename(String(value)).replace(/[^A-Za-z0-9._-]/g, "_") || "0";
 }
 
-export async function runVegeta({ toolPath, workload, url, connections, duration, repeat, tempDir }) {
+export async function runVegeta({ toolPath, workload, url, connections, duration, repeat, tempDir, runtime = "runtime", runLabel = null }) {
   if (workload.mixed) return { status: "SKIPPED", reason: "vegeta adapter does not implement weighted mixed workloads" };
-  const binPath = path.join(tempDir, `vegeta-${workload.name}-${safeToken(repeat)}.bin`);
+  const label = safeToken(runLabel ?? [runtime, workload.name, connections, repeat].join("-"));
+  const binPath = path.join(tempDir, `vegeta-${label}.bin`);
   const targets = targetLines(workload, url.replace(workload.path ?? "", ""));
   const rate = Math.max(connections * 1000, 1);
   const attack = await runPipeline(toolPath, ["attack", "-duration", duration, "-rate", String(rate), "-connections", String(connections), "-format", "http"], targets);

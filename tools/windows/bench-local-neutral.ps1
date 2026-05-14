@@ -14,7 +14,7 @@ param(
     [string]$SloppyExe = "",
     [string]$Out = "",
 
-    [ValidateSet("quick", "alpha", "full", "stress", "public-candidate")]
+    [ValidateSet("quick", "realistic-short", "alpha", "full", "stress", "public-candidate")]
     [string]$Preset = "quick",
 
     [ValidateSet("local", "public-candidate")]

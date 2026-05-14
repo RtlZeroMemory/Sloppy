@@ -69,6 +69,7 @@ warmup.
 
 ```sh
 node benchmarks/local-neutral/scripts/run.mjs --preset quick
+node benchmarks/local-neutral/scripts/run.mjs --preset realistic-short --tool k6 --runtime all --claim-mode public-candidate
 node benchmarks/local-neutral/scripts/run.mjs --preset alpha
 node benchmarks/local-neutral/scripts/run.mjs --preset full
 node benchmarks/local-neutral/scripts/run.mjs --preset stress --tool oha
@@ -76,6 +77,9 @@ node benchmarks/local-neutral/scripts/run.mjs --preset public-candidate --tool k
 ```
 
 - `quick`: short local sanity run for the core GET workloads.
+- `realistic-short`: roughly 30-minute all-runtime K6 run on core dynamic and
+  mixed workloads, meant for inspectable branch comparisons without multi-hour
+  runtime.
 - `alpha`: all required workloads with connections `1,16,64`.
 - `full`: larger local matrix for branch-to-branch comparison.
 - `stress`: high-concurrency local pressure run for soak/stability signals.
@@ -118,6 +122,10 @@ pass `--out`:
 - `summary.json`: aggregate rows and comparison metadata.
 - `report.md`: human-readable report.
 - `report.csv`: spreadsheet-friendly summary.
+- `progress.json`: current row, completed row counts, and update timestamp.
+- `results.partial.json`, `summary.partial.json`, `report.partial.md`: live
+  partial snapshots rewritten after each skipped/unavailable/failed row and
+  after each measured repeat.
 - `raw/`: server stdout and stderr logs.
 - `raw/**/resources-repeat-*.json`: process resource samples for each measured
   repeat when resource sampling is enabled.
@@ -125,6 +133,10 @@ pass `--out`:
 Reports include RPS, p50/p95/p99 latency when the selected tool provides those
 values, errors, non-2xx counts when available, server CPU and memory samples,
 and explicit skipped rows.
+
+Temporary load-generator files under `tmp/` include the runtime, workload,
+connection count, and repeat in their names so interrupted runs can be inspected
+without Node/Bun/Deno rows overwriting earlier Sloppy files.
 
 Resource sampling is best-effort process telemetry. On Windows it samples
 `Get-Process`; on Unix-like systems it samples `ps`. It is not a profiler and

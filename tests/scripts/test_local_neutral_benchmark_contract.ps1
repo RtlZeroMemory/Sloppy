@@ -24,6 +24,23 @@ function Invoke-Node {
 Invoke-Node @("--check", "benchmarks/local-neutral/scripts/run.mjs")
 Invoke-Node @("--check", "benchmarks/local-neutral/scripts/resources.mjs")
 Invoke-Node @("--check", "benchmarks/local-neutral/scripts/render-markdown.mjs")
+Invoke-Node @("--check", "benchmarks/local-neutral/scripts/load-k6.mjs")
+Invoke-Node @("--check", "benchmarks/local-neutral/scripts/load-wrk.mjs")
+Invoke-Node @("--check", "benchmarks/local-neutral/scripts/load-vegeta.mjs")
+
+$runnerSource = Get-Content -LiteralPath (Join-Path $repo "benchmarks/local-neutral/scripts/run.mjs") -Raw
+foreach ($required in @("results.partial.json", "summary.partial.json", "report.partial.md", "progress.json", "runLabel")) {
+    if (-not $runnerSource.Contains($required)) {
+        throw "local-neutral runner is missing intermediate-result contract marker: $required"
+    }
+}
+
+foreach ($adapter in @("load-k6.mjs", "load-wrk.mjs", "load-vegeta.mjs")) {
+    $adapterSource = Get-Content -LiteralPath (Join-Path $repo "benchmarks/local-neutral/scripts/$adapter") -Raw
+    if (-not $adapterSource.Contains("runtime") -or -not $adapterSource.Contains("runLabel")) {
+        throw "local-neutral adapter $adapter must include runtime/runLabel in temporary artifact names"
+    }
+}
 
 $resourceProbe = @'
 import { processSnapshot, summarizeResourceSamples } from "./benchmarks/local-neutral/scripts/resources.mjs";

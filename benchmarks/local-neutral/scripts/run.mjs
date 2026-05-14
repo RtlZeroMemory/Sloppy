@@ -30,6 +30,10 @@ function seconds(text) {
   return value;
 }
 
+function safeToken(value) {
+  return path.basename(String(value)).replace(/[^A-Za-z0-9._-]/g, "_") || "0";
+}
+
 function parseArgs(argv) {
   const options = {
     tool: "auto",
@@ -107,7 +111,7 @@ Options:
   --sloppyc-bin <path>
   --mode artifacts|package
   --out artifacts/benchmarks/local-neutral/<name>
-  --preset quick|alpha|full|stress|public-candidate
+  --preset quick|realistic-short|alpha|full|stress|public-candidate
   --claim-mode local|public-candidate
   --load-host-kind same-machine|separate-machine
   --resource-interval-ms 500
@@ -118,6 +122,12 @@ Options:
 
 async function readJson(file) {
   return JSON.parse(await fs.readFile(file, "utf8"));
+}
+
+async function writeJson(file, value) {
+  const temp = `${file}.tmp`;
+  await fs.writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await fs.rename(temp, file);
 }
 
 async function loadMatrix(options) {
@@ -220,6 +230,35 @@ function publicClaimReadiness({ report, options }) {
   };
 }
 
+function progressState({ results, matrix, selectedRuntimes, workloads, current = null }) {
+  const expectedRepeats =
+    selectedRuntimes.length * workloads.length * matrix.connections.length * matrix.repeats;
+  const completedRepeats = results.filter((row) => row.repeat > 0 || row.status === "FAIL").length;
+  return {
+    updatedAt: new Date().toISOString(),
+    partial: true,
+    current,
+    expectedRepeats,
+    completedRepeats,
+    resultRows: results.length,
+    passRows: results.filter((row) => row.status === "PASS").length,
+    nonPassRows: results.filter((row) => row.status !== "PASS").length,
+  };
+}
+
+function makeReport({ baseReport, results, options, partial }) {
+  const summary = summarize(results);
+  const report = {
+    ...baseReport,
+    ...(partial ? { partial: true, updatedAt: new Date().toISOString() } : {}),
+    results,
+    summary,
+    comparisons: comparisons(summary),
+  };
+  report.publicClaimReadiness = publicClaimReadiness({ report, options });
+  return report;
+}
+
 function serverCommand(runtime, tools, options, port, workDir) {
   const env = { BENCH_HOST: options.host, BENCH_PORT: String(port) };
   if (runtime === "node") {
@@ -296,6 +335,43 @@ async function main() {
   await fs.writeFile(path.join(outDir, "matrix.json"), `${JSON.stringify(matrix, null, 2)}\n`, "utf8");
   const selectedRuntimes = options.runtimes.includes("all") ? ["sloppy", "node", "bun", "deno"] : options.runtimes;
   const results = [];
+  const startedAt = new Date().toISOString();
+  const baseReport = {
+    schemaVersion: 1,
+    startedAt,
+    tool,
+    tools,
+    environment: hostMetadata(),
+    git: gitInfo(),
+    gitCommit: gitCommit(),
+    workloads,
+    matrix,
+    options: {
+      claimMode: options.claimMode,
+      loadHostKind: options.loadHostKind,
+      resourceSampling: options.resourceSampling,
+      resourceIntervalMs: options.resourceIntervalMs,
+    },
+    reproductionCommand: `node benchmarks/local-neutral/scripts/run.mjs ${process.argv.slice(2).join(" ")}`,
+  };
+  await fs.writeFile(path.join(outDir, "environment.json"), `${JSON.stringify({ ...baseReport.environment, tools, git: baseReport.git, gitCommit: baseReport.gitCommit, startedAt: baseReport.startedAt, options: baseReport.options }, null, 2)}\n`, "utf8");
+  let currentProgress = null;
+  const writeProgress = async () => {
+    const progress = progressState({ results, matrix, selectedRuntimes, workloads, current: currentProgress });
+    const partial = makeReport({ baseReport, results, options, partial: true });
+    await writeJson(path.join(outDir, "progress.json"), progress);
+    await writeJson(path.join(outDir, "results.partial.json"), results);
+    await writeJson(path.join(outDir, "summary.partial.json"), {
+      partial: true,
+      updatedAt: partial.updatedAt,
+      summary: partial.summary,
+      comparisons: partial.comparisons,
+      publicClaimReadiness: partial.publicClaimReadiness,
+      progress,
+    });
+    await fs.writeFile(path.join(outDir, "report.partial.md"), renderMarkdown(partial), "utf8");
+  };
+  await writeProgress();
   const stopHandlers = [];
   process.once("SIGINT", async () => {
     await Promise.all(stopHandlers.map((fn) => fn()));
@@ -306,6 +382,8 @@ async function main() {
       for (const workload of workloads) {
         for (const connections of matrix.connections) {
           results.push({ status: "UNAVAILABLE", runtime, workload: workload.name, connections, reason: `${runtime} not available` });
+          currentProgress = { runtime, workload: workload.name, connections, status: "UNAVAILABLE" };
+          await writeProgress();
         }
       }
       continue;
@@ -320,6 +398,8 @@ async function main() {
             connections,
             reason: "Sloppy Auth.apiKey source-input config handoff is not reliable in this local-neutral fixture yet; skipped instead of faking auth behavior.",
           });
+          currentProgress = { runtime, workload: workload.name, connections, status: "SKIPPED" };
+          await writeProgress();
           continue;
         }
         const port = options.basePort + selectedRuntimes.indexOf(runtime);
@@ -333,25 +413,31 @@ async function main() {
           stopHandlers.push(() => stopServer(server.child));
           await runAdapter(tool, {
             toolPath: tools[tool].path,
+            runtime,
             workload,
             url: `http://${options.host}:${port}${workload.path ?? ""}`,
             connections,
             duration: matrix.warmup,
             repeat: 0,
             tempDir,
+            runLabel: [runtime, workload.name, connections, "warmup"].map(safeToken).join("-"),
           });
           for (let repeat = 1; repeat <= matrix.repeats; repeat += 1) {
+            currentProgress = { runtime, workload: workload.name, connections, repeat, status: "RUNNING" };
+            await writeProgress();
             const sampler = options.resourceSampling
               ? startResourceSampler(server.pid, { intervalMs: options.resourceIntervalMs })
               : null;
             const row = await runAdapter(tool, {
               toolPath: tools[tool].path,
+              runtime,
               workload,
               url: `http://${options.host}:${port}${workload.path ?? ""}`,
               connections,
               duration: matrix.duration,
               repeat,
               tempDir,
+              runLabel: [runtime, workload.name, connections, repeat].map(safeToken).join("-"),
             });
             let resourceRun = null;
             if (sampler != null) {
@@ -369,38 +455,22 @@ async function main() {
               durationSeconds: seconds(matrix.duration),
               server: { pid: server.pid, command: server.command, startupMs: server.startupMs, stdoutPath: server.stdoutPath, stderrPath: server.stderrPath },
             });
+            currentProgress = { runtime, workload: workload.name, connections, repeat, status: row.status };
+            await writeProgress();
           }
         } catch (error) {
           results.push({ status: "FAIL", runtime, workload: workload.name, connections, reason: error.message });
+          currentProgress = { runtime, workload: workload.name, connections, status: "FAIL" };
+          await writeProgress();
         } finally {
           if (server) await stopServer(server.child);
         }
       }
     }
   }
-  const report = {
-    schemaVersion: 1,
-    startedAt: new Date().toISOString(),
-    tool,
-    tools,
-    environment: hostMetadata(),
-    git: gitInfo(),
-    gitCommit: gitCommit(),
-    workloads,
-    matrix,
-    results,
-    summary: summarize(results),
-    comparisons: comparisons(summarize(results)),
-    options: {
-      claimMode: options.claimMode,
-      loadHostKind: options.loadHostKind,
-      resourceSampling: options.resourceSampling,
-      resourceIntervalMs: options.resourceIntervalMs,
-    },
-    reproductionCommand: `node benchmarks/local-neutral/scripts/run.mjs ${process.argv.slice(2).join(" ")}`,
-  };
-  report.publicClaimReadiness = publicClaimReadiness({ report, options });
-  await fs.writeFile(path.join(outDir, "environment.json"), `${JSON.stringify({ ...report.environment, tools, git: report.git, gitCommit: report.gitCommit, startedAt: report.startedAt, options: report.options }, null, 2)}\n`, "utf8");
+  currentProgress = { status: "COMPLETE" };
+  await writeProgress();
+  const report = makeReport({ baseReport, results, options, partial: false });
   await fs.writeFile(path.join(outDir, "results.json"), `${JSON.stringify(results, null, 2)}\n`, "utf8");
   await fs.writeFile(path.join(outDir, "summary.json"), `${JSON.stringify({ summary: report.summary, comparisons: report.comparisons }, null, 2)}\n`, "utf8");
   await fs.writeFile(path.join(outDir, "report.md"), renderMarkdown(report), "utf8");

@@ -105,14 +105,18 @@ Sloppy, Node, Bun, and Deno apps and drives them with an external tool such as
 `oha`, `wrk`, `k6`, or `vegeta`. Use it when the benchmark client must be
 outside Sloppy. It writes JSON, CSV, Markdown, raw logs, and environment
 metadata under `artifacts/benchmarks/local-neutral/`. Reports include p95/p99
-latency and best-effort server CPU/memory samples. `--preset stress` is the
-local high-pressure lane, and `--preset public-candidate --claim-mode
-public-candidate` adds explicit public-readiness checks. Same-machine runs are
-still local engineering evidence until the report shows a complete comparator
-matrix, resource samples, clean checkout, stress-sized repeats, and a separate
-load-generator topology. The current Sloppy fixture records `auth-api-key` as
-`SKIPPED`; the report keeps that gap visible instead of treating that row as
-equivalent.
+latency and best-effort server CPU/memory samples. `--preset realistic-short`
+is the normal inspectable all-runtime K6 pass for branch work; it is sized to
+finish in about 30 minutes instead of hours. `--preset stress` is the local
+high-pressure lane, and `--preset public-candidate --claim-mode
+public-candidate` adds explicit public-readiness checks. Long runs write
+`progress.json`, `results.partial.json`, `summary.partial.json`, and
+`report.partial.md` while they execute so interrupted benchmarks still leave
+reviewable evidence. Same-machine runs are still local engineering evidence
+until the report shows a complete comparator matrix, resource samples, clean
+checkout, stress-sized repeats, and a separate load-generator topology. The
+current Sloppy fixture records `auth-api-key` as `SKIPPED`; the report keeps
+that gap visible instead of treating that row as equivalent.
 
 A real benchmark run names the workload, the build configuration, the
 hardware, the command, and the output. Anything described as "Sloppy

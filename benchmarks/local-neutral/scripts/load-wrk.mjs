@@ -18,12 +18,13 @@ function safeToken(value) {
   return path.basename(String(value)).replace(/[^A-Za-z0-9._-]/g, "_") || "0";
 }
 
-export async function runWrk({ toolPath, workload, url, connections, duration, repeat, tempDir }) {
+export async function runWrk({ toolPath, workload, url, connections, duration, repeat, tempDir, runtime = "runtime", runLabel = null }) {
   if (workload.mixed) return { status: "SKIPPED", reason: "wrk adapter does not implement weighted mixed workloads" };
+  const label = safeToken(runLabel ?? [runtime, workload.name, connections, repeat].join("-"));
   let scriptPath = null;
   const headers = Object.entries(workload.headers ?? {});
   if ((workload.method && workload.method !== "GET") || workload.body || headers.length > 0) {
-    scriptPath = path.join(tempDir, `wrk-${workload.name}-${safeToken(repeat)}.lua`);
+    scriptPath = path.join(tempDir, `wrk-${label}.lua`);
     const headerLines = headers.map(([name, value]) => `wrk.headers[${JSON.stringify(name)}] = ${JSON.stringify(value)}`);
     const lines = [
       `wrk.method = ${JSON.stringify(workload.method ?? "GET")}`,

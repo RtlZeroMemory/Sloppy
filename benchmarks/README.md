@@ -50,6 +50,7 @@ Run a measured local benchmark from a Release build:
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100 -Warmup 10
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100 -Warmup 10 -HttpProfile
 node .\benchmarks\local-neutral\scripts\run.mjs --preset quick --tool k6 --runtime sloppy,node
+node .\benchmarks\local-neutral\scripts\run.mjs --preset realistic-short --tool k6 --runtime all --claim-mode public-candidate
 node .\benchmarks\local-neutral\scripts\run.mjs --preset stress --tool oha --runtime all
 node .\benchmarks\local-neutral\scripts\run.mjs --preset public-candidate --tool k6 --runtime all --claim-mode public-candidate --load-host-kind separate-machine
 .\tools\windows\bench-local-neutral.ps1 -Preset quick -Tool k6 -Runtime sloppy,node
