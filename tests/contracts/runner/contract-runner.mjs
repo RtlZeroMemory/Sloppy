@@ -8,6 +8,7 @@ import { runAuthContract } from "../auth/validate-auth-contract.mjs";
 import { runHttpDispatchContract } from "../http/validate-http-dispatch-contract.mjs";
 import { runOpenApiContract } from "../openapi/validate-openapi-contract.mjs";
 import { runPackageContract } from "../package/validate-package-contract.mjs";
+import { runRealtimeContract } from "../realtime/validate-realtime-contract.mjs";
 import { runStaticFilesContract } from "../static-files/validate-static-files-contract.mjs";
 import { runWebhooksContract } from "../webhooks/validate-webhooks-contract.mjs";
 
@@ -19,6 +20,7 @@ const AREA_RUNNERS = new Map([
     ["jobs", runJobsContract],
     ["openapi", runOpenApiContract],
     ["package", runPackageContract],
+    ["realtime", runRealtimeContract],
     ["static-files", runStaticFilesContract],
     ["webhooks", runWebhooksContract],
 ]);
