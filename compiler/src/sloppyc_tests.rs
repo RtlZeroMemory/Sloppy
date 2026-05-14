@@ -3934,6 +3934,38 @@ export default app;
 }
 
 #[test]
+fn provider_effect_route_does_not_use_native_static_dispatch() {
+    let source = r#"import { Sloppy, Results } from "sloppy";
+import { sqlite } from "sloppy/providers/sqlite";
+const app = Sloppy.create();
+app.use(sqlite("main", { database: ":memory:" }));
+const db = app.provider("sqlite:main");
+app.get("/ready", async () => {
+  await db.exec("create table if not exists checks (id integer primary key)", []);
+  return Results.ok({ status: "healthy" });
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("provider-effect route should extract");
+    assert_eq!(app.routes[0].handler.effects.len(), 1);
+
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+
+    assert_eq!(plan["routes"][0]["dispatch"]["executionKind"], "v8-handler");
+    assert!(plan["routes"][0].get("nativeResponse").is_none());
+    assert_eq!(plan["routeDispatch"]["nativeNoJsEndpoints"], 0);
+}
+
+#[test]
 fn provider_effect_model_is_database_provider_generic() {
     let source = r#"import { Sloppy, Results } from "sloppy";
 const builder = Sloppy.createBuilder();

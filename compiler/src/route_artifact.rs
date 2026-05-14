@@ -53,7 +53,11 @@ impl RouteExecutionKind {
 pub(crate) fn route_execution_kind(
     response_kind: Option<&str>,
     native_body: Option<&str>,
+    has_provider_effects: bool,
 ) -> RouteExecutionKind {
+    if has_provider_effects {
+        return RouteExecutionKind::V8Handler;
+    }
     match (response_kind, native_body) {
         (Some("text"), Some(_)) => RouteExecutionKind::NativeStaticText,
         (Some("json"), Some(_)) => RouteExecutionKind::NativeStaticJson,
@@ -108,6 +112,7 @@ pub(crate) fn emit_route_artifact(app: &ExtractedApp) -> Result<Option<Vec<u8>>,
             .response
             .as_ref()
             .and_then(|response| response.native_body.as_deref());
+        let has_provider_effects = !route.handler.effects.is_empty();
         let (strategy, param_count) = route_artifact_pattern_metadata(&route.pattern)?;
 
         entries.push(RouteEntry {
@@ -118,7 +123,8 @@ pub(crate) fn emit_route_artifact(app: &ExtractedApp) -> Result<Option<Vec<u8>>,
             name_offset,
             name_len,
             strategy,
-            execution_kind: route_execution_kind(response_kind, native_body).artifact_code(),
+            execution_kind: route_execution_kind(response_kind, native_body, has_provider_effects)
+                .artifact_code(),
             param_count,
             flags: 0,
         });

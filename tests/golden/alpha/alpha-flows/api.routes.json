@@ -56,8 +56,8 @@
           "mode": "none"
         },
         "jsonResponse": {
-          "fallbackReason": "multiple-json-response-shapes",
-          "mode": "fallback",
+          "fallbackReason": "dynamic-handler-result",
+          "mode": "generic",
           "writer": "none"
         },
         "kind": "http",
