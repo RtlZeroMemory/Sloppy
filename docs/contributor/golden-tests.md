@@ -6,6 +6,9 @@ artifact shape, template output, example coverage, and alpha app flows.
 
 Use goldens when the output is itself the contract. Use unit or integration
 tests when the contract is behavior that can be asserted directly.
+Use contract tests when committed or generated artifacts need semantic
+validation beyond byte drift, such as checking that a package manifest, Plan,
+route artifact, and copied files agree.
 
 ## Update workflow
 

@@ -1,0 +1,24 @@
+{
+  "schema": "sloppy.app-package.v1",
+  "kind": "web",
+  "dependencyMode": "bundled",
+  "entry": "artifacts/app.plan.json",
+  "artifacts": {
+    "plan": "artifacts/app.plan.json",
+    "bundle": "artifacts/app.js"
+  },
+  "migrations": [
+    {
+      "provider": "main",
+      "providerKind": "sqlite",
+      "path": "migrations/*.sql",
+      "files": [
+        {
+          "path": "migrations/001_init.sql",
+          "sha256": "sha256:e2275a5caacf7902b6d86ec3f16a5964b13430a381f754f05c10167b964a184b"
+        }
+      ]
+    }
+  ],
+  "createdBy": "sloppy package"
+}

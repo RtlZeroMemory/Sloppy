@@ -2,7 +2,7 @@ param(
     [ValidateSet("pr", "extended", "torture")]
     [string]$Tier = "pr",
 
-    [ValidateSet("all", "static", "native", "compiler", "js", "fuzz", "http2", "package", "sanitizer", "stress", "v8", "provider", "meta", "golden", "integration", "examples", "templates", "alpha-flow", "diagnostics")]
+    [ValidateSet("all", "static", "native", "compiler", "js", "fuzz", "http2", "package", "contracts", "sanitizer", "stress", "v8", "provider", "meta", "golden", "integration", "examples", "templates", "alpha-flow", "diagnostics")]
     [string]$Area = "all",
 
     [int]$Seed = 12345,
@@ -24,7 +24,7 @@ $V8PresetPrepared = $false
 $V8PresetAvailable = $false
 
 function Write-TestEngineHelp {
-    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-Out path]"
+    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|contracts|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-Out path]"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  tools/windows/test-engine.ps1 -Tier pr"
@@ -535,6 +535,10 @@ function Invoke-PackageArea {
     Invoke-PowerShellLane "package.outside_checkout" (Join-Path $Root "tools/windows/dev.ps1") @("test-package", "-PackagePath", $packages[0].FullName)
 }
 
+function Invoke-ContractsArea {
+    Invoke-ExternalLane "contracts.package" "node" @((Join-Path $Root "tests/contracts/runner/contract-runner.mjs"), "--area", "package", "--tier", $Tier) -UnavailableNote "node is not available"
+}
+
 function Invoke-SanitizerArea {
     $artifactRoot = Join-Path $Root "artifacts/test-engine/sanitizers"
     New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
@@ -645,6 +649,9 @@ if (Should-Run "stress") {
 }
 if ($Area -eq "package" -or ($Area -eq "all" -and $Tier -ne "pr")) {
     Invoke-PackageArea
+}
+if (Should-Run "contracts") {
+    Invoke-ContractsArea
 }
 if ($Area -eq "sanitizer" -or ($Area -eq "all" -and $Tier -ne "pr")) {
     Invoke-SanitizerArea
