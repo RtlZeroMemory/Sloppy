@@ -15,6 +15,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "v8-sdk.ps1")
+
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $Tier = $Tier.ToLowerInvariant()
 $Area = $Area.ToLowerInvariant()
@@ -219,17 +221,24 @@ function Ensure-V8Preset {
 
     $script:V8PresetPrepared = $true
     $devScript = Join-Path $Root "tools/windows/dev.ps1"
-    $configureArgs = @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8")
-    if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
-        $configureArgs += @("-V8Root", $V8Root)
-        if (-not (Test-Path -LiteralPath $V8Root -PathType Container)) {
-            $commandText = Join-CommandText $devScript $configureArgs
-            Add-Lane "v8.configure" "unavailable" 0 $commandText "explicit V8 SDK root does not exist: $V8Root"
-            $script:V8PresetAvailable = $false
-            return $false
+    $resolvedV8Root = Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root
+    if ([string]::IsNullOrWhiteSpace($resolvedV8Root)) {
+        $configureArgs = @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8")
+        if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
+            $configureArgs += @("-V8Root", $V8Root)
         }
+        $commandText = Join-CommandText $devScript $configureArgs
+        $note = if ([string]::IsNullOrWhiteSpace($V8Root)) {
+            "no compatible Sloppy V8 SDK resolved"
+        } else {
+            "explicit V8 SDK root does not exist or is incompatible: $V8Root"
+        }
+        Add-Lane "v8.configure" "unavailable" 0 $commandText $note
+        $script:V8PresetAvailable = $false
+        return $false
     }
-    Invoke-PowerShellLane "v8.configure" $devScript $configureArgs
+
+    Invoke-PowerShellLane "v8.configure" $devScript @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8", "-V8Root", $resolvedV8Root)
     if ($script:LastLaneStatus -ne "pass") {
         $script:V8PresetAvailable = $false
         return $false

@@ -2,10 +2,12 @@
 import { parseRunnerArgs, printHelp, repoRootFromRunner, writeJsonReport } from "./command-utils.mjs";
 import { formatMarkdown, hasBlockingFindings, mergeReports } from "./contract-report.mjs";
 import { runHttpDispatchContract } from "../http/validate-http-dispatch-contract.mjs";
+import { runOpenApiContract } from "../openapi/validate-openapi-contract.mjs";
 import { runPackageContract } from "../package/validate-package-contract.mjs";
 
 const AREA_RUNNERS = new Map([
     ["http", runHttpDispatchContract],
+    ["openapi", runOpenApiContract],
     ["package", runPackageContract],
 ]);
 
