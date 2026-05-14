@@ -104,10 +104,15 @@ The local neutral suite under `benchmarks/local-neutral/` starts equivalent
 Sloppy, Node, Bun, and Deno apps and drives them with an external tool such as
 `oha`, `wrk`, `k6`, or `vegeta`. Use it when the benchmark client must be
 outside Sloppy. It writes JSON, CSV, Markdown, raw logs, and environment
-metadata under `artifacts/benchmarks/local-neutral/`. It is still a local
-engineering harness, not a source of public performance claims. The current
-Sloppy fixture records `auth-api-key` as `SKIPPED`; the report keeps that gap
-visible instead of treating that row as equivalent.
+metadata under `artifacts/benchmarks/local-neutral/`. Reports include p95/p99
+latency and best-effort server CPU/memory samples. `--preset stress` is the
+local high-pressure lane, and `--preset public-candidate --claim-mode
+public-candidate` adds explicit public-readiness checks. Same-machine runs are
+still local engineering evidence until the report shows a complete comparator
+matrix, resource samples, clean checkout, stress-sized repeats, and a separate
+load-generator topology. The current Sloppy fixture records `auth-api-key` as
+`SKIPPED`; the report keeps that gap visible instead of treating that row as
+equivalent.
 
 A real benchmark run names the workload, the build configuration, the
 hardware, the command, and the output. Anything described as "Sloppy
@@ -134,7 +139,9 @@ Before benchmark numbers are published, Sloppy needs:
 
 - a fixed methodology (workload, build flags, hardware class, version)
 - explicit comparison runtimes
-- a way to reproduce locally
+- p95/p99 latency and resource reporting
+- stress/soak evidence, not just short loopback checks
+- a way to reproduce locally and a separate-load-generator run for public claims
 
 Until then, treat any informal measurement you do as an estimate, not a
 benchmark.

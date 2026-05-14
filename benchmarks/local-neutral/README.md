@@ -16,7 +16,11 @@ neutral client. This harness keeps the load generator outside Sloppy so that
 runtime comparison rows are easier to review.
 
 The harness does not publish results, rank runtimes, or make CI pass or fail on
-throughput. It creates artifacts that a reviewer can inspect.
+throughput. It creates artifacts that a reviewer can inspect. Public-claim mode
+is deliberately stricter: it marks the report `NOT_PUBLIC_READY` unless the run
+has complete comparator rows, p95/p99 latency, process resource samples, a
+stress-sized matrix, a clean checkout, and an explicit separate-machine load
+topology.
 
 ## Install A Load Generator
 
@@ -36,6 +40,12 @@ node benchmarks/local-neutral/scripts/run.mjs --tool k6
 
 The harness does not vendor, install, or download these tools.
 
+`k6` is the preferred public-candidate tool because its summary export gives
+stable p95/p99 latency fields and request-failure counters. `oha` is the
+preferred stress tool when you want a simple high-pressure HTTP generator with
+JSON output. `wrk` and `vegeta` remain supported for local engineering runs,
+but their adapter output may be less complete for public-candidate reporting.
+
 ## Quick Run
 
 Build Sloppy with V8 support first, or pass a V8-enabled binary with
@@ -43,6 +53,12 @@ Build Sloppy with V8 support first, or pass a V8-enabled binary with
 
 ```sh
 node benchmarks/local-neutral/scripts/run.mjs --runtime sloppy,node --workload health --connections 1 --duration 3s --warmup 1s --repeats 1
+```
+
+Windows wrapper:
+
+```powershell
+.\tools\windows\bench-local-neutral.ps1 -Runtime sloppy,node -Workload health -Connections 1 -Duration 3s -Warmup 1s -Repeats 1
 ```
 
 Default quick mode runs `health`, `json-small`, and `route-param` with
@@ -55,11 +71,16 @@ warmup.
 node benchmarks/local-neutral/scripts/run.mjs --preset quick
 node benchmarks/local-neutral/scripts/run.mjs --preset alpha
 node benchmarks/local-neutral/scripts/run.mjs --preset full
+node benchmarks/local-neutral/scripts/run.mjs --preset stress --tool oha
+node benchmarks/local-neutral/scripts/run.mjs --preset public-candidate --tool k6 --runtime all --claim-mode public-candidate --load-host-kind separate-machine
 ```
 
 - `quick`: short local sanity run for the core GET workloads.
 - `alpha`: all required workloads with connections `1,16,64`.
 - `full`: larger local matrix for branch-to-branch comparison.
+- `stress`: high-concurrency local pressure run for soak/stability signals.
+- `public-candidate`: long, repeated, resource-sampled matrix for reports that
+  may later support public claims after topology and environment review.
 
 Use `--runtime sloppy,node,bun,deno` or `--runtime all`. Missing optional
 runtimes are reported as unavailable unless you requested only that runtime.
@@ -98,9 +119,17 @@ pass `--out`:
 - `report.md`: human-readable report.
 - `report.csv`: spreadsheet-friendly summary.
 - `raw/`: server stdout and stderr logs.
+- `raw/**/resources-repeat-*.json`: process resource samples for each measured
+  repeat when resource sampling is enabled.
 
 Reports include RPS, p50/p95/p99 latency when the selected tool provides those
-values, errors, non-2xx counts when available, and explicit skipped rows.
+values, errors, non-2xx counts when available, server CPU and memory samples,
+and explicit skipped rows.
+
+Resource sampling is best-effort process telemetry. On Windows it samples
+`Get-Process`; on Unix-like systems it samples `ps`. It is not a profiler and
+does not replace OS-level tools such as Windows Performance Recorder, `perf`, or
+eBPF. Disable it with `--no-resources` only for smoke/debugging.
 
 ## How To Read Results
 
@@ -113,8 +142,13 @@ directly.
 
 Same-machine loopback benchmarks are good for local regression work. Public
 claims need more: neutral tools, repeated runs, full environment disclosure,
-and preferably a separate load-generator machine. Two-machine and cloud/VPS
-runs are future work, not part of this harness.
+resource evidence, stress evidence, and a separate load-generator machine.
+`--claim-mode public-candidate` makes these gaps visible in the report instead
+of letting a local run look publication-ready by accident.
+
+For public-candidate runs, keep the whole artifact directory. The Markdown
+report is reviewable, but `results.json`, `summary.json`,
+`environment.json`, and raw resource samples are the source evidence.
 
 ## Relationship To The Existing Realistic Runner
 

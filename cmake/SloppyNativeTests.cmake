@@ -481,6 +481,12 @@
                 "${PROJECT_SOURCE_DIR}/tests/scripts/test_bench_wrapper_json.ps1" -RepoRoot
                 "${PROJECT_SOURCE_DIR}")
         add_test(
+            NAME benchmarks.local_neutral.contract
+            COMMAND
+                powershell -NoProfile -ExecutionPolicy Bypass -File
+                "${PROJECT_SOURCE_DIR}/tests/scripts/test_local_neutral_benchmark_contract.ps1"
+                -RepoRoot "${PROJECT_SOURCE_DIR}")
+        add_test(
             NAME test_engine.windows.contract
             COMMAND
                 powershell -NoProfile -ExecutionPolicy Bypass -File

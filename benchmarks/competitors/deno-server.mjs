@@ -22,54 +22,49 @@ Deno.serve(
   },
   async (request) => {
     const url = new URL(request.url);
-    if (request.method === "GET" && url.pathname === "/large") {
-      return json({ items: largeList() });
-    }
-    if (request.method === "GET" && url.pathname === "/static-json") {
-      return json({ ok: true, mode: "static" });
-    }
-    if (request.method === "GET" && url.pathname === "/static-text") {
-      return new Response("ok\n", {
-        headers: { "content-type": "text/plain; charset=utf-8", "content-length": "3" },
-      });
-    }
-    if (request.method === "GET" && url.pathname === "/static-status") {
-      return new Response(null, { status: 204 });
-    }
-    if (request.method === "GET" && url.pathname === "/static-problem") {
-      return json({ status: 400, title: "Static problem", code: "SLOPPY_E_STATIC_PROBLEM" }, 400);
-    }
-    if (request.method === "GET" && url.pathname === "/dynamic-json") {
-      return json({ ok: true, mode: "dynamic-0" });
-    }
-    if (request.method === "GET" && url.pathname === "/dynamic-text") {
-      return new Response("dynamic-text\n", {
-        headers: { "content-type": "text/plain; charset=utf-8", "content-length": "13" },
-      });
-    }
-    if (request.method === "GET" && url.pathname === "/dynamic-async") {
-      return json({ ok: true, mode: await Promise.resolve("async-dynamic") });
-    }
-    if (request.method === "GET" && url.pathname === "/ctx-query") {
-      return json({ ok: true, query: url.searchParams.get("q") });
-    }
-    if (request.method === "GET" && url.pathname === "/ctx-headers") {
-      return json({ ok: true, trace: request.headers.get("x-trace") });
-    }
-    if (request.method === "GET" && url.pathname === "/ctx-services") {
-      return json({ ok: true, service: "bench-service" });
-    }
-    if (request.method === "GET" && url.pathname === "/plain-object") {
-      return json({ ok: true, mode: "plain-object" });
-    }
-    if (request.method === "GET" && url.pathname === "/exception") {
-      return json({ status: 500, title: "Internal Server Error" }, 500);
-    }
-    if (request.method === "GET" && url.pathname.startsWith("/route/")) {
-      return json({ ok: true, route: url.pathname });
-    }
-    if (request.method !== "POST") {
-      return new Response("", { status: 404 });
+    switch (request.method) {
+      case "GET":
+        switch (url.pathname) {
+          case "/large":
+            return json({ items: largeList() });
+          case "/static-json":
+            return json({ ok: true, mode: "static" });
+          case "/static-text":
+            return new Response("ok\n", {
+              headers: { "content-type": "text/plain; charset=utf-8", "content-length": "3" },
+            });
+          case "/static-status":
+            return new Response(null, { status: 204 });
+          case "/static-problem":
+            return json({ status: 400, title: "Static problem", code: "SLOPPY_E_STATIC_PROBLEM" }, 400);
+          case "/dynamic-json":
+            return json({ ok: true, mode: "dynamic-0" });
+          case "/dynamic-text":
+            return new Response("dynamic-text\n", {
+              headers: { "content-type": "text/plain; charset=utf-8", "content-length": "13" },
+            });
+          case "/dynamic-async":
+            return json({ ok: true, mode: await Promise.resolve("async-dynamic") });
+          case "/ctx-query":
+            return json({ ok: true, query: url.searchParams.get("q") });
+          case "/ctx-headers":
+            return json({ ok: true, trace: request.headers.get("x-trace") });
+          case "/ctx-services":
+            return json({ ok: true, service: "bench-service" });
+          case "/plain-object":
+            return json({ ok: true, mode: "plain-object" });
+          case "/exception":
+            return json({ status: 500, title: "Internal Server Error" }, 500);
+          default:
+            if (url.pathname.startsWith("/route/")) {
+              return json({ ok: true, route: url.pathname });
+            }
+            return new Response("", { status: 404 });
+        }
+      case "POST":
+        break;
+      default:
+        return new Response("", { status: 404 });
     }
     let parsed;
     try {

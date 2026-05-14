@@ -336,89 +336,95 @@ async function validationFailureMessage(scenario, phase, correctness, response, 
 }
 
 function handleScenario(req, res) {
-  if (req.method === "GET" && req.url === "/large") {
-    const body = JSON.stringify({ items: largeList() });
-    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-    res.end(body);
-    return;
-  }
-  if (req.method === "GET" && req.url?.startsWith("/route/")) {
-    const body = JSON.stringify({ ok: true, route: req.url });
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(body);
-    return;
-  }
-  if (req.method === "GET" && req.url === "/static-json") {
-    const body = JSON.stringify({ ok: true, mode: "static" });
-    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-    res.end(body);
-    return;
-  }
-  if (req.method === "GET" && req.url === "/static-text") {
-    res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "content-length": 3 });
-    res.end("ok\n");
-    return;
-  }
-  if (req.method === "GET" && req.url === "/static-status") {
-    res.writeHead(204).end();
-    return;
-  }
-  if (req.method === "GET" && req.url === "/static-problem") {
-    const body = JSON.stringify({ status: 400, title: "Static problem", code: "SLOPPY_E_STATIC_PROBLEM" });
-    res.writeHead(400, { "content-type": "application/problem+json", "content-length": Buffer.byteLength(body) });
-    res.end(body);
-    return;
-  }
-  if (req.method === "GET" && req.url === "/dynamic-json") {
-    const body = JSON.stringify({ ok: true, mode: "dynamic-0" });
-    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-    res.end(body);
-    return;
-  }
-  if (req.method === "GET" && req.url === "/dynamic-text") {
-    res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "content-length": 13 });
-    res.end("dynamic-text\n");
-    return;
-  }
-  if (req.method === "GET" && req.url === "/dynamic-async") {
-    const body = JSON.stringify({ ok: true, mode: "async-dynamic" });
-    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-    res.end(body);
-    return;
-  }
-  if (req.method === "GET" && req.url === "/ctx-query?q=abc") {
-    const body = JSON.stringify({ ok: true, query: "abc" });
-    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-    res.end(body);
-    return;
-  }
-  if (req.method === "GET" && req.url === "/ctx-headers") {
-    const body = JSON.stringify({ ok: true, trace: req.headers["x-trace"] ?? "" });
-    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-    res.end(body);
-    return;
-  }
-  if (req.method === "GET" && req.url === "/ctx-services") {
-    const body = JSON.stringify({ ok: true, service: "bench-service" });
-    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-    res.end(body);
-    return;
-  }
-  if (req.method === "GET" && req.url === "/plain-object") {
-    const body = JSON.stringify({ ok: true, mode: "plain-object" });
-    res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-    res.end(body);
-    return;
-  }
-  if (req.method === "GET" && req.url === "/exception") {
-    const body = JSON.stringify({ status: 500, title: "Internal Server Error" });
-    res.writeHead(500, { "content-type": "application/problem+json", "content-length": Buffer.byteLength(body) });
-    res.end(body);
-    return;
-  }
-  if (req.method !== "POST") {
-    res.writeHead(404).end();
-    return;
+  switch (req.method) {
+    case "GET":
+      switch (req.url) {
+        case "/large": {
+          const body = JSON.stringify({ items: largeList() });
+          res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+          res.end(body);
+          return;
+        }
+        case "/static-json": {
+          const body = JSON.stringify({ ok: true, mode: "static" });
+          res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+          res.end(body);
+          return;
+        }
+        case "/static-text":
+          res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "content-length": 3 });
+          res.end("ok\n");
+          return;
+        case "/static-status":
+          res.writeHead(204).end();
+          return;
+        case "/static-problem": {
+          const body = JSON.stringify({ status: 400, title: "Static problem", code: "SLOPPY_E_STATIC_PROBLEM" });
+          res.writeHead(400, { "content-type": "application/problem+json", "content-length": Buffer.byteLength(body) });
+          res.end(body);
+          return;
+        }
+        case "/dynamic-json": {
+          const body = JSON.stringify({ ok: true, mode: "dynamic-0" });
+          res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+          res.end(body);
+          return;
+        }
+        case "/dynamic-text":
+          res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "content-length": 13 });
+          res.end("dynamic-text\n");
+          return;
+        case "/dynamic-async": {
+          const body = JSON.stringify({ ok: true, mode: "async-dynamic" });
+          res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+          res.end(body);
+          return;
+        }
+        case "/ctx-query?q=abc": {
+          const body = JSON.stringify({ ok: true, query: "abc" });
+          res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+          res.end(body);
+          return;
+        }
+        case "/ctx-headers": {
+          const body = JSON.stringify({ ok: true, trace: req.headers["x-trace"] ?? "" });
+          res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+          res.end(body);
+          return;
+        }
+        case "/ctx-services": {
+          const body = JSON.stringify({ ok: true, service: "bench-service" });
+          res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+          res.end(body);
+          return;
+        }
+        case "/plain-object": {
+          const body = JSON.stringify({ ok: true, mode: "plain-object" });
+          res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+          res.end(body);
+          return;
+        }
+        case "/exception": {
+          const body = JSON.stringify({ status: 500, title: "Internal Server Error" });
+          res.writeHead(500, { "content-type": "application/problem+json", "content-length": Buffer.byteLength(body) });
+          res.end(body);
+          return;
+        }
+        default:
+          if (req.url?.startsWith("/route/")) {
+            const body = JSON.stringify({ ok: true, route: req.url });
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(body);
+            return;
+          }
+          res.writeHead(404).end();
+          return;
+      }
+    case "POST":
+      break;
+    default:
+      res.writeHead(404).end();
+      return;
   }
 
   let raw = "";

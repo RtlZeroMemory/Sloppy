@@ -16,6 +16,18 @@ function fmtDelta(value) {
   return Number.isFinite(value) ? `${num(value, 1)}%` : "";
 }
 
+function bytes(value) {
+  if (!Number.isFinite(value)) return "";
+  const units = ["B", "KiB", "MiB", "GiB"];
+  let amount = Number(value);
+  let unit = 0;
+  while (amount >= 1024 && unit < units.length - 1) {
+    amount /= 1024;
+    unit += 1;
+  }
+  return `${amount.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
 export function renderMarkdown(report) {
   const summaries = summarize(report.results);
   const deltas = comparisons(summaries);
@@ -34,8 +46,13 @@ export function renderMarkdown(report) {
     ["CPU", report.environment.cpu],
     ["Logical cores", String(report.environment.logicalCores)],
     ["RAM bytes", String(report.environment.memoryBytes)],
-    ["Git commit", report.gitCommit ?? ""],
+    ["Git commit", report.git?.commit ?? report.gitCommit ?? ""],
+    ["Git branch", report.git?.branch ?? ""],
+    ["Git dirty", String(report.git?.dirty ?? "")],
     ["Load generator", `${report.tool} ${report.tools[report.tool]?.version ?? ""}`],
+    ["Claim mode", report.options?.claimMode ?? "local"],
+    ["Load host kind", report.options?.loadHostKind ?? "same-machine"],
+    ["Resource sampling", report.options?.resourceSampling === false ? "disabled" : `${report.options?.resourceIntervalMs ?? 500} ms`],
   ]));
   lines.push("");
   lines.push("## Tool And Runtime Availability");
@@ -88,6 +105,36 @@ export function renderMarkdown(report) {
     num(row.p95Ms),
     num(row.p99Ms),
   ])));
+  lines.push("");
+  lines.push("## Resource Summary");
+  lines.push("");
+  lines.push(table(["Workload", "Conn", "Runtime", "Peak RSS", "Peak private", "Avg CPU %", "Peak CPU %", "Threads", "Handles"], summaries.map((row) => [
+    row.workload,
+    String(row.connections),
+    row.runtime,
+    bytes(row.peakRssBytes ?? row.peakWorkingSetBytes),
+    bytes(row.peakPrivateMemoryBytes),
+    num(row.avgCpuPercent),
+    num(row.peakCpuPercent),
+    num(row.peakThreads, 0),
+    num(row.peakHandles, 0),
+  ])));
+  lines.push("");
+  lines.push("## Public Claim Readiness");
+  lines.push("");
+  if (report.publicClaimReadiness) {
+    lines.push(`Status: \`${report.publicClaimReadiness.status}\``);
+    lines.push("");
+    lines.push(report.publicClaimReadiness.summary);
+    lines.push("");
+    lines.push(table(["Criterion", "Status", "Details"], report.publicClaimReadiness.criteria.map((row) => [
+      row.name,
+      row.status,
+      row.details ?? "",
+    ])));
+  } else {
+    lines.push("No public-claim readiness metadata was produced.");
+  }
   lines.push("");
   lines.push("## Comparison Notes");
   lines.push("");

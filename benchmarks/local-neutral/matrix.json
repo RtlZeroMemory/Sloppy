@@ -38,6 +38,35 @@
       "repeats": 5,
       "duration": "60s",
       "warmup": "10s"
+    },
+    "stress": {
+      "workloads": [
+        "health",
+        "json-small",
+        "route-param",
+        "post-json-validated",
+        "static-small",
+        "mixed-realistic"
+      ],
+      "connections": [64, 128, 256],
+      "repeats": 3,
+      "duration": "120s",
+      "warmup": "15s"
+    },
+    "public-candidate": {
+      "workloads": [
+        "health",
+        "json-small",
+        "route-param",
+        "post-json-validated",
+        "auth-api-key",
+        "static-small",
+        "mixed-realistic"
+      ],
+      "connections": [1, 16, 64, 128],
+      "repeats": 7,
+      "duration": "120s",
+      "warmup": "15s"
     }
   },
   "tools": ["oha", "wrk", "k6", "vegeta"],

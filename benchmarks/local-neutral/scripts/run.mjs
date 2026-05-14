@@ -11,6 +11,7 @@ import { runK6 } from "./load-k6.mjs";
 import { runVegeta } from "./load-vegeta.mjs";
 import { renderMarkdown } from "./render-markdown.mjs";
 import { comparisons, summarize } from "./summarize.mjs";
+import { startResourceSampler } from "./resources.mjs";
 
 const benchRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const repoRoot = path.resolve(benchRoot, "..", "..");
@@ -48,6 +49,10 @@ function parseArgs(argv) {
     json: false,
     preset: "quick",
     checkTools: false,
+    resourceSampling: true,
+    resourceIntervalMs: 500,
+    claimMode: "local",
+    loadHostKind: "same-machine",
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -70,6 +75,10 @@ function parseArgs(argv) {
     else if (arg === "--mode") options.mode = value();
     else if (arg === "--out") options.out = path.resolve(value());
     else if (arg === "--preset") options.preset = value();
+    else if (arg === "--resource-interval-ms") options.resourceIntervalMs = Number(value());
+    else if (arg === "--no-resources") options.resourceSampling = false;
+    else if (arg === "--claim-mode") options.claimMode = value();
+    else if (arg === "--load-host-kind") options.loadHostKind = value();
     else if (arg === "--no-open") options.noOpen = true;
     else if (arg === "--json") options.json = true;
     else if (arg === "--check-tools") options.checkTools = true;
@@ -98,7 +107,11 @@ Options:
   --sloppyc-bin <path>
   --mode artifacts|package
   --out artifacts/benchmarks/local-neutral/<name>
-  --preset quick|alpha|full
+  --preset quick|alpha|full|stress|public-candidate
+  --claim-mode local|public-candidate
+  --load-host-kind same-machine|separate-machine
+  --resource-interval-ms 500
+  --no-resources
   --check-tools
   --json`);
 }
@@ -133,6 +146,17 @@ function gitCommit() {
   return result.status === 0 ? result.stdout.trim() : null;
 }
 
+function gitInfo() {
+  const commit = gitCommit();
+  const branch = spawnSync("git", ["branch", "--show-current"], { cwd: repoRoot, encoding: "utf8" });
+  const dirty = spawnSync("git", ["status", "--short", "--untracked-files=no"], { cwd: repoRoot, encoding: "utf8" });
+  return {
+    commit,
+    branch: branch.status === 0 ? branch.stdout.trim() : "",
+    dirty: dirty.status === 0 ? dirty.stdout.trim().length !== 0 : null,
+  };
+}
+
 function defaultOut() {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   return path.join(repoRoot, "artifacts", "benchmarks", "local-neutral", stamp);
@@ -150,6 +174,50 @@ function resolveSloppy(tools, explicit) {
   return candidates.find((candidate) => {
     try { return spawnSync(candidate, ["--version"], { encoding: "utf8" }).status === 0; } catch { return false; }
   }) ?? "";
+}
+
+function publicClaimReadiness({ report, options }) {
+  const summary = report.summary ?? summarize(report.results);
+  const durationSeconds = seconds(report.matrix.duration);
+  const requestedPublic = options.claimMode === "public-candidate";
+  const criteria = [];
+  const add = (name, status, details) => criteria.push({ name, status, details });
+  const passRows = report.results.filter((row) => row.status === "PASS");
+  const nonPassRows = report.results.filter((row) => row.status !== "PASS");
+  const hasPercentiles = summary.length > 0 && summary.every((row) =>
+    Number.isFinite(row.p95Ms) && Number.isFinite(row.p99Ms));
+  const hasResources = !options.resourceSampling
+    ? false
+    : passRows.every((row) => row.serverResources?.status === "PASS");
+  const selectedRuntimes = options.runtimes.includes("all") ? ["sloppy", "node", "bun", "deno"] : options.runtimes;
+  const allCoreRuntimes = ["sloppy", "node", "bun", "deno"].every((runtime) => selectedRuntimes.includes(runtime));
+  const hasStressShape = report.matrix.connections.some((value) => value >= 128) &&
+    durationSeconds >= 60 &&
+    report.matrix.repeats >= 5;
+
+  add("neutral external load generator", report.tool ? "PASS" : "FAIL", report.tool ?? "none");
+  add("p95 and p99 latency captured", hasPercentiles ? "PASS" : "FAIL", hasPercentiles ? "all passing summary rows include p95/p99" : "one or more rows are missing p95/p99");
+  add("server CPU and memory sampled", hasResources ? "PASS" : "FAIL", hasResources ? "all passing rows include server resource samples" : "one or more passing rows lack resource samples");
+  add("all comparator runtimes selected", allCoreRuntimes ? "PASS" : "FAIL", selectedRuntimes.join(","));
+  add("no skipped/unavailable/failed rows", nonPassRows.length === 0 ? "PASS" : "FAIL", `${nonPassRows.length} non-PASS rows`);
+  add("stress-sized matrix", hasStressShape ? "PASS" : "FAIL", `duration=${report.matrix.duration}, repeats=${report.matrix.repeats}, connections=${report.matrix.connections.join(",")}`);
+  add("clean git checkout", report.git?.dirty === false ? "PASS" : "FAIL", report.git?.dirty === false ? "clean" : "dirty or unknown");
+  add("load topology", options.loadHostKind === "separate-machine" ? "PASS" : "DEFERRED", options.loadHostKind);
+
+  const blocking = criteria.filter((item) => item.status === "FAIL");
+  const deferred = criteria.filter((item) => item.status === "DEFERRED");
+  return {
+    mode: options.claimMode,
+    status: !requestedPublic
+      ? "LOCAL_ENGINEERING_ONLY"
+      : blocking.length === 0 && deferred.length === 0
+        ? "PUBLIC_CANDIDATE"
+        : "NOT_PUBLIC_READY",
+    criteria,
+    summary: requestedPublic
+      ? "Public-candidate mode requires complete comparator rows, p95/p99 latency, process resources, stress-sized repeats, a clean checkout, and a separate load-generator topology."
+      : "Local mode is useful for engineering comparison, but it is not a public performance claim.",
+  };
 }
 
 function serverCommand(runtime, tools, options, port, workDir) {
@@ -200,6 +268,15 @@ async function runAdapter(tool, params) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  if (!["local", "public-candidate"].includes(options.claimMode)) {
+    throw new Error("--claim-mode must be local or public-candidate");
+  }
+  if (!["same-machine", "separate-machine"].includes(options.loadHostKind)) {
+    throw new Error("--load-host-kind must be same-machine or separate-machine");
+  }
+  if (!Number.isFinite(options.resourceIntervalMs) || options.resourceIntervalMs < 100) {
+    throw new Error("--resource-interval-ms must be at least 100");
+  }
   const overrides = { sloppy: options.sloppyBin, sloppyc: options.sloppycBin };
   const tools = detectTools(overrides);
   tools.sloppy.path = resolveSloppy(tools, options.sloppyBin);
@@ -264,6 +341,9 @@ async function main() {
             tempDir,
           });
           for (let repeat = 1; repeat <= matrix.repeats; repeat += 1) {
+            const sampler = options.resourceSampling
+              ? startResourceSampler(server.pid, { intervalMs: options.resourceIntervalMs })
+              : null;
             const row = await runAdapter(tool, {
               toolPath: tools[tool].path,
               workload,
@@ -273,6 +353,14 @@ async function main() {
               repeat,
               tempDir,
             });
+            let resourceRun = null;
+            if (sampler != null) {
+              resourceRun = sampler.stop();
+              const samplePath = path.join(logDir, `resources-repeat-${repeat}.json`);
+              await fs.writeFile(samplePath, `${JSON.stringify(resourceRun.samples, null, 2)}\n`, "utf8");
+              row.serverResources = resourceRun.summary;
+              row.serverResourceSamplesPath = samplePath;
+            }
             results.push({
               ...row,
               runtime,
@@ -296,20 +384,28 @@ async function main() {
     tool,
     tools,
     environment: hostMetadata(),
+    git: gitInfo(),
     gitCommit: gitCommit(),
     workloads,
     matrix,
     results,
     summary: summarize(results),
     comparisons: comparisons(summarize(results)),
+    options: {
+      claimMode: options.claimMode,
+      loadHostKind: options.loadHostKind,
+      resourceSampling: options.resourceSampling,
+      resourceIntervalMs: options.resourceIntervalMs,
+    },
     reproductionCommand: `node benchmarks/local-neutral/scripts/run.mjs ${process.argv.slice(2).join(" ")}`,
   };
-  await fs.writeFile(path.join(outDir, "environment.json"), `${JSON.stringify({ ...report.environment, tools, gitCommit: report.gitCommit, startedAt: report.startedAt }, null, 2)}\n`, "utf8");
+  report.publicClaimReadiness = publicClaimReadiness({ report, options });
+  await fs.writeFile(path.join(outDir, "environment.json"), `${JSON.stringify({ ...report.environment, tools, git: report.git, gitCommit: report.gitCommit, startedAt: report.startedAt, options: report.options }, null, 2)}\n`, "utf8");
   await fs.writeFile(path.join(outDir, "results.json"), `${JSON.stringify(results, null, 2)}\n`, "utf8");
   await fs.writeFile(path.join(outDir, "summary.json"), `${JSON.stringify({ summary: report.summary, comparisons: report.comparisons }, null, 2)}\n`, "utf8");
   await fs.writeFile(path.join(outDir, "report.md"), renderMarkdown(report), "utf8");
-  const csv = ["workload,connections,runtime,medianRps,meanRps,p50Ms,p95Ms,p99Ms,errors,non2xx"]
-    .concat(report.summary.map((row) => [row.workload, row.connections, row.runtime, row.medianRps, row.meanRps, row.p50Ms, row.p95Ms, row.p99Ms, row.errors, row.non2xx].join(",")))
+  const csv = ["workload,connections,runtime,medianRps,meanRps,p50Ms,p95Ms,p99Ms,errors,non2xx,peakRssBytes,peakPrivateMemoryBytes,avgCpuPercent"]
+    .concat(report.summary.map((row) => [row.workload, row.connections, row.runtime, row.medianRps, row.meanRps, row.p50Ms, row.p95Ms, row.p99Ms, row.errors, row.non2xx, row.peakRssBytes, row.peakPrivateMemoryBytes, row.avgCpuPercent].join(",")))
     .join("\n");
   await fs.writeFile(path.join(outDir, "report.csv"), `${csv}\n`, "utf8");
   const hasFailure = results.some((row) => row.status === "FAIL");

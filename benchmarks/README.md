@@ -23,6 +23,10 @@ There are two benchmark layers:
 - `tools/windows/bench-json-competitors.ps1` runs the opt-in local JSON
   competitor harness under `benchmarks/competitors/`, marking unavailable
   runtimes or dependencies as `SKIPPED`.
+- `benchmarks/local-neutral/` runs equivalent Sloppy/Node/Bun/Deno servers
+  behind neutral load generators such as `k6`, `oha`, `wrk`, or `vegeta`.
+  It records p50/p95/p99 latency, throughput, errors, non-2xx counts, server
+  CPU/memory samples, raw logs, and explicit public-claim readiness criteria.
 - `benchmarks/redis/bench-redis.mjs` is a local JavaScript stdlib regression
   harness for RESP encode/parse and Redis cache bookkeeping. It does not
   benchmark a Redis server.
@@ -45,6 +49,10 @@ Run a measured local benchmark from a Release build:
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100 -Warmup 10
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100 -Warmup 10 -HttpProfile
+node .\benchmarks\local-neutral\scripts\run.mjs --preset quick --tool k6 --runtime sloppy,node
+node .\benchmarks\local-neutral\scripts\run.mjs --preset stress --tool oha --runtime all
+node .\benchmarks\local-neutral\scripts\run.mjs --preset public-candidate --tool k6 --runtime all --claim-mode public-candidate --load-host-kind separate-machine
+.\tools\windows\bench-local-neutral.ps1 -Preset quick -Tool k6 -Runtime sloppy,node
 node .\benchmarks\redis\bench-redis.mjs
 ```
 

@@ -38,7 +38,14 @@ export default function() {
   sleep(0);
 }
 `, "utf8");
-  const result = await run(toolPath, ["run", "--summary-export", summaryPath, scriptPath]);
+  const result = await run(toolPath, [
+    "run",
+    "--summary-trend-stats",
+    "min,med,avg,p(50),p(90),p(95),p(99),p(99.9),max",
+    "--summary-export",
+    summaryPath,
+    scriptPath,
+  ]);
   if (result.status !== 0) return { status: "FAIL", reason: result.stderr || result.stdout, raw: result };
   let raw;
   try {
