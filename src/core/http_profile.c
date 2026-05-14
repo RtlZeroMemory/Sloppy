@@ -4,9 +4,10 @@
 #include "sloppy/platform_time.h"
 #include "sloppy/string.h"
 
+#include "env.h"
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -159,24 +160,15 @@ static const char* sl_http_profile_counter_name(SlHttpProfileCounter counter)
     return names[counter];
 }
 
-static bool sl_http_profile_env_truthy(const char* value)
-{
-    if (value == NULL || value[0] == '\0') {
-        return false;
-    }
-    return strcmp(value, "1") == 0 || strcmp(value, "true") == 0 || strcmp(value, "TRUE") == 0 ||
-           strcmp(value, "on") == 0 || strcmp(value, "ON") == 0;
-}
-
 bool sl_http_profile_enabled(void)
 {
     char value[16];
     if (!sl_http_profile_enabled_initialized) {
         sl_http_profile_enabled_cached =
             (sl_http_profile_env_copy("SLOPPY_HTTP_PROFILE", value, sizeof(value)) &&
-             sl_http_profile_env_truthy(value)) ||
+             sl_env_value_is_truthy(value)) ||
             (sl_http_profile_env_copy("SLOPPY_V8_PROFILE", value, sizeof(value)) &&
-             sl_http_profile_env_truthy(value));
+             sl_env_value_is_truthy(value));
         sl_http_profile_enabled_initialized = true;
     }
     return sl_http_profile_enabled_cached;

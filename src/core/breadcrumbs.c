@@ -4,10 +4,11 @@
 #include "sloppy/json_writer.h"
 #include "sloppy/platform_thread.h"
 
+#include "env.h"
+
 #include <stdbool.h>
 #include <stdatomic.h>
 #include <stdlib.h>
-#include <string.h>
 
 static SlBreadcrumbRing sl_global_breadcrumb_ring;
 static atomic_bool sl_success_breadcrumbs_cached;
@@ -21,15 +22,6 @@ static bool sl_breadcrumb_is_global_ring(const SlBreadcrumbRing* ring)
 static SlStr sl_breadcrumb_literal(const char* ptr, size_t length)
 {
     return sl_str_from_parts(ptr, length);
-}
-
-static bool sl_breadcrumb_env_truthy(const char* value)
-{
-    if (value == NULL || value[0] == '\0') {
-        return false;
-    }
-    return strcmp(value, "1") == 0 || strcmp(value, "true") == 0 || strcmp(value, "TRUE") == 0 ||
-           strcmp(value, "on") == 0 || strcmp(value, "ON") == 0;
 }
 
 static bool sl_breadcrumb_success_events_enabled(void)
@@ -57,7 +49,7 @@ static bool sl_breadcrumb_success_events_enabled(void)
             value[index] = '\0';
         }
 #endif
-        atomic_store_explicit(&sl_success_breadcrumbs_cached, sl_breadcrumb_env_truthy(value),
+        atomic_store_explicit(&sl_success_breadcrumbs_cached, sl_env_value_is_truthy(value),
                               memory_order_release);
         atomic_store_explicit(&sl_success_breadcrumbs_initialized, true, memory_order_release);
     }

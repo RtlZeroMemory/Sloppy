@@ -162,6 +162,39 @@ static int test_v8_profile_env_enables_profile(void)
                        json_contains(json, "\"v8HandlerCalls\": 1"));
 }
 
+static int test_profile_env_truthy_tokens_are_ascii_case_insensitive(void)
+{
+    set_env_value("SLOPPY_HTTP_PROFILE", "TrUe");
+    set_env_value("SLOPPY_V8_PROFILE", "");
+    sl_http_profile_reset();
+    if (expect_true(sl_http_profile_enabled()) != 0) {
+        return 1;
+    }
+
+    set_env_value("SLOPPY_HTTP_PROFILE", "oN");
+    sl_http_profile_reset();
+    if (expect_true(sl_http_profile_enabled()) != 0) {
+        return 2;
+    }
+
+    set_env_value("SLOPPY_HTTP_PROFILE", "truex");
+    sl_http_profile_reset();
+    if (expect_true(!sl_http_profile_enabled()) != 0) {
+        return 3;
+    }
+
+    set_env_value("SLOPPY_HTTP_PROFILE", "1x");
+    sl_http_profile_reset();
+    if (expect_true(!sl_http_profile_enabled()) != 0) {
+        return 4;
+    }
+
+    set_env_value("SLOPPY_HTTP_PROFILE", "");
+    set_env_value("SLOPPY_V8_PROFILE", "ON");
+    sl_http_profile_reset();
+    return expect_true(sl_http_profile_enabled());
+}
+
 int main(void)
 {
     if (test_disabled_profile_is_noop() != 0) {
@@ -175,6 +208,9 @@ int main(void)
     }
     if (test_v8_profile_env_enables_profile() != 0) {
         return 4;
+    }
+    if (test_profile_env_truthy_tokens_are_ascii_case_insensitive() != 0) {
+        return 5;
     }
     return 0;
 }
