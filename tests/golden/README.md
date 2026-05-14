@@ -17,12 +17,13 @@ cookies, authorization headers, bearer tokens, API keys, TLS-sensitive material,
 environment values, secret process args, captured process output, raw native handles,
 pid-as-handle capabilities, release publishing statements, or benchmark comparisons.
 
-Golden files should be reviewed like public API changes. Each fixture is a
-semantic contract, not just a byte snapshot.
+Golden files are a semantic contract and should be reviewed like public API
+changes.
 
 ## Golden Policy
 
-Goldens are receipts, not the source of truth. Structured JSON goldens should
+Goldens are receipts, not the source of truth. Each golden records a semantic contract,
+not an implementation transcript. Structured JSON goldens should
 assert stable semantic fields; text goldens are reserved for deliberate UX
 surfaces. Do not update a golden only because current output changed.
 

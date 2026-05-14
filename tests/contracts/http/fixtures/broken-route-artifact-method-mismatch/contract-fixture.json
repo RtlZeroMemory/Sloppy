@@ -1,0 +1,17 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "dispatch.route-method"
+  ],
+  "baseFixture": "valid-http-dispatch",
+  "planReplacements": [
+    {
+      "path": [
+        "routeDispatch",
+        "artifact",
+        "hash"
+      ],
+      "value": "sha256:6991e8e4408a86b12570ce5b8b622d70db7d38d0447a1574f69223eeade8398d"
+    }
+  ]
+}

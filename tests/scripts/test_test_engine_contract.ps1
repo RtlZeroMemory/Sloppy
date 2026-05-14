@@ -96,16 +96,15 @@ foreach ($lane in $report.lanes) {
     Assert-True ($allowed -contains $lane.status) "lane '$($lane.id)' used invalid status '$($lane.status)'"
 }
 
-$resolveV8 = Invoke-Script @("-File", (Join-Path $RepoRoot "tools/windows/resolve-v8-sdk.ps1"))
-if ($resolveV8.ExitCode -ne 0) {
-    $v8ReportPath = Join-Path $RepoRoot "artifacts/test-engine/meta-contract-v8-unavailable.json"
-    $v8 = Invoke-Script @("-File", $testEngine, "-Area", "v8", "-Tier", "pr", "-Out", $v8ReportPath)
-    Assert-True ($v8.ExitCode -eq 0) "unavailable V8 lane failed the command: $($v8.Output)"
-    Assert-True (Test-Path -LiteralPath $v8ReportPath -PathType Leaf) "unavailable V8 report was not written"
-    $v8Report = Get-Content -LiteralPath $v8ReportPath -Raw | ConvertFrom-Json
-    Assert-True ($v8Report.lanes.Count -eq 1) "unexpected V8 report lane count"
-    Assert-True ($v8Report.lanes[0].status -eq "unavailable") "V8 gate did not report unavailable"
-}
+$v8ReportPath = Join-Path $RepoRoot "artifacts/test-engine/meta-contract-v8-unavailable.json"
+$missingV8Root = Join-Path $RepoRoot ("artifacts/test-engine/missing-v8-sdk-" + [Guid]::NewGuid().ToString("N"))
+$v8 = Invoke-Script @("-File", $testEngine, "-Area", "v8", "-Tier", "pr", "-V8Root", $missingV8Root, "-Out", $v8ReportPath)
+Assert-True ($v8.ExitCode -eq 0) "unavailable V8 lane failed the command: $($v8.Output)"
+Assert-True (Test-Path -LiteralPath $v8ReportPath -PathType Leaf) "unavailable V8 report was not written"
+$v8Report = Get-Content -LiteralPath $v8ReportPath -Raw | ConvertFrom-Json
+Assert-True ($v8Report.lanes.Count -ge 1) "unexpected V8 report lane count"
+Assert-True (@($v8Report.lanes | Where-Object { $_.status -eq "fail" }).Count -eq 0) "unavailable V8 probe reported a failed lane"
+Assert-True (@($v8Report.lanes | Where-Object { $_.id -eq "v8.test" -and $_.status -eq "unavailable" }).Count -eq 1) "V8 gate did not report unavailable"
 
 $extendedWorkflow = Get-Content -LiteralPath (Join-Path $RepoRoot ".github/workflows/test-engine-extended.yml") -Raw
 $tortureWorkflow = Get-Content -LiteralPath (Join-Path $RepoRoot ".github/workflows/test-engine-torture.yml") -Raw
