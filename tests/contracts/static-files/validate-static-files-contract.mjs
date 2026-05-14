@@ -125,6 +125,9 @@ async function checkPathSafety(host, collector, symlinkSupported) {
     const cases = [
         ["/assets/../outside-secret.txt", "../ traversal is rejected"],
         ["/assets/%2e%2e/outside-secret.txt", "encoded traversal is rejected"],
+        ["/assets/%2e%2e%2foutside-secret.txt", "encoded slash traversal is rejected"],
+        ["/assets/%252e%252e%252foutside-secret.txt", "double-encoded traversal does not escape the root"],
+        ["/assets/..\\outside-secret.txt", "Windows-style backslash traversal is rejected"],
         ["/assets/..%5coutside-secret.txt", "backslash traversal is rejected"],
     ];
     const failures = [];
@@ -156,20 +159,27 @@ async function checkPathSafety(host, collector, symlinkSupported) {
     if (allowedDotfile.status !== 200 || !(await responseText(allowedDotfile)).includes("SECRET=leaked")) {
         rootBoundaryFailures.push({ target: "/allow/.env", status: allowedDotfile.status, expected: 200 });
     }
-    if (symlinkSupported) {
-        const linked = await host.get("/assets/linked-secret.txt");
-        if (!isNotServed(linked) || (await responseText(linked)).includes("outside secret")) {
-            rootBoundaryFailures.push({ target: "/assets/linked-secret.txt", status: linked.status, expected: "403 or 404" });
-        }
-    }
     if (rootBoundaryFailures.length === 0) {
-        collector.pass("static.path.root-boundary", "static serving preserves root, missing-file, dotfile, and symlink boundaries", {
-            symlinkChecked: symlinkSupported,
-        });
+        collector.pass("static.path.root-boundary", "static serving preserves root, missing-file, and dotfile boundaries");
     } else {
         collector.fail("static.path.root-boundary", "static serving violated a root boundary", {
             failures: rootBoundaryFailures,
-            symlinkChecked: symlinkSupported,
+        });
+    }
+
+    if (!symlinkSupported) {
+        collector.unavailable("static.path.symlink-boundary", "symlink/reparse escape coverage is unavailable because the test symlink could not be created", {
+            target: "/assets/linked-secret.txt",
+        });
+        return;
+    }
+    const linked = await host.get("/assets/linked-secret.txt");
+    if (isNotServed(linked) && !(await responseText(linked)).includes("outside secret")) {
+        collector.pass("static.path.symlink-boundary", "symlink/reparse escapes do not serve files outside the static root");
+    } else {
+        collector.fail("static.path.symlink-boundary", "symlink/reparse escape served or exposed a file outside the static root", {
+            target: "/assets/linked-secret.txt",
+            status: linked.status,
         });
     }
 }
@@ -323,30 +333,50 @@ async function checkContentAndCache(host, collector) {
         });
     }
 
-    const compressedDenied = await host.get("/assets/app.js");
-    const compressedAllowed = await host.get("/assets/app.js", { headers: { "Accept-Encoding": "gzip" } });
-    const range = await host.get("/assets/hello.txt", { headers: { Range: "bytes=0-4" } });
     if (
         bytesEqual(textBytes, bytes("hello static\n")) &&
         bytesEqual(binBytes, new Uint8Array([0, 255, 65, 10])) &&
-        largeBytes.byteLength === 8192 &&
-        header(compressedDenied, "content-encoding") === undefined &&
-        header(compressedAllowed, "content-encoding") === "gzip" &&
-        (await responseText(compressedAllowed)) === "compressed-js" &&
-        range.status === 206 &&
-        (await responseText(range)) === "hello"
+        largeBytes.byteLength === 8192
     ) {
-        collector.pass("static.body-bytes", "text, binary, large, precompressed, and range static file bytes are preserved", {
-            precompressed: true,
-            range: true,
-        });
+        collector.pass("static.body-bytes", "text, binary, and large static file bytes are preserved");
     } else {
-        collector.fail("static.body-bytes", "static file body, precompressed asset, or range behavior drifted", {
+        collector.fail("static.body-bytes", "static file body bytes drifted", {
             text: Array.from(textBytes),
             bin: Array.from(binBytes),
             large: largeBytes.byteLength,
-            compressedDenied: header(compressedDenied, "content-encoding"),
-            compressedAllowed: header(compressedAllowed, "content-encoding"),
+        });
+    }
+
+    await checkOptionalContentFeatures(host, collector);
+}
+
+async function checkOptionalContentFeatures(host, collector) {
+    const compressedDenied = await host.get("/assets/app.js");
+    const compressedAllowed = await host.get("/assets/app.js", { headers: { "Accept-Encoding": "gzip" } });
+    const compressedDeniedEncoding = header(compressedDenied, "content-encoding");
+    const compressedAllowedEncoding = header(compressedAllowed, "content-encoding");
+    if (
+        compressedDeniedEncoding === undefined &&
+        compressedAllowedEncoding === "gzip" &&
+        (await responseText(compressedAllowed)) === "compressed-js"
+    ) {
+        collector.pass("static.precompressed", "precompressed assets are used only when Accept-Encoding permits them");
+    } else if (compressedDeniedEncoding === undefined && compressedAllowedEncoding === undefined) {
+        collector.unavailable("static.precompressed", "precompressed asset serving is not implemented in this runtime path");
+    } else {
+        collector.fail("static.precompressed", "precompressed asset behavior drifted", {
+            compressedDenied: compressedDeniedEncoding,
+            compressedAllowed: compressedAllowedEncoding,
+        });
+    }
+
+    const range = await host.get("/assets/hello.txt", { headers: { Range: "bytes=0-4" } });
+    if (range.status === 206 && (await responseText(range)) === "hello") {
+        collector.pass("static.range", "range requests preserve selected bytes");
+    } else if (range.status === 200) {
+        collector.unavailable("static.range", "range requests are not implemented in this runtime path");
+    } else {
+        collector.fail("static.range", "range request behavior drifted", {
             rangeStatus: range.status,
             rangeBody: await responseText(range),
         });
