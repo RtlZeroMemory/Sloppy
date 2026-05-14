@@ -365,10 +365,15 @@ function validateRoute(openapi, plan, route, collector) {
     const expectedHeaders = expectedHeaderParameters(route);
     const actualHeaders = parametersByLocation(operation, "header").map((parameter) => parameter.name).sort();
     if (!sameStringSet(expectedHeaders, actualHeaders)) {
-        collector.fail("openapi.query-param-agreement", "OpenAPI header parameters must match statically known Plan header parameters", {
+        collector.fail("openapi.header-param-agreement", "OpenAPI header parameters must match statically known Plan header parameters", {
             route: label,
             expectedHeaders,
             actualHeaders,
+        });
+    } else {
+        collector.pass("openapi.header-param-agreement", "OpenAPI header parameters agree with statically known Plan metadata", {
+            route: label,
+            parameters: expectedHeaders,
         });
     }
 
@@ -617,9 +622,10 @@ export async function runOpenApiContract({ repoRoot, tier }) {
         const openapi = applyMutations(sourceOpenApi, config.mutations);
         const rawFindings = await validateOpenApiArtifacts({ plan, openapi, fixture: fixture.name });
         const detected = errorInvariants(rawFindings);
-        if (fixture.expected === "fail") {
-            const expectedInvariants = new Set(fixture.expectedInvariants);
-            for (const invariant of fixture.expectedInvariants) {
+        if (config.expected === "fail") {
+            const expectedList = Array.isArray(config.expectedInvariants) ? config.expectedInvariants : [];
+            const expectedInvariants = new Set(expectedList);
+            for (const invariant of expectedList) {
                 findings.push(
                     detected.includes(invariant)
                         ? expectedFailureFinding(fixture.name, invariant, detected, rawFindings)
@@ -628,7 +634,7 @@ export async function runOpenApiContract({ repoRoot, tier }) {
             }
             for (const invariant of detected) {
                 if (!expectedInvariants.has(invariant)) {
-                    findings.push(unexpectedErrorFinding(fixture.name, invariant, fixture.expectedInvariants, rawFindings));
+                    findings.push(unexpectedErrorFinding(fixture.name, invariant, expectedList, rawFindings));
                 }
             }
             continue;
