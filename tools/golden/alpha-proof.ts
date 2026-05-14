@@ -521,12 +521,12 @@ async function installTemplateDependencies(projectDir, template) {
     if (template !== "package-api") {
         return;
     }
-    const command = node && npmCli ? node : "npm";
-    const args = node && npmCli
-        ? [npmCli, "install", "--ignore-scripts", "--no-audit"]
-        : ["install", "--ignore-scripts", "--no-audit"];
-    const result = await run(command, args, { cwd: projectDir, timeout: 180000 });
-    requireSuccess(result, `npm install for ${template}`);
+    const validatorSrc = joinPath(projectDir, "fixtures", "validator-lite");
+    const validatorDest = joinPath(projectDir, "node_modules", "validator-lite");
+    if (!(await File.exists(fsPath(joinPath(validatorSrc, "package.json"))))) {
+        throw new Error(`package-api template fixture package is missing: ${validatorSrc}`);
+    }
+    await copyTree(validatorSrc, validatorDest);
 }
 
 function withPassthroughArgs(runArgs) {
