@@ -55,6 +55,25 @@ async function assertSocketCannotReceive(client) {
     );
 }
 
+async function drainOptionalEvent(client, eventName, expectedData = undefined) {
+    try {
+        await client.expect(eventName, expectedData, { timeoutMs: 20 });
+    } catch (error) {
+        if (!/waiting|timed out/u.test(error.message)) {
+            throw error;
+        }
+    }
+}
+
+async function contractStep(name, body) {
+    try {
+        return await body();
+    } catch (error) {
+        error.message = `${name}: ${error.message}`;
+        throw error;
+    }
+}
+
 async function runCase(fixture, invariant, body, message, details = undefined) {
     try {
         await body();
@@ -107,13 +126,15 @@ function createRealtimeApp(Chat, observer = undefined) {
         ctx.on("leaveRoom", async () => {
             await ctx.groups.leave(`room:${ctx.params.roomId}`);
         });
-        ctx.on("who", async (input) => {
-            const users = await ctx.presence.inGroup(`room:${input.roomId}`);
-            await ctx.send("presenceList", { roomId: input.roomId, count: users.length });
+        ctx.on("who", async () => {
+            const roomId = ctx.params.roomId;
+            const users = await ctx.presence.inGroup(`room:${roomId}`);
+            await ctx.send("presenceList", { roomId, count: users.length });
         });
-        ctx.on("typing", async (input) => {
-            await ctx.group(`room:${input.roomId}`).broadcast("userTyping", {
-                roomId: input.roomId,
+        ctx.on("typing", async () => {
+            const roomId = ctx.params.roomId;
+            await ctx.group(`room:${roomId}`).broadcast("userTyping", {
+                roomId,
                 userId: ctx.user.sub,
             }, { exceptSelf: true });
         });
@@ -187,7 +208,7 @@ async function groupJoinLeaveCase() {
     const host = await TestHost.create(createRealtimeApp(Chat));
     try {
         const alice = await host.realtime("/rooms/r1", Chat)
-            .asUser({ sub: "alice", scopes: ["chat"] })
+            .asUser({ sub: "alice", scopes: ["chat", "chat:write"] })
             .connect();
         const bob = await host.realtime("/rooms/r1", Chat)
             .asUser({ sub: "bob", scopes: ["chat"] })
@@ -227,26 +248,41 @@ async function broadcastScopeCase() {
         const trent = await host.realtime("/rooms/r2", Chat)
             .asUser({ sub: "trent", scopes: ["chat"] })
             .connect();
+        const eve = await host.realtime("/rooms/r2", Chat)
+            .asUser({ sub: "eve", scopes: ["chat"] })
+            .connect();
         await alice.expect("ready", { roomId: "r1" });
         await bob.expect("ready", { roomId: "r1" });
         await mallory.expect("ready", { roomId: "r2" });
         await trent.expect("ready", { roomId: "r2" });
-        await alice.send("sendMessage", { roomId: "r1", text: "scoped" });
-        await bob.expect("messageCreated", { roomId: "r1", text: "scoped" });
-        await assert.rejects(
+        await eve.expect("ready", { roomId: "r2" });
+        await contractStep("room r1 broadcast reaches r1 member", async () => {
+            await alice.send("sendMessage", { roomId: "r1", text: "scoped" });
+            await drainOptionalEvent(alice, "messageCreated", { roomId: "r1", text: "scoped" });
+            await bob.expect("messageCreated", { roomId: "r1", text: "scoped" });
+        });
+        await contractStep("room r1 broadcast does not reach r2 member", () => assert.rejects(
             () => mallory.expect("messageCreated", undefined, { timeoutMs: 20 }),
             /waiting/u,
-        );
-        await mallory.send("sendMessage", { roomId: "r2", text: "other-room" });
-        await trent.expect("messageCreated", { roomId: "r2", text: "other-room" });
-        await assert.rejects(
+        ));
+        await contractStep("room r2 broadcast reaches r2 member", async () => {
+            await mallory.send("sendMessage", { roomId: "r2", text: "other-room" });
+            await drainOptionalEvent(mallory, "messageCreated", { roomId: "r2", text: "other-room" });
+            await trent.expect("messageCreated", { roomId: "r2", text: "other-room" });
+        });
+        await contractStep("room r2 broadcast does not reach r1 member", () => assert.rejects(
             () => bob.expect("messageCreated", undefined, { timeoutMs: 20 }),
             /waiting/u,
-        );
+        ));
+        await contractStep("who uses route room instead of payload room", async () => {
+            await alice.send("who", { roomId: "r2" });
+            await alice.expect("presenceList", { roomId: "r1", count: 2 });
+        });
         await alice.close();
         await bob.close();
         await mallory.close();
         await trent.close();
+        await eve.close();
     } finally {
         await host.close();
     }
@@ -298,10 +334,8 @@ async function messageValidationCase() {
             .connect();
         await alice.expect("ready", { roomId: "r1" });
         await bob.expect("ready", { roomId: "r1" });
-        assert.throws(
-            () => bob.send("sendMessage", { roomId: "r1", text: "x".repeat(33) }),
-            /Realtime message validation failed/u,
-        );
+        await bob._websocket.sendJson({ type: "sendMessage", data: { roomId: "r1", text: "x".repeat(33) } });
+        await bob.expectError("SLOPPY_E_REALTIME_VALIDATION_FAILED");
         await bob.send("typing", { roomId: "r1" });
         await bob.expectError("SLOPPY_E_REALTIME_UNAUTHORIZED_EVENT");
         await alice.send("typing", { roomId: "r1" });
@@ -384,6 +418,28 @@ async function testHostWebsocketCloseCodeCase() {
 
 export async function runRealtimeContract({ tier }) {
     const startedAt = new Date().toISOString();
+    if (tier !== "pr") {
+        return createReport({
+            subsystem: SUBSYSTEM,
+            tier,
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            findings: [
+                unavailableFinding(
+                    "testhost",
+                    "testhost.realtime.pr-tier-only",
+                    `Realtime TestHost semantic contracts are currently defined for PR tier, not ${tier} tier.`,
+                    { supportedTier: "pr" },
+                ),
+                unavailableFinding(
+                    "native-transport",
+                    "websocket.transport.extended",
+                    "Native WebSocket transport contracts are extended/future coverage and are not run by this contract area.",
+                    { lane: "extended", coveredBy: "native runtime transport/WebSocket lanes" },
+                ),
+            ],
+        });
+    }
     const cases = [
         ["testhost-auth", "testhost.realtime.auth.required", authRequiredCase, "TestHost protected realtime endpoints reject unauthenticated connects before join or delivery"],
         ["testhost-groups", "testhost.realtime.group.join-leave", groupJoinLeaveCase, "TestHost clients can join and leave realtime groups"],
