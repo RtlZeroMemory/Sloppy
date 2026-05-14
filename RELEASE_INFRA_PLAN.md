@@ -7,7 +7,7 @@ honest about the manual and future CI publishing paths.
 ## Alpha Target
 
 - First alpha version: `0.1.0-alpha.0`.
-- Current alpha release target: `0.1.0-alpha.2`.
+- Current alpha release target: `0.1.0-alpha.3`.
 - npm dist-tag: `alpha`.
 - npm scope: `@slopware`.
 - Root package: `@slopware/sloppy`.

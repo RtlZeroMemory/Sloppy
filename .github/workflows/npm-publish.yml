@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       alpha_version:
-        description: "Alpha version expected in npm tarballs, for example 0.1.0-alpha.2."
+        description: "Alpha version expected in npm tarballs, for example 0.1.0-alpha.3."
         required: true
-        default: "0.1.0-alpha.2"
+        default: "0.1.0-alpha.3"
         type: string
       release_artifacts_run_id:
         description: "GitHub Actions run ID from release-artifacts that uploaded npm tarballs."

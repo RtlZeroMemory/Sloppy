@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       alpha_version:
-        description: "Alpha version expected in package metadata, for example 0.1.0-alpha.2."
+        description: "Alpha version expected in package metadata, for example 0.1.0-alpha.3."
         required: true
-        default: "0.1.0-alpha.2"
+        default: "0.1.0-alpha.3"
         type: string
       include_windows:
         description: "Build the Windows x64 dry-run package."

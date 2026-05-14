@@ -20,6 +20,16 @@ evidence and a completed readiness gate.
 - Added RELEASE-DIST dry-run contracts, canonical archive naming, runtime dependency audit
   scaffolding, npm launcher/platform package skeletons, and post-merge verifier handoff.
 
+## 0.1.0-alpha.3
+
+- Fixes compiler route dispatch for provider-backed handlers so routes with
+  SQLite/database effects stay on V8 handler execution instead of being
+  over-specialized as native static JSON endpoints.
+- Adds a focused regression for provider-effect route dispatch and refreshes
+  alpha proof fixtures for the corrected route metadata.
+- Keeps the release scoped to the `@slopware` alpha package line and the
+  `alpha` npm dist-tag.
+
 ## 0.1.0-alpha.2
 
 - Fixes `sloppy package` for fresh packaged SQLite migrations by creating safe

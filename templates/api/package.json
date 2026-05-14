@@ -11,6 +11,6 @@
     "audit": "sloppy audit .sloppy"
   },
   "devDependencies": {
-    "@slopware/sloppy": "0.1.0-alpha.2"
+    "@slopware/sloppy": "0.1.0-alpha.3"
   }
 }

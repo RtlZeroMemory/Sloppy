@@ -1,6 +1,6 @@
 {
   "name": "@slopware/sloppy-linux-x64",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "Linux x64 GNU Sloppy runtime package generated from a tested release archive.",
   "license": "Apache-2.0",
   "repository": {
