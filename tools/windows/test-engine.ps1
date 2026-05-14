@@ -15,6 +15,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
+. (Join-Path $PSScriptRoot "v8-sdk.ps1")
 $Tier = $Tier.ToLowerInvariant()
 $Area = $Area.ToLowerInvariant()
 $StartedAt = (Get-Date).ToUniversalTime()
@@ -217,8 +218,19 @@ function Ensure-V8Preset {
     }
 
     $script:V8PresetPrepared = $true
+    $explicitV8Root = $env:SLOPPY_V8_ROOT
+    if (-not [string]::IsNullOrWhiteSpace($explicitV8Root) -and
+        -not (Test-SlV8SdkLayout -Root $explicitV8Root -Quiet)) {
+        $script:V8PresetAvailable = $false
+        return $false
+    }
+
     $devScript = Join-Path $Root "tools/windows/dev.ps1"
-    Invoke-PowerShellLane "v8.configure" $devScript @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8")
+    $configureArgs = @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8")
+    if (-not [string]::IsNullOrWhiteSpace($explicitV8Root)) {
+        $configureArgs += @("-V8Root", $explicitV8Root)
+    }
+    Invoke-PowerShellLane "v8.configure" $devScript $configureArgs
     if ($script:LastLaneStatus -ne "pass") {
         $script:V8PresetAvailable = $false
         return $false
