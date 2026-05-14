@@ -49,7 +49,11 @@
             }
           },
           "x-slop-capabilities": [],
-          "x-slop-completeness": "",
+          "x-slop-completeness": "partial",
+          "x-slop-missing": [
+            "route Plan completeness is not complete",
+            "response metadata is unknown"
+          ],
           "x-slop-optimization-candidates": []
         }
       },
@@ -64,7 +68,11 @@
             }
           },
           "x-slop-capabilities": [],
-          "x-slop-completeness": "",
+          "x-slop-completeness": "partial",
+          "x-slop-missing": [
+            "route Plan completeness is not complete",
+            "response metadata is unknown"
+          ],
           "x-slop-optimization-candidates": []
         }
       },
@@ -92,15 +100,40 @@
             }
           },
           "x-slop-capabilities": [],
-          "x-slop-completeness": "",
+          "x-slop-completeness": "partial",
+          "x-slop-missing": [
+            "route Plan completeness is not complete",
+            "response metadata is unknown"
+          ],
           "x-slop-optimization-candidates": []
         }
       }
     },
     "x-slop-openapi-policy": {
+      "missing": [
+        {
+          "method": "GET",
+          "path": "/users/create",
+          "reason": "response metadata is unknown"
+        },
+        {
+          "method": "GET",
+          "path": "/users/{id:int}",
+          "reason": "response metadata is unknown"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "reason": "response metadata is unknown"
+        }
+      ],
+      "mode": "partial",
+      "operationsComplete": 0,
+      "operationsPartial": 3,
       "optimizations": "reported-only",
-      "status": "plan-supported-subset",
-      "unknownMetadata": "explicit-partial-markers"
+      "routesIncluded": 3,
+      "routesOmitted": 0,
+      "routesTotal": 3
     }
   }
 }

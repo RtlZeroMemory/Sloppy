@@ -21,9 +21,14 @@ Golden files should be reviewed like public API changes.
 
 ## Golden Policy
 
-Every golden is a semantic contract. Structured JSON goldens should assert stable semantic
-fields; text goldens are reserved for deliberate UX surfaces. Do not update a golden only
-because current output changed.
+Goldens are receipts, not the source of truth. Structured JSON goldens should
+assert stable semantic fields; text goldens are reserved for deliberate UX
+surfaces. Do not update a golden only because current output changed.
+
+Compiler artifact goldens must pass the semantic compiler-contract validator
+before snapshot comparison. A validator failure means the compiler or fixture
+expectation is wrong; do not bless the failure by updating `app.plan.json`,
+`routes.slrt`, dependency graph, or alpha/template goldens.
 
 Goldens must normalize:
 

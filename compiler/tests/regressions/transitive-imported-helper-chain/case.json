@@ -1,0 +1,10 @@
+{
+  "name": "transitive-imported-helper-chain",
+  "input": "input.ts",
+  "invariant": "imported helpers must carry their private transitive helper dependencies",
+  "expected": {
+    "routes": 1,
+    "providerEffectRoutes": 0,
+    "nativeNoJsEndpoints": 0
+  }
+}

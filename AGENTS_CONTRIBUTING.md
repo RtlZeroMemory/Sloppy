@@ -32,6 +32,14 @@ Report skipped optional gates under their own status. A default non-V8 pass is
 separate from V8, package, live-provider, stress, sanitizer, fuzz, and
 benchmark lanes.
 
+When V8 matters, resolve the SDK before declaring the lane unavailable. On
+Windows, `.\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo
+-EnableV8` uses the repo resolver and can discover or fetch the pinned SDK;
+`SLOPPY_V8_ROOT` is only an override. The test-engine V8, alpha-flow, golden,
+integration, examples, and template lanes should use that SDK-backed preset.
+Report V8 as `UNAVAILABLE` only after the resolver/configure step fails, and
+include the exact failure.
+
 Name each lane separately when it matters:
 
 - default non-V8

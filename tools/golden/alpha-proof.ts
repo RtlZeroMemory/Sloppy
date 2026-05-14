@@ -472,6 +472,117 @@ function sourceMapSummary(sourceMap) {
     };
 }
 
+function routeLabel(index, route) {
+    return `routes[${index}] ${route.method || "<method>"} ${route.pattern || "<pattern>"}`;
+}
+
+function completenessHasReason(route, code) {
+    const reasons = route.completeness && Array.isArray(route.completeness.reasons) ? route.completeness.reasons : [];
+    return reasons.some((reason) => reason && reason.code === code);
+}
+
+function completenessHasAnyReason(route) {
+    const reasons = route.completeness && Array.isArray(route.completeness.reasons) ? route.completeness.reasons : [];
+    return reasons.length > 0;
+}
+
+async function validateCompilerContractArtifacts(dir, description) {
+    const planPath = joinPath(dir, "app.plan.json");
+    const plan = await readJson(planPath);
+    if ((plan.kind || "web") !== "web") {
+        return plan;
+    }
+
+    const routes = Array.isArray(plan.routes) ? plan.routes : null;
+    const handlers = Array.isArray(plan.handlers) ? plan.handlers : null;
+    if (!routes || !handlers) {
+        throw new Error(`${description}: compiler contract requires web Plan routes and handlers arrays`);
+    }
+
+    const handlerCounts = new Map();
+    for (const handler of handlers) {
+        handlerCounts.set(handler.id, (handlerCounts.get(handler.id) || 0) + 1);
+    }
+    for (const [id, count] of handlerCounts.entries()) {
+        if (typeof id !== "number" || count !== 1) {
+            throw new Error(`${description}: compiler contract handlers.unique-id failed for handler ${id}`);
+        }
+    }
+
+    const capabilities = new Set((plan.capabilities || []).map((capability) => `${capability.token}:${capability.kind}`));
+    const allowedExecutionKinds = new Set([
+        "v8-handler",
+        "native-static-text",
+        "native-static-json",
+        "native-static-empty",
+        "native-static-problem",
+    ]);
+    let nativeNoJsRoutes = 0;
+    for (let index = 0; index < routes.length; index += 1) {
+        const route = routes[index];
+        const label = routeLabel(index, route);
+        if (handlerCounts.get(route.handlerId) !== 1) {
+            throw new Error(`${description}: compiler contract routes.handler-resolves failed for ${label}`);
+        }
+        const dispatch = route.dispatch || {};
+        if (dispatch.endpointId !== route.handlerId) {
+            throw new Error(`${description}: compiler contract dispatch.handler-agreement failed for ${label}`);
+        }
+        const executionKind = dispatch.executionKind;
+        if (typeof executionKind !== "string" || !allowedExecutionKinds.has(executionKind)) {
+            throw new Error(`${description}: compiler contract dispatch.execution-kind failed for ${label}`);
+        }
+        if (executionKind !== "v8-handler") {
+            nativeNoJsRoutes += 1;
+        }
+
+        const effects = Array.isArray(route.effects) ? route.effects : [];
+        if (effects.length > 0 && executionKind !== "v8-handler") {
+            throw new Error(`${description}: compiler contract dispatch.provider-effects-v8 failed for ${label}`);
+        }
+        if (effects.length > 0 && route.nativeResponse) {
+            throw new Error(`${description}: compiler contract dispatch.provider-effects-no-native-response failed for ${label}`);
+        }
+        for (const effect of effects) {
+            const key = `${effect.provider || ""}:${effect.capabilityKind || ""}`;
+            if (!capabilities.has(key) && !completenessHasReason(route, "missing-provider")) {
+                throw new Error(`${description}: compiler contract effects.capability-resolution failed for ${label}`);
+            }
+        }
+
+        const status = route.completeness && route.completeness.status;
+        if (status !== "complete" && !completenessHasAnyReason(route)) {
+            throw new Error(`${description}: compiler contract metadata.completeness-honesty failed for ${label}`);
+        }
+        if (route.response && route.response.partial === true && !completenessHasReason(route, "response-metadata-partial")) {
+            throw new Error(`${description}: compiler contract metadata.completeness-honesty failed for ${label}`);
+        }
+        if (route.response && route.response.status && route.openapi && route.openapi.responses) {
+            const expectedStatus = String(route.response.status);
+            if (!Object.prototype.hasOwnProperty.call(route.openapi.responses, expectedStatus)) {
+                throw new Error(`${description}: compiler contract openapi.response-agreement failed for ${label}`);
+            }
+        }
+    }
+
+    const dispatch = plan.routeDispatch || {};
+    if (dispatch.nativeNoJsEndpoints !== nativeNoJsRoutes) {
+        throw new Error(`${description}: compiler contract route-dispatch.native-no-js-count expected ${nativeNoJsRoutes}, got ${dispatch.nativeNoJsEndpoints}`);
+    }
+
+    const dependencyGraphPath = joinPath(dir, "deps.graph.json");
+    if (await File.exists(fsPath(dependencyGraphPath))) {
+        const dependencyGraph = await readJson(dependencyGraphPath);
+        for (const [index, entry] of (dependencyGraph.packages || []).entries()) {
+            if (!entry.root) {
+                throw new Error(`${description}: compiler contract dependency-graph.package-root missing at package ${index}`);
+            }
+        }
+    }
+
+    return plan;
+}
+
 async function artifactContract(dir) {
     const appJs = await File.readText(fsPath(joinPath(dir, "app.js")));
     const sourceMap = await readJson(joinPath(dir, "app.js.map"));
@@ -496,11 +607,13 @@ async function buildSource(source, outDir) {
             throw new Error(`missing artifact ${artifact} in ${outDir}`);
         }
     }
+    await validateCompilerContractArtifacts(outDir, `sloppyc build ${source}`);
 }
 
 async function buildWithSloppy(cwd, extraArgs = []) {
     const result = await run(sloppy, ["build", ...extraArgs], { cwd });
     requireSuccess(result, `sloppy build in ${cwd}`);
+    await validateCompilerContractArtifacts(joinPath(cwd, ".sloppy"), `sloppy build in ${cwd}`);
 }
 
 async function seedTemplates(cwd, onlyTemplate = "") {
