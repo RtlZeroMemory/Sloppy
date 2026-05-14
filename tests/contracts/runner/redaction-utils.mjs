@@ -29,7 +29,7 @@ export function redactValue(value) {
         return Object.fromEntries(
             Object.entries(value).map(([key, entry]) => [
                 key,
-                /token|secret|password|passwd|apiKey|api_key|connectionString/iu.test(key)
+                /token|secret|password|passwd|api[-_]?key|connection[_-]?string|access[-_]?key/iu.test(key)
                     ? "<redacted>"
                     : redactValue(entry),
             ]),

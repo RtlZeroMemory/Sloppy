@@ -116,8 +116,9 @@ export function formatMarkdown(report) {
         "| --- | --- | --- | --- | --- |",
     ];
     for (const finding of report.findings) {
+        const message = finding.message.replaceAll("|", "\\|").replace(/\r?\n/gu, "<br>");
         lines.push(
-            `| ${finding.status} | ${finding.severity} | ${finding.fixture ?? ""} | ${finding.invariant} | ${finding.message.replaceAll("|", "\\|")} |`,
+            `| ${finding.status} | ${finding.severity} | ${finding.fixture ?? ""} | ${finding.invariant} | ${message} |`,
         );
     }
     return `${lines.join("\n")}\n`;

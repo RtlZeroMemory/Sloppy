@@ -25,7 +25,11 @@ export function parseRunnerArgs(argv) {
         } else if (arg === "--format") {
             options.format = String(argv[++index] ?? "");
         } else if (arg === "--out") {
-            options.out = String(argv[++index] ?? "");
+            const value = argv[++index];
+            if (typeof value !== "string" || value.length === 0 || value.startsWith("-")) {
+                throw new Error("missing value for --out");
+            }
+            options.out = value;
         } else {
             throw new Error(`unknown option: ${arg}`);
         }
