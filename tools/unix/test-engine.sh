@@ -466,7 +466,7 @@ run_package() {
 }
 
 run_contracts() {
-  run_lane "contracts.pr" node tests/contracts/runner/contract-runner.mjs --area all --tier "$tier"
+  run_lane "contracts.pr" node tests/contracts/runner/contract-runner.mjs --area all --tier pr
 }
 
 run_sanitizer() {

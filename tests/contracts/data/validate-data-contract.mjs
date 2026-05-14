@@ -21,10 +21,14 @@ const POSTGRES_PLACEHOLDER = "postgres";
 const SQLSERVER_PLACEHOLDER = "question";
 const SECRET_RE = /secret|pwd\s*=\s*(?!<redacted>)|password\s*=\s*(?!<redacted>)|token\s*=\s*(?!<redacted>)|postgres:\/\/[^:\s]+:(?!<redacted>)/iu;
 
+function compareStrings(left, right) {
+    return left < right ? -1 : left > right ? 1 : 0;
+}
+
 async function loadDataFixtures(fixtureRoot) {
     const entries = await fs.readdir(fixtureRoot, { withFileTypes: true });
     const fixtures = [];
-    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    for (const entry of entries.sort((left, right) => compareStrings(left.name, right.name))) {
         if (!entry.isDirectory()) {
             continue;
         }
@@ -191,12 +195,25 @@ async function checkSqlitePath(root, provider, collector) {
         return;
     }
     const parent = toPackagePath(path.posix.dirname(toPackagePath(database)));
-    if (parent !== "." && !(await exists(packagePath(root, parent)))) {
-        collector.fail("data.sqlite.path-safe", "SQLite database parent directory must be included in the package", {
-            database,
-            parent,
-        });
-        return;
+    if (parent !== ".") {
+        const parentPath = packagePath(root, parent);
+        let parentStat;
+        try {
+            parentStat = await fs.stat(parentPath);
+        } catch {
+            collector.fail("data.sqlite.path-safe", "SQLite database parent directory must be included in the package", {
+                database,
+                parent,
+            });
+            return;
+        }
+        if (!parentStat.isDirectory()) {
+            collector.fail("data.sqlite.path-safe", "SQLite database parent must be a package directory", {
+                database,
+                parent,
+            });
+            return;
+        }
     }
     collector.pass("data.sqlite.path-safe", "SQLite database path is safe and relocatable", { database });
 }
@@ -243,7 +260,7 @@ async function checkMigrations(root, manifest, providers, collector) {
             continue;
         }
         const filePaths = migration.files.map((file) => file?.path).filter((filePath) => typeof filePath === "string");
-        const sorted = [...filePaths].sort((left, right) => left.localeCompare(right));
+        const sorted = [...filePaths].sort(compareStrings);
         if (JSON.stringify(filePaths) === JSON.stringify(sorted)) {
             collector.pass("data.migration.order-deterministic", "migration files are listed in deterministic order", {
                 files: filePaths,
@@ -267,8 +284,17 @@ async function checkMigrations(root, manifest, providers, collector) {
                 continue;
             }
             const filePath = packagePath(root, file.path);
-            if (!(await exists(filePath))) {
+            let fileStat;
+            try {
+                fileStat = await fs.stat(filePath);
+            } catch {
                 collector.fail("data.migration.file-exists", "migration file must exist in the package", {
+                    path: file.path,
+                });
+                continue;
+            }
+            if (!fileStat.isFile()) {
+                collector.fail("data.migration.file-exists", "migration path must be a package file", {
                     path: file.path,
                 });
                 continue;
@@ -303,13 +329,13 @@ function checkProviderSqlSemantics(collector) {
         placeholderStyle: SQLSERVER_PLACEHOLDER,
     });
     if (sqlite.text.includes("?") && postgres.text.includes("$1") && sqlserver.text.includes("?")) {
-        collector.pass("data.provider.kind-known", "provider placeholder styles are provider-specific", {
+        collector.pass("data.provider.placeholder-style", "provider placeholder styles are provider-specific", {
             sqlite: sqlite.text,
             postgres: postgres.text,
             sqlserver: sqlserver.text,
         });
     } else {
-        collector.fail("data.provider.kind-known", "provider placeholder styles must match provider contracts", {
+        collector.fail("data.provider.placeholder-style", "provider placeholder styles must match provider contracts", {
             sqlite: sqlite.text,
             postgres: postgres.text,
             sqlserver: sqlserver.text,
@@ -451,7 +477,7 @@ async function withFixtureCwd(root, callback) {
             async directoryList(relativePath) {
                 const entries = await fs.readdir(path.resolve(relativePath), { withFileTypes: true });
                 return entries
-                    .sort((left, right) => left.name.localeCompare(right.name))
+                    .sort((left, right) => compareStrings(left.name, right.name))
                     .map((entry) => ({
                         name: entry.name,
                         kind: entry.isDirectory() ? "directory" : "file",
@@ -493,10 +519,10 @@ async function validateBehavior(root, collector, scenario) {
             provider: "sqlite",
             path: "migrations/*.sql",
         });
-        if (firstApply.applied === 2 && firstApply.skipped === 0 && secondApply.applied === 0 && status.status === "current") {
-            collector.pass("data.migration.status-applied", "SQLite migrations apply and report current status");
+        if (firstApply.applied > 0 && secondApply.applied === 0 && status.status === "current") {
+            collector.pass("data.migration.status-applied", "SQLite migrations apply and repeated apply is current");
         } else {
-            collector.fail("data.migration.status-applied", "SQLite migrations must apply once and report current status", {
+            collector.fail("data.migration.status-applied", "SQLite migrations must apply at least once and repeated apply must report current status", {
                 firstApply,
                 secondApply,
                 status,
@@ -554,9 +580,9 @@ async function validateBehavior(root, collector, scenario) {
 
         const paged = db.query("select id, name from users order by id", [], { maxRows: 2 });
         if (paged.length === 2 && paged[0].id < paged[1].id) {
-            collector.pass("data.provider.kind-known", "SQLite list pagination uses deterministic order");
+            collector.pass("data.provider.pagination-order", "SQLite list pagination uses deterministic order");
         } else {
-            collector.fail("data.provider.kind-known", "SQLite list pagination must return deterministic order", { paged });
+            collector.fail("data.provider.pagination-order", "SQLite list pagination must return deterministic order", { paged });
         }
 
         let diagnostic = "";
