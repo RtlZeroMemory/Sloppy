@@ -1,0 +1,18 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "static.content-length"
+  ],
+  "responses": [
+    {
+      "method": "GET",
+      "target": "/assets/hello.txt",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/plain",
+        "Content-Length": "999"
+      },
+      "bodyText": "hello static\n"
+    }
+  ]
+}
