@@ -150,6 +150,25 @@ try {
 }
 ```
 
+`ffi.out(type)` and `ffi.inout(type, initial)` are small readability helpers
+over `ffi.ref`. They allocate the same opaque Sloppy-owned native cell, expose
+the same `.value`, `.ptr`, and `dispose()` members, and never expose raw native
+addresses. Use `out` when the C API writes the first value and `inout` when the
+C API reads an initial value and writes a replacement.
+
+```ts
+const written = ffi.out(t.usize);
+const flags = ffi.inout(t.u32, 0);
+try {
+  const status = native.readConfig(buffer, buffer.byteLength, written.ptr, flags.ptr);
+  if (status !== 0) throw new Error(`native readConfig failed: ${status}`);
+  console.log(written.value, flags.value);
+} finally {
+  written.dispose();
+  flags.dispose();
+}
+```
+
 `ffi.buffer(byteLength)`, `ffi.cstringBuffer(textOrByteLength)`, and
 `ffi.utf16Buffer(textOrCodeUnits)` allocate owned native buffers. Buffers expose
 `read()`, `write(bytes, offset?)`, `.ptr`, and `dispose()`. String buffers also
@@ -186,6 +205,69 @@ Fixed arrays reserve contiguous inline storage. Nested structs preserve the
 nested layout alignment when placed inline. Fixed
 arrays and nested structs are inline layout fields. They do not enable
 struct-by-value parameters or returns.
+
+## Binding A C Library Safely
+
+Prefer C APIs that make ownership and buffer lengths explicit:
+
+- create opaque resources through `int create(T** out)` or a typed owned handle
+  factory paired with `void destroy(T*)`;
+- return success or failure through an integer status code;
+- pass text input as `t.cstring` only when embedded NUL is invalid;
+- pass caller-owned output buffers as `t.mutBytes` plus a `t.usize` length;
+- report output length through `ffi.out(t.usize)`;
+- report primitive out parameters through `ffi.out(t.i32)`, `ffi.out(t.u32)`,
+  or another fixed-size type;
+- pass structs by pointer with `Struct.alloc(...)`, never by value;
+- keep callbacks synchronous and runtime-thread-owned.
+
+Example:
+
+```ts
+const native = ffi.library("native_config", {
+  create: ffi.fn(t.i32, [t.ptr], { symbol: "native_config_create" }),
+  destroy: ffi.fn(t.void, [t.ptr], { symbol: "native_config_destroy" }),
+  readName: ffi.fn(t.i32, [t.ptr, t.mutBytes, t.usize, t.ptr], {
+    symbol: "native_config_read_name",
+  }),
+});
+
+const handleOut = ffi.out(t.ptr);
+const name = ffi.cstringBuffer(256);
+const written = ffi.out(t.usize);
+
+try {
+  if (native.create(handleOut.ptr) !== 0) throw new Error("create failed");
+  const handle = handleOut.value;
+  const status = native.readName(handle, name.ptr, name.byteLength, written.ptr);
+  if (status !== 0) throw new Error(`readName failed: ${status}`);
+  console.log(name.readString(), written.value);
+  native.destroy(handle);
+} finally {
+  handleOut.dispose();
+  name.dispose();
+  written.dispose();
+}
+```
+
+For APIs that return handles directly, prefer an owned handle descriptor with a
+static disposer so review can see the lifetime:
+
+```ts
+const Counter = ffi.handle("Counter");
+const native = ffi.library("counter", {
+  createCounter: ffi.fn(Counter.owned, [t.i32], { dispose: "destroyCounter" }),
+  destroyCounter: ffi.fn(t.void, [Counter]),
+});
+
+ffi.using(native.createCounter(1), (counter) => {
+  // use counter
+});
+```
+
+If a C API reports truncation, keep it explicit. A common pattern is `0` for
+success and `1` for truncation while always writing the required length to a
+`size_t*` out parameter.
 
 ## Callbacks
 
@@ -248,6 +330,11 @@ emitted under `native.ffiStructs`; handles, callbacks, and dispatch tables are
 emitted under `native.ffiHandles`, `native.ffiCallbacks`, and
 `native.ffiDispatchTables`.
 
+`sloppy doctor`, `sloppy audit`, and `sloppy capabilities` report the FFI
+feature requirement, library IDs, packaged native paths and SHA-256 state when
+available, symbols, conventions, structs, handles, callbacks, and dispatch
+tables. The output is metadata only and does not expose raw native addresses.
+
 The runtime resolves each library once, resolves each symbol once, prepares one
 libffi call interface per function, and then reuses those descriptors for calls.
 
@@ -296,3 +383,4 @@ These surfaces are still unsupported:
 - async/off-thread FFI calls
 - foreign-thread callback entry into JavaScript
 - native library download or remote loading
+- graphics bindings

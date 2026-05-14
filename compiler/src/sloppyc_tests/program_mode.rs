@@ -287,7 +287,7 @@ export default function main() {
 
     let error = super::build(&input, &out_dir, &CompileOptions::new())
         .expect_err("dynamic FFI specs should fail");
-    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_DYNAMIC_DECLARATION");
+    assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_INVALID_DECLARATION");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -316,7 +316,7 @@ export default function main() {
 
     let error = super::build(&input, &out_dir, &CompileOptions::new())
         .expect_err("non-static FFI type aliases should fail");
-    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_INVALID_TYPE");
+    assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_INVALID_DECLARATION");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -356,7 +356,7 @@ export default function main() { return native.addI32(1); }
 
         let error = super::build(&input, &out_dir, &CompileOptions::new())
             .expect_err("malformed FFI options should fail");
-        assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_DYNAMIC_DECLARATION");
+        assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_INVALID_DECLARATION");
 
         fs::remove_dir_all(&root).expect("program fixture directory should be removable");
     }
@@ -387,7 +387,7 @@ export default function main() {
         .expect_err("unsupported FFI calling conventions should fail");
     assert_eq!(
         error.diagnostic.code,
-        "SLOPPYC_E_FFI_UNSUPPORTED_CALLING_CONVENTION"
+        "SLOPPY_E_FFI_UNSUPPORTED_CALLING_CONVENTION"
     );
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
@@ -417,7 +417,7 @@ export default function main() {
 
     let error = super::build(&input, &out_dir, &CompileOptions::new())
         .expect_err("dynamic FFI declarations should fail");
-    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_DYNAMIC_DECLARATION");
+    assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_INVALID_DECLARATION");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -445,7 +445,7 @@ export default function main() {
 
     let error = super::build(&input, &out_dir, &CompileOptions::new())
         .expect_err("unsupported FFI return buffers should fail");
-    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_TYPE");
+    assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_UNSUPPORTED_TYPE");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -473,7 +473,7 @@ export default function main() {
 
     let error = super::build(&input, &out_dir, &CompileOptions::new())
         .expect_err("void FFI parameters should fail");
-    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_TYPE");
+    assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_UNSUPPORTED_TYPE");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -501,7 +501,7 @@ export default function main() {
 
     let error =
         super::build(&input, &out_dir, &CompileOptions::new()).expect_err("callbacks should fail");
-    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK");
+    assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_UNSUPPORTED_CALLBACK");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -533,7 +533,7 @@ export default function main() { void cb; return "ok"; }
 
         let error = super::build(&input, &out_dir, &CompileOptions::new())
             .expect_err("unsupported callback signatures should fail");
-        assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK");
+        assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_UNSUPPORTED_CALLBACK");
 
         fs::remove_dir_all(&root).expect("program fixture directory should be removable");
     }
@@ -574,7 +574,7 @@ export default function main() { void dispatch; return "ok"; }
 
         let error = super::build(&input, &out_dir, &CompileOptions::new())
             .expect_err("unsupported dispatch signatures should fail");
-        assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_TYPE");
+        assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_UNSUPPORTED_TYPE");
 
         fs::remove_dir_all(&root).expect("program fixture directory should be removable");
     }
@@ -603,7 +603,7 @@ export default function main() {
 
     let error = super::build(&input, &out_dir, &CompileOptions::new())
         .expect_err("variadic functions should fail");
-    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_VARIADIC");
+    assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_UNSUPPORTED_VARIADIC");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -633,7 +633,7 @@ export default function main() {
 
     let error = super::build(&input, &out_dir, &CompileOptions::new())
         .expect_err("struct-by-value function types should fail");
-    assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_INVALID_TYPE");
+    assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_INVALID_DECLARATION");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
 }
@@ -662,7 +662,7 @@ export default function main() {
         .expect_err("unsized struct fields should fail");
     assert_eq!(
         error.diagnostic.code,
-        "SLOPPYC_E_FFI_UNSUPPORTED_STRUCT_BY_VALUE"
+        "SLOPPY_E_FFI_UNSUPPORTED_TYPE"
     );
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");

@@ -9,6 +9,15 @@ Sloppy Doctor
 [warn] app.plan.providers: provider metadata not present
 [ok] app.plan.capabilities: capability metadata present
 [ok] stdlib.ffi.required: native FFI runtime feature metadata is Plan-visible
-[ok] stdlib.ffi.metadata: native FFI library and struct metadata is Plan-visible
+[ok] stdlib.ffi.metadata: native FFI libraries, symbols, structs, handles, callbacks, and dispatch tables are Plan-visible
 [error] stdlib.ffi.library: native FFI library could not be loaded
+[ok] stdlib.ffi.package-path: packaged native FFI path is recorded without raw addresses
+[ok] stdlib.ffi.sha256: packaged native FFI SHA-256 verification succeeded
+[error] stdlib.ffi.symbol: native FFI symbol could not be resolved
+[ok] stdlib.ffi.convention: native FFI calling convention is Plan-visible
+[ok] stdlib.ffi.parameters: native FFI parameter metadata is visible
+[ok] stdlib.ffi.struct: native FFI struct size, alignment, and fields are Plan-visible
+[ok] stdlib.ffi.handle: native FFI handle ownership metadata is visible
+[ok] stdlib.ffi.callback: native FFI callback type metadata is visible
+[ok] stdlib.ffi.dispatch-table: native FFI dispatch table metadata is visible
 [warn] stdlib.ffi.unsafe_boundary: unsafeFfi is Plan-visible; native libraries execute in-process and must be trusted

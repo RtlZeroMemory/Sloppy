@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "compilerVersion": "sloppyc-placeholder",
+  "runtimeMinimumVersion": "0.1.0",
+  "stdlibVersion": "0.1.0",
+  "kind": "program",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "requiredFeatures": ["stdlib.ffi"],
+  "features": {
+    "ffi": true
+  },
+  "bundle": {
+    "path": ".sloppy/app.js",
+    "id": "cli-ffi-test",
+    "hash": "test-only"
+  },
+  "sourceMap": {
+    "path": ".sloppy/app.js.map",
+    "id": "cli-ffi-test-map",
+    "hash": "test-only"
+  },
+  "handlers": [],
+  "routes": [],
+  "native": {
+    "ffiDispatchTables": [
+      {
+        "name": "ffiDispatch",
+        "resolver": "native.resolveSymbol",
+        "symbols": {
+          "addI32": "sloppy_ffi_add_i32"
+        }
+      }
+    ]
+  }
+}

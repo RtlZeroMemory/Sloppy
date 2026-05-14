@@ -37,8 +37,11 @@ async function validateFfiArtifacts(repoRoot) {
         "function callback(",
         "function dispatchTable(",
         "function array(",
+        "function out(",
+        "function inout(",
         "SLOPPY_E_FFI_USE_AFTER_DISPOSE",
         "SLOPPY_E_FFI_NULL_HANDLE",
+        "SLOPPY_E_FFI_INVALID_DECLARATION",
     ];
     for (const invariant of requiredStdlib) {
         if (stdlib.includes(invariant)) {
@@ -58,9 +61,16 @@ async function validateFfiArtifacts(repoRoot) {
 
     const nativeSymbols = [
         "sloppy_ffi_counter_create",
+        "sloppy_ffi_counter_create_out",
         "sloppy_ffi_counter_destroy",
+        "sloppy_ffi_write_out_values",
+        "sloppy_ffi_copy_message",
+        "sloppy_ffi_mutate_bytes",
+        "sloppy_ffi_nested_total",
+        "sloppy_ffi_matrix_first4_sum",
         "sloppy_ffi_call_callback",
         "sloppy_ffi_call_i32_callback",
+        "sloppy_ffi_visit_i32",
         "sloppy_ffi_call_u32_callback",
         "sloppy_ffi_call_void_callback",
         "sloppy_ffi_resolve_symbol",
@@ -84,6 +94,9 @@ async function validateFfiArtifacts(repoRoot) {
         "Scoped disposal",
         "Callbacks",
         "Dispatch tables",
+        "Binding A C Library Safely",
+        "ffi.out",
+        "ffi.inout",
         "Fixed arrays",
         "Nested structs",
         "still unsupported",
@@ -153,6 +166,10 @@ async function validateFfiBehavior(repoRoot) {
         buffer(byteLength) {
             const bytes = new Uint8Array(byteLength);
             return { read: () => bytes, write: (next) => (bytes.set(next), this), dispose() {} };
+        },
+        ref(_type, initialValue) {
+            let value = initialValue;
+            return { get: () => value, set: (next) => (value = next), dispose() {} };
         },
         callback(descriptor, fn) {
             return { descriptor, fn, dispose() {} };
@@ -256,6 +273,11 @@ async function validateFfiBehavior(repoRoot) {
         const bytes = unsafeFfi.buffer(3);
         native.fill(bytes.read(), 3, 7);
         assertEquals(collector, "ffi.mut-bytes.write-visible", Array.from(bytes.read()).join(","), "7,7,7", "mutBytes writes are visible");
+        const outCell = unsafeFfi.out(t.u32);
+        outCell.value = 42;
+        assertEquals(collector, "ffi.out.ref-wrapper", outCell.value, 42, "ffi.out allocates an opaque ref cell");
+        const inoutCell = unsafeFfi.inout(t.i32, -2);
+        assertEquals(collector, "ffi.inout.ref-wrapper", inoutCell.value, -2, "ffi.inout preserves the initial ref value");
         try {
             native.strlen("bad\u0000text");
             collector.fail("ffi.cstring.embedded-nul-rejected", "embedded NUL was accepted");

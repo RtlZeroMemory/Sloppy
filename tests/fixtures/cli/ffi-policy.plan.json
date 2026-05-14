@@ -41,6 +41,9 @@
       {
         "name": "__sloppy_missing_ffi_library__",
         "convention": "system",
+        "packagePath": "artifacts/native/__sloppy_missing_ffi_library__.dll",
+        "sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "hashStatus": "verified",
         "source": {
           "path": "src/main.ts",
           "line": 3,
@@ -73,15 +76,45 @@
         "name": "Point",
         "layout": "sequential",
         "pack": 4,
+        "size": 8,
+        "alignment": 4,
         "fields": [
-          { "name": "x", "type": "i32" },
-          { "name": "y", "type": "i32" }
+          { "name": "x", "type": "i32", "offset": 0, "size": 4, "alignment": 4 },
+          { "name": "y", "type": "i32", "offset": 4, "size": 4, "alignment": 4 }
         ],
         "source": {
           "path": "src/main.ts",
           "line": 8,
           "column": 15
         }
+      }
+    ],
+    "ffiHandles": [
+      {
+        "name": "Counter"
+      }
+    ],
+    "ffiCallbacks": [
+      {
+        "id": "ffi:callback:src/main.ts:200",
+        "return": "i32",
+        "parameters": ["i32"],
+        "thread": "runtime"
+      }
+    ],
+    "ffiDispatchTables": [
+      {
+        "name": "ffiDispatch",
+        "resolver": "native.resolveSymbol",
+        "symbols": [
+          {
+            "name": "addI32",
+            "symbol": "sloppy_ffi_add_i32",
+            "return": "i32",
+            "parameters": ["i32", "i32"],
+            "convention": "system"
+          }
+        ]
       }
     ]
   },

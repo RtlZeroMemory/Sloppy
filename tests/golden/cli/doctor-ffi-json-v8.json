@@ -9,8 +9,17 @@
     { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
     { "id": "app.plan.capabilities", "status": "ok", "message": "capability metadata present" },
     { "id": "stdlib.ffi.required", "status": "ok", "message": "native FFI runtime feature metadata is Plan-visible" },
-    { "id": "stdlib.ffi.metadata", "status": "ok", "message": "native FFI library and struct metadata is Plan-visible" },
+    { "id": "stdlib.ffi.metadata", "status": "ok", "message": "native FFI libraries, symbols, structs, handles, callbacks, and dispatch tables are Plan-visible" },
     { "id": "stdlib.ffi.library", "status": "error", "message": "native FFI library could not be loaded" },
+    { "id": "stdlib.ffi.package-path", "status": "ok", "message": "packaged native FFI path is recorded without raw addresses" },
+    { "id": "stdlib.ffi.sha256", "status": "ok", "message": "packaged native FFI SHA-256 verification succeeded" },
+    { "id": "stdlib.ffi.symbol", "status": "error", "message": "native FFI symbol could not be resolved" },
+    { "id": "stdlib.ffi.convention", "status": "ok", "message": "native FFI calling convention is Plan-visible" },
+    { "id": "stdlib.ffi.parameters", "status": "ok", "message": "native FFI parameter metadata is visible" },
+    { "id": "stdlib.ffi.struct", "status": "ok", "message": "native FFI struct size, alignment, and fields are Plan-visible" },
+    { "id": "stdlib.ffi.handle", "status": "ok", "message": "native FFI handle ownership metadata is visible" },
+    { "id": "stdlib.ffi.callback", "status": "ok", "message": "native FFI callback type metadata is visible" },
+    { "id": "stdlib.ffi.dispatch-table", "status": "ok", "message": "native FFI dispatch table metadata is visible" },
     { "id": "stdlib.ffi.unsafe_boundary", "status": "warn", "message": "unsafeFfi is Plan-visible; native libraries execute in-process and must be trusted" }
   ]
 }

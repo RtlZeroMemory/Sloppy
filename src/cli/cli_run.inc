@@ -3495,7 +3495,9 @@ static int sl_run_load_package_native_overrides(SlRunApp* app, const char* packa
         return 0;
     }
     if (!yyjson_is_arr(libraries) || yyjson_arr_size(libraries) > SL_CLI_MAX_FFI_LIBRARIES) {
-        sl_cli_write_cstr(stderr, "sloppy run: package manifest native.libraries is invalid\n");
+        sl_cli_write_cstr(stderr,
+                          "sloppy run: SLOPPY_E_FFI_PACKAGE_NATIVE_INVALID: package manifest "
+                          "native.libraries is invalid\n");
         yyjson_doc_free(doc);
         return 1;
     }
@@ -3511,14 +3513,17 @@ static int sl_run_load_package_native_overrides(SlRunApp* app, const char* packa
             yyjson_get_len(id) >= SL_SLOPPYRC_FFI_LIBRARY_NAME_MAX_BYTES)
         {
             sl_cli_write_cstr(stderr,
-                              "sloppy run: package manifest native library entry is invalid\n");
+                              "sloppy run: SLOPPY_E_FFI_PACKAGE_NATIVE_INVALID: package manifest "
+                              "native library entry is invalid\n");
             result = 1;
             break;
         }
         if (!sl_run_copy_json_string(app->ffi_library_override_names[index],
                                      sizeof(app->ffi_library_override_names[index]), id))
         {
-            sl_cli_write_cstr(stderr, "sloppy run: package native library id is too long\n");
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: SLOPPY_E_FFI_PACKAGE_NATIVE_INVALID: package native "
+                              "library id is too long\n");
             result = 1;
             break;
         }
@@ -3527,12 +3532,16 @@ static int sl_run_load_package_native_overrides(SlRunApp* app, const char* packa
                               sizeof(app->ffi_library_override_paths[index]), package_dir,
                               path_span))
         {
-            sl_cli_write_cstr(stderr, "sloppy run: package native library path is too long\n");
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: SLOPPY_E_FFI_PACKAGE_NATIVE_INVALID: package native "
+                              "library path is too long\n");
             result = 1;
             break;
         }
         if (!sl_run_package_native_hash_matches(app->ffi_library_override_paths[index], sha256)) {
-            sl_cli_write_cstr(stderr, "sloppy run: package native library hash mismatch\n");
+            sl_cli_write_cstr(stderr,
+                              "sloppy run: SLOPPY_E_FFI_PACKAGE_NATIVE_INVALID: package native "
+                              "library hash mismatch\n");
             result = 1;
             break;
         }

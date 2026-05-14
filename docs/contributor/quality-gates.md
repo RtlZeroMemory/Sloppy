@@ -85,7 +85,7 @@ Use these statuses in PR reports: `PASS`, `FAIL`, `SKIPPED`, `UNAVAILABLE`,
 
 Use these evidence lane names exactly when they apply: default non-V8,
 compiler/Plan, handler execution, source-input, package outside-checkout,
-platform-specific, dependency-backed, live-network/live-provider,
+V8-gated, platform-specific, dependency-backed, live-network/live-provider,
 advanced static analysis, fuzz/property, stress/torture,
 sanitizer/memory-safety, and benchmark.
 

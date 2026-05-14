@@ -1323,6 +1323,8 @@ static int sl_cli_parse_ffi_structs(yyjson_val* native, SlCliMetadata* metadata)
             return 1;
         }
         layout.name = sl_cli_json_span(value, "name");
+        layout.size = sl_cli_json_uint_or_zero(value, "size");
+        layout.alignment = sl_cli_json_uint_or_zero(value, "alignment");
         fields = yyjson_obj_get(value, "fields");
         if (fields == NULL || !yyjson_is_arr(fields)) {
             sl_cli_write_cstr(
@@ -1343,10 +1345,180 @@ static int sl_cli_parse_ffi_structs(yyjson_val* native, SlCliMetadata* metadata)
             }
             layout.fields[layout.field_count].name = sl_cli_json_span(field, "name");
             layout.fields[layout.field_count].type = sl_cli_json_span(field, "type");
+            layout.fields[layout.field_count].offset = sl_cli_json_uint_or_zero(field, "offset");
+            layout.fields[layout.field_count].size = sl_cli_json_uint_or_zero(field, "size");
+            layout.fields[layout.field_count].alignment =
+                sl_cli_json_uint_or_zero(field, "alignment");
             layout.field_count += 1U;
         }
         metadata->ffi_structs[metadata->ffi_struct_count] = layout;
         metadata->ffi_struct_count += 1U;
+    }
+    return 0;
+}
+
+static int sl_cli_parse_ffi_handles(yyjson_val* native, SlCliMetadata* metadata)
+{
+    yyjson_val* handles = yyjson_obj_get(native, "ffiHandles");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (handles == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(handles)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: native.ffiHandles must be an array\n");
+        return 1;
+    }
+    yyjson_arr_iter_init(handles, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(
+                stderr, "sloppy: malformed metadata: native.ffiHandles entry must be an object\n");
+            return 1;
+        }
+        if (metadata->ffi_handle_count >= SL_CLI_MAX_FFI_HANDLES) {
+            sl_cli_write_cstr(stderr, "sloppy: too many native FFI handles in metadata\n");
+            return 1;
+        }
+        metadata->ffi_handles[metadata->ffi_handle_count].name = sl_cli_json_span(value, "name");
+        metadata->ffi_handle_count += 1U;
+    }
+    return 0;
+}
+
+static int sl_cli_parse_ffi_callback_parameters(yyjson_val* callback_value,
+                                                SlCliFfiCallback* callback)
+{
+    yyjson_val* parameters = yyjson_obj_get(callback_value, "parameters");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (parameters == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(parameters)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: native.ffiCallbacks parameters must be an "
+                          "array\n");
+        return 1;
+    }
+    yyjson_arr_iter_init(parameters, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        if (!yyjson_is_str(value)) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: native.ffiCallbacks parameter entries "
+                              "must be strings\n");
+            return 1;
+        }
+        if (callback->parameter_count >= SL_CLI_MAX_FFI_PARAMETERS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many native FFI callback parameters\n");
+            return 1;
+        }
+        callback->parameters[callback->parameter_count] =
+            (SlCliSpan){yyjson_get_str(value), yyjson_get_len(value)};
+        callback->parameter_count += 1U;
+    }
+    return 0;
+}
+
+static int sl_cli_parse_ffi_callbacks(yyjson_val* native, SlCliMetadata* metadata)
+{
+    yyjson_val* callbacks = yyjson_obj_get(native, "ffiCallbacks");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (callbacks == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(callbacks)) {
+        sl_cli_write_cstr(stderr,
+                          "sloppy: malformed metadata: native.ffiCallbacks must be an array\n");
+        return 1;
+    }
+    yyjson_arr_iter_init(callbacks, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlCliFfiCallback callback = {0};
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: native.ffiCallbacks entry must be an "
+                              "object\n");
+            return 1;
+        }
+        if (metadata->ffi_callback_count >= SL_CLI_MAX_FFI_CALLBACKS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many native FFI callbacks in metadata\n");
+            return 1;
+        }
+        callback.id = sl_cli_json_span(value, "id");
+        callback.return_type = sl_cli_json_span(value, "return");
+        callback.thread = sl_cli_json_span(value, "thread");
+        if (sl_cli_parse_ffi_callback_parameters(value, &callback) != 0) {
+            return 1;
+        }
+        metadata->ffi_callbacks[metadata->ffi_callback_count] = callback;
+        metadata->ffi_callback_count += 1U;
+    }
+    return 0;
+}
+
+static int sl_cli_parse_ffi_dispatch_tables(yyjson_val* native, SlCliMetadata* metadata)
+{
+    yyjson_val* tables = yyjson_obj_get(native, "ffiDispatchTables");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (tables == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(tables)) {
+        sl_cli_write_cstr(
+            stderr, "sloppy: malformed metadata: native.ffiDispatchTables must be an array\n");
+        return 1;
+    }
+    yyjson_arr_iter_init(tables, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlCliFfiDispatchTable table = {0};
+        yyjson_val* symbols = NULL;
+        yyjson_val* symbol = NULL;
+        yyjson_arr_iter symbol_iter;
+
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: native.ffiDispatchTables entry must be "
+                              "an object\n");
+            return 1;
+        }
+        if (metadata->ffi_dispatch_table_count >= SL_CLI_MAX_FFI_DISPATCH_TABLES) {
+            sl_cli_write_cstr(stderr, "sloppy: too many native FFI dispatch tables\n");
+            return 1;
+        }
+        table.name = sl_cli_json_span(value, "name");
+        table.resolver = sl_cli_json_span(value, "resolver");
+        symbols = yyjson_obj_get(value, "symbols");
+        if (symbols == NULL || !yyjson_is_arr(symbols)) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: native.ffiDispatchTables symbols must "
+                              "be an array\n");
+            return 1;
+        }
+        yyjson_arr_iter_init(symbols, &symbol_iter);
+        while ((symbol = yyjson_arr_iter_next(&symbol_iter)) != NULL) {
+            if (!yyjson_is_obj(symbol)) {
+                sl_cli_write_cstr(stderr,
+                                  "sloppy: malformed metadata: native.ffiDispatchTables symbol "
+                                  "entry must be an object\n");
+                return 1;
+            }
+            if (table.symbol_count >= SL_CLI_MAX_FFI_DISPATCH_SYMBOLS) {
+                sl_cli_write_cstr(stderr, "sloppy: too many native FFI dispatch symbols\n");
+                return 1;
+            }
+            table.symbols[table.symbol_count] = sl_cli_json_span(symbol, "symbol");
+            table.symbol_count += 1U;
+        }
+        metadata->ffi_dispatch_tables[metadata->ffi_dispatch_table_count] = table;
+        metadata->ffi_dispatch_table_count += 1U;
     }
     return 0;
 }
@@ -1387,6 +1559,9 @@ static int sl_cli_parse_ffi_metadata(yyjson_val* root, SlCliMetadata* metadata)
             }
             library.name = sl_cli_json_span(value, "name");
             library.convention = sl_cli_json_span(value, "convention");
+            library.package_path = sl_cli_json_span(value, "packagePath");
+            library.sha256 = sl_cli_json_span(value, "sha256");
+            library.hash_status = sl_cli_json_span(value, "hashStatus");
             library.first_function = metadata->ffi_function_count;
             if (sl_cli_parse_ffi_functions(value, metadata, &library) != 0) {
                 return 1;
@@ -1396,7 +1571,14 @@ static int sl_cli_parse_ffi_metadata(yyjson_val* root, SlCliMetadata* metadata)
         }
     }
 
-    return sl_cli_parse_ffi_structs(native, metadata);
+    if (sl_cli_parse_ffi_structs(native, metadata) != 0 ||
+        sl_cli_parse_ffi_handles(native, metadata) != 0 ||
+        sl_cli_parse_ffi_callbacks(native, metadata) != 0 ||
+        sl_cli_parse_ffi_dispatch_tables(native, metadata) != 0)
+    {
+        return 1;
+    }
+    return 0;
 }
 
 static int sl_cli_parse_route_dispatch(yyjson_val* root, SlCliMetadata* metadata)

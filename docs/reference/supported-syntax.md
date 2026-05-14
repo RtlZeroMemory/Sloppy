@@ -192,8 +192,8 @@ calling conventions, object specs, and `t.*` type descriptors.
 Dynamic library names, generated descriptor objects, computed function names,
 non-`t` type descriptors, callbacks, unsupported return buffer types, and
 non-sequential struct layouts fail with FFI diagnostics such as
-`SLOPPYC_E_FFI_DYNAMIC_DECLARATION`, `SLOPPYC_E_FFI_INVALID_TYPE`, and
-`SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK`.
+`SLOPPY_E_FFI_INVALID_DECLARATION`, `SLOPPY_E_FFI_UNSUPPORTED_TYPE`, and
+`SLOPPY_E_FFI_UNSUPPORTED_CALLBACK`.
 
 ## Route Extraction Rules
 
