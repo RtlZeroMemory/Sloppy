@@ -1,4 +1,4 @@
-# HTTP Runtime Hot-Path PR Evidence - 2026-05-14
+# HTTP Runtime Hot-Path Pass 4 - 2026-05-14
 
 Local engineering measurements only. These are not public performance claims.
 
@@ -27,6 +27,11 @@ The successful A/B artifacts are:
 The current build was slightly better on median RPS and p95/p99 in this A/B.
 The earlier route-param drop is treated as local-run noise, not a regression
 from the body-json optimization.
+
+The pass-3 POST JSON improvement repeated: `post-json-validated @ 64` measured
+35,990 median RPS in `pass3-body-request-json-20260514` and 35,234 median RPS
+in the clean pass-4 Sloppy-only matrix below, compared with the earlier pass-2
+focused row at 30,918 median RPS.
 
 ## Clean Sloppy-Only Matrix
 
@@ -74,18 +79,24 @@ conversion, and a safe native request wrapper for future V8 Fast API work.
 
 ## Validation
 
-| Command | Result |
-| --- | --- |
-| `git diff --check` | PASS |
-| `tools/windows/dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8` | PASS |
-| `tools/windows/dev.ps1 build -Preset windows-relwithdebinfo` | PASS |
-| `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^(core\.request_validation|core\.http\.dispatch|engine\.v8\.smoke|conformance\.v8\.runtime_bridge|http\.dispatch\.execution|conformance\.v8\.http_dispatch_execution|benchmarks\.local_neutral\.contract)$" --output-on-failure` | PASS |
-| `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^alpha\.golden\.compiler\." --output-on-failure` | PASS |
-| `tests/scripts/test_local_neutral_benchmark_contract.ps1 -RepoRoot .` | PASS |
-| `node benchmarks/local-neutral/scripts/run.mjs --check-tools --json` | PASS |
-| `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload health --connections 1 --duration 3s --warmup 1s --repeats 1 --claim-mode local --base-port 57000 --out artifacts/benchmarks/pass4-k6-smoke-20260514 --json` | PASS |
-| `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload route-param --connections 64 --duration 15s --warmup 3s --repeats 5 --claim-mode local --base-port 55000 --out artifacts/benchmarks/pass4-route-param-body-json-disabled-rerun2-20260514 --json` | PASS |
-| `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload route-param --connections 64 --duration 15s --warmup 3s --repeats 5 --claim-mode local --base-port 55100 --out artifacts/benchmarks/pass4-route-param-body-json-current-20260514 --json` | PASS |
-| `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload health,json-small,route-param,post-json-validated,mixed-realistic --connections 64 --duration 15s --warmup 3s --repeats 5 --claim-mode local --base-port 55200 --out artifacts/benchmarks/pass4-clean-sloppy-focused-20260514 --json` | PASS |
-| `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime all --workload health,json-small,route-param,post-json-validated,mixed-realistic --connections 64 --duration 15s --warmup 3s --repeats 5 --claim-mode local --base-port 56000 --out artifacts/benchmarks/pass4-all-runtimes-focused-20260514 --json` | PASS |
-| `node tests/contracts/runner/contract-runner.mjs --area http --tier pr` | UNAVAILABLE: runner path is absent in this checkout |
+| Lane | Command or artifact | Result |
+| --- | --- | --- |
+| Diff hygiene | `git diff --check` | PASS |
+| V8 configure | `tools/windows/dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8` | PASS |
+| V8 build | `tools/windows/dev.ps1 build -Preset windows-relwithdebinfo` | PASS |
+| Focused native/V8/http CTest | focused CTest regex listed below | PASS |
+| Compiler alpha goldens | `ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^alpha\.golden\.compiler\." --output-on-failure` | PASS |
+| Local-neutral contract | `tests/scripts/test_local_neutral_benchmark_contract.ps1 -RepoRoot .` | PASS |
+| Tool smoke | `node benchmarks/local-neutral/scripts/run.mjs --check-tools --json` | PASS |
+| K6 smoke | `artifacts/benchmarks/pass4-k6-smoke-20260514` | PASS |
+| Route-param disabled A/B | `artifacts/benchmarks/pass4-route-param-body-json-disabled-rerun2-20260514` | PASS |
+| Route-param current A/B | `artifacts/benchmarks/pass4-route-param-body-json-current-20260514` | PASS |
+| Clean Sloppy-only focused matrix | `artifacts/benchmarks/pass4-clean-sloppy-focused-20260514` | PASS |
+| Local all-runtime comparison | `artifacts/benchmarks/pass4-all-runtimes-focused-20260514` | PASS |
+| HTTP contract runner | `node tests/contracts/runner/contract-runner.mjs --area http --tier pr` | UNAVAILABLE: this checkout lacks `tests/contracts/runner/contract-runner.mjs` |
+
+Focused CTest command:
+
+```powershell
+ctest --test-dir build/windows-relwithdebinfo -C RelWithDebInfo -R "^(core\.request_validation|core\.http\.dispatch|engine\.v8\.smoke|conformance\.v8\.runtime_bridge|http\.dispatch\.execution|conformance\.v8\.http_dispatch_execution|benchmarks\.local_neutral\.contract)$" --output-on-failure
+```
