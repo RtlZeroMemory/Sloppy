@@ -219,6 +219,51 @@ export default function main() {
 }
 
 #[test]
+fn program_ffi_dispatch_tables_preserve_rich_symbol_descriptors() {
+    let root = fixture_temp_dir("program-ffi-dispatch-rich-descriptors");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const Counter = ffi.handle("Counter");
+const native = ffi.library("ffi-test", {
+  resolveSymbol: ffi.fn(t.ptr, [t.cstring]),
+  destroyCounter: ffi.fn(t.void, [Counter])
+});
+const dispatch = ffi.dispatchTable("ffi-dispatch", {
+  resolver: native.resolveSymbol,
+  symbols: {
+    createCounter: ffi.fn(Counter.owned, [t.i32], { symbol: "counter_create", dispose: "destroyCounter" }),
+    addCounter: ffi.fn(t.i32, [Counter, t.i32], { symbol: "counter_add" })
+  }
+});
+
+export default function main() {
+  void dispatch;
+  return "ok";
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    super::build(&input, &out_dir, &CompileOptions::new())
+        .expect("dispatch metadata should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    let symbols = &plan["native"]["ffiDispatchTables"][0]["symbols"];
+    assert_eq!(symbols[0]["returnDescriptor"]["name"], "Counter");
+    assert_eq!(symbols[0]["returnDescriptor"]["owned"], true);
+    assert_eq!(symbols[0]["dispose"], "destroyCounter");
+    assert_eq!(symbols[1]["parameterDescriptors"][0]["name"], "Counter");
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
 fn program_ffi_function_specs_must_be_static() {
     let root = fixture_temp_dir("program-ffi-dynamic-spec");
     let input = root.join("main.ts");
@@ -459,6 +504,80 @@ export default function main() {
     assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK");
 
     fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_rejects_unsupported_callback_signatures() {
+    for (case, source) in [
+        (
+            "return-ptr",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const cb = ffi.callback(t.ptr, [t.i32], () => null);
+export default function main() { void cb; return "ok"; }
+"#,
+        ),
+        (
+            "param-ptr",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const cb = ffi.callback(t.i32, [t.ptr], () => 0);
+export default function main() { void cb; return "ok"; }
+"#,
+        ),
+    ] {
+        let root = fixture_temp_dir(&format!("program-ffi-unsupported-callback-{case}"));
+        let input = root.join("main.ts");
+        let out_dir = root.join(".sloppy");
+        fs::write(&input, source).expect("program fixture should be writable");
+
+        let error = super::build(&input, &out_dir, &CompileOptions::new())
+            .expect_err("unsupported callback signatures should fail");
+        assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK");
+
+        fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+    }
+}
+
+#[test]
+fn program_ffi_rejects_unsupported_dispatch_signatures() {
+    for (case, source) in [
+        (
+            "return-i64",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const native = ffi.library("ffi-test", { resolveSymbol: ffi.fn(t.ptr, [t.cstring]) });
+const dispatch = ffi.dispatchTable("ffi-dispatch", {
+  resolver: native.resolveSymbol,
+  symbols: { add: ffi.fn(t.i64, [t.i32]) }
+});
+export default function main() { void dispatch; return "ok"; }
+"#,
+        ),
+        (
+            "param-i64",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const native = ffi.library("ffi-test", { resolveSymbol: ffi.fn(t.ptr, [t.cstring]) });
+const dispatch = ffi.dispatchTable("ffi-dispatch", {
+  resolver: native.resolveSymbol,
+  symbols: { add: ffi.fn(t.i32, [t.i64]) }
+});
+export default function main() { void dispatch; return "ok"; }
+"#,
+        ),
+    ] {
+        let root = fixture_temp_dir(&format!("program-ffi-unsupported-dispatch-{case}"));
+        let input = root.join("main.ts");
+        let out_dir = root.join(".sloppy");
+        fs::write(&input, source).expect("program fixture should be writable");
+
+        let error = super::build(&input, &out_dir, &CompileOptions::new())
+            .expect_err("unsupported dispatch signatures should fail");
+        assert_eq!(error.diagnostic.code, "SLOPPYC_E_FFI_UNSUPPORTED_TYPE");
+
+        fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+    }
 }
 
 #[test]

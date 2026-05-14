@@ -803,7 +803,7 @@ pub(crate) fn emit_plan_with_route_artifact(
                     .functions
                     .iter()
                     .map(|function| {
-                        json!({
+                        let mut value = json!({
                             "id": function.id,
                             "name": function.name,
                             "symbol": function.symbol,
@@ -820,7 +820,21 @@ pub(crate) fn emit_plan_with_route_artifact(
                                 &function.source,
                                 function.span
                             )
-                        })
+                        });
+                        if let Some(descriptor) = &function.return_descriptor {
+                            value["returnDescriptor"] = descriptor.clone();
+                        }
+                        if function
+                            .parameter_descriptors
+                            .iter()
+                            .any(|descriptor| !descriptor.is_null())
+                        {
+                            value["parameterDescriptors"] = json!(function.parameter_descriptors);
+                        }
+                        if let Some(dispose) = &function.dispose {
+                            value["dispose"] = json!(dispose);
+                        }
+                        value
                     })
                     .collect::<Vec<_>>()
             })
@@ -838,10 +852,14 @@ pub(crate) fn emit_plan_with_route_artifact(
                     .fields
                     .iter()
                     .map(|field| {
-                        json!({
+                        let mut value = json!({
                             "name": field.name,
                             "type": field.type_name
-                        })
+                        });
+                        if let Some(descriptor) = &field.descriptor {
+                            value["descriptor"] = descriptor.clone();
+                        }
+                        value
                     })
                     .collect::<Vec<_>>(),
                 "source": source_location_json(&layout.source_name, &layout.source, layout.span)
@@ -850,6 +868,78 @@ pub(crate) fn emit_plan_with_route_artifact(
                 value["pack"] = json!(pack);
             }
             value
+        })
+        .collect::<Vec<_>>();
+
+    let ffi_handles = app
+        .ffi_handles
+        .iter()
+        .map(|handle| {
+            json!({
+                "name": handle.name,
+                "type": "ptr",
+                "ownership": "typed-explicit",
+                "source": source_location_json(&handle.source_name, &handle.source, handle.span)
+            })
+        })
+        .collect::<Vec<_>>();
+    let ffi_callbacks = app
+        .ffi_callbacks
+        .iter()
+        .map(|callback| {
+            json!({
+                "id": callback.id,
+                "return": callback.return_type,
+                "parameters": callback.parameters,
+                "thread": callback.thread,
+                "lifetime": "explicit-dispose",
+                "source": source_location_json(&callback.source_name, &callback.source, callback.span)
+            })
+        })
+        .collect::<Vec<_>>();
+    let ffi_dispatch_tables = app
+        .ffi_dispatch_tables
+        .iter()
+        .map(|table| {
+            json!({
+                "name": table.name,
+                "resolver": table.resolver,
+                "symbols": table.symbols.iter().map(|symbol| {
+                    let mut value = json!({
+                        "id": symbol.id,
+                        "name": symbol.name,
+                        "symbol": symbol.symbol,
+                        "convention": symbol.convention,
+                        "return": symbol.return_type,
+                        "parameters": symbol.parameters,
+                        "marshaling": {
+                            "arguments": ffi_argument_marshaling(&symbol.parameters),
+                            "return": "direct"
+                        },
+                        "safety": "unsafe",
+                        "source": source_location_json(
+                            &symbol.source_name,
+                            &symbol.source,
+                            symbol.span
+                        )
+                    });
+                    if let Some(descriptor) = &symbol.return_descriptor {
+                        value["returnDescriptor"] = descriptor.clone();
+                    }
+                    if symbol
+                        .parameter_descriptors
+                        .iter()
+                        .any(|descriptor| !descriptor.is_null())
+                    {
+                        value["parameterDescriptors"] = json!(symbol.parameter_descriptors);
+                    }
+                    if let Some(dispose) = &symbol.dispose {
+                        value["dispose"] = json!(dispose);
+                    }
+                    value
+                }).collect::<Vec<_>>(),
+                "source": source_location_json(&table.source_name, &table.source, table.span)
+            })
         })
         .collect::<Vec<_>>();
 
@@ -1000,7 +1090,7 @@ pub(crate) fn emit_plan_with_route_artifact(
                 "bindings": app.routes.iter().any(|route| !route.handler.bindings.is_empty()),
             "effects": app.routes.iter().any(|route| !route.handler.effects.is_empty()),
             "capabilities": !app.capabilities.is_empty(),
-            "ffi": !ffi_libraries.is_empty() || !ffi_structs.is_empty()
+            "ffi": !ffi_libraries.is_empty() || !ffi_structs.is_empty() || !ffi_handles.is_empty() || !ffi_callbacks.is_empty() || !ffi_dispatch_tables.is_empty()
         }
     },
         "features": {
@@ -1350,13 +1440,22 @@ pub(crate) fn emit_plan_with_route_artifact(
             "message": "Webhook metadata is Plan-visible; verify signing secret, delivery worker, retry, dead-letter, and private-network policy in app configuration"
         }));
     }
-    if app.uses_ffi_runtime || !ffi_libraries.is_empty() || !ffi_structs.is_empty() {
+    if app.uses_ffi_runtime
+        || !ffi_libraries.is_empty()
+        || !ffi_structs.is_empty()
+        || !ffi_handles.is_empty()
+        || !ffi_callbacks.is_empty()
+        || !ffi_dispatch_tables.is_empty()
+    {
         required_features.push("stdlib.ffi".to_string());
         value["strongPlan"]["evidence"]["ffi"] = json!(true);
         value["features"]["ffi"] = json!(true);
         value["native"] = json!({
             "ffi": ffi_libraries,
-            "ffiStructs": ffi_structs
+            "ffiStructs": ffi_structs,
+            "ffiHandles": ffi_handles,
+            "ffiCallbacks": ffi_callbacks,
+            "ffiDispatchTables": ffi_dispatch_tables
         });
         doctor_checks.push(json!({
             "id": "stdlib.ffi.unsafe_boundary",

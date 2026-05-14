@@ -92,6 +92,9 @@ pub(super) fn extract_program_with_metrics(
         uses_ffi_runtime: graph.uses_ffi_runtime,
         ffi: graph.ffi_libraries,
         ffi_structs: graph.ffi_structs,
+        ffi_handles: graph.ffi_handles,
+        ffi_callbacks: graph.ffi_callbacks,
+        ffi_dispatch_tables: graph.ffi_dispatch_tables,
         uses_health: false,
         auth: AuthMetadata::default(),
         problem_details: None,
@@ -146,7 +149,13 @@ fn program_inferred_capabilities(graph: &ModuleGraph) -> Vec<DatabaseCapability>
     if graph.uses_workers_runtime {
         push_program_inferred_capability(&mut capabilities, "workers");
     }
-    if graph.uses_ffi_runtime || !graph.ffi_libraries.is_empty() || !graph.ffi_structs.is_empty() {
+    if graph.uses_ffi_runtime
+        || !graph.ffi_libraries.is_empty()
+        || !graph.ffi_structs.is_empty()
+        || !graph.ffi_handles.is_empty()
+        || !graph.ffi_callbacks.is_empty()
+        || !graph.ffi_dispatch_tables.is_empty()
+    {
         push_program_inferred_capability(&mut capabilities, "ffi");
     }
     capabilities
@@ -546,8 +555,13 @@ fn transform_program_source(
         source,
         &source_name,
         &program.body,
-        &mut graph.ffi_libraries,
-        &mut graph.ffi_structs,
+        FfiMetadataSink {
+            libraries: &mut graph.ffi_libraries,
+            structs: &mut graph.ffi_structs,
+            handles: &mut graph.ffi_handles,
+            callbacks: &mut graph.ffi_callbacks,
+            dispatch_tables: &mut graph.ffi_dispatch_tables,
+        },
     )?;
     analyze_program_imports(
         path,

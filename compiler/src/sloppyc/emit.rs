@@ -537,7 +537,13 @@ pub(super) fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
     if app.uses_webhooks_runtime {
         runtime_exports.extend(["Webhooks", "SloppyWebhookError"]);
     }
-    if app.uses_ffi_runtime || !app.ffi.is_empty() || !app.ffi_structs.is_empty() {
+    if app.uses_ffi_runtime
+        || !app.ffi.is_empty()
+        || !app.ffi_structs.is_empty()
+        || !app.ffi_handles.is_empty()
+        || !app.ffi_callbacks.is_empty()
+        || !app.ffi_dispatch_tables.is_empty()
+    {
         runtime_exports.extend(["unsafeFfi", "t"]);
     }
     if needs_framework_services {

@@ -6,6 +6,7 @@ import { runDataContract } from "../data/validate-data-contract.mjs";
 import { runCacheContract } from "../cache/validate-cache-contract.mjs";
 import { runAuthContract } from "../auth/validate-auth-contract.mjs";
 import { runHttpDispatchContract } from "../http/validate-http-dispatch-contract.mjs";
+import { runFfiContract } from "../ffi/validate-ffi-contract.mjs";
 import { runOpenApiContract } from "../openapi/validate-openapi-contract.mjs";
 import { runPackageContract } from "../package/validate-package-contract.mjs";
 import { runReleaseContract } from "../release/validate-release-contract.mjs";
@@ -17,6 +18,7 @@ const AREA_RUNNERS = new Map([
     ["auth", runAuthContract],
     ["cache", runCacheContract],
     ["data", runDataContract],
+    ["ffi", runFfiContract],
     ["http", runHttpDispatchContract],
     ["jobs", runJobsContract],
     ["openapi", runOpenApiContract],

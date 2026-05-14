@@ -604,8 +604,13 @@ pub(super) fn extract_relative_module(
         &source,
         &source_name,
         &parsed.program.body,
-        &mut graph.ffi_libraries,
-        &mut graph.ffi_structs,
+        FfiMetadataSink {
+            libraries: &mut graph.ffi_libraries,
+            structs: &mut graph.ffi_structs,
+            handles: &mut graph.ffi_handles,
+            callbacks: &mut graph.ffi_callbacks,
+            dispatch_tables: &mut graph.ffi_dispatch_tables,
+        },
     )?;
 
     let mut exports = BTreeMap::<String, CachedModuleExport>::new();
