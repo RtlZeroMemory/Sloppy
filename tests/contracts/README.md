@@ -8,6 +8,7 @@ Run the PR-tier contract lane with:
 
 ```powershell
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr
+node tests/contracts/runner/contract-runner.mjs --area realtime --tier pr
 node tests/contracts/runner/contract-runner.mjs --area all --tier pr
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr --format markdown
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr --out artifacts/contracts/package-report.json

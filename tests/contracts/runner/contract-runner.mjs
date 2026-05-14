@@ -2,8 +2,12 @@
 import { parseRunnerArgs, printHelp, repoRootFromRunner, writeJsonReport } from "./command-utils.mjs";
 import { formatMarkdown, hasBlockingFindings, mergeReports } from "./contract-report.mjs";
 import { runPackageContract } from "../package/validate-package-contract.mjs";
+import { runRealtimeContract } from "../realtime/validate-realtime-contract.mjs";
 
-const AREA_RUNNERS = new Map([["package", runPackageContract]]);
+const AREA_RUNNERS = new Map([
+    ["package", runPackageContract],
+    ["realtime", runRealtimeContract],
+]);
 
 async function main() {
     let options;
