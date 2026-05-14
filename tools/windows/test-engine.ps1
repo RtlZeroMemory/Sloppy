@@ -537,6 +537,7 @@ function Invoke-PackageArea {
 
 function Invoke-ContractsArea {
     Invoke-ExternalLane "contracts.package" "node" @((Join-Path $Root "tests/contracts/runner/contract-runner.mjs"), "--area", "package", "--tier", $Tier) -UnavailableNote "node is not available"
+    Invoke-ExternalLane "contracts.release" "node" @((Join-Path $Root "tests/contracts/runner/contract-runner.mjs"), "--area", "release", "--tier", $Tier) -UnavailableNote "node is not available"
 }
 
 function Invoke-SanitizerArea {

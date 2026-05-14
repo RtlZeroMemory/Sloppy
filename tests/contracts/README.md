@@ -8,6 +8,7 @@ Run the PR-tier contract lane with:
 
 ```powershell
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr
+node tests/contracts/runner/contract-runner.mjs --area release --tier pr
 node tests/contracts/runner/contract-runner.mjs --area all --tier pr
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr --format markdown
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr --out artifacts/contracts/package-report.json
@@ -44,5 +45,5 @@ validator should return a report for one subsystem and should use the shared
 runner helpers for reporting, fixture loading, path checks, and redaction.
 
 PR-tier contracts should be deterministic and should not require Docker, Redis,
-live providers, or long-running servers. Use `extended` or `torture` for slow
-or environment-backed checks.
+live providers, npm publishing, or long-running servers. Use `extended` or
+`torture` for slow or environment-backed checks.

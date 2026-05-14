@@ -1,0 +1,22 @@
+{
+  "name": "@slopware/sloppy",
+  "version": "1.2.3-alpha.4",
+  "license": "Apache-2.0",
+  "bin": {
+    "sloppy": "bin/sloppy.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./data": {
+      "types": "./types/data.d.ts",
+      "default": "./lib/data.js"
+    }
+  },
+  "types": "types/index.d.ts",
+  "optionalDependencies": {
+    "@slopware/sloppy-linux-x64": "1.2.3-alpha.4"
+  }
+}
