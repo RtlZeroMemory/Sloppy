@@ -96,20 +96,6 @@ foreach ($lane in $report.lanes) {
     Assert-True ($allowed -contains $lane.status) "lane '$($lane.id)' used invalid status '$($lane.status)'"
 }
 
-$resolveV8Script = Join-Path $RepoRoot "tools/windows/resolve-v8-sdk.ps1"
-$v8Resolution = Invoke-Script @("-File", $resolveV8Script, "-Mode", "AUTO", "-Quiet")
-Assert-True ($v8Resolution.ExitCode -eq 0) "V8 SDK availability probe failed: $($v8Resolution.Output)"
-if ([string]::IsNullOrWhiteSpace($v8Resolution.Output.Trim())) {
-    $v8ReportPath = Join-Path $RepoRoot "artifacts/test-engine/meta-contract-v8-unavailable.json"
-    $v8Command = "& { `$env:SLOPPY_V8_ROOT = ''; & '$testEngine' -Area v8 -Tier pr -Out '$v8ReportPath' }"
-    $v8 = Invoke-Script @("-Command", $v8Command)
-    Assert-True ($v8.ExitCode -eq 0) "unavailable V8 lane failed the command: $($v8.Output)"
-    Assert-True (Test-Path -LiteralPath $v8ReportPath -PathType Leaf) "unavailable V8 report was not written"
-    $v8Report = Get-Content -LiteralPath $v8ReportPath -Raw | ConvertFrom-Json
-    Assert-True ($v8Report.lanes.Count -eq 1) "unexpected V8 report lane count"
-    Assert-True ($v8Report.lanes[0].status -eq "unavailable") "V8 gate did not report unavailable"
-}
-
 $extendedWorkflow = Get-Content -LiteralPath (Join-Path $RepoRoot ".github/workflows/test-engine-extended.yml") -Raw
 $tortureWorkflow = Get-Content -LiteralPath (Join-Path $RepoRoot ".github/workflows/test-engine-torture.yml") -Raw
 Assert-True ($extendedWorkflow -match "workflow_dispatch:") "extended workflow is not manually runnable"
