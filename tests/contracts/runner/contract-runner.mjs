@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseRunnerArgs, printHelp, repoRootFromRunner, writeJsonReport } from "./command-utils.mjs";
 import { formatMarkdown, hasBlockingFindings, mergeReports } from "./contract-report.mjs";
+import { runDataContract } from "../data/validate-data-contract.mjs";
 import { runCacheContract } from "../cache/validate-cache-contract.mjs";
 import { runAuthContract } from "../auth/validate-auth-contract.mjs";
 import { runHttpDispatchContract } from "../http/validate-http-dispatch-contract.mjs";
@@ -11,6 +12,7 @@ import { runWebhooksContract } from "../webhooks/validate-webhooks-contract.mjs"
 const AREA_RUNNERS = new Map([
     ["auth", runAuthContract],
     ["cache", runCacheContract],
+    ["data", runDataContract],
     ["http", runHttpDispatchContract],
     ["openapi", runOpenApiContract],
     ["package", runPackageContract],
