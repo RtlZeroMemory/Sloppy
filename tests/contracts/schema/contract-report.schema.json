@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sloppy.local/contracts/contract-report.schema.json",
+  "title": "Sloppy Contract Report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "subsystem",
+    "tier",
+    "startedAt",
+    "finishedAt",
+    "findings",
+    "summary"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "subsystem": { "type": "string", "minLength": 1 },
+    "tier": { "enum": ["pr", "extended", "torture"] },
+    "startedAt": { "type": "string" },
+    "finishedAt": { "type": "string" },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "severity", "subsystem", "invariant", "message"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["pass", "fail", "skip", "unavailable"] },
+          "severity": { "enum": ["info", "warning", "error"] },
+          "subsystem": { "type": "string", "minLength": 1 },
+          "invariant": { "type": "string", "minLength": 1 },
+          "fixture": { "type": "string" },
+          "path": { "type": "string" },
+          "message": { "type": "string", "minLength": 1 },
+          "details": { "type": "object" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["pass", "fail", "warning", "skip", "unavailable"],
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 },
+        "warning": { "type": "integer", "minimum": 0 },
+        "skip": { "type": "integer", "minimum": 0 },
+        "unavailable": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,4 @@
+{
+  "expected": "fail",
+  "expectedInvariants": ["plan.sqlite.database.parent-present"]
+}

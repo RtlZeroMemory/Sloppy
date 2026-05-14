@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "kind": "web",
+  "runtimeMinimumVersion": "0.1.0",
+  "target": {
+    "platform": "windows-x64",
+    "engine": "v8"
+  },
+  "bundle": {
+    "path": "app.js",
+    "id": "sloppyc-app-js",
+    "hash": "sha256:f9444510dc7403e41049deb133f6892aa6a63c05591b2b59e4ee5b234d7bbd99"
+  },
+  "sourceMap": {
+    "path": "app.js.map",
+    "id": "sloppyc-app-js-map",
+    "hash": "sha256:ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356"
+  },
+  "routeDispatch": {
+    "version": 1,
+    "mode": "native-compiled",
+    "artifact": {
+      "kind": "slrt",
+      "path": "routes.slrt",
+      "hash": "sha256:8ea8e03eca14c196120787a72926923c59de84157090352937f02c7929724ab1"
+    }
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "displayName": "GET /hello",
+      "exportName": "__sloppy_handler_1"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/hello",
+      "handlerId": 1
+    }
+  ],
+  "dataProviders": [
+    {
+      "token": "data.main",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "database": "data/app.db"
+    }
+  ]
+}

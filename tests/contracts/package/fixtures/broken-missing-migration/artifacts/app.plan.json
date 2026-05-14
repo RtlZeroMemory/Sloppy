@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "kind": "web",
+  "bundle": {
+    "path": "app.js",
+    "hash": "sha256:f9444510dc7403e41049deb133f6892aa6a63c05591b2b59e4ee5b234d7bbd99"
+  },
+  "sourceMap": {
+    "path": "app.js.map"
+  },
+  "dataProviders": []
+}

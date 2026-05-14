@@ -1,0 +1,4 @@
+{
+  "expected": "fail",
+  "expectedInvariants": ["manifest.artifacts.plan.exists", "manifest.entry.exists"]
+}

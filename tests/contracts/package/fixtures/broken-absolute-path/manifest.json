@@ -1,0 +1,11 @@
+{
+  "schema": "sloppy.app-package.v1",
+  "kind": "web",
+  "dependencyMode": "bundled",
+  "entry": "artifacts/app.plan.json",
+  "artifacts": {
+    "plan": "artifacts/app.plan.json",
+    "bundle": "C:/Users/example/sloppy/app.js"
+  },
+  "createdBy": "sloppy package"
+}
