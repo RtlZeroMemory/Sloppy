@@ -1523,6 +1523,73 @@ static int sl_cli_parse_ffi_dispatch_tables(yyjson_val* native, SlCliMetadata* m
     return 0;
 }
 
+static int sl_cli_parse_ffi_adoptions(yyjson_val* native, SlCliMetadata* metadata)
+{
+    yyjson_val* adoptions = yyjson_obj_get(native, "ffiAdoptions");
+    yyjson_val* value = NULL;
+    yyjson_arr_iter iter;
+
+    if (adoptions == NULL) {
+        return 0;
+    }
+    if (!yyjson_is_arr(adoptions)) {
+        sl_cli_write_cstr(
+            stderr, "sloppy: malformed metadata: native.ffiAdoptions must be an array\n");
+        return 1;
+    }
+    yyjson_arr_iter_init(adoptions, &iter);
+    while ((value = yyjson_arr_iter_next(&iter)) != NULL) {
+        SlCliFfiAdoption adoption = {0};
+
+        if (!yyjson_is_obj(value)) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: native.ffiAdoptions entry must be an "
+                              "object\n");
+            return 1;
+        }
+        if (metadata->ffi_adoption_count >= SL_CLI_MAX_FFI_ADOPTIONS) {
+            sl_cli_write_cstr(stderr, "sloppy: too many native FFI adoptions\n");
+            return 1;
+        }
+        adoption.handle = sl_cli_json_span(value, "handle");
+        adoption.ownership = sl_cli_json_span(value, "ownership");
+        adoption.disposer = sl_cli_json_span(value, "disposer");
+        if (sl_cli_span_empty(adoption.handle) || sl_cli_span_empty(adoption.ownership)) {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: native.ffiAdoptions handle and "
+                              "ownership are required\n");
+            return 1;
+        }
+        if (!sl_cli_span_equal_cstr(adoption.ownership, "owned") &&
+            !sl_cli_span_equal_cstr(adoption.ownership, "borrowed"))
+        {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: native.ffiAdoptions ownership must "
+                              "be owned or borrowed\n");
+            return 1;
+        }
+        if (sl_cli_span_equal_cstr(adoption.ownership, "owned") &&
+            sl_cli_span_empty(adoption.disposer))
+        {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: native.ffiAdoptions owned entry "
+                              "requires disposer\n");
+            return 1;
+        }
+        if (sl_cli_span_equal_cstr(adoption.ownership, "borrowed") &&
+            !sl_cli_span_empty(adoption.disposer))
+        {
+            sl_cli_write_cstr(stderr,
+                              "sloppy: malformed metadata: native.ffiAdoptions borrowed entry "
+                              "must not declare disposer\n");
+            return 1;
+        }
+        metadata->ffi_adoptions[metadata->ffi_adoption_count] = adoption;
+        metadata->ffi_adoption_count += 1U;
+    }
+    return 0;
+}
+
 static int sl_cli_parse_ffi_metadata(yyjson_val* root, SlCliMetadata* metadata)
 {
     yyjson_val* native = yyjson_obj_get(root, "native");
@@ -1574,7 +1641,8 @@ static int sl_cli_parse_ffi_metadata(yyjson_val* root, SlCliMetadata* metadata)
     if (sl_cli_parse_ffi_structs(native, metadata) != 0 ||
         sl_cli_parse_ffi_handles(native, metadata) != 0 ||
         sl_cli_parse_ffi_callbacks(native, metadata) != 0 ||
-        sl_cli_parse_ffi_dispatch_tables(native, metadata) != 0)
+        sl_cli_parse_ffi_dispatch_tables(native, metadata) != 0 ||
+        sl_cli_parse_ffi_adoptions(native, metadata) != 0)
     {
         return 1;
     }

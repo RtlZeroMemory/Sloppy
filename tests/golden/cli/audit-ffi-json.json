@@ -8,6 +8,7 @@
     { "severity": "note", "code": "SLOPPY_AUDIT_FFI_STRUCT_LAYOUT_VISIBLE", "message": "FFI struct size, alignment, and fields are visible in Plan metadata", "path": "native.ffiStructs" },
     { "severity": "note", "code": "SLOPPY_AUDIT_FFI_HANDLES_VISIBLE", "message": "FFI handle ownership metadata is visible in the Plan", "path": "native.ffiHandles" },
     { "severity": "note", "code": "SLOPPY_AUDIT_FFI_CALLBACKS_VISIBLE", "message": "FFI callback type metadata is visible in the Plan", "path": "native.ffiCallbacks" },
-    { "severity": "note", "code": "SLOPPY_AUDIT_FFI_DISPATCH_VISIBLE", "message": "FFI dispatch table symbols are Plan-visible without public dlsym access", "path": "native.ffiDispatchTables" }
+    { "severity": "note", "code": "SLOPPY_AUDIT_FFI_DISPATCH_VISIBLE", "message": "FFI dispatch table symbols are Plan-visible without public dlsym access", "path": "native.ffiDispatchTables" },
+    { "severity": "note", "code": "SLOPPY_AUDIT_FFI_ADOPTIONS_VISIBLE", "message": "FFI pointer adoption ownership metadata is visible without raw pointer addresses", "path": "native.ffiAdoptions" }
   ]
 }

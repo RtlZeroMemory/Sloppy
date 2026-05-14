@@ -95,6 +95,7 @@ pub(super) fn extract_program_with_metrics(
         ffi_handles: graph.ffi_handles,
         ffi_callbacks: graph.ffi_callbacks,
         ffi_dispatch_tables: graph.ffi_dispatch_tables,
+        ffi_adoptions: graph.ffi_adoptions,
         uses_health: false,
         auth: AuthMetadata::default(),
         problem_details: None,
@@ -155,6 +156,7 @@ fn program_inferred_capabilities(graph: &ModuleGraph) -> Vec<DatabaseCapability>
         || !graph.ffi_handles.is_empty()
         || !graph.ffi_callbacks.is_empty()
         || !graph.ffi_dispatch_tables.is_empty()
+        || !graph.ffi_adoptions.is_empty()
     {
         push_program_inferred_capability(&mut capabilities, "ffi");
     }
@@ -561,6 +563,7 @@ fn transform_program_source(
             handles: &mut graph.ffi_handles,
             callbacks: &mut graph.ffi_callbacks,
             dispatch_tables: &mut graph.ffi_dispatch_tables,
+            adoptions: &mut graph.ffi_adoptions,
         },
     )?;
     analyze_program_imports(

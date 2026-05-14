@@ -410,6 +410,7 @@ fn configuration_files_overlay_and_bind_sqlite_provider() {
         ffi_handles: Vec::new(),
         ffi_callbacks: Vec::new(),
         ffi_dispatch_tables: Vec::new(),
+        ffi_adoptions: Vec::new(),
         uses_health: false,
         problem_details: None,
         dependency_graph: super::DependencyGraph::default(),

@@ -16,6 +16,23 @@
         "library": "__sloppy_missing_ffi_library__",
         "symbol": "sloppy_ffi_add_i32",
         "token": "ffi:__sloppy_missing_ffi_library__:addI32"
+      },
+      {
+        "access": "adopt",
+        "disposer": "native.destroyCounter",
+        "handle": "Counter",
+        "inference": "native-ffi",
+        "kind": "ffi",
+        "ownership": "owned",
+        "token": "ffi:adoption"
+      },
+      {
+        "access": "adopt",
+        "handle": "Counter",
+        "inference": "native-ffi",
+        "kind": "ffi",
+        "ownership": "borrowed",
+        "token": "ffi:adoption"
       }
     ]
   }

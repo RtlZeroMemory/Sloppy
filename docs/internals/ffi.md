@@ -8,8 +8,9 @@ The FFI implementation has four layers:
 - dynamic library and libffi preparation in `src/runtime/ffi/ffi_registry.c`;
 - V8 binding and marshaling in `src/engine/v8/intrinsics_ffi.cc`.
 
-The public JavaScript surface lives in `stdlib/sloppy/ffi.js` and is bundled
-into `stdlib/sloppy/internal/runtime-classic.js`.
+The public module surface lives in `stdlib/sloppy/ffi.js`. The legacy
+`runtime-classic.js` app-host bootstrap carries a smaller mirrored surface for
+handwritten artifacts.
 
 ## Startup
 
@@ -41,11 +42,17 @@ sees opaque objects, not native addresses. Passing a resource as `ptr`,
 `bytes`, or `mutBytes` uses the resource's owned byte storage for the
 synchronous call.
 
-Returned raw non-null pointers are not surfaced as usable JavaScript values in
-v1. Future pointer ownership work must keep the same opaque-handle boundary.
+Returned raw non-null `ptr` values are surfaced as opaque `NativePointer`
+resources. They do not expose numeric addresses or arbitrary symbol lookup.
+`unsafeFfi.adopt(...)` validates that the value is a live `NativePointer` and
+wraps it in a typed borrowed or owned handle. Owned adoption keeps disposal in
+JavaScript: the wrapper calls the supplied typed disposer exactly once and
+turns later disposal into a no-op.
 
 ## Limits
 
-The registry supports C ABI calls through libffi. It does not support callbacks,
-variadic functions, C++ ABI calls, struct-by-value, automatic pointer ownership,
-or off-thread FFI execution. Long-running native calls block the V8 owner thread.
+The registry supports C ABI calls through libffi. It does not support variadic
+functions, C++ ABI calls, struct-by-value, implicit pointer ownership, or
+off-thread FFI execution. Callbacks are synchronous runtime-thread resources;
+foreign-thread callback entry remains unsupported. Long-running native calls
+block the V8 owner thread.

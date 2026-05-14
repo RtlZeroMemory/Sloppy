@@ -9,7 +9,7 @@
     { "id": "app.plan.providers", "status": "warn", "message": "provider metadata not present" },
     { "id": "app.plan.capabilities", "status": "ok", "message": "capability metadata present" },
     { "id": "stdlib.ffi.required", "status": "ok", "message": "native FFI runtime feature metadata is Plan-visible" },
-    { "id": "stdlib.ffi.metadata", "status": "ok", "message": "native FFI libraries, symbols, structs, handles, callbacks, and dispatch tables are Plan-visible" },
+    { "id": "stdlib.ffi.metadata", "status": "ok", "message": "native FFI libraries, symbols, structs, handles, callbacks, dispatch tables, and pointer adoptions are Plan-visible" },
     { "id": "stdlib.ffi.library", "status": "error", "message": "native FFI library could not be loaded" },
     { "id": "stdlib.ffi.package-path", "status": "ok", "message": "packaged native FFI path is recorded without raw addresses" },
     { "id": "stdlib.ffi.sha256", "status": "ok", "message": "packaged native FFI SHA-256 verification succeeded" },
@@ -20,6 +20,7 @@
     { "id": "stdlib.ffi.handle", "status": "ok", "message": "native FFI handle ownership metadata is visible" },
     { "id": "stdlib.ffi.callback", "status": "ok", "message": "native FFI callback type metadata is visible" },
     { "id": "stdlib.ffi.dispatch-table", "status": "ok", "message": "native FFI dispatch table metadata is visible" },
+    { "id": "stdlib.ffi.adoption", "status": "ok", "message": "native FFI pointer adoption metadata is visible without raw addresses" },
     { "id": "stdlib.ffi.unsafe_boundary", "status": "warn", "message": "unsafeFfi is Plan-visible; native libraries execute in-process and must be trusted" }
   ]
 }

@@ -543,6 +543,7 @@ pub(super) fn emit_app_js(app: &ExtractedApp) -> EmittedAppJs {
         || !app.ffi_handles.is_empty()
         || !app.ffi_callbacks.is_empty()
         || !app.ffi_dispatch_tables.is_empty()
+        || !app.ffi_adoptions.is_empty()
     {
         runtime_exports.extend(["unsafeFfi", "t"]);
     }

@@ -941,6 +941,25 @@ pub(crate) fn emit_plan_with_route_artifact(
             })
         })
         .collect::<Vec<_>>();
+    let ffi_adoptions = app
+        .ffi_adoptions
+        .iter()
+        .map(|adoption| {
+            let mut value = json!({
+                "handle": adoption.handle,
+                "ownership": adoption.ownership,
+                "source": source_location_json(
+                    &adoption.source_name,
+                    &adoption.source,
+                    adoption.span
+                )
+            });
+            if let Some(disposer) = &adoption.disposer {
+                value["disposer"] = json!(disposer);
+            }
+            value
+        })
+        .collect::<Vec<_>>();
 
     let config_reads = app
         .config_reads
@@ -1089,7 +1108,7 @@ pub(crate) fn emit_plan_with_route_artifact(
                 "bindings": app.routes.iter().any(|route| !route.handler.bindings.is_empty()),
             "effects": app.routes.iter().any(|route| !route.handler.effects.is_empty()),
             "capabilities": !app.capabilities.is_empty(),
-            "ffi": !ffi_libraries.is_empty() || !ffi_structs.is_empty() || !ffi_handles.is_empty() || !ffi_callbacks.is_empty() || !ffi_dispatch_tables.is_empty()
+            "ffi": !ffi_libraries.is_empty() || !ffi_structs.is_empty() || !ffi_handles.is_empty() || !ffi_callbacks.is_empty() || !ffi_dispatch_tables.is_empty() || !ffi_adoptions.is_empty()
         }
     },
         "features": {
@@ -1445,6 +1464,7 @@ pub(crate) fn emit_plan_with_route_artifact(
         || !ffi_handles.is_empty()
         || !ffi_callbacks.is_empty()
         || !ffi_dispatch_tables.is_empty()
+        || !ffi_adoptions.is_empty()
     {
         required_features.push("stdlib.ffi".to_string());
         value["strongPlan"]["evidence"]["ffi"] = json!(true);
@@ -1454,7 +1474,8 @@ pub(crate) fn emit_plan_with_route_artifact(
             "ffiStructs": ffi_structs,
             "ffiHandles": ffi_handles,
             "ffiCallbacks": ffi_callbacks,
-            "ffiDispatchTables": ffi_dispatch_tables
+            "ffiDispatchTables": ffi_dispatch_tables,
+            "ffiAdoptions": ffi_adoptions
         });
         doctor_checks.push(json!({
             "id": "stdlib.ffi.unsafe_boundary",

@@ -358,7 +358,8 @@ static void sl_cli_doctor_emit_ffi(const SlCliOptions* options, SlArena* arena,
     if (!sl_cli_metadata_requires_feature(metadata, "stdlib.ffi") &&
         metadata->ffi_library_count == 0U && metadata->ffi_function_count == 0U &&
         metadata->ffi_struct_count == 0U && metadata->ffi_handle_count == 0U &&
-        metadata->ffi_callback_count == 0U && metadata->ffi_dispatch_table_count == 0U)
+        metadata->ffi_callback_count == 0U && metadata->ffi_dispatch_table_count == 0U &&
+        metadata->ffi_adoption_count == 0U)
     {
         return;
     }
@@ -370,13 +371,14 @@ static void sl_cli_doctor_emit_ffi(const SlCliOptions* options, SlArena* arena,
     }
     if (metadata->ffi_library_count > 0U || metadata->ffi_function_count > 0U ||
         metadata->ffi_struct_count > 0U || metadata->ffi_handle_count > 0U ||
-        metadata->ffi_callback_count > 0U || metadata->ffi_dispatch_table_count > 0U)
+        metadata->ffi_callback_count > 0U || metadata->ffi_dispatch_table_count > 0U ||
+        metadata->ffi_adoption_count > 0U)
     {
         sl_cli_doctor_emit(
             options, arena, sl_cli_span_cstr("stdlib.ffi.metadata"), sl_cli_span_cstr("ok"),
             sl_cli_span_cstr(
-                "native FFI libraries, symbols, structs, handles, callbacks, and dispatch tables "
-                "are Plan-visible"),
+                "native FFI libraries, symbols, structs, handles, callbacks, dispatch tables, "
+                "and pointer adoptions are Plan-visible"),
             emitted);
     }
     for (size_t library_index = 0U; library_index < metadata->ffi_library_count;
@@ -477,6 +479,13 @@ static void sl_cli_doctor_emit_ffi(const SlCliOptions* options, SlArena* arena,
         sl_cli_doctor_emit(
             options, arena, sl_cli_span_cstr("stdlib.ffi.dispatch-table"), sl_cli_span_cstr("ok"),
             sl_cli_span_cstr("native FFI dispatch table metadata is visible"), emitted);
+    }
+    if (metadata->ffi_adoption_count > 0U) {
+        sl_cli_doctor_emit(
+            options, arena, sl_cli_span_cstr("stdlib.ffi.adoption"), sl_cli_span_cstr("ok"),
+            sl_cli_span_cstr("native FFI pointer adoption metadata is visible without raw "
+                             "addresses"),
+            emitted);
     }
 }
 

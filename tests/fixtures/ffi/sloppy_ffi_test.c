@@ -46,6 +46,7 @@ typedef uint32_t (*SloppyFfiU32Callback)(uint32_t value);
 typedef void (*SloppyFfiVoidCallback)(int32_t value);
 
 static SloppyFfiPoint sloppy_ffi_static_point = {19, 23};
+static uint32_t sloppy_ffi_counter_destroy_calls = 0U;
 
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_add_i32(int32_t left, int32_t right);
 SLOPPY_FFI_EXPORT uint64_t sloppy_ffi_add_u64(uint64_t left, uint64_t right);
@@ -83,6 +84,8 @@ SLOPPY_FFI_EXPORT SloppyFfiCounter* sloppy_ffi_counter_create(int32_t initial);
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_counter_add(SloppyFfiCounter* counter, int32_t delta);
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_counter_value(SloppyFfiCounter* counter);
 SLOPPY_FFI_EXPORT void sloppy_ffi_counter_destroy(SloppyFfiCounter* counter);
+SLOPPY_FFI_EXPORT uint32_t sloppy_ffi_counter_destroy_count(void);
+SLOPPY_FFI_EXPORT void sloppy_ffi_counter_destroy_count_reset(void);
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_call_callback(SloppyFfiCallback callback, void* user_data,
                                                    int32_t value);
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_call_i32_callback(SloppyFfiI32Callback callback,
@@ -349,7 +352,22 @@ SLOPPY_FFI_EXPORT int32_t sloppy_ffi_counter_value(SloppyFfiCounter* counter)
 
 SLOPPY_FFI_EXPORT void sloppy_ffi_counter_destroy(SloppyFfiCounter* counter)
 {
+    if (counter != NULL) {
+        if (sloppy_ffi_counter_destroy_calls < UINT32_MAX) {
+            sloppy_ffi_counter_destroy_calls += 1U;
+        }
+    }
     free(counter);
+}
+
+SLOPPY_FFI_EXPORT uint32_t sloppy_ffi_counter_destroy_count(void)
+{
+    return sloppy_ffi_counter_destroy_calls;
+}
+
+SLOPPY_FFI_EXPORT void sloppy_ffi_counter_destroy_count_reset(void)
+{
+    sloppy_ffi_counter_destroy_calls = 0U;
 }
 
 SLOPPY_FFI_EXPORT int32_t sloppy_ffi_call_callback(SloppyFfiCallback callback, void* user_data,

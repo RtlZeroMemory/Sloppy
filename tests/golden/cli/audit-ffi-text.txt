@@ -9,3 +9,4 @@ Sloppy Audit
 [note] SLOPPY_AUDIT_FFI_HANDLES_VISIBLE FFI handle ownership metadata is visible in the Plan (native.ffiHandles)
 [note] SLOPPY_AUDIT_FFI_CALLBACKS_VISIBLE FFI callback type metadata is visible in the Plan (native.ffiCallbacks)
 [note] SLOPPY_AUDIT_FFI_DISPATCH_VISIBLE FFI dispatch table symbols are Plan-visible without public dlsym access (native.ffiDispatchTables)
+[note] SLOPPY_AUDIT_FFI_ADOPTIONS_VISIBLE FFI pointer adoption ownership metadata is visible without raw pointer addresses (native.ffiAdoptions)

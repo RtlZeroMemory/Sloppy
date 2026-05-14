@@ -217,6 +217,7 @@ pub(crate) struct AppGraph {
     pub(crate) ffi_handles: Vec<FfiHandleMetadata>,
     pub(crate) ffi_callbacks: Vec<FfiCallbackMetadata>,
     pub(crate) ffi_dispatch_tables: Vec<FfiDispatchTableMetadata>,
+    pub(crate) ffi_adoptions: Vec<FfiAdoptionMetadata>,
     pub(crate) uses_health: bool,
     pub(crate) auth: AuthMetadata,
     pub(crate) problem_details: Option<ProblemDetailsDescriptor>,
@@ -607,6 +608,16 @@ pub(crate) struct FfiDispatchTableMetadata {
     pub(crate) name: String,
     pub(crate) resolver: String,
     pub(crate) symbols: Vec<FfiFunctionMetadata>,
+    pub(crate) source_name: String,
+    pub(crate) source: String,
+    pub(crate) span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FfiAdoptionMetadata {
+    pub(crate) handle: String,
+    pub(crate) ownership: String,
+    pub(crate) disposer: Option<String>,
     pub(crate) source_name: String,
     pub(crate) source: String,
     pub(crate) span: Span,

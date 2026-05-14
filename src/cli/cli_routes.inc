@@ -700,6 +700,38 @@ static void sl_cli_capabilities_emit_text_ffi(const SlCliFfiFunction* function)
     printf("\n");
 }
 
+static void sl_cli_capabilities_emit_json_ffi_adoption(const SlCliFfiAdoption* adoption,
+                                                       size_t finding_count)
+{
+    printf("%s\n    { \"token\": \"ffi:adoption\", \"kind\": \"ffi\", \"access\": \"adopt\", "
+           "\"inference\": \"native-ffi\", "
+           "\"handle\": ",
+           finding_count == 0U ? "" : ",");
+    sl_cli_json_escape(stdout, adoption->handle);
+    printf(", \"ownership\": ");
+    sl_cli_json_escape(stdout, adoption->ownership);
+    if (!sl_cli_span_empty(adoption->disposer)) {
+        printf(", \"disposer\": ");
+        sl_cli_json_escape(stdout, adoption->disposer);
+    }
+    printf(" }");
+}
+
+static void sl_cli_capabilities_emit_text_ffi_adoption(const SlCliFfiAdoption* adoption)
+{
+    printf("PLAN  ffi:adoption:");
+    sl_cli_write_span(stdout, adoption->handle);
+    printf("  ffi  adopt  native-ffi  ");
+    sl_cli_write_span(stdout, adoption->ownership);
+    printf(" handle ");
+    sl_cli_write_span(stdout, adoption->handle);
+    if (!sl_cli_span_empty(adoption->disposer)) {
+        printf(" disposer ");
+        sl_cli_write_span(stdout, adoption->disposer);
+    }
+    printf("\n");
+}
+
 static void sl_cli_capabilities_emit_route_effects(const SlCliOptions* options,
                                                    const SlCliRoute* route, size_t* finding_count)
 {
@@ -726,6 +758,7 @@ static int sl_cli_command_capabilities(const SlCliOptions* options)
     size_t route_index = 0U;
     size_t capability_index = 0U;
     size_t ffi_index = 0U;
+    size_t adoption_index = 0U;
     size_t finding_count = 0U;
 
     if (options->plan_path == NULL) {
@@ -771,6 +804,19 @@ static int sl_cli_command_capabilities(const SlCliOptions* options)
         }
         else {
             sl_cli_capabilities_emit_text_ffi(&metadata->ffi_functions[ffi_index]);
+        }
+        finding_count += 1U;
+    }
+    for (adoption_index = 0U; adoption_index < metadata->ffi_adoption_count;
+         adoption_index += 1U)
+    {
+        if (options->format == SL_CLI_FORMAT_JSON) {
+            sl_cli_capabilities_emit_json_ffi_adoption(
+                &metadata->ffi_adoptions[adoption_index], finding_count);
+        }
+        else {
+            sl_cli_capabilities_emit_text_ffi_adoption(
+                &metadata->ffi_adoptions[adoption_index]);
         }
         finding_count += 1U;
     }

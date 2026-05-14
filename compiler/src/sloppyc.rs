@@ -422,6 +422,7 @@ struct AppState {
     ffi_handles: Vec<FfiHandleMetadata>,
     ffi_callbacks: Vec<FfiCallbackMetadata>,
     ffi_dispatch_tables: Vec<FfiDispatchTableMetadata>,
+    ffi_adoptions: Vec<FfiAdoptionMetadata>,
     problem_details_imported: bool,
     auth_imported: bool,
     config_imported: bool,
@@ -497,6 +498,7 @@ impl AppState {
             ffi_handles: Vec::new(),
             ffi_callbacks: Vec::new(),
             ffi_dispatch_tables: Vec::new(),
+            ffi_adoptions: Vec::new(),
             problem_details_imported: false,
             auth_imported: false,
             config_imported: false,
@@ -1070,6 +1072,7 @@ struct ModuleGraph {
     ffi_handles: Vec<FfiHandleMetadata>,
     ffi_callbacks: Vec<FfiCallbackMetadata>,
     ffi_dispatch_tables: Vec<FfiDispatchTableMetadata>,
+    ffi_adoptions: Vec<FfiAdoptionMetadata>,
 }
 
 #[derive(Debug, Clone)]
@@ -1127,6 +1130,7 @@ impl ModuleGraph {
             ffi_handles: Vec::new(),
             ffi_callbacks: Vec::new(),
             ffi_dispatch_tables: Vec::new(),
+            ffi_adoptions: Vec::new(),
         }
     }
 
@@ -1722,6 +1726,7 @@ fn extract_entry(
             handles: &mut state.ffi_handles,
             callbacks: &mut state.ffi_callbacks,
             dispatch_tables: &mut state.ffi_dispatch_tables,
+            adoptions: &mut state.ffi_adoptions,
         },
     )?;
 
@@ -2059,6 +2064,11 @@ fn extract_entry(
             let mut ffi_dispatch_tables = graph.ffi_dispatch_tables.clone();
             ffi_dispatch_tables.extend(state.ffi_dispatch_tables);
             ffi_dispatch_tables
+        },
+        ffi_adoptions: {
+            let mut ffi_adoptions = graph.ffi_adoptions.clone();
+            ffi_adoptions.extend(state.ffi_adoptions);
+            ffi_adoptions
         },
         uses_health: state.uses_health,
         auth: state.auth,
