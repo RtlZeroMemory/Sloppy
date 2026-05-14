@@ -324,6 +324,36 @@ async function validateSessionsAndCsrf(collector) {
     } finally {
         await host.close();
     }
+
+    await record(collector, "session.rotation-refreshes-plain-success", async () => {
+        let rotationClock = 1_700_000_000_000;
+        const rotationApp = Sloppy.create();
+        rotationApp.use(Auth.cookieSession({
+            secret: "rotation-plain-secret",
+            store: Auth.sessionStore.memory(),
+            rotation: true,
+            idleTimeoutMs: 1_000,
+            absoluteTimeoutMs: 5_000,
+            clock: () => rotationClock,
+        }));
+        rotationApp.post("/login", (ctx) => Auth.signIn(ctx, { sub: "rotation-plain-user" }));
+        rotationApp.get("/plain", () => "ok").requireAuth();
+        const rotationHost = Testing.createHost(rotationApp);
+        try {
+            const login = await rotationHost.post("/login");
+            const session = cookieValue(login.headers.get("set-cookie"));
+            rotationClock += 500;
+            assertStatus(await rotationHost.get("/plain", {
+                headers: { cookie: `sloppy.session=${session}` },
+            }), 200, "session.rotation-refreshes-plain-success");
+            rotationClock += 700;
+            assertStatus(await rotationHost.get("/plain", {
+                headers: { cookie: `sloppy.session=${session}` },
+            }), 200, "session.rotation-refreshes-plain-success");
+        } finally {
+            await rotationHost.close();
+        }
+    });
 }
 
 async function validateJwtAndCsrfShape(collector) {

@@ -550,6 +550,34 @@ try {
 }
 
 {
+    let sessionClock = 1_700_000_000_000;
+    const app = Sloppy.create();
+    app.use(Auth.cookieSession({
+        secret: "rotate-string-secret",
+        store: Auth.sessionStore.memory(),
+        rotation: true,
+        idleTimeoutMs: 1_000,
+        absoluteTimeoutMs: 5_000,
+        clock: () => sessionClock,
+    }));
+    app.post("/login", (ctx) => Auth.signIn(ctx, { sub: "rotate-string-user" }));
+    app.get("/plain", () => "ok").requireAuth();
+
+    const host = Testing.createHost(app);
+    const login = await host.post("/login");
+    const session = cookieValue(login.headers.get("set-cookie"));
+    sessionClock += 500;
+    assert.equal((await host.get("/plain", {
+        headers: { cookie: `sloppy.session=${session}` },
+    })).status, 200);
+    sessionClock += 700;
+    assert.equal((await host.get("/plain", {
+        headers: { cookie: `sloppy.session=${session}` },
+    })).status, 200);
+    await host.close();
+}
+
+{
     const startMs = 1_700_000_000_000;
     let sessionClock = startMs;
     const app = Sloppy.create();

@@ -695,6 +695,10 @@ async function cookieSessionMiddleware(ctx, next, scheme) {
     }
     const result = await next();
     if (result === null || typeof result !== "object" || typeof result.cookie !== "function") {
+        verified = await refreshStoredSession(verified, scheme);
+        if (verified === undefined) {
+            return unauthorized();
+        }
         return result;
     }
     const currentMs = nowMilliseconds(scheme.clock);
