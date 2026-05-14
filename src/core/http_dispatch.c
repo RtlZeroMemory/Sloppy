@@ -3130,6 +3130,7 @@ typedef struct SlHttpDispatchContextNeeds
     bool signal;
     bool log;
     bool metadata;
+    uint32_t request_fields;
 } SlHttpDispatchContextNeeds;
 
 static bool sl_http_dispatch_route_has_native_response(const SlPlanRoute* route);
@@ -3151,6 +3152,57 @@ static void sl_http_dispatch_context_needs_all(SlHttpDispatchContextNeeds* needs
     needs->signal = true;
     needs->log = true;
     needs->metadata = true;
+    needs->request_fields = SL_HTTP_REQUEST_FIELDS_ALL;
+}
+
+static uint32_t sl_http_dispatch_request_field_mask(SlStr name)
+{
+    switch (name.length) {
+    case 10U:
+        if (!sl_str_equal(name, SL_STR_LITERAL("request.id"))) {
+            break;
+        }
+        return SL_HTTP_REQUEST_FIELD_ID;
+    case 12U:
+        if (!sl_str_equal(name, SL_STR_LITERAL("request.path"))) {
+            break;
+        }
+        return SL_HTTP_REQUEST_FIELD_PATH;
+    case 14U:
+        if (sl_str_equal(name, SL_STR_LITERAL("request.method"))) {
+            return SL_HTTP_REQUEST_FIELD_METHOD;
+        }
+        if (sl_str_equal(name, SL_STR_LITERAL("request.scheme"))) {
+            return SL_HTTP_REQUEST_FIELD_SCHEME;
+        }
+        break;
+    case 16U:
+        if (!sl_str_equal(name, SL_STR_LITERAL("request.protocol"))) {
+            break;
+        }
+        return SL_HTTP_REQUEST_FIELD_PROTOCOL;
+    case 17U:
+        if (!sl_str_equal(name, SL_STR_LITERAL("request.rawTarget"))) {
+            break;
+        }
+        return SL_HTTP_REQUEST_FIELD_RAW_TARGET;
+    case 19U:
+        if (sl_str_equal(name, SL_STR_LITERAL("request.queryString"))) {
+            return SL_HTTP_REQUEST_FIELD_QUERY_STRING;
+        }
+        if (sl_str_equal(name, SL_STR_LITERAL("request.contentType"))) {
+            return SL_HTTP_REQUEST_FIELD_CONTENT_TYPE;
+        }
+        break;
+    case 21U:
+        if (!sl_str_equal(name, SL_STR_LITERAL("request.contentLength"))) {
+            break;
+        }
+        return SL_HTTP_REQUEST_FIELD_CONTENT_LENGTH;
+    default:
+        break;
+    }
+    return 0U;
 }
 
 static SlHttpDispatchContextNeeds sl_http_dispatch_context_needs(const SlPlanRoute* route)
@@ -3190,9 +3242,18 @@ static SlHttpDispatchContextNeeds sl_http_dispatch_context_needs(const SlPlanRou
         case SL_PLAN_REQUEST_BINDING_CONTEXT:
             if (sl_str_equal(route->bindings[index].name, sl_str_from_cstr("request"))) {
                 needs.request = true;
+                needs.request_fields = SL_HTTP_REQUEST_FIELDS_ALL;
             }
             else {
-                sl_http_dispatch_context_needs_all(&needs);
+                uint32_t request_field =
+                    sl_http_dispatch_request_field_mask(route->bindings[index].name);
+                if (request_field != 0U) {
+                    needs.request = true;
+                    needs.request_fields |= request_field;
+                }
+                else {
+                    sl_http_dispatch_context_needs_all(&needs);
+                }
             }
             break;
         case SL_PLAN_REQUEST_BINDING_INJECTION:
@@ -3620,6 +3681,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
     request_context.needs_header_facade = needs.header_facade;
     request_context.needs_cookies = needs.cookies;
     request_context.needs_request = needs.request;
+    request_context.request_fields = needs.request_fields;
     request_context.needs_connection = needs.connection;
     request_context.needs_signal = needs.signal;
     request_context.needs_log = needs.log;

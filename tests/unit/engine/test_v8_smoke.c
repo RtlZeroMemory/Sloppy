@@ -4491,6 +4491,75 @@ static int test_request_context_profile_counts_only_requested_facets(void)
     return 0;
 }
 
+static int test_request_context_request_field_mask_materializes_only_method(void)
+{
+    unsigned char engine_storage[8192];
+    unsigned char result_storage[4096];
+    SlArena engine_arena = {0};
+    SlArena result_arena = {0};
+    SlEngineOptions options = v8_options();
+    SlEngine* engine = NULL;
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlHttpRequestHead request = test_request(SL_HTTP_METHOD_GET);
+    SlHttpRequestContext context = {0};
+
+    context = test_request_context(&request);
+    context.request_fields = SL_HTTP_REQUEST_FIELD_METHOD;
+    context.has_content_length = true;
+    context.content_length = 123U;
+
+    if (init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        init_arena(&result_arena, result_storage, sizeof(result_storage)) != 0)
+    {
+        return 448;
+    }
+
+    if (expect_status(sl_engine_create(&options, &engine_arena, &engine), SL_STATUS_OK) != 0) {
+        return 449;
+    }
+
+    if (expect_status(
+            sl_engine_eval_source(
+                engine, sl_str_from_cstr("v8-request-field-mask.js"),
+                sl_str_from_cstr("globalThis.sloppy_request_method_only = function (ctx) {"
+                                 "  const own = Object.prototype.hasOwnProperty;"
+                                 "  return { __sloppyResult: true, kind: 'json', status: 200,"
+                                 "    contentType: 'application/json; charset=utf-8', body: {"
+                                 "      method: ctx.request.method,"
+                                 "      hasId: own.call(ctx.request, 'id'),"
+                                 "      hasPath: own.call(ctx.request, 'path'),"
+                                 "      hasContentLength: own.call(ctx.request, 'contentLength')"
+                                 "    } };"
+                                 "};"),
+                &diag),
+            SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 450;
+    }
+
+    if (expect_status(sl_engine_call_function_with_context(
+                          engine, &result_arena, sl_str_from_cstr("sloppy_request_method_only"),
+                          &context, &result, &diag),
+                      SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 451;
+    }
+    if (result.kind != SL_ENGINE_RESULT_JSON ||
+        expect_bytes_equal(result.response.body,
+                           "{\"method\":\"GET\",\"hasId\":false,\"hasPath\":false,"
+                           "\"hasContentLength\":false}") != 0)
+    {
+        sl_engine_destroy(engine);
+        return 452;
+    }
+
+    sl_engine_destroy(engine);
+    return 0;
+}
+
 static int test_request_context_preserves_binary_body_bytes(void)
 {
     unsigned char engine_storage[8192];
@@ -8587,6 +8656,11 @@ int main(int argc, char** argv)
     }
 
     result = test_request_context_profile_counts_only_requested_facets();
+    if (result != 0) {
+        return result;
+    }
+
+    result = test_request_context_request_field_mask_materializes_only_method();
     if (result != 0) {
         return result;
     }

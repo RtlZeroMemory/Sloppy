@@ -3569,6 +3569,12 @@ bool http_v8_fast_result_has_no_custom_headers(v8::Isolate* isolate, v8::Local<v
                                                      SL_V8_HTTP_STRING_HEADERS);
 }
 
+bool http_v8_request_field_needed(const SlHttpRequestContext* request_context, uint32_t field)
+{
+    return request_context != nullptr && (request_context->request_fields == 0U ||
+                                          (request_context->request_fields & field) != 0U);
+}
+
 SlStatus http_v8_try_convert_fast_result(v8::Isolate* isolate, v8::Local<v8::Context> context,
                                          SlEngine* engine, SlArena* arena,
                                          v8::Local<v8::Object> object, SlEngineResult* out_result,
@@ -3732,7 +3738,9 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_CONTEXT_BASE_OBJECT,
                                      sl_http_profile_now_ns() - started_ns);
     }
-    if (request_context->needs_request) {
+    if (request_context->needs_request &&
+        http_v8_request_field_needed(request_context, SL_HTTP_REQUEST_FIELD_METHOD))
+    {
         method = http_v8_request_method_name(request_context->request->method);
         if (sl_str_is_empty(method)) {
             return false;
@@ -3806,7 +3814,8 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     }
 
     if (request_context->needs_metadata || request_context->needs_log ||
-        request_context->needs_request)
+        (request_context->needs_request &&
+         http_v8_request_field_needed(request_context, SL_HTTP_REQUEST_FIELD_ID)))
     {
         request_id = std::to_string(request_context->request_id);
     }
@@ -3897,20 +3906,48 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         request = v8::Object::New(isolate);
         if (!http_v8_cached_prototype(isolate, context, SL_V8_HTTP_PROTOTYPE_REQUEST,
                                       &request_prototype) ||
-            !request->SetPrototype(context, request_prototype).FromMaybe(false) ||
+            !request->SetPrototype(context, request_prototype).FromMaybe(false))
+        {
+            return false;
+        }
+        if (http_v8_request_field_needed(request_context, SL_HTTP_REQUEST_FIELD_ID) &&
             !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_ID,
-                                             http_v8_str_from_string(request_id)) ||
+                                             http_v8_str_from_string(request_id)))
+        {
+            return false;
+        }
+        if (http_v8_request_field_needed(request_context, SL_HTTP_REQUEST_FIELD_METHOD) &&
             !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_METHOD,
-                                             method) ||
+                                             method))
+        {
+            return false;
+        }
+        if (http_v8_request_field_needed(request_context, SL_HTTP_REQUEST_FIELD_SCHEME) &&
             !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_SCHEME,
-                                             request_context->scheme) ||
+                                             request_context->scheme))
+        {
+            return false;
+        }
+        if (http_v8_request_field_needed(request_context, SL_HTTP_REQUEST_FIELD_PROTOCOL) &&
             !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_PROTOCOL,
-                                             request_context->protocol) ||
+                                             request_context->protocol))
+        {
+            return false;
+        }
+        if (http_v8_request_field_needed(request_context, SL_HTTP_REQUEST_FIELD_PATH) &&
             !http_v8_set_string_property_key(isolate, context, request, SL_V8_HTTP_STRING_PATH,
-                                             request_context->request->path) ||
+                                             request_context->request->path))
+        {
+            return false;
+        }
+        if (http_v8_request_field_needed(request_context, SL_HTTP_REQUEST_FIELD_QUERY_STRING) &&
             !http_v8_set_string_property_key(isolate, context, request,
                                              SL_V8_HTTP_STRING_QUERY_STRING,
-                                             request_context->query_string) ||
+                                             request_context->query_string))
+        {
+            return false;
+        }
+        if (http_v8_request_field_needed(request_context, SL_HTTP_REQUEST_FIELD_RAW_TARGET) &&
             !http_v8_set_string_property_key(isolate, context, request,
                                              SL_V8_HTTP_STRING_RAW_TARGET,
                                              request_context->request->raw_target))
@@ -4021,7 +4058,9 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     }
 
     if (request_context->needs_request) {
-        if (!sl_str_is_empty(request_context->content_type)) {
+        if (http_v8_request_field_needed(request_context, SL_HTTP_REQUEST_FIELD_CONTENT_TYPE) &&
+            !sl_str_is_empty(request_context->content_type))
+        {
             if (!http_v8_set_string_property_key(isolate, context, request,
                                                  SL_V8_HTTP_STRING_CONTENT_TYPE,
                                                  request_context->content_type))
@@ -4029,12 +4068,16 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
                 return false;
             }
         }
-        else if (!http_v8_set_null_property_key(isolate, context, request,
+        else if (http_v8_request_field_needed(request_context,
+                                              SL_HTTP_REQUEST_FIELD_CONTENT_TYPE) &&
+                 !http_v8_set_null_property_key(isolate, context, request,
                                                 SL_V8_HTTP_STRING_CONTENT_TYPE))
         {
             return false;
         }
-        if (request_context->has_content_length) {
+        if (http_v8_request_field_needed(request_context, SL_HTTP_REQUEST_FIELD_CONTENT_LENGTH) &&
+            request_context->has_content_length)
+        {
             if (!http_v8_set_uint64_property_key(isolate, context, request,
                                                  SL_V8_HTTP_STRING_CONTENT_LENGTH,
                                                  request_context->content_length))
@@ -4042,7 +4085,9 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
                 return false;
             }
         }
-        else if (!http_v8_set_null_property_key(isolate, context, request,
+        else if (http_v8_request_field_needed(request_context,
+                                              SL_HTTP_REQUEST_FIELD_CONTENT_LENGTH) &&
+                 !http_v8_set_null_property_key(isolate, context, request,
                                                 SL_V8_HTTP_STRING_CONTENT_LENGTH))
         {
             return false;

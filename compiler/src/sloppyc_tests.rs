@@ -3484,7 +3484,7 @@ fn request_method_context_access_uses_request_facade_binding() {
 
     assert_eq!(bindings.len(), 1);
     assert_eq!(bindings[0].kind, "context");
-    assert_eq!(bindings[0].name.as_deref(), Some("request"));
+    assert_eq!(bindings[0].name.as_deref(), Some("request.method"));
     assert_eq!(bindings[0].type_name.as_deref(), Some("RequestContext"));
 }
 

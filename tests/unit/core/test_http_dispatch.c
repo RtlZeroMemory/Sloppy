@@ -3448,6 +3448,55 @@ static int test_request_facade_context_binding_skips_malformed_query(void)
     return 0;
 }
 
+static int test_request_field_context_binding_skips_malformed_query(void)
+{
+    unsigned char storage[TEST_ARENA_SIZE];
+    unsigned char engine_storage[1024];
+    SlArena arena = {0};
+    SlArena engine_arena = {0};
+    SlEngine* engine = NULL;
+    SlPlanHandler handler = {0};
+    SlPlanRoute route = {0};
+    SlPlanRequestBinding binding = {0};
+    SlPlan plan = one_handler_plan(&handler);
+    SlHttpRouteTable table = {0};
+    SlHttpRequestHead request = {0};
+    SlEngineResult result = {0};
+    SlDiag diag = {0};
+    SlStatus status;
+
+    route.method = sl_str_from_cstr("GET");
+    route.pattern = sl_str_from_cstr("/ok");
+    route.handler_id = 1U;
+    route.bindings = &binding;
+    route.binding_count = 1U;
+    binding.kind = SL_PLAN_REQUEST_BINDING_CONTEXT;
+    binding.name = sl_str_from_cstr("request.method");
+    plan.routes = &route;
+    plan.route_count = 1U;
+
+    if (init_arena(&arena, storage, sizeof(storage)) != 0 ||
+        init_arena(&engine_arena, engine_storage, sizeof(engine_storage)) != 0 ||
+        create_noop_engine(&engine_arena, &engine) != 0 ||
+        parse_request(&arena, "GET /ok?q=%zz HTTP/1.1\r\nHost: example\r\n\r\n", &request) != 0 ||
+        expect_status(sl_http_route_table_build(&arena, &plan, &table, &diag), SL_STATUS_OK) != 0)
+    {
+        sl_engine_destroy(engine);
+        return 178;
+    }
+
+    status = sl_http_dispatch_request_head(&arena, engine, &plan, &table.dispatch, &request,
+                                           &result, &diag);
+    sl_engine_destroy(engine);
+    if (expect_status(status, SL_STATUS_UNSUPPORTED) != 0 || result.kind != SL_ENGINE_RESULT_NONE ||
+        diag.code != SL_DIAG_UNSUPPORTED_ENGINE)
+    {
+        return 179;
+    }
+
+    return 0;
+}
+
 static int test_native_static_text_response_skips_engine(void)
 {
     unsigned char storage[TEST_ARENA_SIZE];
@@ -4209,6 +4258,7 @@ int main(void)
         HTTP_DISPATCH_TEST(test_plan_route_with_query_binding_rejects_malformed_query),
         HTTP_DISPATCH_TEST(test_plan_route_with_middleware_keeps_query_conservative),
         HTTP_DISPATCH_TEST(test_request_facade_context_binding_skips_malformed_query),
+        HTTP_DISPATCH_TEST(test_request_field_context_binding_skips_malformed_query),
         HTTP_DISPATCH_TEST(test_native_static_text_response_skips_engine),
         HTTP_DISPATCH_TEST(test_native_static_empty_and_problem_responses_skip_engine),
         HTTP_DISPATCH_TEST(test_profile_counters_distinguish_static_and_dynamic_dispatch),

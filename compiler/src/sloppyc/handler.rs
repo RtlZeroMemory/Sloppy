@@ -946,15 +946,27 @@ pub(super) fn specialize_typed_context_bindings_for_usage(
     inferred_bindings: &[RequestBinding],
 ) {
     let request_facade_only = !inferred_bindings.is_empty()
-        && inferred_bindings
-            .iter()
-            .all(|binding| binding.kind == "context" && binding.name.as_deref() == Some("request"));
+        && inferred_bindings.iter().all(|binding| {
+            binding.kind == "context"
+                && binding
+                    .name
+                    .as_deref()
+                    .is_some_and(|name| name == "request" || name.starts_with("request."))
+        });
     if !request_facade_only {
         return;
     }
+    let inferred_names = inferred_bindings
+        .iter()
+        .filter_map(|binding| binding.name.as_deref())
+        .collect::<BTreeSet<_>>();
     for binding in bindings {
         if binding.kind == "context" && binding.name.as_deref() == Some("RequestContext") {
-            binding.name = Some("request".to_string());
+            binding.name = if inferred_names.len() == 1 {
+                inferred_names.iter().next().map(|name| (*name).to_owned())
+            } else {
+                Some("request".to_string())
+            };
         }
     }
 }
@@ -2832,7 +2844,7 @@ pub(super) fn request_binding_from_expression(
                 | "scheme"
         )
     {
-        return Some(request_facade_context_binding());
+        return Some(request_facade_context_binding(Some(chain[2])));
     }
     if chain.len() >= 2 && chain[0] == ctx_name {
         return Some(context_request_binding());
@@ -2859,10 +2871,14 @@ pub(super) fn context_request_binding() -> RequestBinding {
     }
 }
 
-pub(super) fn request_facade_context_binding() -> RequestBinding {
+pub(super) fn request_facade_context_binding(field: Option<&str>) -> RequestBinding {
     RequestBinding {
         kind: "context".to_string(),
-        name: Some("request".to_string()),
+        name: Some(
+            field
+                .map(|name| format!("request.{name}"))
+                .unwrap_or_else(|| "request".to_string()),
+        ),
         schema: None,
         parameter: None,
         type_name: Some("RequestContext".to_string()),

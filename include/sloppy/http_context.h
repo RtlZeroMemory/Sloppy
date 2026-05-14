@@ -42,6 +42,20 @@ typedef struct SlHttpQuery
 
 typedef struct SlPlanSchema SlPlanSchema;
 
+enum
+{
+    SL_HTTP_REQUEST_FIELD_ID = 1U << 0U,
+    SL_HTTP_REQUEST_FIELD_METHOD = 1U << 1U,
+    SL_HTTP_REQUEST_FIELD_SCHEME = 1U << 2U,
+    SL_HTTP_REQUEST_FIELD_PROTOCOL = 1U << 3U,
+    SL_HTTP_REQUEST_FIELD_PATH = 1U << 4U,
+    SL_HTTP_REQUEST_FIELD_QUERY_STRING = 1U << 5U,
+    SL_HTTP_REQUEST_FIELD_RAW_TARGET = 1U << 6U,
+    SL_HTTP_REQUEST_FIELD_CONTENT_TYPE = 1U << 7U,
+    SL_HTTP_REQUEST_FIELD_CONTENT_LENGTH = 1U << 8U,
+    SL_HTTP_REQUEST_FIELDS_ALL = (1U << 9U) - 1U
+};
+
 typedef struct SlHttpRequestContext
 {
     const SlHttpRequestHead* request;
@@ -78,6 +92,11 @@ typedef struct SlHttpRequestContext
     unsigned needs_signal : 1;
     unsigned needs_log : 1;
     unsigned needs_metadata : 1;
+    /*
+     * Optional bitmask for field-level request facade materialization. Zero preserves the
+     * historical full `ctx.request` object for callers that do not provide field metadata.
+     */
+    uint32_t request_fields;
     const SlPlanSchema* request_schema;
     const SlPlanSchema* response_schema;
 } SlHttpRequestContext;
