@@ -2,20 +2,22 @@ param(
     [ValidateSet("pr", "extended", "torture")]
     [string]$Tier = "pr",
 
-    [ValidateSet("all", "static", "native", "compiler", "js", "fuzz", "http2", "package", "contracts", "sanitizer", "stress", "v8", "provider", "meta", "golden", "integration", "examples", "templates", "alpha-flow", "diagnostics")]
+    [ValidateSet("all", "static", "native", "compiler", "js", "fuzz", "http2", "package", "contracts", "contracts-http", "sanitizer", "stress", "v8", "provider", "meta", "golden", "integration", "examples", "templates", "alpha-flow", "diagnostics")]
     [string]$Area = "all",
 
     [int]$Seed = 12345,
     [int]$FuzzIterations = 0,
     [int]$StressSeconds = 0,
+    [string]$V8Root = "",
     [string]$Out = "",
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 
-$Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 . (Join-Path $PSScriptRoot "v8-sdk.ps1")
+
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $Tier = $Tier.ToLowerInvariant()
 $Area = $Area.ToLowerInvariant()
 $StartedAt = (Get-Date).ToUniversalTime()
@@ -25,7 +27,7 @@ $V8PresetPrepared = $false
 $V8PresetAvailable = $false
 
 function Write-TestEngineHelp {
-    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|contracts|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-Out path]"
+    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|contracts|contracts-http|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-V8Root path] [-Out path]"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  tools/windows/test-engine.ps1 -Tier pr"
@@ -218,19 +220,25 @@ function Ensure-V8Preset {
     }
 
     $script:V8PresetPrepared = $true
-    $explicitV8Root = $env:SLOPPY_V8_ROOT
-    if (-not [string]::IsNullOrWhiteSpace($explicitV8Root) -and
-        -not (Test-SlV8SdkLayout -Root $explicitV8Root -Quiet)) {
+    $devScript = Join-Path $Root "tools/windows/dev.ps1"
+    $resolvedV8Root = Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root
+    if ([string]::IsNullOrWhiteSpace($resolvedV8Root)) {
+        $configureArgs = @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8")
+        if (-not [string]::IsNullOrWhiteSpace($V8Root)) {
+            $configureArgs += @("-V8Root", $V8Root)
+        }
+        $commandText = Join-CommandText $devScript $configureArgs
+        $note = if ([string]::IsNullOrWhiteSpace($V8Root)) {
+            "no compatible Sloppy V8 SDK resolved"
+        } else {
+            "explicit V8 SDK root does not exist or is incompatible: $V8Root"
+        }
+        Add-Lane "v8.configure" "unavailable" 0 $commandText $note
         $script:V8PresetAvailable = $false
         return $false
     }
 
-    $devScript = Join-Path $Root "tools/windows/dev.ps1"
-    $configureArgs = @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8")
-    if (-not [string]::IsNullOrWhiteSpace($explicitV8Root)) {
-        $configureArgs += @("-V8Root", $explicitV8Root)
-    }
-    Invoke-PowerShellLane "v8.configure" $devScript $configureArgs
+    Invoke-PowerShellLane "v8.configure" $devScript @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8", "-V8Root", $resolvedV8Root)
     if ($script:LastLaneStatus -ne "pass") {
         $script:V8PresetAvailable = $false
         return $false
@@ -548,7 +556,11 @@ function Invoke-PackageArea {
 }
 
 function Invoke-ContractsArea {
-    Invoke-ExternalLane -Id "contracts.all" -File "node" -Arguments @((Join-Path $Root "tests/contracts/runner/contract-runner.mjs"), "--area", "all", "--tier", $Tier) -UnavailableNote "node is not available"
+    Invoke-ExternalLane "contracts.all" "node" @((Join-Path $Root "tests/contracts/runner/contract-runner.mjs"), "--area", "all", "--tier", $Tier) -UnavailableNote "node is not available"
+}
+
+function Invoke-ContractsHttpArea {
+    Invoke-ExternalLane "contracts.http" "node" @((Join-Path $Root "tests/contracts/runner/contract-runner.mjs"), "--area", "http", "--tier", $Tier) -UnavailableNote "node is not available"
 }
 
 function Invoke-SanitizerArea {
@@ -664,6 +676,9 @@ if ($Area -eq "package" -or ($Area -eq "all" -and $Tier -ne "pr")) {
 }
 if (Should-Run "contracts") {
     Invoke-ContractsArea
+}
+if ($Area -eq "contracts-http") {
+    Invoke-ContractsHttpArea
 }
 if ($Area -eq "sanitizer" -or ($Area -eq "all" -and $Tier -ne "pr")) {
     Invoke-SanitizerArea

@@ -22,7 +22,8 @@ changes.
 
 ## Golden Policy
 
-Goldens are receipts, not the source of truth. Structured JSON goldens should
+Goldens are receipts, not the source of truth. Each golden records a semantic contract,
+not an implementation transcript. Structured JSON goldens should
 assert stable semantic fields; text goldens are reserved for deliberate UX
 surfaces. Do not update a golden only because current output changed.
 
