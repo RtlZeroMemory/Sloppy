@@ -4510,8 +4510,7 @@ static int test_request_context_profile_counts_only_requested_facets(void)
         return 447;
     }
     {
-        const char* expected[] = {"\"bodyFacadeMaterialized\": 0",
-                                  "\"bodyJsonMaterialized\": 1"};
+        const char* expected[] = {"\"bodyFacadeMaterialized\": 0", "\"bodyJsonMaterialized\": 1"};
         if (profile_json_contains_all(expected, sizeof(expected) / sizeof(expected[0])) != 0) {
             sl_engine_destroy(engine);
             restore_http_profile(&profile_env);

@@ -29,7 +29,7 @@ pub(crate) fn typed_arrow_handler_source_with_replacements(
         &erase_spans,
         replacements,
     )?;
-    let wrapper = wrapper_source(&executable_source, bindings, function.r#async);
+    let wrapper = wrapper_source(&executable_source, bindings, function.r#async)?;
     Some(TypedHandlerSource {
         original_source: handler_source,
         emitted_source: wrapper.source,
@@ -53,7 +53,7 @@ pub(crate) fn typed_function_handler_source_with_replacements(
         &erase_spans,
         replacements,
     )?;
-    let wrapper = wrapper_source(&executable_source, bindings, function.r#async);
+    let wrapper = wrapper_source(&executable_source, bindings, function.r#async)?;
     Some(TypedHandlerSource {
         original_source: handler_source,
         emitted_source: wrapper.source,
@@ -500,37 +500,36 @@ fn wrapper_source(
     handler_source: &str,
     bindings: &[RequestBinding],
     handler_is_async: bool,
-) -> WrapperSource {
+) -> Option<WrapperSource> {
     let args_with_scope = |scope_expr: &str| {
         bindings
             .iter()
             .map(|binding| framework_arg_expression(binding, scope_expr))
             .collect::<Option<Vec<_>>>()
-            .unwrap_or_default()
-            .join(", ")
+            .map(|args| args.join(", "))
     };
 
     if !handler_is_async && bindings.iter().all(typed_binding_can_sync_without_scope) {
-        let args = args_with_scope("undefined");
+        let args = args_with_scope("undefined")?;
         let prefix = "(() => { const __sloppy_typed_handler = ";
-        return WrapperSource {
+        return Some(WrapperSource {
             source: format!(
                 "{prefix}{handler_source}; return (ctx) => __sloppy_typed_handler({args}); }})()"
             ),
             handler_line_offset: 0,
             handler_column_offset: prefix.len(),
-        };
+        });
     }
 
-    let args = args_with_scope("__sloppy_scope");
+    let args = args_with_scope("__sloppy_scope")?;
     let prefix = "(() => { const __sloppy_typed_handler = ";
-    WrapperSource {
+    Some(WrapperSource {
         source: format!(
             "{prefix}{handler_source}; return async (ctx) => {{ const __sloppy_scope = __sloppy_framework_services.createScope(ctx); ctx.services = __sloppy_scope; try {{ const __sloppy_args = await Promise.all([{args}]); return await __sloppy_typed_handler(...__sloppy_args); }} finally {{ await __sloppy_scope.dispose(); }} }}; }})()"
         ),
         handler_line_offset: 0,
         handler_column_offset: prefix.len(),
-    }
+    })
 }
 
 fn framework_arg_expression(binding: &RequestBinding, scope_expr: &str) -> Option<String> {

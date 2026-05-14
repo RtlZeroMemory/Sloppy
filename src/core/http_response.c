@@ -24,7 +24,6 @@
 #include "sloppy/json_profile.h"
 
 #include <stdbool.h>
-#include <string.h>
 
 static SlBytes sl_http_response_body_from_str(SlStr text)
 {
@@ -465,15 +464,12 @@ static SlStatus sl_http_response_append_content_length(SlByteBuilder* builder, s
     return sl_http_response_append_cstr(builder, "\r\n");
 }
 
-static bool sl_http_response_content_type_is(SlStr actual, const char* expected)
+static bool sl_http_response_content_type_is(SlStr actual, SlStr expected)
 {
-    size_t length = 0U;
-
-    if (actual.ptr == NULL || expected == NULL) {
+    if (actual.ptr == NULL || expected.ptr == NULL) {
         return false;
     }
-    length = strlen(expected);
-    return actual.length == length && memcmp(actual.ptr, expected, length) == 0;
+    return sl_str_equal(actual, expected);
 }
 
 static size_t sl_http_response_decimal_length(size_t value)
@@ -505,12 +501,12 @@ static void sl_http_response_write_decimal(unsigned char** cursor, size_t value)
     }
 }
 
-static void sl_http_response_copy_literal(unsigned char** cursor, const char* text)
+static void sl_http_response_copy_literal(unsigned char** cursor, SlStr text)
 {
-    size_t length = strlen(text);
-
-    memcpy(*cursor, text, length);
-    *cursor += length;
+    for (size_t index = 0U; index < text.length; index += 1U) {
+        **cursor = (unsigned char)text.ptr[index];
+        *cursor += 1;
+    }
 }
 
 static bool sl_http_response_try_write_fast_200(const SlHttpResponse* response,
@@ -519,9 +515,10 @@ static bool sl_http_response_try_write_fast_200(const SlHttpResponse* response,
                                                 size_t capacity, SlBytes* out_bytes,
                                                 SlStatus* out_status)
 {
-    const char* content_type = NULL;
-    const char* connection =
-        connection_policy == SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE ? "keep-alive" : "close";
+    SlStr content_type = sl_str_empty();
+    SlStr connection = connection_policy == SL_HTTP_RESPONSE_CONNECTION_KEEP_ALIVE
+                           ? SL_STR_LITERAL("keep-alive")
+                           : SL_STR_LITERAL("close");
     size_t total = 0U;
     unsigned char* cursor = buffer;
     SlStatus status = sl_status_ok();
@@ -539,9 +536,10 @@ static bool sl_http_response_try_write_fast_200(const SlHttpResponse* response,
         return true;
     }
     if (response->kind == SL_HTTP_RESPONSE_TEXT &&
-        sl_http_response_content_type_is(response->content_type, "text/plain; charset=utf-8"))
+        sl_http_response_content_type_is(response->content_type,
+                                         SL_STR_LITERAL("text/plain; charset=utf-8")))
     {
-        content_type = "text/plain; charset=utf-8";
+        content_type = SL_STR_LITERAL("text/plain; charset=utf-8");
     }
     else {
         return false;
@@ -552,7 +550,7 @@ static bool sl_http_response_try_write_fast_200(const SlHttpResponse* response,
         *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
         return true;
     }
-    status = sl_checked_add_size(total, strlen(connection), &total);
+    status = sl_checked_add_size(total, connection.length, &total);
     if (!sl_status_is_ok(status)) {
         *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
         return true;
@@ -562,7 +560,7 @@ static bool sl_http_response_try_write_fast_200(const SlHttpResponse* response,
         *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
         return true;
     }
-    status = sl_checked_add_size(total, strlen(content_type), &total);
+    status = sl_checked_add_size(total, content_type.length, &total);
     if (!sl_status_is_ok(status)) {
         *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
         return true;
@@ -572,8 +570,8 @@ static bool sl_http_response_try_write_fast_200(const SlHttpResponse* response,
         *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
         return true;
     }
-    status = sl_checked_add_size(total, sl_http_response_decimal_length(response->body.length),
-                                 &total);
+    status =
+        sl_checked_add_size(total, sl_http_response_decimal_length(response->body.length), &total);
     if (!sl_status_is_ok(status)) {
         *out_status = sl_status_from_code(SL_STATUS_CAPACITY_EXCEEDED);
         return true;
@@ -593,16 +591,18 @@ static bool sl_http_response_try_write_fast_200(const SlHttpResponse* response,
         return true;
     }
 
-    sl_http_response_copy_literal(&cursor, "HTTP/1.1 200 OK\r\nConnection: ");
+    sl_http_response_copy_literal(&cursor, SL_STR_LITERAL("HTTP/1.1 200 OK\r\nConnection: "));
     sl_http_response_copy_literal(&cursor, connection);
-    sl_http_response_copy_literal(&cursor, "\r\nContent-Type: ");
+    sl_http_response_copy_literal(&cursor, SL_STR_LITERAL("\r\nContent-Type: "));
     sl_http_response_copy_literal(&cursor, content_type);
-    sl_http_response_copy_literal(&cursor, "\r\nContent-Length: ");
+    sl_http_response_copy_literal(&cursor, SL_STR_LITERAL("\r\nContent-Length: "));
     sl_http_response_write_decimal(&cursor, response->body.length);
-    sl_http_response_copy_literal(&cursor, "\r\n\r\n");
+    sl_http_response_copy_literal(&cursor, SL_STR_LITERAL("\r\n\r\n"));
     if (response->body.length != 0U) {
-        memcpy(cursor, response->body.ptr, response->body.length);
-        cursor += response->body.length;
+        for (size_t index = 0U; index < response->body.length; index += 1U) {
+            *cursor = response->body.ptr[index];
+            cursor += 1;
+        }
     }
 
     *out_bytes = sl_bytes_from_parts(buffer, (size_t)(cursor - buffer));
@@ -735,7 +735,7 @@ SlStatus sl_http_response_write_with_options(const SlHttpResponse* response,
             : 0U;
     if (!is_stream_response && !no_body_status &&
         sl_http_response_try_write_fast_200(response, connection_policy, suppress_body, buffer,
-                                           capacity, out_bytes, &status))
+                                            capacity, out_bytes, &status))
     {
         if (profile_enabled) {
             sl_json_profile_phase_end(SL_JSON_PROFILE_PHASE_HTTP_RESPONSE_HEADER_WRITE,

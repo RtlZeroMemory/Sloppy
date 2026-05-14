@@ -893,8 +893,8 @@ static void sl_http_transport_idle_timeout_cb(uv_timer_t* timer);
 static void sl_http_transport_write_cb(uv_write_t* request, int status);
 static void sl_http_transport_complete_write(SlHttpPlatformConnection* platform, int status);
 static void sl_http_transport_fast_write_complete_cb(uv_timer_t* timer);
-static SlStatus sl_http_transport_schedule_fast_write_completion(
-    SlHttpPlatformConnection* platform);
+static SlStatus
+sl_http_transport_schedule_fast_write_completion(SlHttpPlatformConnection* platform);
 static void sl_http_transport_tls_write_cb(uv_write_t* request, int status);
 static void sl_http_transport_tls_shutdown_write_cb(uv_write_t* request, int status);
 static SlStatus sl_http_transport_restart_keep_alive_read(SlHttpTransportConnection* connection,
@@ -2732,8 +2732,7 @@ static void sl_http_transport_fast_write_complete_cb(uv_timer_t* timer)
     sl_http_transport_complete_write(platform, 0);
 }
 
-static SlStatus sl_http_transport_schedule_fast_write_completion(
-    SlHttpPlatformConnection* platform)
+static SlStatus sl_http_transport_schedule_fast_write_completion(SlHttpPlatformConnection* platform)
 {
     int rc;
 

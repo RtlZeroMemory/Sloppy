@@ -1295,7 +1295,11 @@ export default app;
         Some("request.body.json")
     );
     let emitted_js = super::emit_app_js(&app);
-    assert!(emitted_js.source.contains("ctx.request.json(undefined)"));
+    assert!(emitted_js
+        .source
+        .contains("__sloppy_framework_services.createScope(ctx)"));
+    assert!(emitted_js.source.contains("ctx.request.json(UserCreate)"));
+    assert!(emitted_js.source.contains("Promise.all([ctx])"));
     assert!(!emitted_js.source.contains("ctx.body.json()"));
 }
 

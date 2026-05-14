@@ -1221,8 +1221,9 @@ static bool sl_request_validation_binding_is_string_like(const SlPlanRequestBind
     return sl_str_is_empty(type) || sl_str_equal(type, sl_str_from_cstr("string"));
 }
 
-static bool sl_request_validation_bindings_are_trivially_satisfied(
-    const SlPlanRoute* route, const SlHttpRequestContext* context)
+static bool
+sl_request_validation_bindings_are_trivially_satisfied(const SlPlanRoute* route,
+                                                       const SlHttpRequestContext* context)
 {
     size_t index = 0U;
 

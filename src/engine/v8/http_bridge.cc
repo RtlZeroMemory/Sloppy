@@ -3965,8 +3965,8 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         }
         if (request_context->needs_body) {
             if ((request_context->needs_body && request_context->needs_body_facade &&
-                 !http_v8_set_object_property_key(isolate, context, request,
-                                                  SL_V8_HTTP_STRING_BODY, body_object)) ||
+                 !http_v8_set_object_property_key(isolate, context, request, SL_V8_HTTP_STRING_BODY,
+                                                  body_object)) ||
                 !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY_BYTES,
                                            body_bytes_value) ||
                 !http_v8_set_private_value(isolate, context, request, SL_V8_HTTP_PRIVATE_BODY,

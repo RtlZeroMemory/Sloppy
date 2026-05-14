@@ -1,17 +1,13 @@
 #include "sloppy/http_profile.h"
 
+#include "sloppy/fs.h"
 #include "sloppy/json_writer.h"
 #include "sloppy/platform_time.h"
 #include "sloppy/string.h"
 
-#include "env.h"
-
-#include <stdio.h>
 #include <stdlib.h>
 
-#if defined(_WIN32)
-#include <windows.h>
-#endif
+#include "env.h"
 
 typedef struct SlHttpProfilePhaseStats
 {
@@ -390,11 +386,11 @@ SlStatus sl_http_profile_write_json(SlByteBuilder* builder)
 SlStatus sl_http_profile_flush_if_requested(void)
 {
     char path[1024];
-    char temp_path[1100];
     unsigned char storage[131072];
+    unsigned char fs_storage[4096];
+    SlArena arena = {0};
     SlByteBuilder builder = {0};
     SlBytes json = {0};
-    FILE* file = NULL;
     SlStatus status;
 
     if (!sl_http_profile_enabled() ||
@@ -411,38 +407,9 @@ SlStatus sl_http_profile_flush_if_requested(void)
         return status;
     }
     json = sl_byte_builder_view(&builder);
-    if (snprintf(temp_path, sizeof(temp_path), "%s.tmp", path) < 0 ||
-        strlen(temp_path) >= sizeof(temp_path))
-    {
-        return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
+    status = sl_arena_init(&arena, fs_storage, sizeof(fs_storage));
+    if (!sl_status_is_ok(status)) {
+        return status;
     }
-#if defined(_WIN32)
-    if (fopen_s(&file, temp_path, "wb") != 0) {
-        file = NULL;
-    }
-#else
-    file = fopen(temp_path, "wb");
-#endif
-    if (file == NULL) {
-        return sl_status_from_code(SL_STATUS_INVALID_STATE);
-    }
-    if (json.length != 0U && fwrite(json.ptr, 1U, json.length, file) != json.length) {
-        fclose(file);
-        return sl_status_from_code(SL_STATUS_INTERNAL);
-    }
-    if (fclose(file) != 0) {
-        return sl_status_from_code(SL_STATUS_INTERNAL);
-    }
-#if defined(_WIN32)
-    if (!MoveFileExA(temp_path, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        remove(temp_path);
-        return sl_status_from_code(SL_STATUS_INTERNAL);
-    }
-#else
-    if (rename(temp_path, path) != 0) {
-        remove(temp_path);
-        return sl_status_from_code(SL_STATUS_INTERNAL);
-    }
-#endif
-    return sl_status_ok();
+    return sl_fs_atomic_write_file(&arena, sl_str_from_cstr(path), json, NULL);
 }

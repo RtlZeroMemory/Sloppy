@@ -109,13 +109,15 @@ median RPS in `artifacts/benchmarks/pass3-body-request-json-20260514`.
 | `node benchmarks/local-neutral/scripts/run.mjs --check-tools --json` | PASS |
 | `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload post-json-validated --connections 64 --duration 20s --warmup 3s --repeats 5 --claim-mode local --base-port 44000 --out artifacts/benchmarks/pass3-post-confirm-fast-enabled-20260514 --json` | PASS |
 | `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload post-json-validated --connections 64 --duration 20s --warmup 3s --repeats 5 --claim-mode local --base-port 44100 --out artifacts/benchmarks/pass3-post-confirm-fast-disabled-20260514 --json` | PASS |
-| `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload route-param,mixed-realistic --connections 64 --duration 15s --warmup 3s --repeats 5 --claim-mode local --base-port 44300 --out artifacts/benchmarks/pass3-route-slots-rerun-20260514 --json` | PASS, experiment reverted |
+| `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload route-param,mixed-realistic --connections 64 --duration 15s --warmup 3s --repeats 5 --claim-mode local --base-port 44300 --out artifacts/benchmarks/pass3-route-slots-rerun-20260514 --json` | PASS |
 | `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload post-json-validated,mixed-realistic --connections 64 --duration 15s --warmup 3s --repeats 5 --claim-mode local --base-port 44400 --out artifacts/benchmarks/pass3-body-request-json-20260514 --json` | PASS |
 | `node benchmarks/local-neutral/scripts/run.mjs --tool k6 --runtime sloppy --workload route-param,post-json-validated,mixed-realistic --connections 64 --duration 15s --warmup 3s --repeats 5 --claim-mode local --base-port 44600 --out artifacts/benchmarks/pass3-final-focused-20260514 --json` | PASS |
 | `git diff --check` | PASS |
 | `node tests/contracts/runner/contract-runner.mjs --area http --tier pr` | UNAVAILABLE |
 
 Note: the HTTP contract runner path was absent in this checkout.
+Note: the route-slot experiment was reverted after the passing run because it
+did not beat pass 2 and increased memory use.
 
 During development, the first focused V8/native CTest run failed with a segfault
 after the new `needs_body_facade` bit was added. The failure exposed stale
