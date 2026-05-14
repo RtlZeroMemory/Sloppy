@@ -1,0 +1,18 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "static.path.root-boundary"
+  ],
+  "responses": [
+    {
+      "method": "GET",
+      "target": "/assets/.env",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/plain",
+        "Content-Length": "14"
+      },
+      "bodyText": "SECRET=leaked\n"
+    }
+  ]
+}

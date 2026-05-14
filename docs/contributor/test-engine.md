@@ -48,10 +48,10 @@ The supported areas are `all`, `static`, `native`, `compiler`, `js`, `fuzz`,
 `diagnostics`.
 
 The `contracts` area runs semantic artifact validators under
-`tests/contracts/`. PR-tier currently validates package/runtime artifacts with
-deterministic positive and negative fixtures. Contract reports use lower-case
-`pass`, `fail`, `skip`, and `unavailable` statuses and keep warnings separate
-from failures.
+`tests/contracts/`. PR-tier currently validates package/runtime artifacts plus
+deterministic cache, output-cache, and fake-Redis contract fixtures. Contract
+reports use lower-case `pass`, `fail`, `skip`, and `unavailable` statuses and
+keep warnings separate from failures.
 
 The alpha proof areas wrap focused CTest selections:
 

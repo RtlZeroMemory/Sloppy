@@ -1,0 +1,4 @@
+{
+  "expected": "fail",
+  "expectedInvariants": ["data.sqlite.path-safe"]
+}
