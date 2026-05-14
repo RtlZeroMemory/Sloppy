@@ -97,8 +97,8 @@ foreach ($lane in $report.lanes) {
 }
 
 $v8ReportPath = Join-Path $RepoRoot "artifacts/test-engine/meta-contract-v8-unavailable.json"
-$v8Command = "& { `$env:SLOPPY_V8_ROOT = ''; & '$testEngine' -Area v8 -Tier pr -Out '$v8ReportPath' }"
-$v8 = Invoke-Script @("-Command", $v8Command)
+$missingV8Root = Join-Path $RepoRoot ("artifacts/test-engine/missing-v8-sdk-" + [Guid]::NewGuid().ToString("N"))
+$v8 = Invoke-Script @("-File", $testEngine, "-Area", "v8", "-Tier", "pr", "-V8Root", $missingV8Root, "-Out", $v8ReportPath)
 Assert-True ($v8.ExitCode -eq 0) "unavailable V8 lane failed the command: $($v8.Output)"
 Assert-True (Test-Path -LiteralPath $v8ReportPath -PathType Leaf) "unavailable V8 report was not written"
 $v8Report = Get-Content -LiteralPath $v8ReportPath -Raw | ConvertFrom-Json

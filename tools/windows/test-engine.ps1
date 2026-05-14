@@ -8,11 +8,14 @@ param(
     [int]$Seed = 12345,
     [int]$FuzzIterations = 0,
     [int]$StressSeconds = 0,
+    [string]$V8Root = "",
     [string]$Out = "",
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
+
+. (Join-Path $PSScriptRoot "v8-sdk.ps1")
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $Tier = $Tier.ToLowerInvariant()
@@ -24,7 +27,7 @@ $V8PresetPrepared = $false
 $V8PresetAvailable = $false
 
 function Write-TestEngineHelp {
-    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|contracts|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-Out path]"
+    Write-Host "Usage: tools/windows/test-engine.ps1 [-Tier pr|extended|torture] [-Area all|static|native|compiler|js|fuzz|http2|package|contracts|sanitizer|stress|v8|provider|meta|golden|integration|examples|templates|alpha-flow|diagnostics] [-Seed N] [-FuzzIterations N] [-StressSeconds N] [-V8Root path] [-Out path]"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  tools/windows/test-engine.ps1 -Tier pr"
@@ -218,7 +221,13 @@ function Ensure-V8Preset {
 
     $script:V8PresetPrepared = $true
     $devScript = Join-Path $Root "tools/windows/dev.ps1"
-    Invoke-PowerShellLane "v8.configure" $devScript @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8")
+    $resolvedV8Root = Resolve-SlV8SdkRoot -RepoRoot $Root -V8Root $V8Root
+    if ([string]::IsNullOrWhiteSpace($resolvedV8Root)) {
+        $script:V8PresetAvailable = $false
+        return $false
+    }
+
+    Invoke-PowerShellLane "v8.configure" $devScript @("configure", "-Preset", "windows-relwithdebinfo", "-EnableV8", "-V8Root", $resolvedV8Root)
     if ($script:LastLaneStatus -ne "pass") {
         $script:V8PresetAvailable = $false
         return $false
