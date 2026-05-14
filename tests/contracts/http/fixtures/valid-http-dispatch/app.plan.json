@@ -1,0 +1,644 @@
+{
+  "schemaVersion": 1,
+  "kind": "web",
+  "routeDispatch": {
+    "version": 1,
+    "mode": "native-compiled",
+    "artifact": {
+      "kind": "slrt",
+      "path": "routes.slrt",
+      "hash": "sha256:ba3a290b1c1cdce29d93ecf7021389b81490fa059ecab47fa37cf0e7b64f0be1"
+    },
+    "routeCount": 17,
+    "endpointCount": 17,
+    "nativeNoJsEndpoints": 7,
+    "fallback": {
+      "classicAvailable": true
+    }
+  },
+  "handlers": [
+    {
+      "id": 1,
+      "displayName": "GET /text",
+      "exportName": "__sloppy_handler_1"
+    },
+    {
+      "id": 2,
+      "displayName": "GET /json",
+      "exportName": "__sloppy_handler_2"
+    },
+    {
+      "id": 3,
+      "displayName": "DELETE /empty",
+      "exportName": "__sloppy_handler_3"
+    },
+    {
+      "id": 4,
+      "displayName": "GET /problem",
+      "exportName": "__sloppy_handler_4"
+    },
+    {
+      "id": 5,
+      "displayName": "GET /dynamic",
+      "exportName": "__sloppy_handler_5"
+    },
+    {
+      "id": 6,
+      "displayName": "GET /users/{id}",
+      "exportName": "__sloppy_handler_6"
+    },
+    {
+      "id": 7,
+      "displayName": "GET /search",
+      "exportName": "__sloppy_handler_7"
+    },
+    {
+      "id": 8,
+      "displayName": "GET /headers",
+      "exportName": "__sloppy_handler_8"
+    },
+    {
+      "id": 9,
+      "displayName": "POST /echo",
+      "exportName": "__sloppy_handler_9"
+    },
+    {
+      "id": 10,
+      "displayName": "GET /group/items",
+      "exportName": "__sloppy_handler_10"
+    },
+    {
+      "id": 11,
+      "displayName": "GET /middleware",
+      "exportName": "__sloppy_handler_11"
+    },
+    {
+      "id": 12,
+      "displayName": "GET /precedence/static",
+      "exportName": "__sloppy_handler_12"
+    },
+    {
+      "id": 13,
+      "displayName": "GET /precedence/{id}",
+      "exportName": "__sloppy_handler_13"
+    },
+    {
+      "id": 14,
+      "displayName": "GET /multi",
+      "exportName": "__sloppy_handler_14"
+    },
+    {
+      "id": 15,
+      "displayName": "POST /multi",
+      "exportName": "__sloppy_handler_15"
+    },
+    {
+      "id": 16,
+      "displayName": "GET /provider/{id}",
+      "exportName": "__sloppy_handler_16"
+    },
+    {
+      "id": 17,
+      "displayName": "GET /files/{path:*}",
+      "exportName": "__sloppy_handler_17"
+    }
+  ],
+  "routes": [
+    {
+      "kind": "http",
+      "sourceOrder": 0,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
+      "method": "GET",
+      "pattern": "/text",
+      "handlerId": 1,
+      "name": "Static.Text",
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "native-static-text"
+      },
+      "response": {
+        "kind": "text",
+        "status": 200
+      },
+      "nativeResponse": {
+        "kind": "text",
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "body": "hello from static text"
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 1,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
+      "method": "GET",
+      "pattern": "/json",
+      "handlerId": 2,
+      "name": "Static.Json",
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "native-static-json"
+      },
+      "response": {
+        "kind": "json",
+        "status": 200
+      },
+      "nativeResponse": {
+        "kind": "json",
+        "status": 200,
+        "contentType": "application/json; charset=utf-8",
+        "body": "{\"ok\":true,\"source\":\"static\"}"
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 2,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
+      "method": "DELETE",
+      "pattern": "/empty",
+      "handlerId": 3,
+      "name": "Static.Empty",
+      "dispatch": {
+        "endpointId": 3,
+        "executionKind": "native-static-empty"
+      },
+      "response": {
+        "kind": "empty",
+        "status": 204
+      },
+      "nativeResponse": {
+        "kind": "empty",
+        "status": 204,
+        "contentType": "",
+        "body": ""
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 3,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
+      "method": "GET",
+      "pattern": "/problem",
+      "handlerId": 4,
+      "name": "Static.Problem",
+      "dispatch": {
+        "endpointId": 4,
+        "executionKind": "native-static-problem"
+      },
+      "response": {
+        "kind": "problem",
+        "status": 400
+      },
+      "nativeResponse": {
+        "kind": "problem",
+        "status": 400,
+        "contentType": "application/problem+json; charset=utf-8",
+        "body": "{\"type\":\"https://sloppy.dev/problems/bad-request\",\"title\":\"Bad Request\",\"status\":400}"
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 4,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
+      "method": "GET",
+      "pattern": "/dynamic",
+      "handlerId": 5,
+      "name": "Dynamic.Json",
+      "dispatch": {
+        "endpointId": 5,
+        "executionKind": "v8-handler"
+      },
+      "response": {
+        "kind": "json",
+        "status": 200
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 5,
+      "completeness": "complete",
+      "constraints": [
+        {
+          "name": "id",
+          "kind": "str"
+        }
+      ],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
+      "method": "GET",
+      "pattern": "/users/{id}",
+      "handlerId": 6,
+      "name": "Users.Get",
+      "dispatch": {
+        "endpointId": 6,
+        "executionKind": "v8-handler"
+      },
+      "response": {
+        "kind": "json",
+        "status": 200
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 6,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [
+        {
+          "kind": "query",
+          "name": "q"
+        }
+      ],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
+      "method": "GET",
+      "pattern": "/search",
+      "handlerId": 7,
+      "name": "Search.Query",
+      "dispatch": {
+        "endpointId": 7,
+        "executionKind": "v8-handler"
+      },
+      "response": {
+        "kind": "json",
+        "status": 200
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 7,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [
+        {
+          "kind": "header",
+          "name": "x-trace"
+        }
+      ],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
+      "method": "GET",
+      "pattern": "/headers",
+      "handlerId": 8,
+      "name": "Headers.Get",
+      "dispatch": {
+        "endpointId": 8,
+        "executionKind": "v8-handler"
+      },
+      "response": {
+        "kind": "json",
+        "status": 200
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 8,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
+      "method": "POST",
+      "pattern": "/echo",
+      "handlerId": 9,
+      "name": "Echo.Post",
+      "dispatch": {
+        "endpointId": 9,
+        "executionKind": "v8-handler"
+      },
+      "response": {
+        "kind": "json",
+        "status": 201
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 9,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
+      "method": "GET",
+      "pattern": "/group/items",
+      "handlerId": 10,
+      "name": "Group.Items",
+      "groupName": "api",
+      "groupPrefix": "/group",
+      "dispatch": {
+        "endpointId": 10,
+        "executionKind": "native-static-text"
+      },
+      "response": {
+        "kind": "text",
+        "status": 200
+      },
+      "nativeResponse": {
+        "kind": "text",
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "body": "group item"
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 10,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
+      "method": "GET",
+      "pattern": "/middleware",
+      "handlerId": 11,
+      "name": "Middleware.Get",
+      "middleware": [
+        "app",
+        "group"
+      ],
+      "dispatch": {
+        "endpointId": 11,
+        "executionKind": "v8-handler"
+      },
+      "response": {
+        "kind": "json",
+        "status": 200
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 11,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
+      "method": "GET",
+      "pattern": "/precedence/static",
+      "handlerId": 12,
+      "name": "Precedence.Static",
+      "dispatch": {
+        "endpointId": 12,
+        "executionKind": "native-static-text"
+      },
+      "response": {
+        "kind": "text",
+        "status": 200
+      },
+      "nativeResponse": {
+        "kind": "text",
+        "status": 200,
+        "contentType": "text/plain; charset=utf-8",
+        "body": "static wins"
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 12,
+      "completeness": "complete",
+      "constraints": [
+        {
+          "name": "id",
+          "kind": "str"
+        }
+      ],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
+      "method": "GET",
+      "pattern": "/precedence/{id}",
+      "handlerId": 13,
+      "name": "Precedence.Param",
+      "dispatch": {
+        "endpointId": 13,
+        "executionKind": "v8-handler"
+      },
+      "response": {
+        "kind": "json",
+        "status": 200
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 13,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
+      "method": "GET",
+      "pattern": "/multi",
+      "handlerId": 14,
+      "name": "Multi.Get",
+      "dispatch": {
+        "endpointId": 14,
+        "executionKind": "native-static-json"
+      },
+      "response": {
+        "kind": "json",
+        "status": 200
+      },
+      "nativeResponse": {
+        "kind": "json",
+        "status": 200,
+        "contentType": "application/json; charset=utf-8",
+        "body": "{\"method\":\"GET\"}"
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 14,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
+      "method": "POST",
+      "pattern": "/multi",
+      "handlerId": 15,
+      "name": "Multi.Post",
+      "dispatch": {
+        "endpointId": 15,
+        "executionKind": "v8-handler"
+      },
+      "response": {
+        "kind": "json",
+        "status": 200
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 15,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
+      "method": "GET",
+      "pattern": "/provider/{id}",
+      "handlerId": 16,
+      "name": "Provider.Get",
+      "dispatch": {
+        "endpointId": 16,
+        "executionKind": "v8-handler"
+      },
+      "effects": [
+        {
+          "provider": "data.main",
+          "providerKind": "sqlite",
+          "access": "read",
+          "operation": "queryOne"
+        }
+      ],
+      "response": {
+        "kind": "json",
+        "status": 200
+      }
+    },
+    {
+      "kind": "http",
+      "sourceOrder": 16,
+      "completeness": "complete",
+      "constraints": [],
+      "bindings": [],
+      "jsonRequest": {
+        "mode": "none",
+        "materialization": "none"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
+      "method": "GET",
+      "pattern": "/files/{path:*}",
+      "handlerId": 17,
+      "name": "Files.CatchAll",
+      "nativeDispatchSupported": false,
+      "dispatch": {
+        "endpointId": 17,
+        "executionKind": "v8-handler"
+      },
+      "response": {
+        "kind": "text",
+        "status": 200
+      }
+    }
+  ]
+}
