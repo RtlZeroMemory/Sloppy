@@ -504,12 +504,7 @@ fn wrapper_source(
     let args_with_scope = |scope_expr: &str| {
         bindings
             .iter()
-            .map(|binding| {
-                let descriptor = serde_json::to_string(&binding_descriptor(binding)).ok()?;
-                Some(format!(
-                    "__sloppy_framework_arg(ctx, {scope_expr}, {descriptor})"
-                ))
-            })
+            .map(|binding| framework_arg_expression(binding, scope_expr))
             .collect::<Option<Vec<_>>>()
             .unwrap_or_default()
             .join(", ")
@@ -517,23 +512,52 @@ fn wrapper_source(
 
     if !handler_is_async && bindings.iter().all(typed_binding_can_sync_without_scope) {
         let args = args_with_scope("undefined");
-        let prefix = "(ctx) => { const __sloppy_typed_handler = ";
+        let prefix = "(() => { const __sloppy_typed_handler = ";
         return WrapperSource {
-            source: format!("{prefix}{handler_source}; return __sloppy_typed_handler({args}); }}"),
+            source: format!(
+                "{prefix}{handler_source}; return (ctx) => __sloppy_typed_handler({args}); }})()"
+            ),
             handler_line_offset: 0,
             handler_column_offset: prefix.len(),
         };
     }
 
     let args = args_with_scope("__sloppy_scope");
-    let prefix = "async (ctx) => { const __sloppy_scope = __sloppy_framework_services.createScope(ctx); ctx.services = __sloppy_scope; try { const __sloppy_typed_handler = ";
+    let prefix = "(() => { const __sloppy_typed_handler = ";
     WrapperSource {
         source: format!(
-            "{prefix}{handler_source}; const __sloppy_args = await Promise.all([{args}]); return await __sloppy_typed_handler(...__sloppy_args); }} finally {{ await __sloppy_scope.dispose(); }} }}"
+            "{prefix}{handler_source}; return async (ctx) => {{ const __sloppy_scope = __sloppy_framework_services.createScope(ctx); ctx.services = __sloppy_scope; try {{ const __sloppy_args = await Promise.all([{args}]); return await __sloppy_typed_handler(...__sloppy_args); }} finally {{ await __sloppy_scope.dispose(); }} }}; }})()"
         ),
         handler_line_offset: 0,
         handler_column_offset: prefix.len(),
     }
+}
+
+fn framework_arg_expression(binding: &RequestBinding, scope_expr: &str) -> Option<String> {
+    match binding.kind.as_str() {
+        "body.json" => Some("ctx.body.json()".to_string()),
+        "context" => Some("ctx".to_string()),
+        "route" if binding_is_string(binding) => {
+            let name = binding.name.as_deref().or(binding.parameter.as_deref())?;
+            Some(format!("ctx.route[{}]", json_string_literal(name)?))
+        }
+        _ => generic_framework_arg_expression(binding, scope_expr),
+    }
+}
+
+fn generic_framework_arg_expression(binding: &RequestBinding, scope_expr: &str) -> Option<String> {
+    let descriptor = serde_json::to_string(&binding_descriptor(binding)).ok()?;
+    Some(format!(
+        "__sloppy_framework_arg(ctx, {scope_expr}, {descriptor})"
+    ))
+}
+
+fn binding_is_string(binding: &RequestBinding) -> bool {
+    binding.type_name.as_deref() == Some("string") || binding.schema.as_deref() == Some("string")
+}
+
+fn json_string_literal(value: &str) -> Option<String> {
+    serde_json::to_string(value).ok()
 }
 
 fn binding_descriptor(binding: &RequestBinding) -> Value {

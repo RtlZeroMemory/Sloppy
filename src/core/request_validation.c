@@ -1210,6 +1210,70 @@ static bool sl_request_validation_find_header(const SlHttpRequestContext* contex
     return false;
 }
 
+static bool sl_request_validation_binding_is_string_like(const SlPlanRequestBinding* binding)
+{
+    SlStr type = sl_str_empty();
+
+    if (binding == NULL) {
+        return false;
+    }
+    type = !sl_str_is_empty(binding->schema) ? binding->schema : binding->type;
+    return sl_str_is_empty(type) || sl_str_equal(type, sl_str_from_cstr("string"));
+}
+
+static bool sl_request_validation_bindings_are_trivially_satisfied(
+    const SlPlanRoute* route, const SlHttpRequestContext* context)
+{
+    size_t index = 0U;
+
+    if (route == NULL || context == NULL) {
+        return false;
+    }
+    if (route->binding_count == 0U) {
+        return true;
+    }
+    if (route->bindings == NULL) {
+        return false;
+    }
+
+    for (index = 0U; index < route->binding_count; index += 1U) {
+        const SlPlanRequestBinding* binding = &route->bindings[index];
+        SlStr value = sl_str_empty();
+        SlStr path = !sl_str_is_empty(binding->name) ? binding->name : binding->parameter;
+
+        switch (binding->kind) {
+        case SL_PLAN_REQUEST_BINDING_ROUTE:
+            if (!sl_request_validation_binding_is_string_like(binding) ||
+                !sl_request_validation_find_route_param(context, path, &value))
+            {
+                return false;
+            }
+            break;
+        case SL_PLAN_REQUEST_BINDING_QUERY:
+            if (!sl_request_validation_binding_is_string_like(binding) ||
+                !sl_request_validation_find_query_param(context, path, &value))
+            {
+                return false;
+            }
+            break;
+        case SL_PLAN_REQUEST_BINDING_HEADER:
+            if (!sl_request_validation_binding_is_string_like(binding) ||
+                !sl_request_validation_find_header(context, path, &value))
+            {
+                return false;
+            }
+            break;
+        case SL_PLAN_REQUEST_BINDING_CONTEXT:
+        case SL_PLAN_REQUEST_BINDING_INJECTION:
+        case SL_PLAN_REQUEST_BINDING_UNKNOWN:
+            break;
+        default:
+            return false;
+        }
+    }
+    return true;
+}
+
 static SlStatus sl_request_validation_validate_named_scalar(SlRequestValidationState* state,
                                                             const SlPlanRequestBinding* binding,
                                                             SlStr value)
@@ -1381,6 +1445,9 @@ SlStatus sl_request_validation_validate(SlArena* arena, const SlPlan* plan,
     }
     if (route->bindings == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_ARGUMENT);
+    }
+    if (sl_request_validation_bindings_are_trivially_satisfied(route, request_context)) {
+        return sl_status_ok();
     }
 
     state.arena = arena;

@@ -1249,7 +1249,7 @@ export default app;
     assert!(!emitted_js.source.contains("ctx.request.json()"));
     assert!(emitted_js
         .source
-        .contains("return __sloppy_typed_handler(__sloppy_framework_arg"));
+        .contains("return (ctx) => __sloppy_typed_handler(ctx.body.json())"));
     assert!(!emitted_js
         .source
         .contains("const __sloppy_args = await Promise.all(["));
@@ -1274,13 +1274,29 @@ export default app;
         .contains("globalThis.__sloppy_handler_1 = (ctx) =>"));
     assert!(emitted_js
         .source
-        .contains("__sloppy_framework_arg(ctx, undefined"));
+        .contains("return (ctx) => __sloppy_typed_handler(ctx)"));
     assert!(!emitted_js
         .source
         .contains("const __sloppy_args = await Promise.all(["));
     assert!(!emitted_js
         .source
         .contains("__sloppy_framework_services.createScope(ctx)"));
+}
+
+#[test]
+fn typed_framework_string_route_binding_uses_direct_route_lookup() {
+    let source = r#"import { Sloppy, Results, Route } from "sloppy";
+const app = Sloppy.create();
+app.get("/users/:id", (id: Route<string>) => Results.ok({ id }));
+export default app;
+"#;
+    let app =
+        extract(std::path::Path::new("app.ts"), source).expect("typed route handler should extract");
+    let emitted_js = super::emit_app_js(&app);
+    assert!(emitted_js
+        .source
+        .contains("return (ctx) => __sloppy_typed_handler(ctx.route[\"id\"])"));
+    assert!(!emitted_js.source.contains("__sloppy_framework_arg(ctx, undefined"));
 }
 
 #[test]
@@ -1318,7 +1334,8 @@ export default app;
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js
         .source
-        .contains("globalThis.__sloppy_handler_1 = async (ctx) =>"));
+        .contains("globalThis.__sloppy_handler_1 = (() =>"));
+    assert!(emitted_js.source.contains("return async (ctx) =>"));
     assert!(emitted_js
         .source
         .contains("const __sloppy_args = await Promise.all(["));
