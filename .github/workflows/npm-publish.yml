@@ -1,8 +1,15 @@
 name: npm-publish
 
+run-name: npm-publish ${{ inputs.alpha_version }} publish=${{ inputs.publish }} on ${{ github.ref_name }}
+
 on:
   workflow_dispatch:
     inputs:
+      alpha_version:
+        description: "Alpha version expected in npm tarballs, for example 0.1.0-alpha.2."
+        required: true
+        default: "0.1.0-alpha.2"
+        type: string
       release_artifacts_run_id:
         description: "GitHub Actions run ID from release-artifacts that uploaded npm tarballs."
         required: true
@@ -40,10 +47,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          expected_version="${{ inputs.alpha_version }}"
+          if [[ ! "$expected_version" =~ ^0\.1\.0-alpha\.[0-9]+$ ]]; then
+            echo "alpha_version must use 0.1.0-alpha.N, got '$expected_version'." >&2
+            exit 1
+          fi
+          package_version="$(node -e 'process.stdout.write(require("./packages/npm/sloppy/package.json").version)')"
+          if [[ "$package_version" != "$expected_version" ]]; then
+            echo "npm-publish expected alpha_version '$expected_version' but root package metadata is '$package_version'." >&2
+            exit 1
+          fi
           if [[ "${{ inputs.publish }}" == "true" && "${{ inputs.confirm }}" != "publish-alpha" ]]; then
             echo "Publishing requires confirm=publish-alpha." >&2
             exit 1
           fi
+          {
+            echo "### npm-publish"
+            echo
+            echo "- Alpha version: \`$expected_version\`"
+            echo "- Release artifacts run: \`${{ inputs.release_artifacts_run_id }}\`"
+            echo "- Publish: \`${{ inputs.publish }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -113,6 +137,12 @@ jobs:
             echo "macos_arm64=${macos_arm64_candidates[0]}"
             echo "macos_x64=${macos_x64_candidates[0]}"
           } >> "$GITHUB_OUTPUT"
+          for tarball in "${root_candidates[0]}" "${linux_candidates[0]}" "${windows_candidates[0]}" "${macos_arm64_candidates[0]}" "${macos_x64_candidates[0]}"; do
+            if [[ "$tarball" != *"${{ inputs.alpha_version }}"* ]]; then
+              echo "Tarball '$tarball' does not match alpha_version '${{ inputs.alpha_version }}'." >&2
+              exit 1
+            fi
+          done
 
       - name: Local npm install smoke
         shell: bash

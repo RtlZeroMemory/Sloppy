@@ -1,8 +1,15 @@
 name: release-artifacts
 
+run-name: release-artifacts ${{ inputs.alpha_version }} on ${{ github.ref_name }}
+
 on:
   workflow_dispatch:
     inputs:
+      alpha_version:
+        description: "Alpha version expected in package metadata, for example 0.1.0-alpha.2."
+        required: true
+        default: "0.1.0-alpha.2"
+        type: string
       include_windows:
         description: "Build the Windows x64 dry-run package."
         required: true
@@ -66,6 +73,18 @@ jobs:
           if ("${{ inputs.dry_run }}" -ne "true") {
             throw "release-artifacts only supports dry_run=true. Publishing is handled separately."
           }
+          $expectedVersion = "${{ inputs.alpha_version }}"
+          if ($expectedVersion -notmatch '^0\.1\.0-alpha\.\d+$') {
+            throw "alpha_version must use 0.1.0-alpha.N, got '$expectedVersion'."
+          }
+          $rootPackage = Get-Content -LiteralPath ".\packages\npm\sloppy\package.json" -Raw | ConvertFrom-Json
+          if ($rootPackage.version -ne $expectedVersion) {
+            throw "release-artifacts expected alpha_version '$expectedVersion' but root package metadata is '$($rootPackage.version)'."
+          }
+          "### release-artifacts" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "- Alpha version: ``$expectedVersion``" >> $env:GITHUB_STEP_SUMMARY
+          "- Ref: ``${{ github.ref_name }}``" >> $env:GITHUB_STEP_SUMMARY
           .\tools\windows\check-release-artifacts.ps1 -SelfTest
           .\tools\windows\check-release-artifacts.ps1
 

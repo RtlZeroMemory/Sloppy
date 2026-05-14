@@ -20,6 +20,17 @@ evidence and a completed readiness gate.
 - Added RELEASE-DIST dry-run contracts, canonical archive naming, runtime dependency audit
   scaffolding, npm launcher/platform package skeletons, and post-merge verifier handoff.
 
+## 0.1.0-alpha.2
+
+- Fixes `sloppy package` for fresh packaged SQLite migrations by creating safe
+  relative SQLite database parent directories from Plan metadata before package
+  migrations run.
+- Refreshes alpha proof fixtures for the current public templates, docs
+  snippets, example classification, routes, OpenAPI output, and package
+  manifests.
+- Keeps the release scoped to the `@slopware` alpha package line and the
+  `alpha` npm dist-tag.
+
 ## 0.1.0-alpha.1
 
 - Carries the imported helper dependency extraction fix for function modules.
