@@ -602,6 +602,25 @@ async function verifyStoredSessionCookie(value, scheme) {
         }
         return undefined;
     }
+    const user = userFromClaims(record.claims, scheme.principalScheme, scheme.name);
+    return Object.freeze({
+        user,
+        payload: Object.freeze({
+            sid: sessionId,
+            iat: Math.floor(record.createdAt / 1000),
+            exp: record.expiresAt === undefined ? undefined : Math.floor(record.expiresAt / 1000),
+            csrf: record.csrf,
+        }),
+        record,
+    });
+}
+
+async function refreshStoredSession(verified, scheme) {
+    const sessionId = verified.payload.sid;
+    if (sessionId === undefined) {
+        return verified;
+    }
+    const current = nowMilliseconds(scheme.clock);
     const nextIdleExpiresAt = scheme.idleTimeoutMs === undefined ? undefined : current + scheme.idleTimeoutMs;
     const touched = await scheme.store.touch(sessionId, current, nextIdleExpiresAt);
     const active = touched ?? await scheme.store.load(sessionId);
@@ -626,7 +645,7 @@ async function cookieSessionMiddleware(ctx, next, scheme) {
     if (value === undefined) {
         return next();
     }
-    const verified = scheme.store === undefined
+    let verified = scheme.store === undefined
         ? await verifySessionCookie(value, scheme)
         : await verifyStoredSessionCookie(value, scheme);
     if (verified === undefined) {
@@ -655,6 +674,21 @@ async function cookieSessionMiddleware(ctx, next, scheme) {
         ) {
             return csrfForbidden();
         }
+    }
+    if (scheme.store !== undefined && scheme.rotation !== true) {
+        verified = await refreshStoredSession(verified, scheme);
+        if (verified === undefined) {
+            return unauthorized();
+        }
+        ctx.user = verified.user;
+        ctx.session = Object.freeze({
+            scheme: scheme.name,
+            id: verified.payload.sid,
+            issuedAt: verified.payload.iat,
+            expiresAt: verified.payload.exp,
+            csrfToken: verified.payload.csrf,
+            revoke: () => scheme.store.revoke(verified.payload.sid, nowMilliseconds(scheme.clock)),
+        });
     }
     if (scheme.store === undefined || scheme.rotation !== true || verified.payload.sid === undefined) {
         return next();

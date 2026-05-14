@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 import { parseRunnerArgs, printHelp, repoRootFromRunner, writeJsonReport } from "./command-utils.mjs";
 import { formatMarkdown, hasBlockingFindings, mergeReports } from "./contract-report.mjs";
+import { runAuthContract } from "../auth/validate-auth-contract.mjs";
 import { runPackageContract } from "../package/validate-package-contract.mjs";
 
-const AREA_RUNNERS = new Map([["package", runPackageContract]]);
+const AREA_RUNNERS = new Map([
+    ["auth", runAuthContract],
+    ["package", runPackageContract],
+]);
 
 async function main() {
     let options;
