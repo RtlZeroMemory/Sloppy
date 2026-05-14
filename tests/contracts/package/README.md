@@ -15,6 +15,8 @@ node tests/contracts/runner/contract-runner.mjs --area package --tier pr --forma
 The PR fixture suite contains one valid minimal package plus intentionally
 broken package roots. Broken fixtures are expected to produce specific
 invariant failures; the suite passes only when those failures are detected.
+Unexpected extra failures in a broken fixture are reported as warnings so
+validator drift stays visible without making the fixture brittle.
 
 The current PR-tier validator checks:
 

@@ -55,6 +55,8 @@ target/
 
 # Logs and temporary artifacts
 artifacts/
+!tests/contracts/package/fixtures/**/artifacts/
+!tests/contracts/package/fixtures/**/artifacts/**
 logs/
 node_modules/
 # Hand-authored compatibility fixtures intentionally mirror a node_modules

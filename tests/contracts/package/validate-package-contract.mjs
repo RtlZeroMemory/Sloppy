@@ -142,9 +142,8 @@ async function checkMigrations(root, manifest, collector) {
             continue;
         }
         for (const file of migration.files) {
-            await checkPackagePath(root, file.path, "manifest.migrations.file", collector);
-            const filePath = packagePath(root, file.path);
-            if ((await exists(filePath)) && typeof file.sha256 === "string") {
+            const filePath = await checkPackagePath(root, file?.path, "manifest.migrations.file", collector);
+            if (filePath !== undefined && (await exists(filePath)) && typeof file.sha256 === "string") {
                 await checkHash(filePath, file.sha256, "manifest.migrations.file", collector);
             }
         }
@@ -265,8 +264,14 @@ export async function validatePackageArtifacts({ root, fixture }) {
     if (artifacts.sourceMap !== undefined) {
         await checkPackagePath(root, artifacts.sourceMap, "manifest.artifacts.sourceMap", collector);
     }
+    let routeDispatchPath;
     if (artifacts.routeDispatch !== undefined) {
-        await checkPackagePath(root, artifacts.routeDispatch, "manifest.artifacts.routeDispatch", collector);
+        routeDispatchPath = await checkPackagePath(
+            root,
+            artifacts.routeDispatch,
+            "manifest.artifacts.routeDispatch",
+            collector,
+        );
     }
 
     let plan;
@@ -290,8 +295,15 @@ export async function validatePackageArtifacts({ root, fixture }) {
             } else {
                 collector.pass("manifest.routeDispatch.matches-plan", "manifest includes Plan route dispatch artifact");
             }
-            const routePath = packagePath(root, artifacts.routeDispatch ?? `artifacts/${plan.routeDispatch.artifact.path}`);
-            if (await exists(routePath)) {
+            const routePath =
+                routeDispatchPath ??
+                (await checkPackagePath(
+                    root,
+                    `artifacts/${plan.routeDispatch.artifact.path}`,
+                    "plan.routeDispatch.artifact",
+                    collector,
+                ));
+            if (routePath !== undefined && (await exists(routePath))) {
                 await checkHash(routePath, plan.routeDispatch.artifact.hash, "route-artifact", collector);
             }
         }
@@ -348,6 +360,22 @@ function failedExpectationFinding(fixture, invariant, detected, rawFindings) {
     });
 }
 
+function unexpectedErrorFinding(fixture, invariant, expectedInvariants, rawFindings) {
+    return createFinding({
+        id: `${SUBSYSTEM}.${fixture}.negative.${invariant}.unexpected`,
+        status: "pass",
+        severity: "warning",
+        subsystem: SUBSYSTEM,
+        invariant: `negative.unexpected.${invariant}`,
+        fixture,
+        message: `broken fixture produced unexpected ${invariant} finding`,
+        details: {
+            expectedInvariants,
+            detectedFindings: detectedErrorDetails(rawFindings),
+        },
+    });
+}
+
 export async function runPackageContract({ repoRoot, tier }) {
     const startedAt = new Date().toISOString();
     const fixtures = await loadFixtures(path.join(repoRoot, "tests/contracts/package/fixtures"));
@@ -356,12 +384,20 @@ export async function runPackageContract({ repoRoot, tier }) {
         const rawFindings = await validatePackageArtifacts({ root: fixture.root, fixture: fixture.name });
         const detected = errorInvariants(rawFindings);
         if (fixture.expected === "fail") {
+            const expectedInvariants = new Set(fixture.expectedInvariants);
             for (const invariant of fixture.expectedInvariants) {
                 findings.push(
                     detected.includes(invariant)
                         ? expectedFailureFinding(fixture.name, invariant, detected, rawFindings)
                         : failedExpectationFinding(fixture.name, invariant, detected, rawFindings),
                 );
+            }
+            for (const invariant of detected) {
+                if (!expectedInvariants.has(invariant)) {
+                    findings.push(
+                        unexpectedErrorFinding(fixture.name, invariant, fixture.expectedInvariants, rawFindings),
+                    );
+                }
             }
             continue;
         }
