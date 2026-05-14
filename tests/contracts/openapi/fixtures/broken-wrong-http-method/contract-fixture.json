@@ -1,0 +1,9 @@
+{
+  "expected": "fail",
+  "expectedInvariants": ["openapi.method-present"],
+  "plan": "../../../../fixtures/cli/framework-feature-matrix.plan.json",
+  "openapi": "../../../../golden/cli/framework-feature-matrix-openapi.json",
+  "mutations": [
+    { "op": "renameKey", "path": ["paths", "/orders/{id}"], "from": "get", "to": "post" }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "static.spa-fallback.boundary"
+  ],
+  "responses": [
+    {
+      "method": "GET",
+      "target": "/app/api/status",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/html",
+        "Content-Length": "19"
+      },
+      "bodyText": "<main>shell</main>\n"
+    }
+  ]
+}

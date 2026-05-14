@@ -1,0 +1,14 @@
+{
+  "responses": [
+    {
+      "method": "GET",
+      "target": "/allow/.env",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/plain",
+        "Content-Length": "14"
+      },
+      "bodyText": "SECRET=leaked\n"
+    }
+  ]
+}

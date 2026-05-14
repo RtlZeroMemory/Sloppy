@@ -1,0 +1,5 @@
+{
+  "expected": "pass",
+  "plan": "../../../../fixtures/cli/openapi-auth.plan.json",
+  "openapi": "../../../../golden/cli/openapi-auth.json"
+}

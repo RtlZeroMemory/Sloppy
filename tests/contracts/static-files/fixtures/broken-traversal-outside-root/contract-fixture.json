@@ -1,0 +1,19 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "static.path.no-traversal",
+    "static.path.root-boundary"
+  ],
+  "responses": [
+    {
+      "method": "GET",
+      "target": "/assets/../outside-secret.txt",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/plain",
+        "Content-Length": "15"
+      },
+      "bodyText": "outside secret\n"
+    }
+  ]
+}

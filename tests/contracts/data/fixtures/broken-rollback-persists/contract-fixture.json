@@ -1,0 +1,6 @@
+{
+  "mode": "behavior",
+  "scenario": "rollback-persists",
+  "expected": "fail",
+  "expectedInvariants": ["data.transaction.rollback"]
+}
