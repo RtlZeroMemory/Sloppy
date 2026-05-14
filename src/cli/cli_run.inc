@@ -3295,7 +3295,9 @@ static int sl_run_server(SlRunApp* app, const char* host, uint16_t port)
                 result = 1;
                 break;
             }
-            sl_platform_sleep_ms(1U);
+            if (sl_http_transport_server_active_connections(&server) == 0U) {
+                sl_platform_sleep_ms(1U);
+            }
         }
         if (old_sigint != SIG_ERR) {
             signal(SIGINT, old_sigint);

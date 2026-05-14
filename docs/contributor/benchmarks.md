@@ -36,6 +36,24 @@ The harness writes one profile artifact per Sloppy runtime/scenario/repeat under
 local engineering evidence and keep them with the benchmark JSON that produced
 them.
 
+For before/after work, keep timing and profiling as separate runs. Use the
+non-profile JSON as the timing source of truth, then attach a smaller profile
+run to the report:
+
+```powershell
+tools/windows/bench-json-competitors.ps1 `
+  -Iterations 100 -Warmup 20 -Repeat 2 `
+  -Out artifacts/bench/after/json-competitors.json `
+  -Compare artifacts/bench/before/json-competitors.json `
+  -ProfileInput artifacts/bench/profile/json-competitors.json `
+  -Report
+```
+
+The wrapper writes `report.md` next to the timing JSON unless `-ReportOut` is
+provided. The report renderer summarizes runtime status, scenario medians,
+Sloppy before/after deltas, and HTTP profile counters without turning local
+evidence into public claims.
+
 The profiler is a process-global engineering probe for the current single
 Sloppy HTTP server loop and V8 owner-thread path. Do not use one profiled
 process to aggregate multiple concurrently updated servers or worker-thread

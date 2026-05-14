@@ -394,6 +394,7 @@ SlStatus sl_http_profile_write_json(SlByteBuilder* builder)
 SlStatus sl_http_profile_flush_if_requested(void)
 {
     char path[1024];
+    char temp_path[1100];
     unsigned char storage[131072];
     SlByteBuilder builder = {0};
     SlBytes json = {0};
@@ -414,12 +415,17 @@ SlStatus sl_http_profile_flush_if_requested(void)
         return status;
     }
     json = sl_byte_builder_view(&builder);
+    if (snprintf(temp_path, sizeof(temp_path), "%s.tmp", path) < 0 ||
+        strlen(temp_path) >= sizeof(temp_path))
+    {
+        return sl_status_from_code(SL_STATUS_OUT_OF_RANGE);
+    }
 #if defined(_WIN32)
-    if (fopen_s(&file, path, "wb") != 0) {
+    if (fopen_s(&file, temp_path, "wb") != 0) {
         file = NULL;
     }
 #else
-    file = fopen(path, "wb");
+    file = fopen(temp_path, "wb");
 #endif
     if (file == NULL) {
         return sl_status_from_code(SL_STATUS_INVALID_STATE);
@@ -429,6 +435,11 @@ SlStatus sl_http_profile_flush_if_requested(void)
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     if (fclose(file) != 0) {
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+    remove(path);
+    if (rename(temp_path, path) != 0) {
+        remove(temp_path);
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
     return sl_status_ok();

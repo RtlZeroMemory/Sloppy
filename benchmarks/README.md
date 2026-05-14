@@ -287,6 +287,30 @@ process then serves only the scenario requests so readiness probes do not
 inflate `requests`, `nativeResponseHits`, `v8HandlerCalls`, or materialization
 counters for the scenario being inspected.
 
+For reviewable loopback timing evidence, run the JSON competitor harness once
+without profiling and a separate smaller profile pass. Then render one report
+that compares the timing JSON and attaches the profile JSON:
+
+```powershell
+tools/windows/bench-json-competitors.ps1 `
+  -Iterations 100 -Warmup 20 -Repeat 2 `
+  -Out artifacts/bench/after/json-competitors.json
+
+tools/windows/bench-json-competitors.ps1 `
+  -Iterations 10 -Warmup 2 -Repeat 1 -HttpProfile `
+  -Out artifacts/bench/profile/json-competitors.json
+
+node benchmarks/competitors/report-json-local.mjs `
+  --input artifacts/bench/after/json-competitors.json `
+  --baseline artifacts/bench/before/json-competitors.json `
+  --profile-input artifacts/bench/profile/json-competitors.json `
+  --out artifacts/bench/after/report.md
+```
+
+The report is local evidence for review. The non-profile JSON is the timing
+source of truth. The profile JSON is phase/counter evidence only because profile
+snapshot writes can change latency.
+
 Common HTTP/V8 profile counters have narrow meanings:
 
 - `noJsResponsePlanHits` counts dispatches served by Plan-backed native response

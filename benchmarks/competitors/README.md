@@ -13,9 +13,33 @@ On Windows, the wrapper is:
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100
 ```
 
+Use `-Report` to emit a Markdown review report next to the JSON file:
+
+```powershell
+.\tools\windows\bench-json-competitors.ps1 `
+  -Iterations 100 -Warmup 20 -Repeat 2 `
+  -Out artifacts/bench/json-competitors.json `
+  -Report
+```
+
+Use `-Compare` to attach a previous JSON run and `-ProfileInput` to attach a
+separate profiled run. Keep profiled timing separate from the main timing
+comparison because HTTP profile snapshots write JSON during the run.
+
+```powershell
+.\tools\windows\bench-json-competitors.ps1 `
+  -Iterations 100 -Warmup 20 -Repeat 2 `
+  -Out artifacts/bench/after/json-competitors.json `
+  -Compare artifacts/bench/before/json-competitors.json `
+  -ProfileInput artifacts/bench/profile/json-competitors.json `
+  -Report
+```
+
 The harness records versions, OS/CPU details, SKIPPED entries for unavailable
 runtimes or optional dependencies, response-correctness failures, and
-machine-readable JSON results.
+machine-readable JSON results. The report renderer reads those JSON files and
+summarizes runtime status, median per-scenario timings, Sloppy before/after
+deltas, and HTTP profile counters without making public performance claims.
 
 Rows in this harness include client/server/socket/event-loop overhead and are
 not directly comparable to in-process `sloppy_bench` JSON rows. Use the
