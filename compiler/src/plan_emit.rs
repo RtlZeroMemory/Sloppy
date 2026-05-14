@@ -123,6 +123,7 @@ pub(crate) fn emit_plan_with_route_artifact(
     let emits_binding_metadata = |index: usize, route: &crate::graph::Route| {
         !route.handler.bindings.is_empty()
             || route_completeness_values[index].status.as_str() == "complete"
+            || route_completeness_values[index].status.as_str() == "partial"
     };
     let emits_metadata = emits_app_metadata
         || app.routes.iter().enumerate().any(|(index, route)| {

@@ -236,6 +236,12 @@ function commandLine({ report, baseline, profileReport }) {
   ];
   if (baseline) parts.push(`baseline=${path.basename(baselinePath)}`);
   if (profileReport?.httpProfile?.enabled) parts.push(`profileRunId=${profileReport.httpProfile.runId}`);
+  if (Array.isArray(report.runtimeFilter) && report.runtimeFilter.length > 0) {
+    parts.push(`runtime=${report.runtimeFilter.join("+")}`);
+  }
+  if (Array.isArray(report.selectedScenarios) && report.selectedScenarios.length > 0) {
+    parts.push(`scenarios=${report.selectedScenarios.join("+")}`);
+  }
   return parts.join(", ");
 }
 

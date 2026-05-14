@@ -13,6 +13,17 @@ On Windows, the wrapper is:
 .\tools\windows\bench-json-competitors.ps1 -Iterations 100
 ```
 
+Use `-Runtime` and `-Scenario` for targeted optimization loops. Values accept
+comma-separated or whitespace-separated entries; `sloppy` runs both Sloppy
+native/generic loopback modes.
+
+```powershell
+.\tools\windows\bench-json-competitors.ps1 `
+  -Runtime sloppy `
+  -Scenario dynamic-json,exception,large `
+  -Iterations 300 -Warmup 30 -Repeat 5
+```
+
 Use `-Report` to emit a Markdown review report next to the JSON file:
 
 ```powershell

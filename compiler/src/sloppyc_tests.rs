@@ -3585,6 +3585,34 @@ export default app;
         plan["routes"][0]["completeness"]["reasons"][0]["code"],
         "response-metadata-missing"
     );
+    assert!(plan["routes"][0]["bindings"].is_array());
+}
+
+#[test]
+fn partial_response_metadata_emits_empty_bindings_for_zero_arg_handler() {
+    let source = r#"import { Sloppy } from "sloppy";
+const app = Sloppy.create();
+app.get("/boom", () => {
+  throw new Error("boom");
+});
+export default app;
+"#;
+    let app = extract(std::path::Path::new("app.js"), source)
+        .expect("throwing route should extract as partial metadata");
+    let emitted_js = super::emit_app_js(&app);
+    let emitted_source_map = super::emit_source_map(&app, &emitted_js);
+    let plan = super::emit_plan(
+        &app,
+        &super::sha256_hex(&emitted_js.source),
+        &super::sha256_hex(&emitted_source_map),
+    )
+    .expect("partial plan should emit");
+    let plan: serde_json::Value = serde_json::from_str(&plan).expect("plan should be json");
+    assert_eq!(plan["routes"][0]["completeness"]["status"], "partial");
+    assert_eq!(
+        plan["routes"][0]["bindings"],
+        serde_json::Value::Array(Vec::new())
+    );
 }
 
 #[test]

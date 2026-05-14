@@ -268,6 +268,18 @@ should show `noJsResponsePlanHits > 0`, `nativeResponseHits > 0`, and
 value in the path being investigated means the benchmark app did not exercise
 that path.
 
+For targeted optimization, narrow the local matrix with `-Runtime` and
+`-Scenario` before increasing repeat counts. `-Runtime sloppy` runs both Sloppy
+native/generic loopback modes; scenarios accept comma-separated or
+whitespace-separated names:
+
+```powershell
+tools/windows/bench-json-competitors.ps1 `
+  -Runtime sloppy `
+  -Scenario dynamic-json,exception,large `
+  -Iterations 500 -Warmup 50 -Repeat 7
+```
+
 Pass `-HttpProfile` to run Sloppy loopback rows with `SLOPPY_HTTP_PROFILE=1`.
 The runner starts a fresh Sloppy process per profiled scenario and writes
 machine-readable phase summaries to `artifacts/bench/http-profile-*.json`, plus

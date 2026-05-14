@@ -492,7 +492,7 @@ struct WrapperSource {
 fn typed_binding_can_sync_without_scope(binding: &RequestBinding) -> bool {
     matches!(
         binding.kind.as_str(),
-        "body.json" | "config" | "header" | "query" | "route"
+        "body.json" | "config" | "context" | "header" | "query" | "route"
     )
 }
 

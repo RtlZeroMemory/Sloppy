@@ -73,6 +73,8 @@ try {
         iterations = 10
         warmupIterations = 2
         repeat = 1
+        selectedScenarios = @("static-json")
+        runtimeFilter = @("sloppy:loopback:native_json", "node:http")
         httpProfile = [ordered]@{ enabled = $false; outDir = $null; runId = $null }
         client = "fixture client"
         scenarios = [ordered]@{ "static-json" = "fixture static JSON" }
@@ -149,7 +151,7 @@ try {
         throw "json competitor report renderer failed with exit code $LASTEXITCODE"
     }
     $competitorReportMarkdown = Get-Content -LiteralPath $competitorReportOut -Raw
-    foreach ($expected in @("JSON Competitor Benchmark Report", "Sloppy Before/After Delta", "HTTP Profile Evidence", "Label Verification", "Profile expectation checks", "No-JS hits")) {
+    foreach ($expected in @("JSON Competitor Benchmark Report", "Sloppy Before/After Delta", "HTTP Profile Evidence", "Label Verification", "Profile expectation checks", "No-JS hits", "runtime=sloppy:loopback:native_json+node:http", "scenarios=static-json")) {
         if ($competitorReportMarkdown -notlike "*$expected*") {
             throw "json competitor report missing expected text: $expected"
         }

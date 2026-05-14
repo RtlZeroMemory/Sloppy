@@ -30,6 +30,16 @@ loopback rows:
 tools/windows/bench-json-competitors.ps1 -Iterations 1000 -Warmup 100 -Repeat 3 -HttpProfile
 ```
 
+For focused optimization loops, narrow the matrix before increasing iteration
+counts:
+
+```powershell
+tools/windows/bench-json-competitors.ps1 `
+  -Runtime sloppy `
+  -Scenario dynamic-json,exception,large `
+  -Iterations 500 -Warmup 50 -Repeat 7
+```
+
 The harness writes one profile artifact per Sloppy runtime/scenario/repeat under
 `artifacts/bench/http-profile-*.json` and a compact
 `artifacts/bench/http-profile-summary.md` phase table. Treat profile numbers as

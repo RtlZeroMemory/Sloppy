@@ -24,6 +24,8 @@ const warmupIterations = Number(args.get("warmup") ?? "10");
 const repeat = Number(args.get("repeat") ?? "1");
 const outPath = args.get("out") ?? "artifacts/bench/json-competitors.json";
 const sloppyBinArg = args.get("sloppy-bin") ?? "";
+const runtimeFilterArg = args.get("runtime") ?? args.get("runtimes") ?? "";
+const scenarioFilterArg = args.get("scenario") ?? args.get("scenarios") ?? "";
 const httpProfile = ["1", "true", "TRUE", "on", "ON"].includes(args.get("http-profile") ?? "");
 const httpProfileOut = args.get("http-profile-out") ?? path.join("artifacts", "bench");
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -33,6 +35,74 @@ const httpProfileRunId = `${Date.now().toString(36)}-${process.pid.toString(36)}
 const benchmarkFamily = "json-loopback-competitor";
 const measurementKind = "loopback-http";
 const comparatorScope = "local-dev-machine";
+const defaultScenarios = [
+  "static-json",
+  "static-text",
+  "static-status",
+  "static-problem",
+  "dynamic-json",
+  "dynamic-text",
+  "dynamic-async",
+  "small",
+  "invalid",
+  "medium",
+  "large",
+  "ctx-query",
+  "ctx-headers",
+  "ctx-services",
+  "plain-object",
+  "exception",
+  "route-table",
+];
+
+function parseFilter(value) {
+  return new Set(
+    String(value ?? "")
+      .split(/[,\s]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+}
+
+const runtimeFilter = parseFilter(runtimeFilterArg);
+const scenarioFilter = parseFilter(scenarioFilterArg);
+const selectedScenarios =
+  scenarioFilter.size === 0
+    ? defaultScenarios
+    : defaultScenarios.filter((scenario) => scenarioFilter.has(scenario));
+
+if (scenarioFilter.size !== 0 && selectedScenarios.length === 0) {
+  throw new Error(`no benchmark scenarios matched filter: ${[...scenarioFilter].join(", ")}`);
+}
+
+function runtimeMatchesFilter(runtime) {
+  if (runtimeFilter.size === 0) {
+    return true;
+  }
+  const aliases = {
+    "sloppy:loopback:native_json": ["sloppy-native", "native", "sloppy"],
+    "sloppy:loopback:generic_json": ["sloppy-generic", "generic", "sloppy"],
+    "node:http": ["node"],
+    "node:express": ["express"],
+    "node:fastify": ["fastify"],
+    bun: ["bun"],
+    deno: ["deno"],
+  };
+  return (
+    runtimeFilter.has(runtime) ||
+    (aliases[runtime] ?? []).some((alias) => runtimeFilter.has(alias))
+  );
+}
+
+function pushSkippedRuntime(results, runtime, reason) {
+  results.push({
+    runtime,
+    status: "SKIPPED",
+    reason,
+    benchmarkMetadata: runtimeBenchmarkMetadata(runtime),
+    rows: [],
+  });
+}
 
 const payloads = {
   small: { username: "ada", password: "correct horse battery staple" },
@@ -790,25 +860,7 @@ function validateBenchmarkLabels(report) {
 
 async function runRuntime(name, version, start) {
   let server = null;
-  const scenarios = [
-    "static-json",
-    "static-text",
-    "static-status",
-    "static-problem",
-    "dynamic-json",
-    "dynamic-text",
-    "dynamic-async",
-    "small",
-    "invalid",
-    "medium",
-    "large",
-    "ctx-query",
-    "ctx-headers",
-    "ctx-services",
-    "plain-object",
-    "exception",
-    "route-table",
-  ];
+  const scenarios = selectedScenarios;
   const metadata = runtimeBenchmarkMetadata(name);
   try {
     if (httpProfile && name.startsWith("sloppy:loopback:")) {
@@ -933,100 +985,69 @@ async function startExternalServer(command, commandArgs) {
 
 const results = [];
 const sloppyInfo = resolveSloppyBin();
-if (sloppyInfo.available) {
-  results.push(
-    await runRuntime("sloppy:loopback:native_json", sloppyInfo.version, (profile) =>
-      startSloppyServer("native", sloppyInfo, profile),
-    ),
-  );
-  results.push(
-    await runRuntime("sloppy:loopback:generic_json", sloppyInfo.version, (profile) =>
-      startSloppyServer("generic", sloppyInfo, profile),
-    ),
-  );
-} else {
-  results.push({
-    runtime: "sloppy:loopback:native_json",
-    status: "SKIPPED",
-    reason: "sloppy executable not found",
-    benchmarkMetadata: runtimeBenchmarkMetadata("sloppy:loopback:native_json"),
-    rows: [],
-  });
-  results.push({
-    runtime: "sloppy:loopback:generic_json",
-    status: "SKIPPED",
-    reason: "sloppy executable not found",
-    benchmarkMetadata: runtimeBenchmarkMetadata("sloppy:loopback:generic_json"),
-    rows: [],
-  });
+if (runtimeMatchesFilter("sloppy:loopback:native_json")) {
+  if (sloppyInfo.available) {
+    results.push(
+      await runRuntime("sloppy:loopback:native_json", sloppyInfo.version, (profile) =>
+        startSloppyServer("native", sloppyInfo, profile),
+      ),
+    );
+  } else {
+    pushSkippedRuntime(results, "sloppy:loopback:native_json", "sloppy executable not found");
+  }
+}
+if (runtimeMatchesFilter("sloppy:loopback:generic_json")) {
+  if (sloppyInfo.available) {
+    results.push(
+      await runRuntime("sloppy:loopback:generic_json", sloppyInfo.version, (profile) =>
+        startSloppyServer("generic", sloppyInfo, profile),
+      ),
+    );
+  } else {
+    pushSkippedRuntime(results, "sloppy:loopback:generic_json", "sloppy executable not found");
+  }
 }
 const nodeVersion = detectCommand("node");
-if (nodeVersion.available) {
+if (runtimeMatchesFilter("node:http") && nodeVersion.available) {
   results.push(await runRuntime("node:http", nodeVersion.version, startNodeHttpServer));
-} else {
-  results.push({
-    runtime: "node:http",
-    status: "SKIPPED",
-    reason: "node executable not found",
-    benchmarkMetadata: runtimeBenchmarkMetadata("node:http"),
-    rows: [],
-  });
+} else if (runtimeMatchesFilter("node:http")) {
+  pushSkippedRuntime(results, "node:http", "node executable not found");
 }
 
 const expressInfo = optionalPackage("express");
-if (nodeVersion.available && expressInfo.available) {
+if (runtimeMatchesFilter("node:express") && nodeVersion.available && expressInfo.available) {
   results.push(await runRuntime("node:express", `${nodeVersion.version}; express ${expressInfo.version}`, startExpressServer));
-} else {
-  results.push({
-    runtime: "node:express",
-    status: "SKIPPED",
-    reason: "express dependency not installed",
-    benchmarkMetadata: runtimeBenchmarkMetadata("node:express"),
-    rows: [],
-  });
+} else if (runtimeMatchesFilter("node:express")) {
+  pushSkippedRuntime(results, "node:express", "express dependency not installed");
 }
 
 const fastifyInfo = optionalPackage("fastify");
-if (nodeVersion.available && fastifyInfo.available) {
+if (runtimeMatchesFilter("node:fastify") && nodeVersion.available && fastifyInfo.available) {
   results.push(await runRuntime("node:fastify", `${nodeVersion.version}; fastify ${fastifyInfo.version}`, startFastifyServer));
-} else {
-  results.push({
-    runtime: "node:fastify",
-    status: "SKIPPED",
-    reason: "fastify dependency not installed",
-    benchmarkMetadata: runtimeBenchmarkMetadata("node:fastify"),
-    rows: [],
-  });
+} else if (runtimeMatchesFilter("node:fastify")) {
+  pushSkippedRuntime(results, "node:fastify", "fastify dependency not installed");
 }
 
 const bunInfo = detectCommand("bun");
-if (bunInfo.available) {
+if (runtimeMatchesFilter("bun") && bunInfo.available) {
   results.push(await runRuntime("bun", bunInfo.version, () => startExternalServer("bun", ["bun-server.mjs"])));
-} else {
-  results.push({
-    runtime: "bun",
-    status: "SKIPPED",
-    reason: "bun executable not found",
-    benchmarkMetadata: runtimeBenchmarkMetadata("bun"),
-    rows: [],
-  });
+} else if (runtimeMatchesFilter("bun")) {
+  pushSkippedRuntime(results, "bun", "bun executable not found");
 }
 
 const denoInfo = detectCommand("deno");
-if (denoInfo.available) {
+if (runtimeMatchesFilter("deno") && denoInfo.available) {
   results.push(
     await runRuntime("deno", denoInfo.version, () =>
       startExternalServer("deno", ["run", "--allow-net=127.0.0.1", "deno-server.mjs"]),
     ),
   );
-} else {
-  results.push({
-    runtime: "deno",
-    status: "SKIPPED",
-    reason: "deno executable not found",
-    benchmarkMetadata: runtimeBenchmarkMetadata("deno"),
-    rows: [],
-  });
+} else if (runtimeMatchesFilter("deno")) {
+  pushSkippedRuntime(results, "deno", "deno executable not found");
+}
+
+if (results.length === 0) {
+  throw new Error(`no benchmark runtimes matched filter: ${[...runtimeFilter].join(", ")}`);
 }
 
 const report = {
@@ -1038,6 +1059,8 @@ const report = {
   iterations,
   warmupIterations,
   repeat,
+  selectedScenarios,
+  runtimeFilter: [...runtimeFilter],
   httpProfile: {
     enabled: httpProfile,
     outDir: httpProfile ? httpProfileOutDir : null,

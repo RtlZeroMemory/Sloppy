@@ -4,6 +4,8 @@ param(
     [int]$Repeat = 1,
     [string]$SloppyBin = "",
     [switch]$HttpProfile,
+    [string]$Runtime = "",
+    [string]$Scenario = "",
     [string]$Out = "artifacts/bench/json-competitors.json",
     [switch]$Report,
     [string]$ReportOut = "",
@@ -28,6 +30,12 @@ if ($SloppyBin -ne "") {
 }
 if ($HttpProfile) {
     $args += @("--http-profile", "true", "--http-profile-out", (Join-Path $Root "artifacts/bench"))
+}
+if ($Runtime -ne "") {
+    $args += @("--runtime", $Runtime)
+}
+if ($Scenario -ne "") {
+    $args += @("--scenario", $Scenario)
 }
 node $Runner @args
 if ($LASTEXITCODE -ne 0) {

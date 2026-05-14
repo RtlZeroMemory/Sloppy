@@ -8,6 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 typedef struct SlHttpProfilePhaseStats
 {
     uint64_t total_ns;
@@ -437,10 +441,16 @@ SlStatus sl_http_profile_flush_if_requested(void)
     if (fclose(file) != 0) {
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
-    remove(path);
+#if defined(_WIN32)
+    if (!MoveFileExA(temp_path, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        remove(temp_path);
+        return sl_status_from_code(SL_STATUS_INTERNAL);
+    }
+#else
     if (rename(temp_path, path) != 0) {
         remove(temp_path);
         return sl_status_from_code(SL_STATUS_INTERNAL);
     }
+#endif
     return sl_status_ok();
 }
