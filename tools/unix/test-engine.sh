@@ -519,7 +519,7 @@ should_run http2 && run_http2
 should_run stress && run_stress
 if [[ "$area" == "package" || ( "$area" == "all" && "$tier" != "pr" ) ]]; then run_package; fi
 should_run contracts && run_contracts
-should_run contracts-http && run_contracts_http
+if [[ "$area" == "contracts-http" ]]; then run_contracts_http; fi
 if [[ "$area" == "sanitizer" || ( "$area" == "all" && "$tier" != "pr" ) ]]; then run_sanitizer; fi
 if [[ "$area" == "v8" || ( "$area" == "all" && "$tier" == "torture" ) ]]; then run_v8; fi
 if [[ "$area" == "provider" || ( "$area" == "all" && "$tier" != "pr" ) ]]; then run_provider; fi

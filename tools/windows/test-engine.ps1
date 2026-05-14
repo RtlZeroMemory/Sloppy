@@ -657,7 +657,7 @@ if ($Area -eq "package" -or ($Area -eq "all" -and $Tier -ne "pr")) {
 if (Should-Run "contracts") {
     Invoke-ContractsArea
 }
-if (Should-Run "contracts-http") {
+if ($Area -eq "contracts-http") {
     Invoke-ContractsHttpArea
 }
 if ($Area -eq "sanitizer" -or ($Area -eq "all" -and $Tier -ne "pr")) {

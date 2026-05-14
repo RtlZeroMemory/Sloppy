@@ -173,14 +173,18 @@ function routeSpecificity(pattern) {
     const segments = pattern.split("/").filter(Boolean);
     let staticSegments = 0;
     let paramSegments = 0;
+    let constrainedParamSegments = 0;
     for (const segment of segments) {
         if (/^\{[^}]+\}$/u.test(segment)) {
             paramSegments += 1;
+            if (/^\{[^:}]+:[^}]+\}$/u.test(segment)) {
+                constrainedParamSegments += 1;
+            }
         } else {
             staticSegments += 1;
         }
     }
-    return { staticSegments, paramSegments, segments: segments.length };
+    return { staticSegments, paramSegments, constrainedParamSegments, segments: segments.length };
 }
 
 function parsePatternParam(segment) {
@@ -240,6 +244,9 @@ function selectRoute(routes, request) {
         if (left.specificity.paramSegments !== right.specificity.paramSegments) {
             return left.specificity.paramSegments - right.specificity.paramSegments;
         }
+        if (right.specificity.constrainedParamSegments !== left.specificity.constrainedParamSegments) {
+            return right.specificity.constrainedParamSegments - left.specificity.constrainedParamSegments;
+        }
         return left.index - right.index;
     });
     return candidates[0];
@@ -257,8 +264,18 @@ function collectAllowedMethods(routes, request) {
     return [...methods].sort();
 }
 
+function canonicalJson(value) {
+    if (Array.isArray(value)) {
+        return value.map(canonicalJson);
+    }
+    if (value !== null && typeof value === "object") {
+        return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalJson(value[key])]));
+    }
+    return value;
+}
+
 function sameJsonShape(left, right) {
-    return JSON.stringify(left) === JSON.stringify(right);
+    return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right));
 }
 
 function assertResponseEquivalence(collector, trace) {
@@ -309,6 +326,13 @@ function assertResponseEquivalence(collector, trace) {
     for (const [label, response] of [["generic", generic], ["optimized", optimized]]) {
         const contentLength = contentLengthValue(response);
         if (contentLength === undefined) {
+            continue;
+        }
+        if (trace.request?.method === "HEAD") {
+            collector.pass("http.content-length-correct", "HEAD response content-length is not body-byte validated", {
+                request: trace.name,
+                lane: label,
+            });
             continue;
         }
         const actual = Number(contentLength);
@@ -593,6 +617,15 @@ async function validateHttpDispatchFixture({ root, fixture }) {
                 route: key,
             });
         }
+        if ((route.effects ?? []).length > 0 && route.nativeResponse !== undefined) {
+            collector.fail("native-response.provider-effects-no-native-response", "provider-effect routes must not be marked native no-JS", {
+                route: key,
+            });
+        } else if ((route.effects ?? []).length > 0) {
+            collector.pass("native-response.provider-effects-no-native-response", "provider-effect route has no native no-JS response", {
+                route: key,
+            });
+        }
         const artifact = artifactEntries[index];
         if (artifact === undefined) {
             continue;
@@ -686,14 +719,32 @@ async function validateHttpDispatchFixture({ root, fixture }) {
         }
 
         const allowedMethods = collectAllowedMethods(routes, trace.request);
-        if (trace.generic.status !== 405 || allowedMethods.length > 0) {
+        if (selectedPlan !== undefined) {
             collector.pass("http.method-selection", "method selection is consistent with route table", {
                 request: trace.name,
                 allowedMethods,
             });
-        } else {
+        } else if (allowedMethods.length > 0 && trace.generic.status === 405) {
+            collector.pass("http.method-selection", "method selection is consistent with route table", {
+                request: trace.name,
+                allowedMethods,
+            });
+        } else if (allowedMethods.length > 0) {
+            collector.fail("http.method-selection", "request with alternate methods must produce a 405 response", {
+                request: trace.name,
+                expected: 405,
+                actual: trace.generic.status,
+                allowedMethods,
+            });
+        } else if (trace.generic.status === 405) {
             collector.fail("http.method-selection", "405 response must identify a path with alternate methods", {
                 request: trace.name,
+                allowedMethods,
+            });
+        } else {
+            collector.pass("http.method-selection", "method selection is consistent with route table", {
+                request: trace.name,
+                allowedMethods,
             });
         }
 
