@@ -1,0 +1,7 @@
+{
+  "schema": "sloppy.app-package.v1",
+  "artifacts": {
+    "plan": "artifacts/app.plan.json",
+    "bundle": "artifacts/app.js"
+  }
+}

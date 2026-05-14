@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "dataProviders": [
+    {
+      "token": "data.main",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "database": "C:\\\\temp\\\\app.db"
+    }
+  ],
+  "routes": []
+}

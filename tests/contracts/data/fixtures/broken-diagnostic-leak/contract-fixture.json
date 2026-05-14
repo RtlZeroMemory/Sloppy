@@ -1,0 +1,6 @@
+{
+  "mode": "behavior",
+  "scenario": "diagnostic-leak",
+  "expected": "fail",
+  "expectedInvariants": ["data.diagnostics.redacted"]
+}

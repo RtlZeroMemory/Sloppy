@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "dataProviders": [
+    {
+      "token": "data.main",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "database": "data/app.db"
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/users",
+      "effects": [
+        {
+          "provider": "data.audit",
+          "providerKind": "sqlite",
+          "operation": "query"
+        }
+      ]
+    }
+  ]
+}

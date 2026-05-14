@@ -7,6 +7,7 @@ artifact set and fail when the bytes describe something unusable or misleading.
 Run the PR-tier contract lane with:
 
 ```powershell
+node tests/contracts/runner/contract-runner.mjs --area data --tier pr
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr
 node tests/contracts/runner/contract-runner.mjs --area all --tier pr
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr --format markdown

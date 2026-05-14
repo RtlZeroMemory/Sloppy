@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "kind": "web",
+  "dataProviders": [
+    {
+      "token": "data.main",
+      "provider": "sqlite",
+      "providerKind": "sqlite",
+      "database": "data/app.db",
+      "access": "readwrite",
+      "readOnly": false
+    }
+  ],
+  "routes": [
+    {
+      "method": "GET",
+      "pattern": "/users",
+      "effects": [
+        {
+          "provider": "data.main",
+          "providerKind": "sqlite",
+          "access": "read",
+          "operation": "query"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "pattern": "/users",
+      "effects": [
+        {
+          "provider": "data.main",
+          "providerKind": "sqlite",
+          "access": "write",
+          "operation": "exec"
+        }
+      ]
+    }
+  ]
+}
