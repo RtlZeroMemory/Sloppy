@@ -3157,6 +3157,19 @@ static void sl_http_dispatch_context_needs_all(SlHttpDispatchContextNeeds* needs
     needs->request_fields = SL_HTTP_REQUEST_FIELDS_ALL;
 }
 
+static void sl_http_dispatch_context_needs_request_facade(SlHttpDispatchContextNeeds* needs)
+{
+    if (needs == NULL) {
+        return;
+    }
+
+    needs->headers = true;
+    needs->body = true;
+    needs->body_facade = true;
+    needs->request = true;
+    needs->request_fields = SL_HTTP_REQUEST_FIELDS_ALL;
+}
+
 static uint32_t sl_http_dispatch_request_field_mask(SlStr name)
 {
     switch (name.length) {
@@ -3249,7 +3262,7 @@ static SlHttpDispatchContextNeeds sl_http_dispatch_context_needs(const SlPlanRou
                 needs.body = true;
             }
             else if (sl_str_equal(route->bindings[index].name, sl_str_from_cstr("request"))) {
-                sl_http_dispatch_context_needs_all(&needs);
+                sl_http_dispatch_context_needs_request_facade(&needs);
             }
             else {
                 uint32_t request_field =

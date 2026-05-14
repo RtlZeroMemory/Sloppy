@@ -888,6 +888,7 @@ static SlStatus sl_http_transport_start_timer(SlHttpPlatformConnection* platform
                                               bool* initialized, uint64_t timeout_ms,
                                               uv_timer_cb callback);
 static void sl_http_transport_stop_timer(uv_timer_t* timer, bool* initialized);
+static void sl_http_transport_stop_lifecycle_timers(SlHttpPlatformConnection* platform);
 static void sl_http_transport_write_timeout_cb(uv_timer_t* timer);
 static void sl_http_transport_idle_timeout_cb(uv_timer_t* timer);
 static void sl_http_transport_write_cb(uv_write_t* request, int status);
@@ -1530,6 +1531,7 @@ static SlStatus sl_http_transport_start_write_bytes(SlHttpTransportConnection* c
         if (rc == (int)bytes.length) {
             connection->platform->writing = true;
             connection->write_started = true;
+            sl_http_transport_stop_lifecycle_timers(connection->platform);
             status = sl_http_transport_schedule_fast_write_completion(connection->platform);
             if (!sl_status_is_ok(status)) {
                 connection->platform->writing = false;
@@ -2653,6 +2655,18 @@ static void sl_http_transport_stop_timer(uv_timer_t* timer, bool* initialized)
         return;
     }
     uv_timer_stop(timer);
+}
+
+static void sl_http_transport_stop_lifecycle_timers(SlHttpPlatformConnection* platform)
+{
+    if (platform == NULL) {
+        return;
+    }
+    sl_http_transport_stop_timer(&platform->header_timer, &platform->header_timer_initialized);
+    sl_http_transport_stop_timer(&platform->body_timer, &platform->body_timer_initialized);
+    sl_http_transport_stop_timer(&platform->request_timer, &platform->request_timer_initialized);
+    sl_http_transport_stop_timer(&platform->write_timer, &platform->write_timer_initialized);
+    sl_http_transport_stop_timer(&platform->idle_timer, &platform->idle_timer_initialized);
 }
 
 static void sl_http_transport_close_timer(uv_timer_t* timer, bool* initialized)
