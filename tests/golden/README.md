@@ -21,7 +21,8 @@ Golden files should be reviewed like public API changes.
 
 ## Golden Policy
 
-Goldens are receipts, not the source of truth. Structured JSON goldens should
+Goldens are receipts, not the source of truth. Structured JSON goldens are a
+semantic contract and should
 assert stable semantic fields; text goldens are reserved for deliberate UX
 surfaces. Do not update a golden only because current output changed.
 
