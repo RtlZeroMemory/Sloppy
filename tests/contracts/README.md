@@ -8,6 +8,7 @@ Run the PR-tier contract lane with:
 
 ```powershell
 node tests/contracts/runner/contract-runner.mjs --area openapi --tier pr
+node tests/contracts/runner/contract-runner.mjs --area http --tier pr
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr
 node tests/contracts/runner/contract-runner.mjs --area all --tier pr
 node tests/contracts/runner/contract-runner.mjs --area openapi --tier pr --format markdown
@@ -19,10 +20,12 @@ The test engine exposes the same lane:
 
 ```powershell
 tools/windows/test-engine.ps1 -Area contracts -Tier pr
+tools/windows/test-engine.ps1 -Area contracts-http -Tier pr
 ```
 
 ```sh
 tools/unix/test-engine.sh --area contracts --tier pr
+tools/unix/test-engine.sh --area contracts-http --tier pr
 ```
 
 ## Report Format

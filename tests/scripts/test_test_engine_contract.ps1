@@ -102,8 +102,9 @@ $v8 = Invoke-Script @("-File", $testEngine, "-Area", "v8", "-Tier", "pr", "-V8Ro
 Assert-True ($v8.ExitCode -eq 0) "unavailable V8 lane failed the command: $($v8.Output)"
 Assert-True (Test-Path -LiteralPath $v8ReportPath -PathType Leaf) "unavailable V8 report was not written"
 $v8Report = Get-Content -LiteralPath $v8ReportPath -Raw | ConvertFrom-Json
-Assert-True ($v8Report.lanes.Count -eq 1) "unexpected V8 report lane count"
-Assert-True ($v8Report.lanes[0].status -eq "unavailable") "V8 gate did not report unavailable"
+Assert-True ($v8Report.lanes.Count -ge 1) "unexpected V8 report lane count"
+Assert-True (@($v8Report.lanes | Where-Object { $_.status -eq "fail" }).Count -eq 0) "unavailable V8 probe reported a failed lane"
+Assert-True (@($v8Report.lanes | Where-Object { $_.id -eq "v8.test" -and $_.status -eq "unavailable" }).Count -eq 1) "V8 gate did not report unavailable"
 
 $extendedWorkflow = Get-Content -LiteralPath (Join-Path $RepoRoot ".github/workflows/test-engine-extended.yml") -Raw
 $tortureWorkflow = Get-Content -LiteralPath (Join-Path $RepoRoot ".github/workflows/test-engine-torture.yml") -Raw

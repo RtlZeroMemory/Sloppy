@@ -1,0 +1,287 @@
+{
+  "bundle": {
+    "hash": "sha256:c870444a25543c84d8d2dbe9641bbc337f4bb1c0b170f7eb1e38505059179bcf",
+    "id": "sloppyc-app-js",
+    "path": "app.js"
+  },
+  "capabilities": [],
+  "compilerVersion": "sloppyc-0.8.0",
+  "completeness": {
+    "reasons": [],
+    "status": "complete"
+  },
+  "configuration": {
+    "environment": "Development",
+    "keys": [
+      {
+        "key": "Sloppy:Runtime:V8MicrotaskDrainLimit",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 64
+      },
+      {
+        "key": "Sloppy:Server:Host",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": "127.0.0.1"
+      },
+      {
+        "key": "Sloppy:Server:KeepAliveEnabled",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": true
+      },
+      {
+        "key": "Sloppy:Server:KeepAliveIdleTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5000
+      },
+      {
+        "key": "Sloppy:Server:MaxConnections",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 128
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestBodyBytes",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 8192
+      },
+      {
+        "key": "Sloppy:Server:MaxRequestsPerConnection",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 0
+      },
+      {
+        "key": "Sloppy:Server:Port",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 5173
+      },
+      {
+        "key": "Sloppy:Server:RequestTimeoutMs",
+        "sensitive": false,
+        "source": "built-in defaults",
+        "value": 30000
+      }
+    ],
+    "providers": []
+  },
+  "dataProviders": [],
+  "features": {
+    "asyncHandlers": false,
+    "capabilities": false,
+    "dataProviders": false,
+    "metadataInference": true,
+    "nativeEndpointDispatch": true,
+    "nativeJsonDispatch": true,
+    "sourceMaps": true,
+    "strongPlanMetadata": true
+  },
+  "handlers": [
+    {
+      "async": false,
+      "displayName": "Users.Get",
+      "exportName": "__sloppy_handler_1",
+      "id": 1,
+      "source": {
+        "column": 27,
+        "line": 6,
+        "path": "input.js"
+      }
+    },
+    {
+      "async": false,
+      "displayName": "Tenant.Users.Get",
+      "exportName": "__sloppy_handler_2",
+      "id": 2,
+      "source": {
+        "column": 40,
+        "line": 7,
+        "path": "input.js"
+      }
+    }
+  ],
+  "kind": "web",
+  "modules": [],
+  "routeDispatch": {
+    "artifact": {
+      "hash": "sha256:5da3e79351754675348afd5e5dddff7717f06116fcef7245e46e4aeabcfb9733",
+      "kind": "slrt",
+      "path": "routes.slrt"
+    },
+    "catchAllRoutes": 0,
+    "dispatchStats": {
+      "constraints": [
+        "int"
+      ],
+      "exactStaticPaths": 0,
+      "parameterCandidateBuckets": 2,
+      "segmentTrieNodes": 6,
+      "staticEdgeStrategies": [
+        "open-addressed-exact-hash",
+        "segment-trie",
+        "first-static-segment-bucket-fallback"
+      ]
+    },
+    "endpointCount": 2,
+    "fallback": {
+      "classicAvailable": true,
+      "dynamicRoutes": 0,
+      "partialRoutes": 0
+    },
+    "json": {
+      "request": {
+        "fallback": 0,
+        "generic": 0,
+        "materialized": 0,
+        "native": 0
+      },
+      "response": {
+        "fallback": 0,
+        "generic": 0,
+        "native": 1
+      }
+    },
+    "mode": "native-compiled",
+    "nativeNoJsEndpoints": 2,
+    "parameterRoutes": 2,
+    "routeCount": 2,
+    "staticRoutes": 0,
+    "urlGeneration": true,
+    "urlWriters": 2,
+    "version": 1
+  },
+  "routes": [
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 1,
+        "executionKind": "native-static-json",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
+      },
+      "handlerId": 1,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "contentType": "application/json",
+        "mode": "native-static",
+        "writer": "preencoded"
+      },
+      "method": "GET",
+      "name": "Users.Get",
+      "nativeResponse": {
+        "body": "{\"ok\":true}",
+        "contentType": "application/json",
+        "kind": "json",
+        "status": 200
+      },
+      "pattern": "/users/{id:int}",
+      "response": {
+        "helper": "json",
+        "kind": "json",
+        "nativeBody": "{\"ok\":true}",
+        "status": 200
+      },
+      "source": {
+        "column": 1,
+        "line": 6,
+        "path": "input.js"
+      }
+    },
+    {
+      "bindings": [],
+      "completeness": {
+        "reasons": [],
+        "status": "complete"
+      },
+      "dispatch": {
+        "endpointId": 2,
+        "executionKind": "native-static-text",
+        "mode": "native-compiled",
+        "specializable": true,
+        "strategy": "segment-trie"
+      },
+      "handlerId": 2,
+      "jsonRequest": {
+        "materialization": "none",
+        "mode": "none",
+        "unknownFields": "ignore"
+      },
+      "jsonResponse": {
+        "mode": "none",
+        "writer": "none"
+      },
+      "method": "GET",
+      "name": "Tenant.Users.Get",
+      "nativeResponse": {
+        "body": "tenant",
+        "contentType": "text/plain; charset=utf-8",
+        "kind": "text",
+        "status": 200
+      },
+      "pattern": "/{tenant}/users/{id:int}",
+      "response": {
+        "helper": "text",
+        "kind": "text",
+        "nativeBody": "tenant",
+        "status": 200
+      },
+      "source": {
+        "column": 1,
+        "line": 7,
+        "path": "input.js"
+      }
+    }
+  ],
+  "runtimeMinimumVersion": "0.1.0",
+  "schemaVersion": 1,
+  "sourceFiles": [
+    {
+      "hash": "sha256:fe03ad0541d1ff7570e8d43524b195d74a4a8448da4b305dedf18f1c2febcb37",
+      "path": "input.js"
+    }
+  ],
+  "sourceMap": {
+    "hash": "sha256:fe79c5090e88947a5750be2b6a436cc02398598a7144d523de675a8bd9493763",
+    "id": "sloppyc-app-js-map",
+    "path": "app.js.map"
+  },
+  "stdlibVersion": "0.1.0",
+  "strongPlan": {
+    "compatibility": {
+      "schemaVersion": 1,
+      "unknownOptionalFields": "ignored",
+      "unknownRequiredFeatures": "rejected"
+    },
+    "evidence": {
+      "bindings": false,
+      "capabilities": false,
+      "effects": false,
+      "ffi": false,
+      "nativeJsonDispatch": true,
+      "providers": false,
+      "routeDispatch": true,
+      "routes": true,
+      "sourceGraph": true
+    },
+    "profile": "compiler-30-strong-plan",
+    "version": 1
+  },
+  "target": {
+    "engine": "v8",
+    "platform": "windows-x64"
+  }
+}
