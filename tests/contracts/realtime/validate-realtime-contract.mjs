@@ -31,6 +31,19 @@ function failFinding(fixture, invariant, error) {
     });
 }
 
+function unavailableFinding(fixture, invariant, message, details = undefined) {
+    return createFinding({
+        id: `${SUBSYSTEM}.${fixture}.${invariant}`,
+        status: "unavailable",
+        severity: "info",
+        subsystem: SUBSYSTEM,
+        fixture,
+        invariant,
+        message,
+        details,
+    });
+}
+
 async function expectRejectsStatus(connectAttempt, status) {
     await connectAttempt.expectRejected(status);
 }
@@ -71,7 +84,7 @@ function createChatChannel() {
     });
 }
 
-function createRealtimeApp(Chat) {
+function createRealtimeApp(Chat, observer = undefined) {
     const app = Sloppy.create();
     app.realtime("/public/{roomId}", Chat, async (ctx) => {
         await ctx.accept();
@@ -79,9 +92,12 @@ function createRealtimeApp(Chat) {
     });
     app.realtime("/rooms/{roomId}", Chat, async (ctx) => {
         await ctx.accept();
+        observer?.protectedAccept?.(ctx.params.roomId, ctx.user.sub);
         await ctx.groups.join(`room:${ctx.params.roomId}`);
+        observer?.protectedJoin?.(ctx.params.roomId, ctx.user.sub);
         await ctx.presence.set({ userId: ctx.user.sub });
         await ctx.send("ready", { roomId: ctx.params.roomId, userId: ctx.user.sub });
+        observer?.protectedReady?.(ctx.params.roomId, ctx.user.sub);
         ctx.on("sendMessage", async (input) => {
             await ctx.group(`room:${ctx.params.roomId}`).broadcast("messageCreated", {
                 roomId: ctx.params.roomId,
@@ -135,9 +151,15 @@ function createRealtimeApp(Chat) {
 
 async function authRequiredCase() {
     const Chat = createChatChannel();
-    const host = await TestHost.create(createRealtimeApp(Chat));
+    const protectedEvents = [];
+    const host = await TestHost.create(createRealtimeApp(Chat, {
+        protectedAccept: (roomId, userId) => protectedEvents.push(["accept", roomId, userId]),
+        protectedJoin: (roomId, userId) => protectedEvents.push(["join", roomId, userId]),
+        protectedReady: (roomId, userId) => protectedEvents.push(["ready", roomId, userId]),
+    }));
     try {
         await expectRejectsStatus(host.realtime("/rooms/r1", Chat).connect(), 401);
+        assert.deepEqual(protectedEvents, []);
 
         const publicClient = await host.realtime("/public/lobby", Chat).connect();
         await publicClient.expect("ready", { roomId: "lobby", userId: "" });
@@ -149,6 +171,11 @@ async function authRequiredCase() {
         await alice.expect("ready", { roomId: "r1", userId: "alice" });
         await alice.send("who", { roomId: "r1" });
         await alice.expect("presenceList", { roomId: "r1", count: 1 });
+        assert.deepEqual(protectedEvents, [
+            ["accept", "r1", "alice"],
+            ["join", "r1", "alice"],
+            ["ready", "r1", "alice"],
+        ]);
         await alice.close();
     } finally {
         await host.close();
@@ -197,18 +224,29 @@ async function broadcastScopeCase() {
         const mallory = await host.realtime("/rooms/r2", Chat)
             .asUser({ sub: "mallory", scopes: ["chat"] })
             .connect();
+        const trent = await host.realtime("/rooms/r2", Chat)
+            .asUser({ sub: "trent", scopes: ["chat"] })
+            .connect();
         await alice.expect("ready", { roomId: "r1" });
         await bob.expect("ready", { roomId: "r1" });
         await mallory.expect("ready", { roomId: "r2" });
+        await trent.expect("ready", { roomId: "r2" });
         await alice.send("sendMessage", { roomId: "r1", text: "scoped" });
         await bob.expect("messageCreated", { roomId: "r1", text: "scoped" });
         await assert.rejects(
             () => mallory.expect("messageCreated", undefined, { timeoutMs: 20 }),
             /waiting/u,
         );
+        await mallory.send("sendMessage", { roomId: "r2", text: "other-room" });
+        await trent.expect("messageCreated", { roomId: "r2", text: "other-room" });
+        await assert.rejects(
+            () => bob.expect("messageCreated", undefined, { timeoutMs: 20 }),
+            /waiting/u,
+        );
         await alice.close();
         await bob.close();
         await mallory.close();
+        await trent.close();
     } finally {
         await host.close();
     }
@@ -228,11 +266,21 @@ async function presenceDisconnectCase() {
         await bob.expect("ready", { roomId: "r1" });
         await bob.send("who", { roomId: "r1" });
         await bob.expect("presenceList", { roomId: "r1", count: 2 });
-        await alice.close();
+        await bob.send("leaveRoom", { roomId: "r1" });
         await bob.send("who", { roomId: "r1" });
         await bob.expect("presenceList", { roomId: "r1", count: 1 });
-        await assertSocketCannotReceive(alice);
         await bob.close();
+        const carol = await host.realtime("/rooms/r1", Chat)
+            .asUser({ sub: "carol", scopes: ["chat"] })
+            .connect();
+        await carol.expect("ready", { roomId: "r1" });
+        await carol.send("who", { roomId: "r1" });
+        await carol.expect("presenceList", { roomId: "r1", count: 2 });
+        await alice.close();
+        await carol.send("who", { roomId: "r1" });
+        await carol.expect("presenceList", { roomId: "r1", count: 1 });
+        await assertSocketCannotReceive(alice);
+        await carol.close();
     } finally {
         await host.close();
     }
@@ -303,7 +351,7 @@ async function backpressureLimitCase() {
     }
 }
 
-async function websocketUpgradeRequiredCase() {
+async function testHostWebsocketUpgradeRequiredCase() {
     const Chat = createChatChannel();
     const host = await TestHost.create(createRealtimeApp(Chat));
     try {
@@ -323,7 +371,7 @@ async function websocketUpgradeRequiredCase() {
     }
 }
 
-async function websocketCloseCodeCase() {
+async function testHostWebsocketCloseCodeCase() {
     const Chat = createChatChannel();
     const host = await TestHost.create(createRealtimeApp(Chat));
     try {
@@ -337,20 +385,34 @@ async function websocketCloseCodeCase() {
 export async function runRealtimeContract({ tier }) {
     const startedAt = new Date().toISOString();
     const cases = [
-        ["auth", "realtime.auth.required", authRequiredCase, "protected realtime endpoints reject unauthenticated connects and expose authenticated identity"],
-        ["groups", "realtime.group.join-leave", groupJoinLeaveCase, "clients can join and leave realtime groups"],
-        ["groups", "realtime.group.broadcast-scope", broadcastScopeCase, "group broadcasts reach members without leaking across rooms"],
-        ["presence", "realtime.presence.disconnect", presenceDisconnectCase, "disconnect removes presence and stale clients cannot receive"],
-        ["message", "realtime.message.validation", messageValidationCase, "valid realtime messages are accepted and invalid messages are rejected"],
-        ["message", "realtime.message.no-crash", messageNoCrashCase, "unsupported realtime message types return stable errors without crashing"],
-        ["lifecycle", "realtime.backpressure.limit", backpressureLimitCase, "WebSocket send queue limits close slow consumers predictably"],
-        ["upgrade", "websocket.upgrade.required", websocketUpgradeRequiredCase, "WebSocket routes require upgrade semantics and protocol checks"],
-        ["upgrade", "websocket.close-code", websocketCloseCodeCase, "WebSocket close code matches the current contract"],
+        ["testhost-auth", "testhost.realtime.auth.required", authRequiredCase, "TestHost protected realtime endpoints reject unauthenticated connects before join or delivery"],
+        ["testhost-groups", "testhost.realtime.group.join-leave", groupJoinLeaveCase, "TestHost clients can join and leave realtime groups"],
+        ["testhost-groups", "testhost.realtime.group.broadcast-scope", broadcastScopeCase, "TestHost group broadcasts reach members without leaking across rooms"],
+        ["testhost-presence", "testhost.realtime.presence.disconnect", presenceDisconnectCase, "TestHost presence counts decrement after leave and disconnect"],
+        ["testhost-message", "testhost.realtime.message.validation", messageValidationCase, "TestHost valid realtime messages are accepted and invalid messages are rejected"],
+        ["testhost-message", "testhost.realtime.message.no-crash", messageNoCrashCase, "TestHost unsupported realtime message types return stable errors without crashing"],
+        ["testhost-lifecycle", "testhost.realtime.backpressure.limit", backpressureLimitCase, "TestHost WebSocket send queue limits close slow consumers predictably"],
+        ["testhost-upgrade", "testhost.websocket.upgrade.required", testHostWebsocketUpgradeRequiredCase, "TestHost WebSocket routes require app-host upgrade semantics and protocol checks"],
+        ["testhost-upgrade", "testhost.websocket.close-code", testHostWebsocketCloseCodeCase, "TestHost WebSocket close code matches the app-host contract"],
     ];
     const findings = [];
     for (const [fixture, invariant, body, message] of cases) {
         findings.push(await runCase(fixture, invariant, body, message, { tier }));
     }
+    findings.push(
+        unavailableFinding(
+            "native-transport",
+            "websocket.upgrade.required",
+            "Native WebSocket HTTP Upgrade behavior is not exercised by the PR-tier realtime contract.",
+            { lane: "extended", coveredBy: "native runtime transport/WebSocket lanes" },
+        ),
+        unavailableFinding(
+            "native-transport",
+            "websocket.close-code",
+            "Native WebSocket frame close-code behavior is not exercised by the PR-tier realtime contract.",
+            { lane: "extended", coveredBy: "native runtime transport/WebSocket lanes" },
+        ),
+    );
     return createReport({
         subsystem: SUBSYSTEM,
         tier,
