@@ -1368,6 +1368,26 @@ const FfiStructField* ffi_struct_field(const SlV8FfiResource* resource, const st
     return nullptr;
 }
 
+bool ffi_write_struct_field_value(v8::Isolate* isolate, const FfiStructField& field,
+                                  v8::Local<v8::Value> value, unsigned char* base, size_t capacity)
+{
+    if (base == nullptr || field.offset > capacity || field.byte_size > capacity - field.offset) {
+        return false;
+    }
+    const size_t primitive_size = sl_ffi_type_size(field.type);
+    if (!field.nested_fields.empty() || field.byte_size != primitive_size) {
+        const unsigned char* bytes = nullptr;
+        size_t length = 0U;
+        if (!ffi_copy_uint8_array(value, &bytes, &length) || length != field.byte_size) {
+            return false;
+        }
+        std::copy_n(bytes, length, base + field.offset);
+        return true;
+    }
+    return ffi_write_value_to_bytes(isolate, field.type, value, base + field.offset,
+                                    capacity - field.offset);
+}
+
 void ffi_struct_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
     v8::Isolate* isolate = args.GetIsolate();
@@ -1381,7 +1401,9 @@ void ffi_struct_get_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     }
     const FfiStructField* field = ffi_struct_field(resource, name);
     size_t field_size = field == nullptr ? 0U : field->byte_size;
-    if (field == nullptr || field->offset + field_size > resource->byte_length) {
+    if (field == nullptr || field->offset > resource->byte_length ||
+        field_size > resource->byte_length - field->offset)
+    {
         ffi_throw_type_error(isolate, "unsafeFfi.struct field is not present.");
         return;
     }
@@ -1413,25 +1435,14 @@ void ffi_struct_set_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
     }
     const FfiStructField* field = ffi_struct_field(resource, name);
     size_t field_size = field == nullptr ? 0U : field->byte_size;
-    if (field == nullptr || field->offset + field_size > resource->byte_length) {
+    if (field == nullptr || field->offset > resource->byte_length ||
+        field_size > resource->byte_length - field->offset)
+    {
         ffi_throw_type_error(isolate, "unsafeFfi.struct field is not present.");
         return;
     }
-    if (!field->nested_fields.empty() || field_size != sl_ffi_type_size(field->type)) {
-        const unsigned char* bytes = nullptr;
-        size_t length = 0U;
-        if (!ffi_copy_uint8_array(args[1], &bytes, &length) || length != field_size) {
-            ffi_throw_type_error(isolate,
-                                 "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: invalid struct value.");
-            return;
-        }
-        std::copy_n(bytes, length, resource->bytes.data() + field->offset);
-        args.GetReturnValue().Set(args.This());
-        return;
-    }
-    if (!ffi_write_value_to_bytes(isolate, field->type, args[1],
-                                  resource->bytes.data() + field->offset,
-                                  resource->byte_length - field->offset))
+    if (!ffi_write_struct_field_value(isolate, *field, args[1], resource->bytes.data(),
+                                      resource->byte_length))
     {
         ffi_throw_type_error(isolate, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: invalid struct value.");
         return;
@@ -1476,9 +1487,8 @@ void ffi_struct_alloc_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
             {
                 continue;
             }
-            if (!ffi_write_value_to_bytes(isolate, field.type, value,
-                                          resource->bytes.data() + field.offset,
-                                          resource->byte_length - field.offset))
+            if (!ffi_write_struct_field_value(isolate, field, value, resource->bytes.data(),
+                                              resource->byte_length))
             {
                 ffi_throw_type_error(
                     isolate, "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: invalid struct initializer.");
@@ -2001,7 +2011,10 @@ void ffi_dispatch_table_callback(const v8::FunctionCallbackInfo<v8::Value>& args
             return;
         }
         SlV8FfiResource* pointer_resource = ffi_resource_from_value(isolate, pointer_value);
-        if (pointer_resource == nullptr || pointer_resource->native_pointer == nullptr) {
+        if (pointer_resource == nullptr || pointer_resource->disposed ||
+            pointer_resource->kind != FfiResourceKind::NativePointer ||
+            pointer_resource->native_pointer == nullptr)
+        {
             ffi_throw_error(isolate, "SLOPPY_E_FFI_SYMBOL_NOT_FOUND: dispatch symbol missing.");
             return;
         }
@@ -2155,6 +2168,7 @@ void ffi_struct_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         std::string name;
         SlPlanFfiType type = SL_PLAN_FFI_TYPE_UNKNOWN;
         size_t repeat = 1U;
+        size_t nested_alignment = 1U;
         std::vector<FfiStructField> nested_fields;
         if (!names->Get(context, index).ToLocal(&key) || !ffi_string_value(isolate, key, &name) ||
             !fields->Get(context, key).ToLocal(&type_value))
@@ -2168,10 +2182,16 @@ void ffi_struct_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
                 return;
             }
             SlV8FfiResource* nested = ffi_resource_from_value(isolate, type_value);
-            if (nested != nullptr && nested->kind == FfiResourceKind::StructLayout) {
+            if (nested != nullptr) {
+                if (nested->disposed || nested->kind != FfiResourceKind::StructLayout) {
+                    ffi_throw_type_error(isolate,
+                                         "unsafeFfi.struct fields must use valid struct layouts.");
+                    return;
+                }
                 type = SL_PLAN_FFI_TYPE_U8;
                 repeat = nested->byte_length;
                 nested_fields = nested->fields;
+                nested_alignment = nested->byte_alignment;
             }
             else {
                 v8::Local<v8::Object> field_descriptor = type_value.As<v8::Object>();
@@ -2198,8 +2218,7 @@ void ffi_struct_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
         }
         size_t alignment = sl_ffi_type_alignment(type);
         if (!nested_fields.empty()) {
-            SlV8FfiResource* nested = ffi_resource_from_value(isolate, type_value);
-            alignment = nested == nullptr ? 1U : nested->byte_alignment;
+            alignment = nested_alignment;
         }
         if (pack > 0U && alignment > pack) {
             alignment = pack;

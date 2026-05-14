@@ -68,18 +68,29 @@ function typeDescriptor(value, operation) {
                 type: "ptr",
             };
         }
+        if (value.kind === "ffi.type") {
+            return { kind: "type", type: primitiveTypeName(value, operation) };
+        }
     }
-    return { kind: "type", type: typeName(value, operation) };
+    return { kind: "type", type: primitiveTypeName(value, operation) };
 }
 
 function typeName(value, operation) {
     const descriptor =
-        value !== undefined && value !== null && typeof value === "object" && value.kind !== "ffi.type"
+        value !== undefined &&
+        value !== null &&
+        typeof value === "object" &&
+        value.kind !== "ffi.type" &&
+        (value.kind === "ffi.handle" || value.kind === "ffi.handle.owned" || value.kind === "ffi.callback.type")
             ? typeDescriptor(value, operation)
             : undefined;
     if (descriptor !== undefined) {
         return descriptor.type;
     }
+    return primitiveTypeName(value, operation);
+}
+
+function primitiveTypeName(value, operation) {
     if (
         value === null ||
         typeof value !== "object" ||
@@ -391,11 +402,17 @@ function callback(returnTypeOrDescriptor, parameters, fnValue, options = undefin
     if (typeof descriptor.fn !== "function") {
         throw new TypeError("unsafeFfi.callback requires a JavaScript function.");
     }
+    if (!Array.isArray(descriptor.parameters)) {
+        throw new TypeError("unsafeFfi.callback parameters must be an array.");
+    }
     const callbackDescriptor = {
         returnType: typeName(descriptor.returns, "unsafeFfi.callback"),
         parameters: descriptor.parameters.map((parameter) => typeName(parameter, "unsafeFfi.callback")),
         thread: descriptor.thread ?? "runtime",
     };
+    if (callbackDescriptor.thread !== "runtime") {
+        throw new TypeError("SLOPPY_E_FFI_UNSUPPORTED_CALLBACK: callback thread unsupported.");
+    }
     if (!["void", "i32", "u32"].includes(callbackDescriptor.returnType)) {
         throw new TypeError("SLOPPY_E_FFI_UNSUPPORTED_CALLBACK: callback return type unsupported.");
     }
@@ -417,7 +434,8 @@ function dispatchTable(name, descriptor) {
     if (descriptor.symbols === null || typeof descriptor.symbols !== "object" || Array.isArray(descriptor.symbols)) {
         throw new TypeError("unsafeFfi.dispatchTable symbols must be an object.");
     }
-    return ffiBridge("unsafeFfi.dispatchTable").dispatchTable(name, descriptor);
+    const bound = ffiBridge("unsafeFfi.dispatchTable").dispatchTable(name, descriptor);
+    return wrapLibrary(bound, descriptor.symbols);
 }
 
 export const unsafeFfi = Object.freeze({

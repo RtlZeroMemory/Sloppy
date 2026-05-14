@@ -650,6 +650,15 @@ fn extract_ffi_callback_declaration(
         ));
     };
     let return_type = ffi_type_name_from_expression(context.path, return_expression, bindings)?;
+    if !ffi_callback_return_type_supported(&return_type) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK",
+            format!("unsupported FFI callback return type \"{return_type}\""),
+        )
+        .with_path(context.path)
+        .with_span(return_expression.span())
+        .with_hint("Callbacks currently support void, i32, and u32 returns."));
+    }
     let Some(Argument::ArrayExpression(parameters)) = call.arguments.get(1) else {
         return Err(ffi_dynamic_declaration_diag(
             context.path,
@@ -666,11 +675,17 @@ fn extract_ffi_callback_declaration(
                 "unsafeFfi.callback parameter types must be static",
             ));
         };
-        parameter_types.push(ffi_type_name_from_expression(
-            context.path,
-            expression,
-            bindings,
-        )?);
+        let parameter_type = ffi_type_name_from_expression(context.path, expression, bindings)?;
+        if !ffi_callback_parameter_type_supported(&parameter_type) {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_FFI_UNSUPPORTED_CALLBACK",
+                format!("unsupported FFI callback parameter type \"{parameter_type}\""),
+            )
+            .with_path(context.path)
+            .with_span(expression.span())
+            .with_hint("Callbacks currently support i32 and u32 parameters."));
+        }
+        parameter_types.push(parameter_type);
     }
     Ok(FfiCallbackMetadata {
         id: format!("ffi:callback:{}:{}", context.source_name, call.span.start),
@@ -767,14 +782,16 @@ fn extract_ffi_dispatch_table_declaration(
                             "unsafeFfi.dispatchTable symbols must be unsafeFfi.fn descriptors",
                         ));
                     };
-                    symbols.push(extract_ffi_function_declaration(
+                    let symbol = extract_ffi_function_declaration(
                         context,
                         name,
                         symbol_name,
                         "system",
                         fn_call,
                         bindings,
-                    )?);
+                    )?;
+                    validate_ffi_dispatch_symbol(context, &symbol, symbol_property.span)?;
+                    symbols.push(symbol);
                 }
             }
             _ => {}
@@ -1050,6 +1067,53 @@ fn ffi_struct_field_type_supported(name: &str) -> bool {
             | "hmodule"
             | "ntstatus"
     )
+}
+
+fn ffi_callback_return_type_supported(name: &str) -> bool {
+    matches!(name, "void" | "i32" | "u32")
+}
+
+fn ffi_callback_parameter_type_supported(name: &str) -> bool {
+    matches!(name, "i32" | "u32")
+}
+
+fn ffi_dispatch_return_type_supported(name: &str) -> bool {
+    matches!(name, "void" | "i32" | "u32" | "ptr")
+}
+
+fn ffi_dispatch_parameter_type_supported(name: &str) -> bool {
+    matches!(name, "i32" | "u32" | "ptr")
+}
+
+fn validate_ffi_dispatch_symbol(
+    context: &FfiSourceContext<'_>,
+    symbol: &FfiFunctionMetadata,
+    span: Span,
+) -> Result<(), Diagnostic> {
+    if !ffi_dispatch_return_type_supported(&symbol.return_type) {
+        return Err(Diagnostic::new(
+            "SLOPPYC_E_FFI_UNSUPPORTED_TYPE",
+            format!(
+                "unsupported FFI dispatch-table return type \"{}\"",
+                symbol.return_type
+            ),
+        )
+        .with_path(context.path)
+        .with_span(span)
+        .with_hint("Dispatch-table symbols currently support void, i32, u32, and ptr returns."));
+    }
+    for parameter in &symbol.parameters {
+        if !ffi_dispatch_parameter_type_supported(parameter) {
+            return Err(Diagnostic::new(
+                "SLOPPYC_E_FFI_UNSUPPORTED_TYPE",
+                format!("unsupported FFI dispatch-table parameter type \"{parameter}\""),
+            )
+            .with_path(context.path)
+            .with_span(span)
+            .with_hint("Dispatch-table symbols currently support i32, u32, and ptr parameters."));
+        }
+    }
+    Ok(())
 }
 
 fn validate_ffi_convention(path: &Path, span: Span, convention: &str) -> Result<(), Diagnostic> {

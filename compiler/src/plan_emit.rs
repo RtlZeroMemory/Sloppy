@@ -904,13 +904,38 @@ pub(crate) fn emit_plan_with_route_artifact(
                 "name": table.name,
                 "resolver": table.resolver,
                 "symbols": table.symbols.iter().map(|symbol| {
-                    json!({
+                    let mut value = json!({
                         "id": symbol.id,
                         "name": symbol.name,
                         "symbol": symbol.symbol,
+                        "convention": symbol.convention,
                         "return": symbol.return_type,
-                        "parameters": symbol.parameters
-                    })
+                        "parameters": symbol.parameters,
+                        "marshaling": {
+                            "arguments": ffi_argument_marshaling(&symbol.parameters),
+                            "return": "direct"
+                        },
+                        "safety": "unsafe",
+                        "source": source_location_json(
+                            &symbol.source_name,
+                            &symbol.source,
+                            symbol.span
+                        )
+                    });
+                    if let Some(descriptor) = &symbol.return_descriptor {
+                        value["returnDescriptor"] = descriptor.clone();
+                    }
+                    if symbol
+                        .parameter_descriptors
+                        .iter()
+                        .any(|descriptor| !descriptor.is_null())
+                    {
+                        value["parameterDescriptors"] = json!(symbol.parameter_descriptors);
+                    }
+                    if let Some(dispose) = &symbol.dispose {
+                        value["dispose"] = json!(dispose);
+                    }
+                    value
                 }).collect::<Vec<_>>(),
                 "source": source_location_json(&table.source_name, &table.source, table.span)
             })
