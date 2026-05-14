@@ -170,6 +170,8 @@ async function groupJoinLeaveCase() {
         await bob.send("who", { roomId: "r1" });
         await bob.expect("presenceList", { roomId: "r1", count: 2 });
         await bob.send("leaveRoom", { roomId: "r1" });
+        await bob.send("who", { roomId: "r1" });
+        await bob.expect("presenceList", { roomId: "r1", count: 1 });
         await alice.send("sendMessage", { roomId: "r1", text: "after-leave" });
         await assert.rejects(
             () => bob.expect("messageCreated", undefined, { timeoutMs: 20 }),
