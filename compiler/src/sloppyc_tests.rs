@@ -3452,6 +3452,43 @@ fn computed_header_facade_access_materializes_headers_conservatively() {
 }
 
 #[test]
+fn request_method_context_access_uses_request_facade_binding() {
+    let source = r#"const handler = (ctx) => ctx.request.method;
+"#;
+    let allocator = oxc_allocator::Allocator::default();
+    let source_type = oxc_span::SourceType::from_path(std::path::Path::new("app.js"))
+        .expect("fixture source type should be supported");
+    let parsed = oxc_parser::Parser::new(&allocator, source, source_type).parse();
+    assert!(
+        parsed.errors.is_empty(),
+        "fixture should parse without errors: {:?}",
+        parsed.errors
+    );
+
+    let function = parsed
+        .program
+        .body
+        .iter()
+        .find_map(|statement| {
+            let Statement::VariableDeclaration(declaration) = statement else {
+                return None;
+            };
+            let init = declaration.declarations.first()?.init.as_ref()?;
+            let Expression::ArrowFunctionExpression(function) = init else {
+                return None;
+            };
+            Some(function)
+        })
+        .expect("fixture should contain an arrow handler");
+    let bindings = super::request_bindings_from_arrow(function, &BTreeSet::new());
+
+    assert_eq!(bindings.len(), 1);
+    assert_eq!(bindings[0].kind, "context");
+    assert_eq!(bindings[0].name.as_deref(), Some("request"));
+    assert_eq!(bindings[0].type_name.as_deref(), Some("RequestContext"));
+}
+
+#[test]
 fn extracts_bindings_for_named_context_parameter() {
     let source = r#"import { Sloppy, Results, schema } from "sloppy";
 const UserCreate = schema.object({ name: schema.string() });

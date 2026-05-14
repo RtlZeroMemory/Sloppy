@@ -3791,7 +3791,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
         sl_http_profile_record_phase(SL_HTTP_PROFILE_PHASE_V8_HEADERS_MATERIALIZATION,
                                      sl_http_profile_now_ns() - started_ns);
     }
-    if (request_context->needs_request &&
+    if (request_context->needs_cookies &&
         !http_v8_make_cookie_bag(isolate, context, request_context->request, &cookies))
     {
         return false;
@@ -3992,7 +3992,7 @@ bool sl_v8_make_http_context_object(v8::Isolate* isolate, v8::Local<v8::Context>
     {
         return false;
     }
-    if (request_context->needs_request &&
+    if (request_context->needs_cookies &&
         !http_v8_set_object_property_key(isolate, context, ctx, SL_V8_HTTP_STRING_COOKIES, cookies))
     {
         return false;

@@ -803,8 +803,12 @@ pub(super) fn typed_framework_handler_from_arrow(
     source_name: &str,
     schema_names: &BTreeSet<String>,
 ) -> Option<Handler> {
-    let bindings =
+    let mut bindings =
         typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
+    specialize_typed_context_bindings_for_usage(
+        &mut bindings,
+        &request_bindings_from_arrow(function, schema_names),
+    );
     let responses = response_metadata_many_from_arrow(function, source_name, source, schema_names);
     let schema_replacements = handler_context_parameter_name_from_bindings(&bindings)
         .map(|ctx_name| {
@@ -846,8 +850,12 @@ pub(super) fn typed_framework_handler_from_function(
     source_name: &str,
     schema_names: &BTreeSet<String>,
 ) -> Option<Handler> {
-    let bindings =
+    let mut bindings =
         typed_framework_bindings_from_parameters(&function.params, route_pattern, schema_names)?;
+    specialize_typed_context_bindings_for_usage(
+        &mut bindings,
+        &request_bindings_from_function(function, schema_names),
+    );
     let responses =
         response_metadata_many_from_function(function, source_name, source, schema_names);
     let schema_replacements = handler_context_parameter_name_from_bindings(&bindings)
@@ -931,6 +939,24 @@ pub(super) fn typed_framework_bindings_from_parameters(
         return None;
     }
     Some(dedupe_request_bindings(bindings))
+}
+
+pub(super) fn specialize_typed_context_bindings_for_usage(
+    bindings: &mut [RequestBinding],
+    inferred_bindings: &[RequestBinding],
+) {
+    let request_facade_only = !inferred_bindings.is_empty()
+        && inferred_bindings
+            .iter()
+            .all(|binding| binding.kind == "context" && binding.name.as_deref() == Some("request"));
+    if !request_facade_only {
+        return;
+    }
+    for binding in bindings {
+        if binding.kind == "context" && binding.name.as_deref() == Some("RequestContext") {
+            binding.name = Some("request".to_string());
+        }
+    }
 }
 
 pub(super) fn binding_from_typed_parameter(
@@ -2790,6 +2816,24 @@ pub(super) fn request_binding_from_expression(
     {
         return Some(context_request_binding());
     }
+    if chain.len() == 3
+        && chain[0] == ctx_name
+        && chain[1] == "request"
+        && matches!(
+            chain[2],
+            "contentLength"
+                | "contentType"
+                | "id"
+                | "method"
+                | "path"
+                | "protocol"
+                | "queryString"
+                | "rawTarget"
+                | "scheme"
+        )
+    {
+        return Some(request_facade_context_binding());
+    }
     if chain.len() >= 2 && chain[0] == ctx_name {
         return Some(context_request_binding());
     }
@@ -2800,6 +2844,25 @@ pub(super) fn context_request_binding() -> RequestBinding {
     RequestBinding {
         kind: "context".to_string(),
         name: Some("RequestContext".to_string()),
+        schema: None,
+        parameter: None,
+        type_name: Some("RequestContext".to_string()),
+        source_name: None,
+        source_text: None,
+        span: None,
+        wrapper: None,
+        injection_kind: None,
+        provider_kind: None,
+        capability: None,
+        semantic: None,
+        redacted: false,
+    }
+}
+
+pub(super) fn request_facade_context_binding() -> RequestBinding {
+    RequestBinding {
+        kind: "context".to_string(),
+        name: Some("request".to_string()),
         schema: None,
         parameter: None,
         type_name: Some("RequestContext".to_string()),

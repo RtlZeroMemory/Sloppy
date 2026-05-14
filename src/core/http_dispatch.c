@@ -3124,6 +3124,7 @@ typedef struct SlHttpDispatchContextNeeds
     bool headers;
     bool body;
     bool header_facade;
+    bool cookies;
     bool request;
     bool connection;
     bool signal;
@@ -3144,6 +3145,7 @@ static void sl_http_dispatch_context_needs_all(SlHttpDispatchContextNeeds* needs
     needs->headers = true;
     needs->body = true;
     needs->header_facade = true;
+    needs->cookies = true;
     needs->request = true;
     needs->connection = true;
     needs->signal = true;
@@ -3183,10 +3185,15 @@ static SlHttpDispatchContextNeeds sl_http_dispatch_context_needs(const SlPlanRou
             break;
         case SL_PLAN_REQUEST_BINDING_COOKIE:
             needs.headers = true;
-            needs.request = true;
+            needs.cookies = true;
             break;
         case SL_PLAN_REQUEST_BINDING_CONTEXT:
-            sl_http_dispatch_context_needs_all(&needs);
+            if (sl_str_equal(route->bindings[index].name, sl_str_from_cstr("request"))) {
+                needs.request = true;
+            }
+            else {
+                sl_http_dispatch_context_needs_all(&needs);
+            }
             break;
         case SL_PLAN_REQUEST_BINDING_INJECTION:
         case SL_PLAN_REQUEST_BINDING_UNKNOWN:
@@ -3611,6 +3618,7 @@ static SlStatus sl_http_dispatch_request_core(SlArena* arena, SlEngine* engine, 
         sl_http_profile_count(SL_HTTP_PROFILE_COUNTER_MATERIALIZATIONS, 1U);
     }
     request_context.needs_header_facade = needs.header_facade;
+    request_context.needs_cookies = needs.cookies;
     request_context.needs_request = needs.request;
     request_context.needs_connection = needs.connection;
     request_context.needs_signal = needs.signal;

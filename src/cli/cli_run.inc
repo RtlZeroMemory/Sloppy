@@ -3063,6 +3063,7 @@ static SlStatus sl_run_transport_websocket_open(SlHttpTransportConnection* conne
     context.needs_query_params = true;
     context.needs_headers = true;
     context.needs_header_facade = true;
+    context.needs_cookies = true;
     context.needs_request = true;
     context.needs_connection = true;
     context.needs_signal = true;

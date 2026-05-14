@@ -1264,6 +1264,10 @@ export default app;
 "#;
     let app = extract(std::path::Path::new("app.ts"), source)
         .expect("typed context handler should extract");
+    assert_eq!(
+        app.routes[0].handler.bindings[0].name.as_deref(),
+        Some("request")
+    );
     let emitted_js = super::emit_app_js(&app);
     assert!(emitted_js
         .source
