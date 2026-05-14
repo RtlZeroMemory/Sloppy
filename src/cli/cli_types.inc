@@ -401,5 +401,6 @@ typedef struct SlCliOptions
     bool openapi_summary;
     bool openapi_fail_on_partial;
     bool openapi_pretty;
+    bool restore_locked;
     bool help;
 } SlCliOptions;

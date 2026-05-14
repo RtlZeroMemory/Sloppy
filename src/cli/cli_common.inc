@@ -317,6 +317,8 @@ static void sl_cli_print_help(void)
         "  sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
     printf("                 [--environment Development] [--host 127.0.0.1] [--port <port>]\n");
     printf("                 [--format text|json]\n");
+    printf("  sloppy pack\n");
+    printf("  sloppy restore [--locked]\n");
     printf("  sloppy dev [source.js|source.mjs|source.ts] [--host 127.0.0.1] [--port 5173]\n");
     printf("             [--watch|--no-watch] [--clear] [--openapi] [--env Development]\n");
     printf("  sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts "
@@ -415,6 +417,20 @@ static void sl_cli_print_command_help(const char* command)
                "or <out>/package/.\n");
         printf("This is an app artifact package, not a runtime release archive.\n");
         printf("--format json and --json print the package path and artifact directory.\n");
+        return;
+    }
+    if (strcmp(command, "pack") == 0) {
+        printf("Usage: sloppy pack\n");
+        printf("\n");
+        printf("Creates a deterministic .slpkg artifact from the current sloppy.json package "
+               "manifest.\n");
+        return;
+    }
+    if (strcmp(command, "restore") == 0) {
+        printf("Usage: sloppy restore [--locked]\n");
+        printf("\n");
+        printf("Restores local .slpkg dependencies into the global Sloppy cache and writes "
+               "sloppy.lock.json plus .sloppy/obj/project.assets.json.\n");
         return;
     }
     if (strcmp(command, "dev") == 0) {
@@ -976,6 +992,23 @@ static int sl_cli_parse_build_option(int argc, char** argv, int* index, SlCliOpt
     return 0;
 }
 
+static int sl_cli_parse_package_manager_option(int argc, char** argv, int* index,
+                                               SlCliOptions* out)
+{
+    if (out == NULL || out->command == NULL || index == NULL || argv == NULL ||
+        (strcmp(out->command, "pack") != 0 && strcmp(out->command, "restore") != 0))
+    {
+        return 0;
+    }
+    if (strcmp(out->command, "restore") == 0 && strcmp(argv[*index], "--locked") == 0) {
+        out->restore_locked = true;
+        *index += 1;
+        return 1;
+    }
+    (void)argc;
+    return 0;
+}
+
 static int sl_cli_parse_create_option(int argc, char** argv, int* index, SlCliOptions* out)
 {
     if (argc <= 0 || argv == NULL || index == NULL || out == NULL ||
@@ -1362,6 +1395,14 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
         }
 
         run_parse = sl_cli_parse_build_option(argc, argv, &index, out);
+        if (run_parse < 0) {
+            return 1;
+        }
+        if (run_parse > 0) {
+            continue;
+        }
+
+        run_parse = sl_cli_parse_package_manager_option(argc, argv, &index, out);
         if (run_parse < 0) {
             return 1;
         }
