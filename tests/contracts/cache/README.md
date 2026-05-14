@@ -6,7 +6,8 @@ correctness or leak user data:
 - memory cache set/get, delete, TTL, tag invalidation, schema, size, and
   redacted diagnostics semantics;
 - output-cache safety for GET-only caching, authenticated responses,
-  `Set-Cookie`, vary inputs, hit equivalence, tag purge, and metrics;
+  `Set-Cookie`, vary inputs, hit equivalence, tag purge, metrics, and the
+  current policy that ProblemDetails/error responses bypass output-cache;
 - deterministic Redis surface checks for configured Redis usage, redacted
   diagnostics, no silent memory fallback, and lock-owner enforcement.
 

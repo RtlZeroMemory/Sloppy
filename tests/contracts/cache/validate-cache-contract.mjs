@@ -449,6 +449,11 @@ async function validateOutputCache(collector) {
             assert.equal((await host.get("/cookie")).headers.get("x-sloppy-output-cache"), "BYPASS");
         });
 
+        await runInvariant(collector, "output-cache.problem-details-policy", async () => {
+            assert.equal((await host.get("/problem")).headers.get("x-sloppy-output-cache"), "BYPASS");
+            assert.equal((await host.get("/problem")).headers.get("x-sloppy-output-cache"), "BYPASS");
+        });
+
         await runInvariant(collector, "cache.tag-invalidation", async () => {
             await cache.invalidateTag("products");
             const response = await host.get("/products/1");
@@ -456,7 +461,6 @@ async function validateOutputCache(collector) {
         });
 
         await runInvariant(collector, "cache.diagnostics.redacted", async () => {
-            assert.equal((await host.get("/problem")).headers.get("x-sloppy-output-cache"), "BYPASS");
             assertNoSecret(host.diagnostics.snapshot());
             assertNoSecret(cache.stats());
             assertNoSecret(app.metrics.snapshot());
