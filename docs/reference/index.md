@@ -9,6 +9,7 @@ this section is for "what does this flag/field/format actually do".
 - [Configuration](configuration.md) — config sources, key model, typed binding
 - [Plan format](plan-format.md) — full `app.plan.json` schema
 - [Dependency graph](dependency-graph.md) — package/module graph metadata
+- [Packages](packages.md) — `.slpkg`, restore, lockfile, assets graph, and cache format
 - [Node compatibility](node-compatibility.md) — builtin registry and shim status
 
 ## API reference

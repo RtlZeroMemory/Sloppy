@@ -160,6 +160,7 @@ export default defineConfig({
           { text: "Plan format", link: "/reference/plan-format" },
           { text: "Configuration keys", link: "/reference/configuration" },
           { text: "Dependency graph", link: "/reference/dependency-graph" },
+          { text: "Packages", link: "/reference/packages" },
           { text: "Node compatibility", link: "/reference/node-compatibility" },
           { text: "Dependencies", link: "/reference/dependencies" },
           { text: "Data API", link: "/reference/data-api" },

@@ -239,12 +239,18 @@ static int sl_sloppyrc_reject_unknown_fields(yyjson_val* root, const char* comma
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("migrations")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("moduleInclude")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("assetInclude")) &&
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("target")) &&
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("runtimeIdentifier")) &&
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("packageSources")) &&
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("dependencies")) &&
+            !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("trustedNativePackages")) &&
             !sl_sloppyrc_json_string_equals_literal(key, SL_STR_LITERAL("ffiLibraries")))
         {
             sl_sloppyrc_write_command_message(
                 command_name,
                 "invalid sloppy.json: unsupported field; supported fields are entry, outDir, "
-                "environment, kind, capabilities, migrations, moduleInclude, assetInclude, and "
+                "environment, kind, capabilities, migrations, moduleInclude, assetInclude, target, "
+                "runtimeIdentifier, packageSources, dependencies, trustedNativePackages, and "
                 "ffiLibraries\n");
             return 1;
         }

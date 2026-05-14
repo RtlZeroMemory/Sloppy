@@ -3,7 +3,7 @@
  *
  * Provides plan introspection commands and the development `sloppy run` path.
  * Runtime execution requires V8-enabled artifacts and intentionally avoids production
- * HTTP, package-manager behavior, Node behavior, middleware, and streaming behavior.
+ * HTTP, Node behavior, middleware, and streaming behavior.
  */
 #include "sloppy/arena.h"
 #include "sloppy/alloc.h"
@@ -128,6 +128,7 @@
 #include "cli/cli_run.inc"
 #include "cli/cli_create.inc"
 #include "cli/cli_package.inc"
+#include "cli/cli_package_manager.inc"
 #include "cli/cli_db.inc"
 #include "cli/cli_orm.inc"
 #include "cli/cli_routes.inc"
@@ -183,6 +184,15 @@ int main(int argc, char** argv)
     }
     if (strcmp(options.command, "package") == 0) {
         return sl_cli_command_package(&options);
+    }
+    if (strcmp(options.command, "pack") == 0) {
+        return sl_cli_command_pack(&options);
+    }
+    if (strcmp(options.command, "restore") == 0) {
+        return sl_cli_command_restore(&options);
+    }
+    if (sl_cli_command_is_package_manager(options.command)) {
+        return sl_cli_command_package_manager(&options);
     }
     if (strcmp(options.command, "dev") == 0) {
         return sl_cli_command_dev(&options);

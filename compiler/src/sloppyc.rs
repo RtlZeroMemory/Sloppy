@@ -86,6 +86,10 @@ enum CliCommand {
         out_dir: PathBuf,
         options: Box<CompileOptions>,
     },
+    PackageManager {
+        command: String,
+        args: Vec<String>,
+    },
     Invalid(String),
 }
 
@@ -562,6 +566,15 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> CliExit {
                 diagnostic: failure.diagnostic.render(failure.source.as_deref()),
             },
         },
+        CliCommand::PackageManager { command, args } => {
+            match crate::package_manager::run_package_command(&command, &args) {
+                Ok(output) => CliExit::Output(output),
+                Err(error) => CliExit::Failure {
+                    code: 1,
+                    diagnostic: error.render(),
+                },
+            }
+        }
     }
 }
 
@@ -586,7 +599,23 @@ fn command_from_args(args: impl IntoIterator<Item = OsString>) -> CliCommand {
         }
         "--help" | "-h" => CliCommand::Help,
         "build" => parse_build_args(values),
+        "pack" | "restore" | "add" | "remove" | "update" | "list" | "why" | "cache" | "source"
+        | "publish" | "feed" | "npm" => parse_package_manager_args(first, values),
         other => CliCommand::Invalid(format!("unsupported command '{other}'")),
+    }
+}
+
+fn parse_package_manager_args(command: &str, values: Vec<OsString>) -> CliCommand {
+    let mut args = Vec::with_capacity(values.len());
+    for value in values {
+        let Some(argument) = value.to_str() else {
+            return CliCommand::Invalid(format!("{command} arguments must be valid UTF-8"));
+        };
+        args.push(argument.to_string());
+    }
+    CliCommand::PackageManager {
+        command: command.to_string(),
+        args,
     }
 }
 
@@ -809,6 +838,9 @@ fn help_text() -> String {
     text.push_str(
         "  sloppyc build <input.js|input.ts> --out <directory> [--kind web|program] [--environment <name>] [--host <host>] [--port <port>] [--config-dir <dir>] [--config <key=value>] [--module-include <glob>] [--asset-include <glob>] [--timings-json|--diagnostics-timing-json <file>]\n",
     );
+    text.push_str("  sloppyc pack\n");
+    text.push_str("  sloppyc restore [--locked]\n");
+    text.push_str("  sloppyc add|remove|update|list|why|cache|source|publish|feed|npm ...\n");
     text
 }
 

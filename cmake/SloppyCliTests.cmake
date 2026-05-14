@@ -510,6 +510,14 @@
                 "${PROJECT_SOURCE_DIR}/tests/cmake/check_create_package_command.cmake")
         set_tests_properties(sloppy.cli.create_package_command PROPERTIES LABELS "cli;source-input")
         add_test(
+            NAME sloppy.cli.package_manager_command
+            COMMAND
+                "${CMAKE_COMMAND}" "-DCMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+                "-DSLOPPY_CLI=$<TARGET_FILE:sloppy>" -P
+                "${PROJECT_SOURCE_DIR}/tests/cmake/check_package_manager_command.cmake")
+        set_tests_properties(sloppy.cli.package_manager_command
+                             PROPERTIES LABELS "cli;package;restore")
+        add_test(
             NAME sloppy.cli.orm_package_metadata
             COMMAND
                 "${CMAKE_COMMAND}" "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"

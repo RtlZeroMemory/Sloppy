@@ -43,6 +43,17 @@ static bool sl_cli_command_requires_metadata_plan(const char* command)
             strcmp(command, "openapi") == 0);
 }
 
+static bool sl_cli_command_is_package_manager(const char* command)
+{
+    return command != NULL &&
+           (strcmp(command, "pack") == 0 || strcmp(command, "restore") == 0 ||
+            strcmp(command, "add") == 0 || strcmp(command, "remove") == 0 ||
+            strcmp(command, "update") == 0 || strcmp(command, "list") == 0 ||
+            strcmp(command, "why") == 0 || strcmp(command, "cache") == 0 ||
+            strcmp(command, "source") == 0 || strcmp(command, "publish") == 0 ||
+            strcmp(command, "feed") == 0 || strcmp(command, "npm") == 0);
+}
+
 static bool sl_cli_span_equal(SlCliSpan left, SlCliSpan right)
 {
     return sl_str_equal(sl_cli_span_str(left), sl_cli_span_str(right));
@@ -317,6 +328,19 @@ static void sl_cli_print_help(void)
         "  sloppy package [source.js|source.mjs|source.ts] [--out <dir>] [--kind web|program]\n");
     printf("                 [--environment Development] [--host 127.0.0.1] [--port <port>]\n");
     printf("                 [--format text|json]\n");
+    printf("  sloppy pack\n");
+    printf("  sloppy restore [--locked]\n");
+    printf("  sloppy add <package-id|path.slpkg> [--version <range>] [--source <source>] "
+           "[--native-ok]\n");
+    printf("  sloppy remove <package-id>\n");
+    printf("  sloppy update [package-id]\n");
+    printf("  sloppy list packages|native|capabilities|outdated [--json]\n");
+    printf("  sloppy why <package-id>\n");
+    printf("  sloppy cache list|clean [--all|package-id]\n");
+    printf("  sloppy source list|add|remove ...\n");
+    printf("  sloppy publish <package.slpkg> --source <folder-source>\n");
+    printf("  sloppy feed index <folder>\n");
+    printf("  sloppy npm add <package> [--version <range>]\n");
     printf("  sloppy dev [source.js|source.mjs|source.ts] [--host 127.0.0.1] [--port 5173]\n");
     printf("             [--watch|--no-watch] [--clear] [--openapi] [--env Development]\n");
     printf("  sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--artifacts "
@@ -415,6 +439,20 @@ static void sl_cli_print_command_help(const char* command)
                "or <out>/package/.\n");
         printf("This is an app artifact package, not a runtime release archive.\n");
         printf("--format json and --json print the package path and artifact directory.\n");
+        return;
+    }
+    if (strcmp(command, "pack") == 0) {
+        printf("Usage: sloppy pack\n");
+        printf("\n");
+        printf("Creates a deterministic .slpkg artifact from the current sloppy.json package "
+               "manifest.\n");
+        return;
+    }
+    if (strcmp(command, "restore") == 0) {
+        printf("Usage: sloppy restore [--locked]\n");
+        printf("\n");
+        printf("Restores local .slpkg dependencies into the global Sloppy cache and writes "
+               "sloppy.lock.json plus .sloppy/obj/project.assets.json.\n");
         return;
     }
     if (strcmp(command, "dev") == 0) {
@@ -976,6 +1014,34 @@ static int sl_cli_parse_build_option(int argc, char** argv, int* index, SlCliOpt
     return 0;
 }
 
+static int sl_cli_parse_package_manager_option(int argc, char** argv, int* index,
+                                               SlCliOptions* out)
+{
+    if (out == NULL || out->command == NULL || index == NULL || argv == NULL ||
+        !sl_cli_command_is_package_manager(out->command))
+    {
+        return 0;
+    }
+    if (strcmp(out->command, "restore") == 0 && strcmp(argv[*index], "--locked") == 0) {
+        out->restore_locked = true;
+        if (out->package_arg_count >= SL_CLI_MAX_PROGRAM_ARGS) {
+            sl_cli_write_cstr(stderr, "sloppy restore: too many package manager arguments\n");
+            return -1;
+        }
+        out->package_args[out->package_arg_count++] = argv[*index];
+        *index += 1;
+        return 1;
+    }
+    (void)argc;
+    if (out->package_arg_count >= SL_CLI_MAX_PROGRAM_ARGS) {
+        sl_cli_write_cstr(stderr, "sloppy: too many package manager arguments\n");
+        return -1;
+    }
+    out->package_args[out->package_arg_count++] = argv[*index];
+    *index += 1;
+    return 1;
+}
+
 static int sl_cli_parse_create_option(int argc, char** argv, int* index, SlCliOptions* out)
 {
     if (argc <= 0 || argv == NULL || index == NULL || out == NULL ||
@@ -1362,6 +1428,14 @@ static int sl_cli_parse_options(int argc, char** argv, SlCliOptions* out)
         }
 
         run_parse = sl_cli_parse_build_option(argc, argv, &index, out);
+        if (run_parse < 0) {
+            return 1;
+        }
+        if (run_parse > 0) {
+            continue;
+        }
+
+        run_parse = sl_cli_parse_package_manager_option(argc, argv, &index, out);
         if (run_parse < 0) {
             return 1;
         }

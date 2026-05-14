@@ -10,6 +10,7 @@ mod framework_runtime;
 mod graph;
 mod hash;
 pub mod module_graph;
+pub mod package_manager;
 pub mod parser;
 mod plan_emit;
 pub mod resolver;

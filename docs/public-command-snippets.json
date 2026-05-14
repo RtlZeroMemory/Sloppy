@@ -72,6 +72,24 @@
         "sloppy run .sloppy/package --once GET /health"
       ],
       "verification": "Command shapes match package/dependency docs and CLI reference."
+    },
+    {
+      "id": "sloppy-package-manager",
+      "source": "docs/reference/packages.md",
+      "commands": [
+        "sloppy pack",
+        "sloppy restore",
+        "sloppy restore --locked",
+        "sloppy add Sloppy.Example --version [0.1.0]",
+        "sloppy list packages",
+        "sloppy list native",
+        "sloppy list capabilities",
+        "sloppy why Sloppy.Example",
+        "sloppy cache list",
+        "sloppy source list",
+        "sloppy feed index packages"
+      ],
+      "verification": "Command shapes match package manager reference and focused CLI package-manager test."
     }
   ]
 }
