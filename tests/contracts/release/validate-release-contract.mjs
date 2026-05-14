@@ -1,10 +1,11 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { ContractAssertionCollector, errorInvariants } from "../runner/assertions.mjs";
 import { createFinding, createReport } from "../runner/contract-report.mjs";
-import { exists, isAbsolutePackagePath, listFiles, packagePath, readJson } from "../runner/artifact-utils.mjs";
+import { exists, isAbsolutePackagePath, isSafeRelativePackagePath, listFiles, packagePath, readJson } from "../runner/artifact-utils.mjs";
 import { loadFixtures } from "../runner/fixture-loader.mjs";
 
 const SUBSYSTEM = "release";
@@ -99,8 +100,16 @@ function checkNameAndVersion(packages, collector) {
 }
 
 async function checkRelativeFile(root, relativePath, invariant, collector, message) {
-    if (typeof relativePath !== "string" || relativePath.length === 0 || isAbsolutePackagePath(relativePath)) {
+    if (typeof relativePath !== "string" || relativePath.length === 0) {
+        collector.fail(invariant, `${message} must be a non-empty package-relative path`, { path: relativePath });
+        return false;
+    }
+    if (isAbsolutePackagePath(relativePath)) {
         collector.fail(invariant, `${message} must be a package-relative path`, { path: relativePath });
+        return false;
+    }
+    if (!isSafeRelativePackagePath(relativePath)) {
+        collector.fail(invariant, `${message} must not escape the package root`, { path: relativePath });
         return false;
     }
     const resolved = packagePath(root, relativePath);
@@ -250,8 +259,9 @@ async function checkPlatformPackages(packages, rootVersion, collector, { require
                 actual: packageJson.version,
             });
         }
-        if (requirePlatformBinary || (await exists(path.join(root, "bin")))) {
-            await checkRelativeFile(root, expectation.binary, "npm.platform.binary-exists", collector, "platform package binary");
+        const platformBinary = packageJson.bin?.sloppy ?? expectation.binary;
+        if (requirePlatformBinary || (await exists(path.join(root, "bin"))) || packageJson.bin?.sloppy !== undefined) {
+            await checkRelativeFile(root, platformBinary, "npm.platform.binary-exists", collector, "platform package binary");
         } else {
             collector.unavailable("npm.platform.binary-exists", "platform package binary is validated only for staged package roots", {
                 name,
@@ -329,15 +339,93 @@ async function checkReadmeLicense(rootPackage, collector) {
     await checkRelativeFile(rootPackage.root, "LICENSE", "npm.package.readme-license", collector, "root package license");
 }
 
-function runTscSmoke(rootPackage, collector) {
-    const tsc = spawnSync("npx", ["--yes", "tsc", "--version"], { encoding: "utf8" });
-    if (tsc.status !== 0) {
+function runTsc(command, args) {
+    return spawnSync(command.executable, [...command.args, ...args], { encoding: "utf8" });
+}
+
+async function resolveTscCommand() {
+    if (process.platform === "win32") {
+        const where = spawnSync("where.exe", ["tsc.cmd"], { encoding: "utf8" });
+        const tscCmd = where.status === 0 ? where.stdout.split(/\r?\n/u).find((line) => line.trim().length > 0) : undefined;
+        if (tscCmd !== undefined) {
+            const npmRoot = path.dirname(tscCmd.trim());
+            const tscBin = path.join(npmRoot, "node_modules/typescript/bin/tsc");
+            if (await exists(tscBin)) {
+                const command = { executable: "node", args: [tscBin] };
+                if (runTsc(command, ["--version"]).status === 0) {
+                    return command;
+                }
+            }
+        }
+    }
+
+    const command = { executable: "tsc", args: [] };
+    if (runTsc(command, ["--version"]).status === 0) {
+        return command;
+    }
+    return undefined;
+}
+
+async function runTscSmoke(rootPackage, collector) {
+    const tscCommand = await resolveTscCommand();
+    if (tscCommand === undefined) {
         collector.unavailable("npm.types.smoke", "TypeScript is not available for import smoke");
         return;
     }
-    const typesPath = path.join(rootPackage.root, rootPackage.packageJson.types ?? "");
-    if (rootPackage.packageJson.types !== undefined) {
-        collector.pass("npm.types.smoke", "TypeScript declaration root is available for smoke", { typesPath });
+    if (typeof rootPackage.packageJson.types !== "string") {
+        collector.fail("npm.types.smoke", "TypeScript import smoke requires a root types declaration");
+        return;
+    }
+
+    const smokeRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sloppy-npm-types-smoke-"));
+    try {
+        const typeMappings = {
+            sloppy: [path.resolve(rootPackage.root, rootPackage.packageJson.types)],
+        };
+        const typesVersions = rootPackage.packageJson.typesVersions?.["*"] ?? {};
+        for (const [subpath, targets] of Object.entries(typesVersions)) {
+            if (Array.isArray(targets) && typeof targets[0] === "string") {
+                typeMappings[`sloppy/${subpath}`] = [path.resolve(rootPackage.root, targets[0])];
+            }
+        }
+        const tsconfig = {
+            compilerOptions: {
+                target: "ES2022",
+                module: "ES2022",
+                moduleResolution: "node",
+                strict: true,
+                noEmit: true,
+                baseUrl: ".",
+                paths: typeMappings,
+            },
+            include: ["sample.ts"],
+        };
+        const sample = `import { Sloppy, Results } from "sloppy";
+import { data } from "sloppy/data";
+import { File } from "sloppy/fs";
+import { Environment } from "sloppy/os";
+import { sqlite } from "sloppy/providers/sqlite";
+
+const app = Sloppy.create();
+app.get("/", () => Results.text("ok"));
+void data;
+void File;
+void Environment;
+void sqlite;
+`;
+        await fs.writeFile(path.join(smokeRoot, "tsconfig.json"), `${JSON.stringify(tsconfig, null, 2)}\n`, "utf8");
+        await fs.writeFile(path.join(smokeRoot, "sample.ts"), sample, "utf8");
+        const result = runTsc(tscCommand, ["--noEmit", "--project", path.join(smokeRoot, "tsconfig.json")]);
+        if (result.status === 0) {
+            collector.pass("npm.types.smoke", "TypeScript import smoke compiled public package imports");
+        } else {
+            collector.fail("npm.types.smoke", "TypeScript import smoke must compile public package imports", {
+                stdout: result.stdout,
+                stderr: result.stderr,
+            });
+        }
+    } finally {
+        await fs.rm(smokeRoot, { recursive: true, force: true });
     }
 }
 
@@ -358,7 +446,7 @@ export async function validateReleasePackageSet({ root, fixture, requirePlatform
             version: rootPackage.packageJson.version,
         });
         if (runTypeSmoke) {
-            runTscSmoke(rootPackage, collector);
+            await runTscSmoke(rootPackage, collector);
         } else {
             collector.unavailable("npm.types.smoke", "TypeScript smoke runs only for local tarball or explicit staged-package validation");
         }

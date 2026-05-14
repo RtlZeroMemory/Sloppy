@@ -1,0 +1,13 @@
+{
+  "name": "@slopware/sloppy-linux-x64",
+  "version": "1.2.3-alpha.4",
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "bin": {
+    "sloppy": "bin/../../outside"
+  }
+}

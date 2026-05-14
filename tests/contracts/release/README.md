@@ -14,8 +14,8 @@ The PR-tier validator checks:
 
 - npm package names stay under `@slopware`;
 - package versions are non-zero `alpha` semver versions;
-- root bin, JS exports, TypeScript declarations, README, and license paths
-  point to files that exist;
+- root bin, JS exports, TypeScript declarations, README, and license paths are
+  safe package-relative paths that point to files that exist;
 - platform optional dependencies match expected Sloppy platform packages;
 - platform package `os` and `cpu` metadata match the package name;
 - staged platform package binaries exist when a staged package root is present;
@@ -23,11 +23,14 @@ The PR-tier validator checks:
 - package contents do not include `.env`, `.npmrc`, token-looking files, local
   absolute paths, build logs, nested `node_modules`, source checkout junk, V8
   SDK source trees, or huge accidental files;
-- npm install and TypeScript smoke lanes are reported as unavailable unless
-  local staged packages or tarballs exist for that validation.
+- npm install is reported as unavailable unless local staged packages or
+  tarballs exist for that validation;
+- TypeScript import smoke compiles public `sloppy` imports with `tsc --noEmit`
+  for staged package validation and stays unavailable for source skeletons.
 
 The fixture suite includes one valid alpha package set plus broken package
-metadata fixtures for missing bins, missing type paths, public exports without
-types, package names outside `@slopware`, `0.0.0` versions, secret files, V8 SDK
+metadata fixtures for path traversal in bins, exports, types, and platform
+binaries, missing bins, missing type paths, public exports without types,
+package names outside `@slopware`, `0.0.0` versions, secret files, V8 SDK
 source-like directories, missing platform binaries, and optional dependency
 version mismatches.
