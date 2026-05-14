@@ -1,0 +1,4 @@
+{
+  "expected": "fail",
+  "expectedInvariants": ["data.provider.effect-resolution"]
+}

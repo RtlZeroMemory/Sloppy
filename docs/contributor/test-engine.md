@@ -48,8 +48,9 @@ The supported areas are `all`, `static`, `native`, `compiler`, `js`, `fuzz`,
 `diagnostics`.
 
 The `contracts` area runs semantic artifact validators under
-`tests/contracts/`. PR-tier currently validates package/runtime artifacts and
-release/npm package metadata with deterministic positive and negative fixtures.
+`tests/contracts/`. PR-tier currently validates semantic contract fixtures for
+package/runtime artifacts, release/npm package metadata, web routes, auth,
+cache, data, jobs, OpenAPI, realtime/WebSocket, static files, and webhooks.
 Contract reports use lower-case `pass`, `fail`, `skip`, and `unavailable`
 statuses and keep warnings separate from failures.
 

@@ -1,0 +1,96 @@
+{
+  "requests": [
+    {
+      "name": "compiler-generated-users-route",
+      "request": {
+        "method": "GET",
+        "path": "/users/123"
+      },
+      "generic": {
+        "status": 200,
+        "body": "{\"ok\":true}",
+        "contentType": "application/json",
+        "headers": {
+          "content-type": "application/json",
+          "content-length": "11"
+        },
+        "route": {
+          "routePattern": "/users/{id:int}",
+          "routeName": "Users.Get",
+          "method": "GET",
+          "handlerId": 1,
+          "params": {
+            "id": "123"
+          }
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "{\"ok\":true}",
+        "contentType": "application/json",
+        "headers": {
+          "content-type": "application/json",
+          "content-length": "11"
+        },
+        "route": {
+          "routePattern": "/users/{id:int}",
+          "routeName": "Users.Get",
+          "method": "GET",
+          "handlerId": 1,
+          "params": {
+            "id": "123"
+          }
+        },
+        "query": {}
+      }
+    },
+    {
+      "name": "compiler-generated-group-route",
+      "request": {
+        "method": "GET",
+        "path": "/acme/users/42"
+      },
+      "generic": {
+        "status": 200,
+        "body": "tenant",
+        "contentType": "text/plain; charset=utf-8",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "content-length": "6"
+        },
+        "route": {
+          "routePattern": "/{tenant}/users/{id:int}",
+          "routeName": "Tenant.Users.Get",
+          "method": "GET",
+          "handlerId": 2,
+          "params": {
+            "tenant": "acme",
+            "id": "42"
+          }
+        },
+        "query": {}
+      },
+      "optimized": {
+        "status": 200,
+        "body": "tenant",
+        "contentType": "text/plain; charset=utf-8",
+        "headers": {
+          "content-type": "text/plain; charset=utf-8",
+          "content-length": "6"
+        },
+        "route": {
+          "routePattern": "/{tenant}/users/{id:int}",
+          "routeName": "Tenant.Users.Get",
+          "method": "GET",
+          "handlerId": 2,
+          "params": {
+            "tenant": "acme",
+            "id": "42"
+          }
+        },
+        "query": {}
+      }
+    }
+  ]
+}

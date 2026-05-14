@@ -1,0 +1,21 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "static.etag.if-none-match"
+  ],
+  "responses": [
+    {
+      "method": "GET",
+      "target": "/assets/hello.txt",
+      "requestHeaders": {
+        "If-None-Match": "\"different\""
+      },
+      "status": 304,
+      "headers": {
+        "ETag": "W/\"sha256:actual-identity\"",
+        "Content-Length": "0"
+      },
+      "bodyText": ""
+    }
+  ]
+}

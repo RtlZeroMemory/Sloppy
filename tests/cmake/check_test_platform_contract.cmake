@@ -17,7 +17,7 @@ set(required_pairs
     "docs/contributor/testing.md|Fuzz / property"
     "docs/contributor/quality-gates.md|Package outside-checkout"
     "docs/contributor/quality-gates.md|`UNAVAILABLE`"
-    "tests/golden/README.md|semantic contract"
+    "tests/golden/README.md|assert stable semantic fields"
     "tests/fuzz/README.md|libFuzzer"
     "tests/fuzz/README.md|seed replay"
     "tests/conformance/cross-api/README.md|cross-API conformance scenarios"

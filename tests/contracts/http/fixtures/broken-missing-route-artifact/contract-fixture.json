@@ -1,0 +1,9 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "dispatch.route-artifact-present"
+  ],
+  "baseFixture": "valid-http-dispatch",
+  "planReplacements": [],
+  "removeRouteArtifact": true
+}

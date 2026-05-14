@@ -1,0 +1,18 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "static.head.no-body"
+  ],
+  "responses": [
+    {
+      "method": "HEAD",
+      "target": "/assets/hello.txt",
+      "status": 200,
+      "headers": {
+        "Content-Type": "text/plain",
+        "Content-Length": "13"
+      },
+      "bodyText": "hello static\n"
+    }
+  ]
+}
