@@ -8,9 +8,15 @@ Run the PR-tier contract lane with:
 
 ```powershell
 node tests/contracts/runner/contract-runner.mjs --area auth --tier pr
+node tests/contracts/runner/contract-runner.mjs --area openapi --tier pr
+node tests/contracts/runner/contract-runner.mjs --area http --tier pr
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr
+node tests/contracts/runner/contract-runner.mjs --area webhooks --tier pr
 node tests/contracts/runner/contract-runner.mjs --area all --tier pr
+node tests/contracts/runner/contract-runner.mjs --area openapi --tier pr --format markdown
+node tests/contracts/runner/contract-runner.mjs --area webhooks --tier pr --format markdown
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr --format markdown
+node tests/contracts/runner/contract-runner.mjs --area all --tier pr --out artifacts/contracts/contract-report.json
 node tests/contracts/runner/contract-runner.mjs --area package --tier pr --out artifacts/contracts/package-report.json
 ```
 
@@ -18,10 +24,12 @@ The test engine exposes the same lane:
 
 ```powershell
 tools/windows/test-engine.ps1 -Area contracts -Tier pr
+tools/windows/test-engine.ps1 -Area contracts-http -Tier pr
 ```
 
 ```sh
 tools/unix/test-engine.sh --area contracts --tier pr
+tools/unix/test-engine.sh --area contracts-http --tier pr
 ```
 
 ## Report Format
@@ -47,3 +55,11 @@ runner helpers for reporting, fixture loading, path checks, and redaction.
 PR-tier contracts should be deterministic and should not require Docker, Redis,
 live providers, or long-running servers. Use `extended` or `torture` for slow
 or environment-backed checks.
+
+Area notes:
+
+- `package` — packaged artifact shape, relocatability, and expected negative
+  fixtures.
+- `webhooks` — event descriptors, outbox semantics, delivery states,
+  signatures, destination safety, and redaction. See
+  `tests/contracts/webhooks/README.md` for the current fake-provider boundary.

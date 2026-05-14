@@ -1,0 +1,46 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "native-response.provider-effects-v8"
+  ],
+  "baseFixture": "valid-http-dispatch",
+  "planReplacements": [
+    {
+      "path": [
+        "routeDispatch",
+        "artifact",
+        "hash"
+      ],
+      "value": "sha256:4edbd0e3b28ee2350d34c06a0e489cb579fac313b9ec85e019c3a60c1e63364c"
+    },
+    {
+      "path": [
+        "routes",
+        15,
+        "dispatch",
+        "executionKind"
+      ],
+      "value": "native-static-json"
+    },
+    {
+      "path": [
+        "routes",
+        15,
+        "nativeResponse"
+      ],
+      "value": {
+        "kind": "json",
+        "status": 200,
+        "contentType": "application/json; charset=utf-8",
+        "body": "{\"id\":\"1\"}"
+      }
+    },
+    {
+      "path": [
+        "routeDispatch",
+        "nativeNoJsEndpoints"
+      ],
+      "value": 8
+    }
+  ]
+}

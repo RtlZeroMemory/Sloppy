@@ -1,0 +1,18 @@
+{
+  "expected": "fail",
+  "expectedInvariants": [
+    "native-response.status-equivalence"
+  ],
+  "baseFixture": "valid-http-dispatch",
+  "planReplacements": [
+    {
+      "path": [
+        "routes",
+        0,
+        "nativeResponse",
+        "status"
+      ],
+      "value": 500
+    }
+  ]
+}

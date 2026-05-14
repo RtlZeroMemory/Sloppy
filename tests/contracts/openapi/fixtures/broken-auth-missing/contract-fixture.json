@@ -1,0 +1,10 @@
+{
+  "expected": "fail",
+  "expectedInvariants": ["openapi.auth-agreement"],
+  "plan": "../../../../fixtures/cli/framework-feature-matrix.plan.json",
+  "openapi": "../../../../golden/cli/framework-feature-matrix-openapi.json",
+  "mutations": [
+    { "op": "delete", "path": ["paths", "/orders/{id}", "get", "security"] },
+    { "op": "delete", "path": ["paths", "/orders/{id}", "get", "x-slop-auth"] }
+  ]
+}
