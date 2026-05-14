@@ -223,8 +223,10 @@ In-repo references:
 - No UDP, raw IP, QUIC, or SCTP.
 - No WebSocket client.
 - No server-side framework HTTP. `Sloppy.create()` owns inbound HTTP.
-- No `node:net`, `node:tls`, `node:dgram`, or `node:http` compatibility —
-  those imports are rejected by the compiler.
+- No `node:net`, `node:tls`, or `node:dgram` compatibility — those imports
+  are rejected by the compiler. `node:http` and `node:https` expose a partial
+  client facade over `HttpClient`; Node-style inbound HTTP server APIs are not
+  implemented.
 - TLS options are accepted only by `HttpClient`; `TcpClient`/`TcpListener`
   / `LocalEndpoint` do not currently expose a TLS configuration. See
   [HTTP Client → Current Boundaries](http-client.md#current-boundaries).
