@@ -801,7 +801,7 @@ static void sl_cli_audit_ffi(const SlCliOptions* options, const SlCliMetadata* m
     if (!has_ffi_feature && metadata->ffi_library_count == 0U &&
         metadata->ffi_function_count == 0U && metadata->ffi_struct_count == 0U &&
         metadata->ffi_handle_count == 0U && metadata->ffi_callback_count == 0U &&
-        metadata->ffi_dispatch_table_count == 0U)
+        metadata->ffi_dispatch_table_count == 0U && metadata->ffi_adoption_count == 0U)
     {
         return;
     }
@@ -874,6 +874,12 @@ static void sl_cli_audit_ffi(const SlCliOptions* options, const SlCliMetadata* m
         sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FFI_DISPATCH_VISIBLE",
                           "FFI dispatch table symbols are Plan-visible without public dlsym access",
                           "native.ffiDispatchTables", findings, errors);
+    }
+    if (metadata->ffi_adoption_count > 0U) {
+        sl_cli_audit_emit(options, "note", "SLOPPY_AUDIT_FFI_ADOPTIONS_VISIBLE",
+                          "FFI pointer adoption ownership metadata is visible without raw pointer "
+                          "addresses",
+                          "native.ffiAdoptions", findings, errors);
     }
 }
 

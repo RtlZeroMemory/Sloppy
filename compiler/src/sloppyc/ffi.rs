@@ -9,6 +9,7 @@ struct FfiImportBindings {
     handle_names: BTreeMap<String, String>,
     struct_names: BTreeMap<String, String>,
     callback_names: BTreeMap<String, String>,
+    library_functions: BTreeMap<String, BTreeSet<String>>,
 }
 
 struct FfiSourceContext<'a> {
@@ -23,6 +24,7 @@ pub(super) struct FfiMetadataSink<'a> {
     pub(super) handles: &'a mut Vec<FfiHandleMetadata>,
     pub(super) callbacks: &'a mut Vec<FfiCallbackMetadata>,
     pub(super) dispatch_tables: &'a mut Vec<FfiDispatchTableMetadata>,
+    pub(super) adoptions: &'a mut Vec<FfiAdoptionMetadata>,
 }
 
 impl FfiImportBindings {
@@ -110,6 +112,29 @@ fn collect_static_ffi_descriptor_names(
                         .callback_names
                         .insert(local_name.to_string(), local_name.to_string());
                 }
+                "library" => {
+                    if let Some(functions_object) = call.arguments.get(1).and_then(object_argument)
+                    {
+                        let function_names = functions_object
+                            .properties
+                            .iter()
+                            .filter_map(|property| {
+                                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                                    return None;
+                                };
+                                if property.computed {
+                                    return None;
+                                }
+                                property_key_name(&property.key).map(str::to_string)
+                            })
+                            .collect::<BTreeSet<_>>();
+                        if !function_names.is_empty() {
+                            bindings
+                                .library_functions
+                                .insert(local_name.to_string(), function_names);
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -167,6 +192,11 @@ pub(super) fn extract_ffi_declarations_from_statements(
                         .push(extract_ffi_dispatch_table_declaration(
                             &context, call.1, &bindings,
                         )?);
+                }
+                "adopt" => {
+                    sink.adoptions.push(extract_ffi_adoption_declaration(
+                        &context, call.1, &bindings,
+                    )?);
                 }
                 _ => {}
             }
@@ -821,6 +851,97 @@ fn extract_ffi_dispatch_table_declaration(
     })
 }
 
+fn extract_ffi_adoption_declaration(
+    context: &FfiSourceContext<'_>,
+    call: &CallExpression<'_>,
+    bindings: &FfiImportBindings,
+) -> Result<FfiAdoptionMetadata, Diagnostic> {
+    let Some(descriptor) = call.arguments.first().and_then(Argument::as_expression) else {
+        return Err(ffi_dynamic_declaration_diag(
+            context.path,
+            call.span,
+            "unsafeFfi.adopt requires a static handle descriptor",
+        ));
+    };
+    let Some(_pointer) = call.arguments.get(1).and_then(Argument::as_expression) else {
+        return Err(ffi_dynamic_declaration_diag(
+            context.path,
+            call.span,
+            "unsafeFfi.adopt requires a pointer argument",
+        ));
+    };
+    let (handle, owned) =
+        ffi_handle_descriptor_from_expression(context.path, descriptor, bindings)?;
+    let disposer = if owned {
+        let Some(options) = ffi_options_object(context, call, 2, "unsafeFfi.adopt")? else {
+            return Err(ffi_dynamic_declaration_diag(
+                context.path,
+                call.span,
+                "owned unsafeFfi.adopt requires a static disposer",
+            ));
+        };
+        Some(ffi_static_function_option(
+            context,
+            call.span,
+            options,
+            "dispose",
+            "unsafeFfi.adopt dispose option must be a static library member",
+            bindings,
+        )?)
+    } else {
+        if call.arguments.get(2).is_some() {
+            return Err(ffi_dynamic_declaration_diag(
+                context.path,
+                call.span,
+                "borrowed unsafeFfi.adopt does not accept options; use an owned handle descriptor for disposal",
+            ));
+        }
+        None
+    };
+
+    Ok(FfiAdoptionMetadata {
+        handle,
+        ownership: if owned { "owned" } else { "borrowed" }.to_string(),
+        disposer,
+        source_name: context.source_name.to_string(),
+        source: context.source.to_string(),
+        span: call.span,
+    })
+}
+
+fn ffi_handle_descriptor_from_expression(
+    path: &Path,
+    expression: &Expression<'_>,
+    bindings: &FfiImportBindings,
+) -> Result<(String, bool), Diagnostic> {
+    if let Expression::StaticMemberExpression(member) = expression {
+        if member.property.name.as_str() == "owned" {
+            if let Expression::Identifier(object) = &member.object {
+                let Some(handle_name) = bindings.handle_names.get(object.name.as_str()) else {
+                    return Err(Diagnostic::new(
+                        "SLOPPY_E_FFI_INVALID_DECLARATION",
+                        "owned FFI handle adoption must reference a static unsafeFfi.handle declaration",
+                    )
+                    .with_path(path)
+                    .with_span(expression.span()));
+                };
+                return Ok((handle_name.clone(), true));
+            }
+        }
+    }
+    if let Expression::Identifier(identifier) = expression {
+        if let Some(handle_name) = bindings.handle_names.get(identifier.name.as_str()) {
+            return Ok((handle_name.clone(), false));
+        }
+    }
+    Err(Diagnostic::new(
+        "SLOPPY_E_FFI_INVALID_DECLARATION",
+        "FFI pointer adoption must use a static unsafeFfi.handle descriptor",
+    )
+    .with_path(path)
+    .with_span(expression.span()))
+}
+
 fn ffi_type_name_from_expression(
     path: &Path,
     expression: &Expression<'_>,
@@ -1203,6 +1324,47 @@ fn ffi_bool_option(
         return Ok(Some(value.value));
     }
     Ok(None)
+}
+
+fn ffi_static_function_option(
+    context: &FfiSourceContext<'_>,
+    span: Span,
+    object: &oxc_ast::ast::ObjectExpression<'_>,
+    name: &str,
+    message: &str,
+    bindings: &FfiImportBindings,
+) -> Result<String, Diagnostic> {
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            return Err(ffi_dynamic_declaration_diag(
+                context.path,
+                span,
+                "FFI options do not support spreads",
+            ));
+        };
+        if property.computed || property_key_name(&property.key) != Some(name) {
+            continue;
+        }
+        if let Expression::StaticMemberExpression(member) = &property.value {
+            if let Expression::Identifier(object) = &member.object {
+                let library_name = object.name.as_str();
+                let function_name = member.property.name.as_str();
+                if bindings
+                    .library_functions
+                    .get(library_name)
+                    .is_some_and(|functions| functions.contains(function_name))
+                {
+                    return Ok(format!("{library_name}.{function_name}"));
+                }
+            }
+        }
+        return Err(ffi_dynamic_declaration_diag(
+            context.path,
+            property.span,
+            message,
+        ));
+    }
+    Err(ffi_dynamic_declaration_diag(context.path, span, message))
 }
 
 fn ffi_dynamic_declaration_diag(path: &Path, span: Span, message: impl Into<String>) -> Diagnostic {

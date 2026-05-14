@@ -1,3 +1,5 @@
 SCOPE  TOKEN/ROUTE  KIND  ACCESS  REASON  SOURCE
 PLAN  ffi  ffi  use  declared
 PLAN  ffi:__sloppy_missing_ffi_library__:addI32  ffi  use  native-ffi  __sloppy_missing_ffi_library__:sloppy_ffi_add_i32
+PLAN  ffi:adoption:Counter  ffi  adopt  native-ffi  owned handle Counter disposer native.destroyCounter
+PLAN  ffi:adoption:Counter  ffi  adopt  native-ffi  borrowed handle Counter

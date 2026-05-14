@@ -90,6 +90,11 @@ arithmetic, numeric addresses, or `dispose()` because ownership is unknown.
 Returned `cstring`, `utf16`, `bytes`, and `mutBytes` are rejected. Return
 strings or buffers through caller-owned out parameters instead.
 
+Use `ffi.adopt(...)` when the C library documentation says a returned or
+out-param pointer is an opaque handle with a known ownership policy. Adoption is
+unsafe: Sloppy can type the JavaScript wrapper, but it cannot prove the pointer
+really belongs to that handle type or that the disposer matches the allocator.
+
 ## Owned Handles And Scoped Disposal
 
 Owned handles make pointer ownership explicit without exposing raw addresses:
@@ -134,6 +139,88 @@ lifetime fits in one synchronous or asynchronous operation.
 
 `ffi.using(resource, callback)` disposes on success and on throw. If the
 callback returns a promise, disposal happens after settlement.
+
+## Pointer Adoption
+
+Some C APIs return opaque pointers as `void*` or write them through `T**` /
+`void**` out parameters. Sloppy surfaces those values as opaque `NativePointer`
+objects first. Convert them to typed handles explicitly:
+
+```ts
+const Counter = ffi.handle("Counter");
+
+const native = ffi.library("counter", {
+  createCounter: ffi.fn(t.ptr, [t.i32], { symbol: "counter_create" }),
+  createCounterOut: ffi.fn(t.i32, [t.i32, t.ptr], { symbol: "counter_create_out" }),
+  destroyCounter: ffi.fn(t.void, [Counter], { symbol: "counter_destroy" }),
+  counterValue: ffi.fn(t.i32, [Counter], { symbol: "counter_value" }),
+});
+
+const counter = ffi.adopt(Counter.owned, native.createCounter(1), {
+  dispose: native.destroyCounter,
+});
+try {
+  console.log(native.counterValue(counter));
+} finally {
+  counter.dispose();
+}
+```
+
+Owned adoption requires a non-null `NativePointer` and a static disposer
+function. The resulting handle is typed, rejects use-after-dispose before
+native calls, and calls the disposer exactly once. Calling `.dispose()` again is
+a deterministic no-op.
+
+Borrowed adoption creates a typed view and never disposes the native resource:
+
+```ts
+const borrowed = ffi.adopt(Counter, native.getSharedCounter());
+console.log(native.counterValue(borrowed));
+```
+
+Borrowed `.dispose()` is a no-op so generic cleanup paths can accept either
+borrowed or owned handles. Do not use borrowed adoption to dodge ownership. If
+the native API says the caller owns the pointer, adopt it as owned or destroy it
+manually.
+
+When an API returns a caller-owned pointer but the binding cannot use owned
+adoption, keep the manual destroy path explicit:
+
+```ts
+const ptr = native.createCounter(2);
+const borrowed = ffi.adopt(Counter, ptr);
+try {
+  console.log(native.counterValue(borrowed));
+} finally {
+  native.destroyCounter(borrowed);
+}
+```
+
+Out-param adoption uses the same rule:
+
+```ts
+const outCounter = ffi.out(t.ptr);
+try {
+  const status = native.createCounterOut(3, outCounter.ptr);
+  if (status !== 0) throw new Error(`counter_create_out failed: ${status}`);
+  const counter = ffi.adopt(Counter.owned, outCounter.value, {
+    dispose: native.destroyCounter,
+  });
+  try {
+    console.log(native.counterValue(counter));
+  } finally {
+    counter.dispose();
+  }
+} finally {
+  outCounter.dispose();
+}
+```
+
+Null owned adoption fails with `SLOPPY_E_FFI_NULL_HANDLE`. Passing anything
+other than a valid `NativePointer` fails with
+`SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE`. Missing owned disposers fail with
+`SLOPPY_E_FFI_MISSING_DISPOSER`. Passing an adopted handle to a function that
+declares another handle type fails with `SLOPPY_E_FFI_HANDLE_TYPE_MISMATCH`.
 
 ## Refs, Buffers, And Structs
 
@@ -224,10 +311,11 @@ Prefer C APIs that make ownership and buffer lengths explicit:
 Example:
 
 ```ts
+const Config = ffi.handle("Config");
 const native = ffi.library("native_config", {
   create: ffi.fn(t.i32, [t.ptr], { symbol: "native_config_create" }),
-  destroy: ffi.fn(t.void, [t.ptr], { symbol: "native_config_destroy" }),
-  readName: ffi.fn(t.i32, [t.ptr, t.mutBytes, t.usize, t.ptr], {
+  destroy: ffi.fn(t.void, [Config], { symbol: "native_config_destroy" }),
+  readName: ffi.fn(t.i32, [Config, t.mutBytes, t.usize, t.ptr], {
     symbol: "native_config_read_name",
   }),
 });
@@ -235,15 +323,16 @@ const native = ffi.library("native_config", {
 const handleOut = ffi.out(t.ptr);
 const name = ffi.cstringBuffer(256);
 const written = ffi.out(t.usize);
+let handle = null;
 
 try {
   if (native.create(handleOut.ptr) !== 0) throw new Error("create failed");
-  const handle = handleOut.value;
+  handle = ffi.adopt(Config.owned, handleOut.value, { dispose: native.destroy });
   const status = native.readName(handle, name.ptr, name.byteLength, written.ptr);
   if (status !== 0) throw new Error(`readName failed: ${status}`);
   console.log(name.readString(), written.value);
-  native.destroy(handle);
 } finally {
+  if (handle !== null) handle.dispose();
   handleOut.dispose();
   name.dispose();
   written.dispose();
@@ -328,12 +417,15 @@ for `ffi/use`, and `native.ffi` metadata with library names, symbols, return
 types, parameter types, conventions, and source locations. Struct layouts are
 emitted under `native.ffiStructs`; handles, callbacks, and dispatch tables are
 emitted under `native.ffiHandles`, `native.ffiCallbacks`, and
-`native.ffiDispatchTables`.
+`native.ffiDispatchTables`. Statically visible pointer adoption calls are
+emitted under `native.ffiAdoptions` with the handle type, ownership mode,
+owned-disposer function when present, and source location.
 
 `sloppy doctor`, `sloppy audit`, and `sloppy capabilities` report the FFI
 feature requirement, library IDs, packaged native paths and SHA-256 state when
 available, symbols, conventions, structs, handles, callbacks, and dispatch
-tables. The output is metadata only and does not expose raw native addresses.
+tables, and pointer adoptions. The output is metadata only and does not expose
+raw native addresses.
 
 The runtime resolves each library once, resolves each symbol once, prepares one
 libffi call interface per function, and then reuses those descriptors for calls.
@@ -379,7 +471,7 @@ These surfaces are still unsupported:
 - variadic functions
 - C++ ABI calls
 - struct-by-value params or returns
-- automatic ownership/freeing of arbitrary returned pointers
+- implicit ownership/freeing of arbitrary returned pointers
 - async/off-thread FFI calls
 - foreign-thread callback entry into JavaScript
 - native library download or remote loading

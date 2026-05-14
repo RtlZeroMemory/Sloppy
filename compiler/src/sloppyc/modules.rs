@@ -610,6 +610,7 @@ pub(super) fn extract_relative_module(
             handles: &mut graph.ffi_handles,
             callbacks: &mut graph.ffi_callbacks,
             dispatch_tables: &mut graph.ffi_dispatch_tables,
+            adoptions: &mut graph.ffi_adoptions,
         },
     )?;
 

@@ -50,7 +50,7 @@
       },
       {
         "id": "stdlib.ffi.metadata",
-        "message": "native FFI libraries, symbols, structs, handles, callbacks, and dispatch tables are Plan-visible",
+        "message": "native FFI libraries, symbols, structs, handles, callbacks, dispatch tables, and pointer adoptions are Plan-visible",
         "status": "ok"
       },
       {
@@ -101,6 +101,11 @@
       {
         "id": "stdlib.ffi.dispatch-table",
         "message": "native FFI dispatch table metadata is visible",
+        "status": "ok"
+      },
+      {
+        "id": "stdlib.ffi.adoption",
+        "message": "native FFI pointer adoption metadata is visible without raw addresses",
         "status": "ok"
       },
       {

@@ -264,6 +264,196 @@ export default function main() {
 }
 
 #[test]
+fn program_ffi_adoptions_emit_deterministic_metadata() {
+    let root = fixture_temp_dir("program-ffi-adoptions");
+    let input = root.join("main.ts");
+    let out_dir = root.join(".sloppy");
+    fs::write(
+        &input,
+        r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+
+const Counter = ffi.handle("Counter");
+const native = ffi.library("ffi-test", {
+  createCounter: ffi.fn(t.ptr, [t.i32]),
+  destroyCounter: ffi.fn(t.void, [Counter]),
+  counterValue: ffi.fn(t.i32, [Counter])
+});
+const ptr = native.createCounter(7);
+const owned = ffi.adopt(Counter.owned, ptr, { dispose: native.destroyCounter });
+const borrowed = ffi.adopt(Counter, ptr);
+
+export default function main() {
+  return native.counterValue(owned) + native.counterValue(borrowed);
+}
+"#,
+    )
+    .expect("program fixture should be writable");
+
+    super::build(&input, &out_dir, &CompileOptions::new())
+        .expect("adoption metadata should build");
+    let plan_text =
+        fs::read_to_string(out_dir.join("app.plan.json")).expect("plan should be readable");
+    let plan: serde_json::Value = serde_json::from_str(&plan_text).expect("plan should parse");
+    let adoptions = plan["native"]["ffiAdoptions"]
+        .as_array()
+        .expect("adoptions should be an array");
+    assert_eq!(adoptions.len(), 2);
+    assert_eq!(adoptions[0]["handle"], "Counter");
+    assert_eq!(adoptions[0]["ownership"], "owned");
+    assert_eq!(adoptions[0]["disposer"], "native.destroyCounter");
+    assert_eq!(adoptions[1]["handle"], "Counter");
+    assert_eq!(adoptions[1]["ownership"], "borrowed");
+    assert!(adoptions[1].get("disposer").is_none());
+
+    fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+}
+
+#[test]
+fn program_ffi_adoptions_reject_invalid_owned_metadata() {
+    for (case, source) in [
+        (
+            "missing-pointer",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const Counter = ffi.handle("Counter");
+const native = ffi.library("ffi-test", { destroyCounter: ffi.fn(t.void, [Counter]) });
+const owned = ffi.adopt(Counter.owned);
+export default function main() { void native; void owned; return "ok"; }
+"#,
+        ),
+        (
+            "missing-options",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const Counter = ffi.handle("Counter");
+const native = ffi.library("ffi-test", { destroyCounter: ffi.fn(t.void, [Counter]) });
+const ptr = native.createCounter;
+const owned = ffi.adopt(Counter.owned, ptr);
+export default function main() { void owned; return "ok"; }
+"#,
+        ),
+        (
+            "missing-dispose",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const Counter = ffi.handle("Counter");
+const native = ffi.library("ffi-test", { destroyCounter: ffi.fn(t.void, [Counter]) });
+const ptr = native.createCounter;
+const owned = ffi.adopt(Counter.owned, ptr, {});
+export default function main() { void owned; return "ok"; }
+"#,
+        ),
+        (
+            "dynamic-dispose",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const Counter = ffi.handle("Counter");
+const native = ffi.library("ffi-test", { destroyCounter: ffi.fn(t.void, [Counter]) });
+const options = { dispose: native.destroyCounter };
+const ptr = native.createCounter;
+const owned = ffi.adopt(Counter.owned, ptr, options);
+export default function main() { void owned; return "ok"; }
+"#,
+        ),
+        (
+            "non-library-dispose",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const Counter = ffi.handle("Counter");
+const native = ffi.library("ffi-test", { destroyCounter: ffi.fn(t.void, [Counter]) });
+const ptr = native.createCounter;
+const owned = ffi.adopt(Counter.owned, ptr, { dispose: Math.random });
+export default function main() { void native; void owned; return "ok"; }
+"#,
+        ),
+        (
+            "unknown-library-member",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const Counter = ffi.handle("Counter");
+const native = ffi.library("ffi-test", { destroyCounter: ffi.fn(t.void, [Counter]) });
+const ptr = native.createCounter;
+const owned = ffi.adopt(Counter.owned, ptr, { dispose: native.missingDestroy });
+export default function main() { void owned; return "ok"; }
+"#,
+        ),
+    ] {
+        let root = fixture_temp_dir(&format!("program-ffi-invalid-adoption-owned-{case}"));
+        let input = root.join("main.ts");
+        let out_dir = root.join(".sloppy");
+        fs::write(&input, source).expect("program fixture should be writable");
+
+        let error = super::build(&input, &out_dir, &CompileOptions::new())
+            .expect_err("invalid owned adoption metadata should fail");
+        assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_INVALID_DECLARATION");
+
+        fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+    }
+}
+
+#[test]
+fn program_ffi_adoptions_reject_invalid_handle_metadata() {
+    for (case, source) in [
+        (
+            "literal-descriptor",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const native = ffi.library("ffi-test", { destroyCounter: ffi.fn(t.void, [t.ptr]) });
+const ptr = native.destroyCounter;
+const adopted = ffi.adopt({ kind: "ffi.handle", name: "Counter" }, ptr);
+export default function main() { void adopted; return "ok"; }
+"#,
+        ),
+        (
+            "dynamic-handle",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const Counter = ffi.handle("Counter");
+const native = ffi.library("ffi-test", { destroyCounter: ffi.fn(t.void, [Counter]) });
+const handle = Counter;
+const ptr = native.destroyCounter;
+const adopted = ffi.adopt(handle, ptr);
+export default function main() { void adopted; return "ok"; }
+"#,
+        ),
+        (
+            "owned-typo",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const Counter = ffi.handle("Counter");
+const native = ffi.library("ffi-test", { destroyCounter: ffi.fn(t.void, [Counter]) });
+const ptr = native.destroyCounter;
+const adopted = ffi.adopt(Counter.owns, ptr);
+export default function main() { void adopted; return "ok"; }
+"#,
+        ),
+        (
+            "borrowed-options",
+            r#"
+import { unsafeFfi as ffi, t } from "sloppy/ffi";
+const Counter = ffi.handle("Counter");
+const native = ffi.library("ffi-test", { destroyCounter: ffi.fn(t.void, [Counter]) });
+const ptr = native.destroyCounter;
+const adopted = ffi.adopt(Counter, ptr, { dispose: native.destroyCounter });
+export default function main() { void adopted; return "ok"; }
+"#,
+        ),
+    ] {
+        let root = fixture_temp_dir(&format!("program-ffi-invalid-adoption-handle-{case}"));
+        let input = root.join("main.ts");
+        let out_dir = root.join(".sloppy");
+        fs::write(&input, source).expect("program fixture should be writable");
+
+        let error = super::build(&input, &out_dir, &CompileOptions::new())
+            .expect_err("invalid adoption handle metadata should fail");
+        assert_eq!(error.diagnostic.code, "SLOPPY_E_FFI_INVALID_DECLARATION");
+
+        fs::remove_dir_all(&root).expect("program fixture directory should be removable");
+    }
+}
+
+#[test]
 fn program_ffi_function_specs_must_be_static() {
     let root = fixture_temp_dir("program-ffi-dynamic-spec");
     let input = root.join("main.ts");

@@ -165,6 +165,39 @@ function inout(type, initialValue) {
     return ref(type, initialValue);
 }
 
+function adopt(descriptor, pointer, options = undefined) {
+    const handleDescriptor = handleDescriptorForAdoption(descriptor);
+    if (pointer === null) {
+        throw new Error("SLOPPY_E_FFI_NULL_HANDLE: adopted FFI handle pointer cannot be null.");
+    }
+    ffiBridge("unsafeFfi.adopt").validateNativePointer(pointer, true);
+    if (handleDescriptor.owned) {
+        if (options === null || typeof options !== "object" || typeof options.dispose !== "function") {
+            throw new Error("SLOPPY_E_FFI_MISSING_DISPOSER: owned FFI handle adoption requires a static disposer.");
+        }
+        return createOwnedHandle(handleDescriptor.name, pointer, options.dispose);
+    }
+    if (options !== undefined) {
+        throw ffiTypeError(
+            "SLOPPY_E_FFI_INVALID_DECLARATION",
+            "borrowed FFI handle adoption does not accept options; use the owned handle descriptor for disposal.",
+        );
+    }
+    return createBorrowedHandle(handleDescriptor.name, pointer);
+}
+
+function handleDescriptorForAdoption(descriptor) {
+    if (descriptor !== null && typeof descriptor === "object") {
+        if (descriptor.kind === "ffi.handle" && typeof descriptor.name === "string") {
+            return { name: descriptor.name, owned: false };
+        }
+        if (descriptor.kind === "ffi.handle.owned" && typeof descriptor.name === "string") {
+            return { name: descriptor.name, owned: true };
+        }
+    }
+    throw ffiTypeError("SLOPPY_E_FFI_INVALID_DECLARATION", "unsafeFfi.adopt requires a static FFI handle descriptor.");
+}
+
 function buffer(byteLength) {
     const bytes = ffiBridge("unsafeFfi.buffer").buffer(byteLength);
     Object.defineProperty(bytes, "ptr", {
@@ -339,10 +372,14 @@ function wrapOwnedHandleResult(result, descriptor, libraryObject) {
     if (typeof disposeName !== "string" || typeof libraryObject[disposeName] !== "function") {
         throw new Error("SLOPPY_E_FFI_MISSING_DISPOSER: owned FFI handle requires a static disposer.");
     }
+    return createOwnedHandle(returnDescriptor.name, result, libraryObject[disposeName]);
+}
+
+function createOwnedHandle(type, pointer, dispose) {
     let disposed = false;
     const handleObject = {
         kind: "ffi.ownedHandle",
-        type: returnDescriptor.name,
+        type,
         get disposed() {
             return disposed;
         },
@@ -350,18 +387,32 @@ function wrapOwnedHandleResult(result, descriptor, libraryObject) {
             if (disposed) {
                 throw new TypeError("SLOPPY_E_FFI_USE_AFTER_DISPOSE: FFI handle is disposed.");
             }
-            return result;
+            return pointer;
         },
         dispose() {
             if (disposed) {
                 return undefined;
             }
             disposed = true;
-            libraryObject[disposeName]({ kind: "ffi.borrowedHandle", type: returnDescriptor.name, ptr: result, disposed: false });
+            dispose(createBorrowedHandle(type, pointer));
             return undefined;
         },
     };
     return Object.freeze(handleObject);
+}
+
+function createBorrowedHandle(type, pointer) {
+    return Object.freeze({
+        kind: "ffi.borrowedHandle",
+        type,
+        disposed: false,
+        get ptr() {
+            return pointer;
+        },
+        dispose() {
+            return undefined;
+        },
+    });
 }
 
 function using(resource, callback) {
@@ -454,6 +505,7 @@ export const unsafeFfi = Object.freeze({
     library,
     fn,
     handle,
+    adopt,
     array,
     ref,
     out,

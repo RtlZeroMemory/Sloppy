@@ -56,6 +56,12 @@
         "message": "FFI dispatch table symbols are Plan-visible without public dlsym access",
         "path": "native.ffiDispatchTables",
         "severity": "note"
+      },
+      {
+        "code": "SLOPPY_AUDIT_FFI_ADOPTIONS_VISIBLE",
+        "message": "FFI pointer adoption ownership metadata is visible without raw pointer addresses",
+        "path": "native.ffiAdoptions",
+        "severity": "note"
       }
     ]
   }

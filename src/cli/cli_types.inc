@@ -244,6 +244,13 @@ typedef struct SlCliFfiDispatchTable
     size_t symbol_count;
 } SlCliFfiDispatchTable;
 
+typedef struct SlCliFfiAdoption
+{
+    SlCliSpan handle;
+    SlCliSpan ownership;
+    SlCliSpan disposer;
+} SlCliFfiAdoption;
+
 typedef struct SlCliSchemaProperty
 {
     SlCliSpan name;
@@ -346,6 +353,8 @@ typedef struct SlCliMetadata
     size_t ffi_callback_count;
     SlCliFfiDispatchTable ffi_dispatch_tables[SL_CLI_MAX_FFI_DISPATCH_TABLES];
     size_t ffi_dispatch_table_count;
+    SlCliFfiAdoption ffi_adoptions[SL_CLI_MAX_FFI_ADOPTIONS];
+    size_t ffi_adoption_count;
     SlCliRouteDispatch route_dispatch;
     SlCliSpan kind;
     SlCliSpan completeness;

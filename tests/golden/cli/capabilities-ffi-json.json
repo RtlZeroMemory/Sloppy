@@ -1,6 +1,8 @@
 {
   "capabilities": [
     { "token": "ffi", "kind": "ffi", "access": "use", "inference": "declared" },
-    { "token": "ffi:__sloppy_missing_ffi_library__:addI32", "kind": "ffi", "access": "use", "inference": "native-ffi", "library": "__sloppy_missing_ffi_library__", "symbol": "sloppy_ffi_add_i32" }
+    { "token": "ffi:__sloppy_missing_ffi_library__:addI32", "kind": "ffi", "access": "use", "inference": "native-ffi", "library": "__sloppy_missing_ffi_library__", "symbol": "sloppy_ffi_add_i32" },
+    { "token": "ffi:adoption", "kind": "ffi", "access": "adopt", "inference": "native-ffi", "handle": "Counter", "ownership": "owned", "disposer": "native.destroyCounter" },
+    { "token": "ffi:adoption", "kind": "ffi", "access": "adopt", "inference": "native-ffi", "handle": "Counter", "ownership": "borrowed" }
   ]
 }

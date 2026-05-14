@@ -54,7 +54,7 @@ int main(int argc, char** argv)
     SlPlanFfiType callback_u32_params[2] = {SL_PLAN_FFI_TYPE_PTR, SL_PLAN_FFI_TYPE_U32};
     SlPlanFfiType callback_void_params[2] = {SL_PLAN_FFI_TYPE_PTR, SL_PLAN_FFI_TYPE_I32};
     SlPlanFfiType resolve_params[1] = {SL_PLAN_FFI_TYPE_CSTRING};
-    SlPlanFfiFunction functions[35] = {
+    SlPlanFfiFunction functions[37] = {
         {.id = sl_str_from_cstr("ffi:ffi-test:addI32"),
          .library = sl_str_from_cstr("ffi-test"),
          .name = sl_str_from_cstr("addI32"),
@@ -287,6 +287,22 @@ int main(int argc, char** argv)
          .return_type = SL_PLAN_FFI_TYPE_VOID,
          .parameters = counter_destroy_params,
          .parameter_count = 1U},
+        {.id = sl_str_from_cstr("ffi:ffi-test:counterDestroyCount"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("counterDestroyCount"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_counter_destroy_count"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_U32,
+         .parameters = NULL,
+         .parameter_count = 0U},
+        {.id = sl_str_from_cstr("ffi:ffi-test:resetCounterDestroyCount"),
+         .library = sl_str_from_cstr("ffi-test"),
+         .name = sl_str_from_cstr("resetCounterDestroyCount"),
+         .symbol = sl_str_from_cstr("sloppy_ffi_counter_destroy_count_reset"),
+         .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
+         .return_type = SL_PLAN_FFI_TYPE_VOID,
+         .parameters = NULL,
+         .parameter_count = 0U},
         {.id = sl_str_from_cstr("ffi:ffi-test:callCallback"),
          .library = sl_str_from_cstr("ffi-test"),
          .name = sl_str_from_cstr("callCallback"),
@@ -338,7 +354,7 @@ int main(int argc, char** argv)
     SlPlanFfiLibrary library = {.name = sl_str_from_cstr("ffi-test"),
                                 .convention = SL_PLAN_FFI_CALLING_CONVENTION_SYSTEM,
                                 .functions = functions,
-                                .function_count = 35U};
+                                .function_count = 37U};
     SlPlanCapability capability = {.token = sl_str_from_cstr("ffi"),
                                    .kind = sl_str_from_cstr("ffi"),
                                    .access = sl_str_from_cstr("use")};
@@ -395,6 +411,8 @@ int main(int argc, char** argv)
         "addCounter:{kind:'ffi.fn',returnType:'i32',parameters:['ptr','i32']},"
         "counterValue:{kind:'ffi.fn',returnType:'i32',parameters:['ptr']},"
         "destroyCounter:{kind:'ffi.fn',returnType:'void',parameters:['ptr']},"
+        "counterDestroyCount:{kind:'ffi.fn',returnType:'u32',parameters:[]},"
+        "resetCounterDestroyCount:{kind:'ffi.fn',returnType:'void',parameters:[]},"
         "callCallback:{kind:'ffi.fn',returnType:'i32',parameters:['ptr','ptr','i32']},"
         "callI32Callback:{kind:'ffi.fn',returnType:'i32',parameters:['ptr','i32']},"
         "visitI32:{kind:'ffi.fn',returnType:'i32',parameters:['i32','ptr']},"
@@ -529,6 +547,120 @@ int main(int argc, char** argv)
         "const right = ffiSmokeB();"
         "return right.startsWith('ERR:') ? right : left + ':' + right;"
         "};";
+    static const char source_adoption_setup_a[] =
+        "{"
+        "const bridge = __sloppy.ffi;"
+        "const Counter = { kind: 'ffi.handle', name: 'Counter' };"
+        "Counter.owned = { kind: 'ffi.handle.owned', name: 'Counter' };"
+        "const Other = { kind: 'ffi.handle', name: 'Other' };"
+        "Other.owned = { kind: 'ffi.handle.owned', name: 'Other' };"
+        "const descriptors = {"
+        "createCounter:{kind:'ffi.fn',returnType:'ptr',parameters:['i32']},"
+        "createCounterOut:{kind:'ffi.fn',returnType:'i32',parameters:['i32','ptr']},"
+        "counterValue:{kind:'ffi.fn',returnType:'i32',parameters:['ptr'],"
+        "parameterDescriptors:[{kind:'handle',name:'Counter',type:'ptr',owned:false}]},"
+        "destroyCounter:{kind:'ffi.fn',returnType:'void',parameters:['ptr'],"
+        "parameterDescriptors:[{kind:'handle',name:'Counter',type:'ptr',owned:false}]},"
+        "counterDestroyCount:{kind:'ffi.fn',returnType:'u32',parameters:[]},"
+        "resetCounterDestroyCount:{kind:'ffi.fn',returnType:'void',parameters:[]}"
+        "};"
+        "const raw = bridge.library('ffi-test', descriptors);"
+        "const borrowedHandle = (type, pointer) => Object.freeze({ kind:'ffi.borrowedHandle', "
+        "type, disposed:false, get ptr(){ return pointer; }, dispose(){ return undefined; } });"
+        "const ownedHandle = (type, pointer, dispose) => { let disposed = false; return "
+        "Object.freeze({ kind:'ffi.ownedHandle', type, get disposed(){ return disposed; },"
+        "get ptr(){ if (disposed) throw new TypeError('SLOPPY_E_FFI_USE_AFTER_DISPOSE: FFI "
+        "handle is disposed.'); return pointer; }, dispose(){ if (disposed) return undefined; "
+        "disposed = true; dispose(borrowedHandle(type, pointer)); return undefined; } }); };"
+        "globalThis.ffiAdoptionState = { bridge, Counter, Other, descriptors, raw, borrowedHandle, "
+        "ownedHandle };"
+        "}";
+    static const char source_adoption_setup_b[] =
+        "{"
+        "const { bridge, borrowedHandle, ownedHandle, descriptors, raw } = "
+        "globalThis.ffiAdoptionState;"
+        "const translate = (descriptor, args) => args.map((arg, index) => { const parameter = "
+        "(descriptor.parameterDescriptors || [])[index]; if (!parameter || parameter.kind !== "
+        "'handle') return arg; if (arg === null) throw new TypeError('SLOPPY_E_FFI_NULL_HANDLE: "
+        "FFI handle argument cannot be null.'); if (arg.kind !== 'ffi.ownedHandle' && "
+        "arg.kind !== 'ffi.borrowedHandle') throw new TypeError('SLOPPY_E_FFI_INVALID_HANDLE: "
+        "FFI handle argument is not a typed handle.'); if (arg.disposed) throw new TypeError("
+        "'SLOPPY_E_FFI_USE_AFTER_DISPOSE: FFI handle is disposed.'); if (arg.type !== "
+        "parameter.name) throw new TypeError('SLOPPY_E_FFI_HANDLE_TYPE_MISMATCH: FFI handle "
+        "argument type does not match parameter.'); return arg.ptr; });"
+        "const api = Object.freeze(Object.fromEntries(Object.entries(raw).map(([name, fn]) => "
+        "[name, (...args) => fn(...translate(descriptors[name], args))])));"
+        "const adopt = (descriptor, pointer, options = undefined) => { let name; let owned = "
+        "false; if (descriptor && descriptor.kind === 'ffi.handle') name = descriptor.name; "
+        "else if (descriptor && descriptor.kind === 'ffi.handle.owned') { name = descriptor.name; "
+        "owned = true; } else throw new TypeError('SLOPPY_E_FFI_INVALID_DECLARATION: "
+        "unsafeFfi.adopt requires a static FFI handle descriptor.'); if (pointer === null) "
+        "throw new Error('SLOPPY_E_FFI_NULL_HANDLE: adopted FFI handle pointer cannot be null.');"
+        "bridge.validateNativePointer(pointer, true); if (owned) { if (options === null || "
+        "typeof options !== 'object' || typeof options.dispose !== 'function') throw new Error("
+        "'SLOPPY_E_FFI_MISSING_DISPOSER: owned FFI handle adoption requires a static disposer.');"
+        "return ownedHandle(name, pointer, options.dispose); } if (options !== undefined) throw "
+        "new TypeError('SLOPPY_E_FFI_INVALID_DECLARATION: borrowed FFI handle adoption does not "
+        "accept options; use the owned handle descriptor for disposal.'); return borrowedHandle("
+        "name, pointer); };"
+        "const capture = (fn, code) => { try { fn(); return 'NO_THROW'; } catch (e) { const text "
+        "= String((e && e.message) || e); return text.includes(code) ? code : text; } };"
+        "Object.assign(globalThis.ffiAdoptionState, { api, adopt, capture });"
+        "}";
+    static const char source_adoption[] =
+        "globalThis.ffiAdoption = function () {"
+        "let step = 'start';"
+        "try {"
+        "const { bridge, Counter, Other, raw, api, adopt, capture } = globalThis.ffiAdoptionState;"
+        "step = 'owned-return';"
+        "api.resetCounterDestroyCount();"
+        "const ownedPtr = api.createCounter(7);"
+        "const owned = adopt(Counter.owned, ownedPtr, { dispose: api.destroyCounter });"
+        "const ownedValue = api.counterValue(owned);"
+        "owned.dispose(); owned.dispose();"
+        "const ownedDestroyed = api.counterDestroyCount();"
+        "const useAfterDispose = capture(() => api.counterValue(owned), "
+        "'SLOPPY_E_FFI_USE_AFTER_DISPOSE');"
+        "step = 'owned-out';"
+        "api.resetCounterDestroyCount();"
+        "const out = bridge.ref('ptr');"
+        "const outStatus = api.createCounterOut(11, out);"
+        "const outOwned = adopt(Counter.owned, out.get(), { dispose: api.destroyCounter });"
+        "const outValue = api.counterValue(outOwned);"
+        "outOwned.dispose();"
+        "const outDestroyed = api.counterDestroyCount();"
+        "out.dispose();"
+        "step = 'borrowed';"
+        "api.resetCounterDestroyCount();"
+        "const borrowedPtr = api.createCounter(5);"
+        "const borrowed = adopt(Counter, borrowedPtr);"
+        "const borrowedValue = api.counterValue(borrowed);"
+        "borrowed.dispose();"
+        "const borrowedNoDispose = api.counterDestroyCount();"
+        "api.destroyCounter(borrowed);"
+        "const borrowedDestroyed = api.counterDestroyCount();"
+        "step = 'negative';"
+        "const wrongPtr = api.createCounter(9);"
+        "const wrong = capture(() => api.counterValue(adopt(Other, wrongPtr)), "
+        "'SLOPPY_E_FFI_HANDLE_TYPE_MISMATCH');"
+        "raw.destroyCounter(wrongPtr);"
+        "const missingPtr = api.createCounter(13);"
+        "const missing = capture(() => adopt(Counter.owned, missingPtr), "
+        "'SLOPPY_E_FFI_MISSING_DISPOSER');"
+        "raw.destroyCounter(missingPtr);"
+        "const borrowedOptionsPtr = api.createCounter(15);"
+        "const borrowedOptions = capture(() => adopt(Counter, borrowedOptionsPtr, { dispose: "
+        "api.destroyCounter }), 'SLOPPY_E_FFI_INVALID_DECLARATION');"
+        "raw.destroyCounter(borrowedOptionsPtr);"
+        "const nullOwned = capture(() => adopt(Counter.owned, null, { dispose: "
+        "api.destroyCounter }), 'SLOPPY_E_FFI_NULL_HANDLE');"
+        "const invalidPointer = capture(() => adopt(Counter.owned, {}, { dispose: "
+        "api.destroyCounter }), 'SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE');"
+        "return [ownedValue, ownedDestroyed, useAfterDispose, outStatus, outValue, outDestroyed,"
+        "borrowedValue, borrowedNoDispose, borrowedDestroyed, wrong, nullOwned, missing, "
+        "invalidPointer, borrowedOptions].join(':');"
+        "} catch (e) { return 'ERR:' + step + ':' + String((e && e.message) || e); }"
+        "};";
     static const char source_negative[] =
         "globalThis.ffiNegative = function () {"
         "const ffi = __sloppy.ffi;"
@@ -536,7 +668,8 @@ int main(int argc, char** argv)
         "addI32:{kind:'ffi.fn',returnType:'i32',parameters:['i32','i32']},"
         "addU64:{kind:'ffi.fn',returnType:'u64',parameters:['u64','u64']},"
         "strlen:{kind:'ffi.fn',returnType:'u32',parameters:['cstring']},"
-        "writeU32:{kind:'ffi.fn',returnType:'void',parameters:['ptr']}"
+        "writeU32:{kind:'ffi.fn',returnType:'void',parameters:['ptr']},"
+        "staticPointPointer:{kind:'ffi.fn',returnType:'ptr',parameters:[]}"
         "});"
         "const capture = (fn, code) => { try { fn(); return 'NO_THROW'; }"
         "catch (e) { const text = String((e && e.message) || e);"
@@ -564,6 +697,9 @@ int main(int argc, char** argv)
         "'SLOPPY_E_FFI_UNSUPPORTED_CALLBACK')"
         ",capture(() => ffi.struct('Huge', { values: { kind: 'array', element: 'f64',"
         "length: 18446744073709551615n } }), 'SLOPPY_E_FFI_LAYOUT_OVERFLOW')"
+        ",capture(() => ffi.validateNativePointer({}, true),"
+        "'SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE')"
+        ",capture(() => ffi.validateNativePointer(lib.staticPointPointer(), true), 'NO_THROW')"
         "].join(':');"
         "};";
 
@@ -618,6 +754,9 @@ int main(int argc, char** argv)
         {"ffi-setup.js", source_setup, sizeof(source_setup) - 1U},
         {"ffi-smoke-a.js", source_smoke_a, sizeof(source_smoke_a) - 1U},
         {"ffi-smoke-b.js", source_smoke_b, sizeof(source_smoke_b) - 1U},
+        {"ffi-adoption-setup-a.js", source_adoption_setup_a, sizeof(source_adoption_setup_a) - 1U},
+        {"ffi-adoption-setup-b.js", source_adoption_setup_b, sizeof(source_adoption_setup_b) - 1U},
+        {"ffi-adoption.js", source_adoption, sizeof(source_adoption) - 1U},
         {"ffi-negative.js", source_negative, sizeof(source_negative) - 1U},
     };
     const size_t source_count = sizeof(sources) / sizeof(sources[0]);
@@ -651,12 +790,32 @@ int main(int argc, char** argv)
                 result.text.ptr);
         return 7;
     }
+    SlStatus adoption_status = sl_engine_call_function0(
+        engine, &result_arena, sl_str_from_cstr("ffiAdoption"), &result, &diag);
+    if (expect_status(adoption_status, SL_STATUS_OK) != 0) {
+        print_diag("failed to call FFI adoption function", adoption_status, &diag);
+        sl_engine_destroy(engine);
+        return 8;
+    }
+    if (result.kind != SL_ENGINE_RESULT_TEXT ||
+        !sl_str_equal(
+            result.text,
+            sl_str_from_cstr("7:1:SLOPPY_E_FFI_USE_AFTER_DISPOSE:0:11:1:5:0:1:"
+                             "SLOPPY_E_FFI_HANDLE_TYPE_MISMATCH:SLOPPY_E_FFI_NULL_HANDLE:"
+                             "SLOPPY_E_FFI_MISSING_DISPOSER:SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE:"
+                             "SLOPPY_E_FFI_INVALID_DECLARATION")))
+    {
+        sl_engine_destroy(engine);
+        fprintf(stderr, "unexpected FFI adoption result: %.*s\n", (int)result.text.length,
+                result.text.ptr);
+        return 9;
+    }
     SlStatus negative_status = sl_engine_call_function0(
         engine, &result_arena, sl_str_from_cstr("ffiNegative"), &result, &diag);
     if (expect_status(negative_status, SL_STATUS_OK) != 0) {
         print_diag("failed to call FFI negative function", negative_status, &diag);
         sl_engine_destroy(engine);
-        return 8;
+        return 10;
     }
     if (result.kind != SL_ENGINE_RESULT_TEXT ||
         !sl_str_equal(result.text,
@@ -669,11 +828,13 @@ int main(int argc, char** argv)
                           "SLOPPY_E_FFI_STRING_NUL:SLOPPY_E_FFI_STRING_NUL:"
                           "SLOPPY_E_FFI_UNSUPPORTED_CALLBACK:"
                           "SLOPPY_E_FFI_UNSUPPORTED_CALLBACK:"
-                          "SLOPPY_E_FFI_LAYOUT_OVERFLOW")))
+                          "SLOPPY_E_FFI_LAYOUT_OVERFLOW:"
+                          "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE:NO_THROW")))
     {
         sl_engine_destroy(engine);
-        fprintf(stderr, "unexpected FFI negative result\n");
-        return 9;
+        fprintf(stderr, "unexpected FFI negative result: %.*s\n", (int)result.text.length,
+                result.text.ptr);
+        return 11;
     }
 
     sl_engine_destroy(engine);

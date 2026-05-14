@@ -116,6 +116,27 @@
           }
         ]
       }
+    ],
+    "ffiAdoptions": [
+      {
+        "handle": "Counter",
+        "ownership": "owned",
+        "disposer": "native.destroyCounter",
+        "source": {
+          "path": "src/main.ts",
+          "line": 12,
+          "column": 17
+        }
+      },
+      {
+        "handle": "Counter",
+        "ownership": "borrowed",
+        "source": {
+          "path": "src/main.ts",
+          "line": 13,
+          "column": 19
+        }
+      }
     ]
   },
   "doctorChecks": [

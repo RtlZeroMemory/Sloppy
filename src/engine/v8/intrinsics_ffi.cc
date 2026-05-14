@@ -1207,6 +1207,32 @@ void ffi_native_pointer_is_null_callback(const v8::FunctionCallbackInfo<v8::Valu
     args.GetReturnValue().Set(v8::Boolean::New(isolate, resource->native_pointer == nullptr));
 }
 
+void ffi_validate_native_pointer_callback(const v8::FunctionCallbackInfo<v8::Value>& args)
+{
+    v8::Isolate* isolate = args.GetIsolate();
+    bool require_non_null = args.Length() > 1 && args[1]->BooleanValue(isolate);
+    SlV8FfiResource* resource =
+        args.Length() > 0 ? ffi_resource_from_value(isolate, args[0]) : nullptr;
+
+    if (resource == nullptr || resource->kind != FfiResourceKind::NativePointer) {
+        ffi_throw_type_error(
+            isolate,
+            "SLOPPY_E_FFI_INVALID_ARGUMENT_TYPE: unsafeFfi.adopt requires a NativePointer.");
+        return;
+    }
+    if (resource->disposed) {
+        ffi_throw_type_error(isolate, "SLOPPY_E_FFI_USE_AFTER_DISPOSE: NativePointer is disposed.");
+        return;
+    }
+    if (require_non_null && resource->native_pointer == nullptr) {
+        ffi_throw_type_error(
+            isolate, "SLOPPY_E_FFI_NULL_HANDLE: adopted FFI handle pointer cannot be null.");
+        return;
+    }
+
+    args.GetReturnValue().Set(v8::Boolean::New(isolate, true));
+}
+
 bool ffi_copy_uint8_array(v8::Local<v8::Value> value, const unsigned char** data, size_t* length)
 {
     if (data == nullptr || length == nullptr || !value->IsUint8Array()) {
@@ -2393,6 +2419,8 @@ bool sl_v8_install_ffi_intrinsics(SlV8Engine* backend, v8::Local<v8::Context> co
         !ffi_set_function(isolate, context, ffi, "struct", ffi_struct_callback) ||
         !ffi_set_function(isolate, context, ffi, "callback", ffi_callback_callback) ||
         !ffi_set_function(isolate, context, ffi, "dispatchTable", ffi_dispatch_table_callback) ||
+        !ffi_set_function(isolate, context, ffi, "validateNativePointer",
+                          ffi_validate_native_pointer_callback) ||
         !sl_status_is_ok(sl_v8_string_from_native_view(backend, sl_str_from_cstr("ffi"), &key)))
     {
         return false;

@@ -320,7 +320,9 @@ foreach(required_pattern IN ITEMS
         "export const unsafeFfi"
         "unsafeFfi.fn"
         "unsafeFfi.library"
+        "unsafeFfi.adopt"
         "unsafeFfi.struct"
+        "SLOPPY_E_FFI_MISSING_DISPOSER"
         "SLOPPY_E_FFI_RUNTIME_UNAVAILABLE"
         "Object.defineProperty")
     require_substring("${ffi_js}" "${required_pattern}" "ffi.js is missing expected API contract pattern")
