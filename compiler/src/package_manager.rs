@@ -21,6 +21,11 @@ const SUPPORTED_RIDS: &[&str] = &[
     "macos-x64",
     "macos-arm64",
 ];
+const MAX_ARCHIVE_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+const MAX_ARCHIVE_ENTRIES: usize = 4096;
+const MAX_ENTRY_BYTES: u64 = 128 * 1024 * 1024;
+const MAX_EXPANDED_BYTES: u64 = 512 * 1024 * 1024;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PackageError {
@@ -43,16 +48,33 @@ impl PackageError {
 
 type Result<T> = std::result::Result<T, PackageError>;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 struct Version {
     major: u64,
     minor: u64,
     patch: u64,
+    prerelease: Option<String>,
 }
 
 impl Version {
     fn parse(text: &str) -> Result<Self> {
-        let parts = text.split('.').collect::<Vec<_>>();
+        let (core, prerelease) = match text.split_once('-') {
+            Some((core, prerelease)) => {
+                if prerelease.is_empty()
+                    || !prerelease
+                        .bytes()
+                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-'))
+                {
+                    return Err(PackageError::new(
+                        "SLOPPY_E_PACKAGE_VERSION_INVALID",
+                        format!("package version '{text}' has an invalid prerelease suffix"),
+                    ));
+                }
+                (core, Some(prerelease.to_ascii_lowercase()))
+            }
+            None => (text, None),
+        };
+        let parts = core.split('.').collect::<Vec<_>>();
         if parts.len() != 3 || parts.iter().any(|part| part.is_empty()) {
             return Err(PackageError::new(
                 "SLOPPY_E_PACKAGE_VERSION_INVALID",
@@ -78,41 +100,69 @@ impl Version {
             major: parsed[0],
             minor: parsed[1],
             patch: parsed[2],
+            prerelease,
         })
+    }
+}
+
+impl Ord for Version {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.major
+            .cmp(&other.major)
+            .then_with(|| self.minor.cmp(&other.minor))
+            .then_with(|| self.patch.cmp(&other.patch))
+            .then_with(|| match (&self.prerelease, &other.prerelease) {
+                (None, None) => std::cmp::Ordering::Equal,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (Some(left), Some(right)) => left.cmp(right),
+            })
+    }
+}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
 impl std::fmt::Display for Version {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
+        write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)?;
+        if let Some(prerelease) = &self.prerelease {
+            write!(formatter, "-{prerelease}")?;
+        }
+        Ok(())
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct VersionRange {
-    lower: Version,
-    upper: Option<Version>,
+    lower: Option<(Version, bool)>,
+    upper: Option<(Version, bool)>,
     exact: bool,
 }
 
 impl VersionRange {
     pub fn parse(text: &str) -> Result<Self> {
-        if !text.starts_with('[') || !(text.ends_with(']') || text.ends_with(')')) {
+        if !text.starts_with(['[', '(']) || !(text.ends_with(']') || text.ends_with(')')) {
             return Err(PackageError::new(
                 "SLOPPY_E_PACKAGE_RANGE_INVALID",
                 format!("unsupported package version range '{text}'"),
             ));
         }
+        let lower_inclusive = text.starts_with('[');
+        let upper_inclusive = text.ends_with(']');
         let inner = &text[1..text.len() - 1];
         if !inner.contains(',') {
-            if !text.ends_with(']') {
+            if !lower_inclusive || !upper_inclusive || inner.is_empty() {
                 return Err(PackageError::new(
                     "SLOPPY_E_PACKAGE_RANGE_INVALID",
                     format!("unsupported package version range '{text}'"),
                 ));
             }
             return Ok(Self {
-                lower: Version::parse(inner)?,
+                lower: Some((Version::parse(inner)?, true)),
                 upper: None,
                 exact: true,
             });
@@ -123,29 +173,60 @@ impl VersionRange {
                 format!("unsupported package version range '{text}'"),
             ));
         };
-        if lower.is_empty() {
-            return Err(PackageError::new(
-                "SLOPPY_E_PACKAGE_RANGE_INVALID",
-                format!("range '{text}' must include a lower bound"),
-            ));
-        }
         Ok(Self {
-            lower: Version::parse(lower)?,
+            lower: if lower.is_empty() {
+                None
+            } else {
+                Some((Version::parse(lower)?, lower_inclusive))
+            },
             upper: if upper.is_empty() {
                 None
             } else {
-                Some(Version::parse(upper)?)
+                Some((Version::parse(upper)?, upper_inclusive))
             },
             exact: false,
         })
     }
 
-    fn allows(&self, version: Version) -> bool {
+    fn allows(&self, version: &Version) -> bool {
         if self.exact {
-            return version == self.lower;
+            return self
+                .lower
+                .as_ref()
+                .is_some_and(|(lower, _)| version == lower);
         }
-        version >= self.lower && self.upper.is_none_or(|upper| version < upper)
+        let lower_allowed = self.lower.as_ref().is_none_or(|(lower, inclusive)| {
+            if *inclusive {
+                version >= lower
+            } else {
+                version > lower
+            }
+        });
+        let upper_allowed = self.upper.as_ref().is_none_or(|(upper, inclusive)| {
+            if *inclusive {
+                version <= upper
+            } else {
+                version < upper
+            }
+        });
+        lower_allowed && upper_allowed
     }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+enum SourceKind {
+    Folder,
+    Sloppy,
+    Npm,
+}
+
+#[derive(Debug, Clone)]
+struct PackageSource {
+    name: String,
+    kind: SourceKind,
+    display: String,
+    path: Option<PathBuf>,
+    url: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -177,6 +258,67 @@ struct ResolvedPackage {
     selected_hashes: BTreeMap<String, String>,
 }
 
+pub fn run_package_command(command: &str, args: &[String]) -> Result<String> {
+    match command {
+        "pack" => {
+            if !args.is_empty() {
+                return Err(PackageError::new(
+                    "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                    "sloppy pack does not accept arguments",
+                ));
+            }
+            let path = pack_current_project()?;
+            Ok(format!("Created package: {}\n", path.display()))
+        }
+        "restore" => {
+            let mut locked = false;
+            let mut json_output = false;
+            for arg in args {
+                match arg.as_str() {
+                    "--locked" => locked = true,
+                    "--json" => json_output = true,
+                    other => {
+                        return Err(PackageError::new(
+                            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                            format!("unsupported restore option '{other}'"),
+                        ))
+                    }
+                }
+            }
+            let summary = restore_current_project_with_summary(locked)?;
+            if json_output {
+                Ok(format!(
+                    "{}\n",
+                    serde_json::to_string_pretty(&summary).map_err(|error| {
+                        PackageError::new("SLOPPY_E_PACKAGE_MANIFEST_INVALID", error.to_string())
+                    })?
+                ))
+            } else {
+                Ok(format!(
+                    "Restore completed: {} package(s), target {}, RID {}.\n",
+                    summary["packageCount"].as_u64().unwrap_or(0),
+                    summary["target"].as_str().unwrap_or(SUPPORTED_TARGET),
+                    summary["runtimeIdentifier"].as_str().unwrap_or("")
+                ))
+            }
+        }
+        "add" => command_add(args),
+        "remove" => command_remove(args),
+        "update" => command_update(args),
+        "list" => command_list(args),
+        "why" => command_why(args),
+        "cache" => command_cache(args),
+        "source" => command_source(args),
+        "publish" => command_publish(args),
+        "feed" => command_feed(args),
+        "npm" => command_npm(args),
+        other => Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            format!("unsupported package manager command '{other}'"),
+        )),
+    }
+}
+
 pub fn pack_current_project() -> Result<PathBuf> {
     let cwd = env::current_dir().map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
     let manifest_path = cwd.join("sloppy.json");
@@ -196,7 +338,10 @@ pub fn pack_current_project() -> Result<PathBuf> {
             ));
         }
         archive_paths.insert(path.clone());
-        if !cwd.join(&path).is_file() {
+        let full_path = cwd.join(&path);
+        let metadata = fs::symlink_metadata(&full_path)
+            .map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
             return Err(PackageError::new(
                 "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
                 format!("declared package file is missing: {path}"),
@@ -255,6 +400,378 @@ pub fn pack_current_project() -> Result<PathBuf> {
 }
 
 pub fn restore_current_project(locked: bool) -> Result<()> {
+    restore_current_project_with_summary(locked).map(|_| ())
+}
+
+fn command_add(args: &[String]) -> Result<String> {
+    let cwd = env::current_dir().map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+    let mut package = None;
+    let mut version = None;
+    let mut source = None;
+    let mut native_ok = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--version" => {
+                index += 1;
+                version = args.get(index).cloned();
+            }
+            "--source" => {
+                index += 1;
+                source = args.get(index).cloned();
+            }
+            "--native-ok" => native_ok = true,
+            value if package.is_none() => package = Some(value.to_string()),
+            other => {
+                return Err(PackageError::new(
+                    "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                    format!("unsupported add argument '{other}'"),
+                ))
+            }
+        }
+        index += 1;
+    }
+    let Some(package) = package else {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            "usage: sloppy add <package-id|path.slpkg> [--version <range>] [--source <path>] [--native-ok]",
+        ));
+    };
+    let mut project = read_or_new_project(&cwd)?;
+    let (id, range, source_path, has_native) = if package.ends_with(".slpkg") {
+        let path = PathBuf::from(&package);
+        let artifact = if path.is_absolute() {
+            path
+        } else {
+            cwd.join(path)
+        };
+        reject_oversized_file(&artifact, MAX_ARCHIVE_BYTES)?;
+        let bytes = fs::read(&artifact).map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+        let manifest = read_manifest_from_archive(Cursor::new(bytes))?;
+        (
+            manifest.id,
+            format!("[{}]", manifest.version),
+            artifact.parent().map(Path::to_path_buf),
+            !manifest.native_libraries.is_empty(),
+        )
+    } else {
+        validate_package_id(&package)?;
+        (
+            package,
+            version.unwrap_or_else(|| "[0.0.0,)".to_string()),
+            source.map(PathBuf::from),
+            false,
+        )
+    };
+    VersionRange::parse(range.strip_prefix("npm:").unwrap_or(&range))?;
+    let dependencies = ensure_object_field(&mut project, "dependencies")?;
+    dependencies.insert(id.clone(), Value::String(range.clone()));
+    if let Some(source_path) = source_path {
+        add_package_source_value(&mut project, &cwd, &source_path)?;
+    }
+    if has_native && native_ok {
+        add_string_array_value(&mut project, "trustedNativePackages", &id)?;
+    } else if has_native {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_NATIVE_ASSET_MISSING",
+            format!(
+                "package '{id}' declares native assets; rerun with --native-ok to record explicit trust"
+            ),
+        ));
+    }
+    write_json_file(&cwd.join("sloppy.json"), &project)?;
+    Ok(format!("Added package dependency {id} {range}.\n"))
+}
+
+fn command_remove(args: &[String]) -> Result<String> {
+    let Some(id) = args.first() else {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            "usage: sloppy remove <package-id>",
+        ));
+    };
+    let cwd = env::current_dir().map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+    let mut project = read_json_file(&cwd.join("sloppy.json"))?;
+    let normalized = normalize_id(id);
+    let removed = project
+        .get_mut("dependencies")
+        .and_then(Value::as_object_mut)
+        .and_then(|deps| deps.remove(&normalized).or_else(|| deps.remove(id)))
+        .is_some();
+    remove_string_array_value(&mut project, "trustedNativePackages", id);
+    write_json_file(&cwd.join("sloppy.json"), &project)?;
+    if removed {
+        Ok(format!("Removed package dependency {id}.\n"))
+    } else {
+        Ok(format!("Package dependency {id} was not present.\n"))
+    }
+}
+
+fn command_update(args: &[String]) -> Result<String> {
+    if args.len() > 1 {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            "usage: sloppy update [package-id]",
+        ));
+    }
+    if let Some(id) = args.first() {
+        let project = read_json_file(&env::current_dir().unwrap_or_default().join("sloppy.json"))?;
+        let deps = dependency_map(&project)?;
+        if !deps.contains_key(&normalize_id(id)) {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_NOT_FOUND",
+                format!("project does not depend on '{id}'"),
+            ));
+        }
+    }
+    let summary = restore_current_project_with_summary(false)?;
+    Ok(format!(
+        "Updated restore graph: {} package(s).\n",
+        summary["packageCount"].as_u64().unwrap_or(0)
+    ))
+}
+
+fn command_list(args: &[String]) -> Result<String> {
+    let subject = args.first().map(String::as_str).unwrap_or("packages");
+    let json_output = args.iter().any(|arg| arg == "--json");
+    let cwd = env::current_dir().map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+    let assets = read_optional_json(&cwd.join(ASSETS_PATH))?;
+    let lock = read_optional_json(&cwd.join(LOCKFILE_NAME))?;
+    let value = match subject {
+        "packages" => assets
+            .as_ref()
+            .and_then(|assets| assets.get("packages"))
+            .cloned()
+            .unwrap_or_else(|| json!([])),
+        "native" => list_native_value(&assets.unwrap_or_else(|| json!({}))),
+        "capabilities" => list_capabilities_value(&assets.unwrap_or_else(|| json!({}))),
+        "outdated" => list_outdated_value(&cwd, &lock.unwrap_or_else(|| json!({})))?,
+        other => {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                format!("unsupported list subject '{other}'"),
+            ))
+        }
+    };
+    if json_output {
+        return Ok(format!(
+            "{}\n",
+            serde_json::to_string_pretty(&value).unwrap_or_default()
+        ));
+    }
+    Ok(render_list(subject, &value))
+}
+
+fn command_why(args: &[String]) -> Result<String> {
+    let Some(id) = args.first() else {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            "usage: sloppy why <package-id>",
+        ));
+    };
+    let cwd = env::current_dir().map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+    let project = read_json_file(&cwd.join("sloppy.json"))?;
+    let lock = read_json_file(&cwd.join(LOCKFILE_NAME))?;
+    let normalized = normalize_id(id);
+    let mut lines = Vec::new();
+    if dependency_map(&project)?.contains_key(&normalized) {
+        lines.push(format!("root -> {id}"));
+    }
+    if let Some(packages) = lock.get("packages").and_then(Value::as_object) {
+        for package in packages.values() {
+            let Some(display) = package.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            if let Some(deps) = package.get("dependencies").and_then(Value::as_object) {
+                if deps.contains_key(&normalized) {
+                    lines.push(format!("{} -> {}", display, id));
+                }
+            }
+        }
+    }
+    if lines.is_empty() {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_NOT_FOUND",
+            format!("package '{id}' is not present in the restore graph"),
+        ));
+    }
+    Ok(format!("{}\n", lines.join("\n")))
+}
+
+fn command_cache(args: &[String]) -> Result<String> {
+    let action = args.first().map(String::as_str).unwrap_or("list");
+    let root = cache_root()?;
+    match action {
+        "list" => Ok(render_cache_list(&root)?),
+        "clean" => {
+            if args.get(1).map(String::as_str) == Some("--all") {
+                if root.exists() {
+                    fs::remove_dir_all(&root)
+                        .map_err(io_error("SLOPPY_E_PACKAGE_CACHE_CORRUPT"))?;
+                }
+                return Ok("Cleaned the Sloppy package cache.\n".to_string());
+            }
+            let Some(id) = args.get(1) else {
+                return Err(PackageError::new(
+                    "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                    "usage: sloppy cache clean [--all | <package-id>]",
+                ));
+            };
+            validate_package_id(id)?;
+            let target = root.join(normalize_id(id));
+            if target.exists() {
+                fs::remove_dir_all(&target).map_err(io_error("SLOPPY_E_PACKAGE_CACHE_CORRUPT"))?;
+            }
+            Ok(format!("Cleaned cached package {id}.\n"))
+        }
+        other => Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            format!("unsupported cache command '{other}'"),
+        )),
+    }
+}
+
+fn command_source(args: &[String]) -> Result<String> {
+    let action = args.first().map(String::as_str).unwrap_or("list");
+    let cwd = env::current_dir().map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+    let mut project = read_or_new_project(&cwd)?;
+    match action {
+        "list" => {
+            let sources = project
+                .get("packageSources")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            Ok(format!(
+                "{}\n",
+                serde_json::to_string_pretty(&sources).unwrap_or_default()
+            ))
+        }
+        "add" => {
+            if args.len() < 3 {
+                return Err(PackageError::new(
+                    "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                    "usage: sloppy source add <name> <url-or-path> [--type folder|sloppy|npm]",
+                ));
+            }
+            let name = &args[1];
+            let location = &args[2];
+            let mut kind = if location.starts_with("http://") || location.starts_with("https://") {
+                "sloppy"
+            } else {
+                "folder"
+            };
+            let mut index = 3;
+            while index < args.len() {
+                if args[index] == "--type" {
+                    index += 1;
+                    kind = args.get(index).map(String::as_str).unwrap_or(kind);
+                }
+                index += 1;
+            }
+            let source = if kind == "npm" || location.starts_with("http") {
+                json!({"name": name, "type": kind, "url": location})
+            } else {
+                validate_source_path(location)?;
+                json!({"name": name, "type": kind, "path": location})
+            };
+            push_package_source(&mut project, source)?;
+            write_json_file(&cwd.join("sloppy.json"), &project)?;
+            Ok(format!("Added package source {name}.\n"))
+        }
+        "remove" => {
+            let Some(name) = args.get(1) else {
+                return Err(PackageError::new(
+                    "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                    "usage: sloppy source remove <name>",
+                ));
+            };
+            remove_package_source(&mut project, name);
+            write_json_file(&cwd.join("sloppy.json"), &project)?;
+            Ok(format!("Removed package source {name}.\n"))
+        }
+        other => Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            format!("unsupported source command '{other}'"),
+        )),
+    }
+}
+
+fn command_publish(args: &[String]) -> Result<String> {
+    if args.len() < 3 || args.get(1).map(String::as_str) != Some("--source") {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            "usage: sloppy publish <path.slpkg> --source <folder-source>",
+        ));
+    }
+    let artifact = PathBuf::from(&args[0]);
+    let source = PathBuf::from(&args[2]);
+    fs::create_dir_all(&source).map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?;
+    let file_name = artifact.file_name().ok_or_else(|| {
+        PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            "package artifact path must include a file name",
+        )
+    })?;
+    fs::copy(&artifact, source.join(file_name))
+        .map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?;
+    generate_feed_index(&source)?;
+    Ok(format!(
+        "Published {} to {}.\n",
+        artifact.display(),
+        source.display()
+    ))
+}
+
+fn command_feed(args: &[String]) -> Result<String> {
+    if args.first().map(String::as_str) != Some("index") || args.len() != 2 {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            "usage: sloppy feed index <folder>",
+        ));
+    }
+    let folder = PathBuf::from(&args[1]);
+    generate_feed_index(&folder)?;
+    Ok(format!("Indexed Sloppy feed at {}.\n", folder.display()))
+}
+
+fn command_npm(args: &[String]) -> Result<String> {
+    if args.first().map(String::as_str) != Some("add") {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_SOURCE_UNSUPPORTED",
+            "only 'sloppy npm add <package> [--version <range>]' is scaffolded in this build",
+        ));
+    }
+    let Some(name) = args.get(1) else {
+        return Err(PackageError::new(
+            "SLOPPY_E_NPM_PACKAGE_NOT_FOUND",
+            "usage: sloppy npm add <package> [--version <range>]",
+        ));
+    };
+    let mut range = "[0.0.0,)".to_string();
+    let mut index = 2;
+    while index < args.len() {
+        if args[index] == "--version" {
+            index += 1;
+            range = args.get(index).cloned().unwrap_or(range);
+        }
+        index += 1;
+    }
+    let cwd = env::current_dir().map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+    let mut project = read_or_new_project(&cwd)?;
+    ensure_object_field(&mut project, "dependencies")?
+        .insert(name.clone(), Value::String(format!("npm:{range}")));
+    push_package_source(
+        &mut project,
+        json!({"name": "npmjs", "type": "npm", "url": "https://registry.npmjs.org"}),
+    )?;
+    write_json_file(&cwd.join("sloppy.json"), &project)?;
+    Ok(format!(
+        "Added npm foreign-source dependency {name} npm:{range}. Restore support is not implemented yet.\n"
+    ))
+}
+
+fn restore_current_project_with_summary(locked: bool) -> Result<Value> {
     let cwd = env::current_dir().map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
     let project = read_json_file(&cwd.join("sloppy.json"))?;
     let target = json_string(&project, "target").unwrap_or_else(|| SUPPORTED_TARGET.to_string());
@@ -281,6 +798,7 @@ pub fn restore_current_project(locked: bool) -> Result<()> {
     let dependencies = dependency_map(&project)?;
     let sources = package_sources(&cwd, &project)?;
     let previous_lock = read_optional_json(&cwd.join(LOCKFILE_NAME))?;
+    reject_npm_dependencies(&dependencies)?;
     let locked_versions = previous_lock
         .as_ref()
         .map(locked_version_map)
@@ -295,15 +813,14 @@ pub fn restore_current_project(locked: bool) -> Result<()> {
         &runtime_identifier,
     )?;
     let cache_root = cache_root()?;
-    let mut restored = Vec::new();
+    let mut planned = Vec::new();
     for package in resolved {
-        let cache_path = restore_to_cache(&package.candidate, &cache_root)?;
-        restored.push(ResolvedPackage {
-            cache_path,
+        planned.push(ResolvedPackage {
+            cache_path: cache_package_path(&cache_root, &package.candidate),
             ..package
         });
     }
-    let lockfile = lockfile_json(&target, &runtime_identifier, &restored);
+    let lockfile = lockfile_json(&target, &runtime_identifier, &sources, &planned);
     if locked {
         let Some(previous) = previous_lock else {
             return Err(PackageError::new(
@@ -311,6 +828,7 @@ pub fn restore_current_project(locked: bool) -> Result<()> {
                 "sloppy.lock.json is required for --locked restore",
             ));
         };
+        verify_locked_hashes(&previous, &planned)?;
         if previous != lockfile {
             return Err(PackageError::new(
                 "SLOPPY_E_PACKAGE_LOCK_OUT_OF_DATE",
@@ -320,9 +838,23 @@ pub fn restore_current_project(locked: bool) -> Result<()> {
     } else {
         write_json_file(&cwd.join(LOCKFILE_NAME), &lockfile)?;
     }
+    let mut restored = Vec::new();
+    for package in planned {
+        let cache_path = restore_to_cache(&package.candidate, &cache_root)?;
+        restored.push(ResolvedPackage {
+            cache_path,
+            ..package
+        });
+    }
     let assets = assets_json(&target, &runtime_identifier, &restored);
     write_json_file(&cwd.join(ASSETS_PATH), &assets)?;
-    Ok(())
+    Ok(json!({
+        "target": target,
+        "runtimeIdentifier": runtime_identifier,
+        "packageCount": restored.len(),
+        "lockfile": LOCKFILE_NAME,
+        "assets": ASSETS_PATH,
+    }))
 }
 
 fn read_json_file(path: &Path) -> Result<Value> {
@@ -333,6 +865,149 @@ fn read_json_file(path: &Path) -> Result<Value> {
             format!("malformed JSON in {}: {error}", path.display()),
         )
     })
+}
+
+fn read_or_new_project(cwd: &Path) -> Result<Value> {
+    let path = cwd.join("sloppy.json");
+    if path.exists() {
+        read_json_file(&path)
+    } else {
+        Ok(json!({}))
+    }
+}
+
+fn ensure_object_field<'a>(value: &'a mut Value, key: &str) -> Result<&'a mut Map<String, Value>> {
+    if !value.is_object() {
+        *value = json!({});
+    }
+    let object = value.as_object_mut().ok_or_else(|| {
+        PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            "project manifest root must be an object",
+        )
+    })?;
+    if !object.get(key).is_some_and(Value::is_object) {
+        object.insert(key.to_string(), json!({}));
+    }
+    object
+        .get_mut(key)
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| {
+            PackageError::new(
+                "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                format!("{key} must be an object"),
+            )
+        })
+}
+
+fn add_string_array_value(value: &mut Value, key: &str, text: &str) -> Result<()> {
+    if !value.is_object() {
+        *value = json!({});
+    }
+    let object = value.as_object_mut().ok_or_else(|| {
+        PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            "project manifest root must be an object",
+        )
+    })?;
+    if !object.get(key).is_some_and(Value::is_array) {
+        object.insert(key.to_string(), json!([]));
+    }
+    let array = object
+        .get_mut(key)
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| {
+            PackageError::new(
+                "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                format!("{key} must be an array"),
+            )
+        })?;
+    if !array.iter().any(|item| item.as_str() == Some(text)) {
+        array.push(Value::String(text.to_string()));
+    }
+    array.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
+    Ok(())
+}
+
+fn remove_string_array_value(value: &mut Value, key: &str, text: &str) {
+    if let Some(array) = value.get_mut(key).and_then(Value::as_array_mut) {
+        let normalized = normalize_id(text);
+        array.retain(|item| item.as_str().map(normalize_id) != Some(normalized.clone()));
+    }
+}
+
+fn add_package_source_value(project: &mut Value, cwd: &Path, path: &Path) -> Result<()> {
+    let display = if path.is_absolute() {
+        path.strip_prefix(cwd)
+            .ok()
+            .map(|relative| relative.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"))
+    } else {
+        path.to_string_lossy().replace('\\', "/")
+    };
+    validate_source_path(&display)?;
+    push_package_source(project, Value::String(display))
+}
+
+fn push_package_source(project: &mut Value, source: Value) -> Result<()> {
+    if !project.is_object() {
+        *project = json!({});
+    }
+    let object = project.as_object_mut().ok_or_else(|| {
+        PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            "project manifest root must be an object",
+        )
+    })?;
+    if !object.get("packageSources").is_some_and(Value::is_array) {
+        object.insert("packageSources".to_string(), json!([]));
+    }
+    let array = object
+        .get_mut("packageSources")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| {
+            PackageError::new(
+                "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                "packageSources must be an array",
+            )
+        })?;
+    if !array.contains(&source) {
+        array.push(source);
+    }
+    array.sort_by(|left, right| {
+        canonical_source_sort_key(left).cmp(&canonical_source_sort_key(right))
+    });
+    Ok(())
+}
+
+fn remove_package_source(project: &mut Value, name: &str) {
+    if let Some(array) = project
+        .get_mut("packageSources")
+        .and_then(Value::as_array_mut)
+    {
+        array.retain(|source| {
+            if source.as_str() == Some(name) {
+                return false;
+            }
+            source
+                .get("name")
+                .and_then(Value::as_str)
+                .is_none_or(|source_name| source_name != name)
+        });
+    }
+}
+
+fn canonical_source_sort_key(value: &Value) -> String {
+    value
+        .as_str()
+        .map(str::to_string)
+        .or_else(|| {
+            value
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
 }
 
 fn read_optional_json(path: &Path) -> Result<Option<Value>> {
@@ -429,10 +1104,27 @@ fn dependency_map(value: &Value) -> Result<BTreeMap<String, String>> {
                 format!("dependency '{id}' must declare a string range"),
             ));
         };
-        VersionRange::parse(range)?;
+        if !range.starts_with("npm:") {
+            VersionRange::parse(range)?;
+        }
         dependencies.insert(normalize_id(id), range.to_string());
     }
     Ok(dependencies)
+}
+
+fn reject_npm_dependencies(dependencies: &BTreeMap<String, String>) -> Result<()> {
+    if let Some((id, _)) = dependencies
+        .iter()
+        .find(|(_, range)| range.starts_with("npm:"))
+    {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_SOURCE_UNSUPPORTED",
+            format!(
+                "npm foreign-source restore is scaffolded but not implemented for dependency '{id}'"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn string_array(value: &Value, key: &str) -> Result<Vec<String>> {
@@ -572,7 +1264,7 @@ fn normalize_archive_path(path: &str) -> String {
     path.replace('\\', "/").to_ascii_lowercase()
 }
 
-fn package_sources(cwd: &Path, project: &Value) -> Result<Vec<(PathBuf, String)>> {
+fn package_sources(cwd: &Path, project: &Value) -> Result<Vec<PackageSource>> {
     let Some(sources) = project.get("packageSources").and_then(Value::as_array) else {
         return Err(PackageError::new(
             "SLOPPY_E_PACKAGE_SOURCE_MISSING",
@@ -581,32 +1273,48 @@ fn package_sources(cwd: &Path, project: &Value) -> Result<Vec<(PathBuf, String)>
     };
     let mut output = Vec::new();
     for source in sources {
-        let Some(source_text) = source.as_str() else {
+        let parsed = parse_package_source(cwd, source)?;
+        if parsed.kind == SourceKind::Npm {
+            output.push(parsed);
+            continue;
+        }
+        if parsed.kind == SourceKind::Sloppy && parsed.url.is_some() {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_REMOTE_UNAVAILABLE",
+                format!(
+                    "remote Sloppy source '{}' is declared but HTTP restore is not implemented in this build",
+                    parsed.name
+                ),
+            ));
+        }
+        let Some(path) = &parsed.path else {
             return Err(PackageError::new(
                 "SLOPPY_E_PACKAGE_SOURCE_MISSING",
-                "packageSources entries must be strings",
+                format!(
+                    "package source '{}' does not declare a local path",
+                    parsed.name
+                ),
             ));
         };
-        validate_source_path(source_text)?;
-        let path = cwd.join(source_text);
         if !path.is_dir() {
             return Err(PackageError::new(
                 "SLOPPY_E_PACKAGE_SOURCE_MISSING",
-                format!("package source does not exist: {source_text}"),
+                format!("package source does not exist: {}", parsed.display),
             ));
         }
-        output.push((path, source_text.replace('\\', "/")));
+        output.push(parsed);
     }
-    output.sort_by(|left, right| left.1.cmp(&right.1));
+    output.sort_by(|left, right| left.display.cmp(&right.display));
     Ok(output)
 }
 
 fn validate_source_path(path: &str) -> Result<()> {
     if path.is_empty()
         || path.contains('\0')
+        || Path::new(path).is_absolute()
         || Path::new(path)
             .components()
-            .any(|component| matches!(component, Component::ParentDir))
+            .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
     {
         return Err(PackageError::new(
             "SLOPPY_E_PACKAGE_PATH_TRAVERSAL",
@@ -616,23 +1324,108 @@ fn validate_source_path(path: &str) -> Result<()> {
     Ok(())
 }
 
-fn discover_candidates(sources: &[(PathBuf, String)]) -> Result<Vec<PackageCandidate>> {
+fn parse_package_source(cwd: &Path, source: &Value) -> Result<PackageSource> {
+    if let Some(source_text) = source.as_str() {
+        validate_source_path(source_text)?;
+        return Ok(PackageSource {
+            name: source_text.replace('\\', "/"),
+            kind: SourceKind::Folder,
+            display: source_text.replace('\\', "/"),
+            path: Some(cwd.join(source_text)),
+            url: None,
+        });
+    }
+    let Some(object) = source.as_object() else {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_SOURCE_MISSING",
+            "packageSources entries must be strings or source objects",
+        ));
+    };
+    let name = object
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("unnamed")
+        .to_string();
+    let kind_text = object
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("folder");
+    let kind = match kind_text {
+        "folder" => SourceKind::Folder,
+        "sloppy" => SourceKind::Sloppy,
+        "npm" => SourceKind::Npm,
+        other => {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_SOURCE_UNSUPPORTED",
+                format!("unsupported package source type '{other}'"),
+            ))
+        }
+    };
+    if kind == SourceKind::Npm {
+        let url = object
+            .get("url")
+            .and_then(Value::as_str)
+            .unwrap_or("https://registry.npmjs.org")
+            .to_string();
+        return Ok(PackageSource {
+            name,
+            kind,
+            display: url.clone(),
+            path: None,
+            url: Some(url),
+        });
+    }
+    if let Some(path_text) = object.get("path").and_then(Value::as_str) {
+        validate_source_path(path_text)?;
+        return Ok(PackageSource {
+            name,
+            kind,
+            display: path_text.replace('\\', "/"),
+            path: Some(cwd.join(path_text)),
+            url: None,
+        });
+    }
+    if let Some(url) = object.get("url").and_then(Value::as_str) {
+        return Ok(PackageSource {
+            name,
+            kind,
+            display: url.to_string(),
+            path: None,
+            url: Some(url.to_string()),
+        });
+    }
+    Err(PackageError::new(
+        "SLOPPY_E_PACKAGE_SOURCE_MISSING",
+        format!("package source '{name}' must declare path or url"),
+    ))
+}
+
+fn discover_candidates(sources: &[PackageSource]) -> Result<Vec<PackageCandidate>> {
     let mut candidates = Vec::new();
-    for (source_path, source_display) in sources {
+    for source in sources {
+        if source.kind == SourceKind::Npm {
+            continue;
+        }
+        let Some(source_path) = &source.path else {
+            continue;
+        };
         let mut artifacts = fs::read_dir(source_path)
             .map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?
             .filter_map(|entry| entry.ok().map(|entry| entry.path()))
             .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("slpkg"))
             .collect::<Vec<_>>();
+        artifacts.extend(discover_static_feed_artifacts(source_path)?);
         artifacts.sort();
+        artifacts.dedup();
         for artifact in artifacts {
+            reject_oversized_file(&artifact, MAX_ARCHIVE_BYTES)?;
             let bytes =
                 fs::read(&artifact).map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
             let sha256 = sha256_bytes(&bytes);
             let manifest = read_manifest_from_archive(Cursor::new(bytes))?;
             candidates.push(PackageCandidate {
                 manifest,
-                source_display: source_display.clone(),
+                source_display: source.display.clone(),
                 artifact,
                 sha256,
             });
@@ -644,7 +1437,14 @@ fn discover_candidates(sources: &[(PathBuf, String)]) -> Result<Vec<PackageCandi
 fn read_manifest_from_archive<R: Read + Seek>(reader: R) -> Result<PackageManifest> {
     let mut archive =
         ZipArchive::new(reader).map_err(package_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+    if archive.len() > MAX_ARCHIVE_ENTRIES {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            format!("package archive contains more than {MAX_ARCHIVE_ENTRIES} entries"),
+        ));
+    }
     let mut seen = BTreeSet::new();
+    let mut normalized_seen = BTreeSet::new();
     let mut manifest_text = String::new();
     for index in 0..archive.len() {
         let mut file = archive
@@ -653,6 +1453,7 @@ fn read_manifest_from_archive<R: Read + Seek>(reader: R) -> Result<PackageManife
         reject_unsafe_zip_entry(file.unix_mode())?;
         let name = file.name().to_string();
         validate_relative_archive_path(&name)?;
+        reject_oversized_entry(&name, file.size())?;
         if name.ends_with('/') {
             continue;
         }
@@ -662,7 +1463,19 @@ fn read_manifest_from_archive<R: Read + Seek>(reader: R) -> Result<PackageManife
                 format!("duplicate archive path '{name}'"),
             ));
         }
+        if !normalized_seen.insert(normalize_archive_path(&name)) {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_DUPLICATE_PATH",
+                format!("duplicate normalized archive path '{name}'"),
+            ));
+        }
         if name == MANIFEST_NAME {
+            if file.size() > MAX_MANIFEST_BYTES {
+                return Err(PackageError::new(
+                    "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                    "package manifest.json is too large",
+                ));
+            }
             file.read_to_string(&mut manifest_text)
                 .map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
         }
@@ -679,7 +1492,9 @@ fn read_manifest_from_archive<R: Read + Seek>(reader: R) -> Result<PackageManife
             format!("malformed package manifest.json: {error}"),
         )
     })?;
-    parse_package_manifest(manifest_json)
+    let manifest = parse_package_manifest(manifest_json)?;
+    verify_manifest_asset_hashes(&mut archive, &manifest)?;
+    Ok(manifest)
 }
 
 fn resolve_packages(
@@ -703,11 +1518,15 @@ fn resolve_packages(
         let pending = constraints.keys().cloned().collect::<Vec<_>>();
         for id in pending {
             if let Some(existing) = resolved.get(&id) {
-                ensure_resolved_package_still_allowed(
+                if resolved_package_still_allowed(
                     &id,
-                    existing.candidate.manifest.version,
+                    &existing.candidate.manifest.version,
                     constraints.get(&id).map(Vec::as_slice).unwrap_or(&[]),
-                )?;
+                )? {
+                    continue;
+                }
+                resolved.remove(&id);
+                changed = true;
                 continue;
             }
             let ranges = constraints.get(&id).cloned().unwrap_or_default();
@@ -754,20 +1573,14 @@ fn resolve_packages(
     Ok(resolved.into_values().collect())
 }
 
-fn ensure_resolved_package_still_allowed(
-    id: &str,
-    version: Version,
-    ranges: &[String],
-) -> Result<()> {
+fn resolved_package_still_allowed(id: &str, version: &Version, ranges: &[String]) -> Result<bool> {
     for range in ranges {
         if !VersionRange::parse(range)?.allows(version) {
-            return Err(PackageError::new(
-                "SLOPPY_E_PACKAGE_CONFLICT",
-                format!("resolved package '{id}' {version} does not satisfy {range}"),
-            ));
+            return Ok(false);
         }
     }
-    Ok(())
+    let _ = id;
+    Ok(true)
 }
 
 fn select_candidate(
@@ -786,7 +1599,7 @@ fn select_candidate(
         .filter(|candidate| {
             parsed_ranges
                 .iter()
-                .all(|range| range.allows(candidate.manifest.version))
+                .all(|range| range.allows(&candidate.manifest.version))
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -857,11 +1670,8 @@ fn hash_archive_entry(artifact: &Path, path: &str) -> Result<String> {
             format!("package asset is missing from archive: {path}"),
         )
     })?;
-    let mut bytes = Vec::new();
-    entry
-        .read_to_end(&mut bytes)
-        .map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
-    Ok(sha256_bytes(&bytes))
+    reject_oversized_entry(path, entry.size())?;
+    sha256_reader(&mut entry)
 }
 
 fn cache_root() -> Result<PathBuf> {
@@ -879,33 +1689,54 @@ fn cache_root() -> Result<PathBuf> {
     Ok(PathBuf::from(home).join(".sloppy").join("packages"))
 }
 
-fn restore_to_cache(candidate: &PackageCandidate, cache_root: &Path) -> Result<PathBuf> {
-    let package_root = cache_root
+fn cache_package_path(cache_root: &Path, candidate: &PackageCandidate) -> PathBuf {
+    cache_root
         .join(&candidate.manifest.normalized_id)
-        .join(candidate.manifest.version.to_string());
+        .join(candidate.manifest.version.to_string())
+}
+
+fn restore_to_cache(candidate: &PackageCandidate, cache_root: &Path) -> Result<PathBuf> {
+    let package_root = cache_package_path(cache_root, candidate);
     let marker = package_root.join(".sloppy.package.sha256");
     if package_root.exists() {
         if marker.is_file() {
             let existing =
                 fs::read_to_string(&marker).map_err(io_error("SLOPPY_E_PACKAGE_HASH_MISMATCH"))?;
             if existing.trim() == candidate.sha256 {
+                verify_cached_package(candidate, &package_root)?;
                 return Ok(package_root);
             }
         }
         return Err(PackageError::new(
-            "SLOPPY_E_PACKAGE_HASH_MISMATCH",
+            "SLOPPY_E_PACKAGE_CACHE_CORRUPT",
             format!(
-                "cached package '{}' {} does not match selected artifact hash",
+                "cached package '{}' {} is missing or has a mismatched cache marker",
                 candidate.manifest.id, candidate.manifest.version
             ),
         ));
     }
-    fs::create_dir_all(&package_root).map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
-    let result = extract_archive_safely(&candidate.artifact, &package_root).and_then(|()| {
-        fs::write(&marker, &candidate.sha256).map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))
-    });
+    let temp_root = cache_root.join(format!(
+        ".{}.{}.tmp-{}",
+        candidate.manifest.normalized_id,
+        candidate.manifest.version,
+        std::process::id()
+    ));
+    fs::create_dir_all(cache_root).map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+    if temp_root.exists() {
+        fs::remove_dir_all(&temp_root).map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+    }
+    fs::create_dir_all(&temp_root).map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+    let result = (|| {
+        extract_archive_safely(&candidate.artifact, &temp_root)?;
+        fs::write(temp_root.join(".sloppy.package.sha256"), &candidate.sha256)
+            .map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+        if let Some(parent) = package_root.parent() {
+            fs::create_dir_all(parent).map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+        }
+        fs::rename(&temp_root, &package_root).map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))
+    })();
     if let Err(error) = result {
-        let _ = fs::remove_dir_all(&package_root);
+        let _ = fs::remove_dir_all(&temp_root);
         return Err(error);
     }
     Ok(package_root)
@@ -918,6 +1749,8 @@ fn extract_archive_safely(artifact: &Path, destination: &Path) -> Result<()> {
     let canonical_destination =
         fs::canonicalize(destination).map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
     let mut seen = BTreeSet::new();
+    let mut normalized_seen = BTreeSet::new();
+    let mut expanded_bytes = 0_u64;
     for index in 0..archive.len() {
         let mut entry = archive
             .by_index(index)
@@ -925,6 +1758,19 @@ fn extract_archive_safely(artifact: &Path, destination: &Path) -> Result<()> {
         reject_unsafe_zip_entry(entry.unix_mode())?;
         let name = entry.name().to_string();
         validate_relative_archive_path(&name)?;
+        reject_oversized_entry(&name, entry.size())?;
+        expanded_bytes = expanded_bytes.checked_add(entry.size()).ok_or_else(|| {
+            PackageError::new(
+                "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                "package archive expanded size overflowed",
+            )
+        })?;
+        if expanded_bytes > MAX_EXPANDED_BYTES {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+                "package archive expanded size is too large",
+            ));
+        }
         if name.ends_with('/') {
             continue;
         }
@@ -932,6 +1778,12 @@ fn extract_archive_safely(artifact: &Path, destination: &Path) -> Result<()> {
             return Err(PackageError::new(
                 "SLOPPY_E_PACKAGE_DUPLICATE_PATH",
                 format!("duplicate archive path '{name}'"),
+            ));
+        }
+        if !normalized_seen.insert(normalize_archive_path(&name)) {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_DUPLICATE_PATH",
+                format!("duplicate normalized archive path '{name}'"),
             ));
         }
         let output = destination.join(&name);
@@ -975,6 +1827,178 @@ fn reject_unsafe_zip_entry(unix_mode: Option<u32>) -> Result<()> {
     Ok(())
 }
 
+fn reject_oversized_file(path: &Path, max_bytes: u64) -> Result<()> {
+    let size = fs::metadata(path)
+        .map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?
+        .len();
+    if size > max_bytes {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            format!("package file is too large: {}", path.display()),
+        ));
+    }
+    Ok(())
+}
+
+fn reject_oversized_entry(name: &str, size: u64) -> Result<()> {
+    if size > MAX_ENTRY_BYTES {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_MANIFEST_INVALID",
+            format!("package archive entry is too large: {name}"),
+        ));
+    }
+    Ok(())
+}
+
+fn sha256_reader(reader: &mut impl Read) -> Result<String> {
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    let digest = hasher.finalize();
+    let mut output = String::with_capacity(64);
+    for byte in digest {
+        output.push_str(&format!("{byte:02x}"));
+    }
+    Ok(output)
+}
+
+fn verify_manifest_asset_hashes<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    manifest: &PackageManifest,
+) -> Result<()> {
+    let Some(hashes) = manifest
+        .manifest_json
+        .get("sha256")
+        .and_then(Value::as_object)
+    else {
+        return Ok(());
+    };
+    for path in declared_asset_paths(manifest) {
+        let Some(expected) = hashes.get(&path).and_then(Value::as_str) else {
+            continue;
+        };
+        let mut entry = archive.by_name(&path).map_err(|_| {
+            PackageError::new(
+                "SLOPPY_E_PACKAGE_NATIVE_ASSET_MISSING",
+                format!("package asset is missing from archive: {path}"),
+            )
+        })?;
+        reject_oversized_entry(&path, entry.size())?;
+        let actual = sha256_reader(&mut entry)?;
+        if actual != expected {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_HASH_MISMATCH",
+                format!("package asset hash mismatch: {path}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn verify_cached_package(candidate: &PackageCandidate, package_root: &Path) -> Result<()> {
+    for path in declared_asset_paths(&candidate.manifest) {
+        let full = package_root.join(&path);
+        validate_relative_archive_path(&path)?;
+        let metadata = fs::symlink_metadata(&full).map_err(|_| {
+            PackageError::new(
+                "SLOPPY_E_PACKAGE_CACHE_CORRUPT",
+                format!("cached package asset is missing: {path}"),
+            )
+        })?;
+        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_CACHE_CORRUPT",
+                format!("cached package asset is not a regular file: {path}"),
+            ));
+        }
+        let bytes = fs::read(&full).map_err(io_error("SLOPPY_E_PACKAGE_CACHE_CORRUPT"))?;
+        let actual = sha256_bytes(&bytes);
+        let expected = hash_archive_entry(&candidate.artifact, &path)?;
+        if actual != expected {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_CACHE_CORRUPT",
+                format!("cached package asset hash mismatch: {path}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn discover_static_feed_artifacts(source_path: &Path) -> Result<Vec<PathBuf>> {
+    let root = source_path.join("v3-flatcontainer");
+    if !root.is_dir() {
+        return Ok(Vec::new());
+    }
+    let mut artifacts = Vec::new();
+    for id_entry in fs::read_dir(root).map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))? {
+        let id_path = id_entry
+            .map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?
+            .path();
+        if !id_path.is_dir() {
+            continue;
+        }
+        for version_entry in
+            fs::read_dir(id_path).map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?
+        {
+            let version_path = version_entry
+                .map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?
+                .path();
+            if !version_path.is_dir() {
+                continue;
+            }
+            for artifact_entry in
+                fs::read_dir(version_path).map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?
+            {
+                let artifact = artifact_entry
+                    .map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?
+                    .path();
+                if artifact.extension().and_then(|ext| ext.to_str()) == Some("slpkg") {
+                    artifacts.push(artifact);
+                }
+            }
+        }
+    }
+    Ok(artifacts)
+}
+
+fn verify_locked_hashes(lockfile: &Value, packages: &[ResolvedPackage]) -> Result<()> {
+    let Some(locked_packages) = lockfile.get("packages").and_then(Value::as_object) else {
+        return Err(PackageError::new(
+            "SLOPPY_E_PACKAGE_LOCK_OUT_OF_DATE",
+            "sloppy.lock.json is missing packages",
+        ));
+    };
+    for package in packages {
+        let key = format!(
+            "{}/{}",
+            package.candidate.manifest.normalized_id, package.candidate.manifest.version
+        );
+        let Some(locked) = locked_packages.get(&key) else {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_LOCK_OUT_OF_DATE",
+                format!("locked package is missing: {key}"),
+            ));
+        };
+        let locked_hash =
+            json_string_required(locked, "sha256", "SLOPPY_E_PACKAGE_LOCK_OUT_OF_DATE")?;
+        if locked_hash != package.candidate.sha256 {
+            return Err(PackageError::new(
+                "SLOPPY_E_PACKAGE_HASH_MISMATCH",
+                format!("locked package artifact hash mismatch: {key}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn locked_version_map(lockfile: &Value) -> Result<BTreeMap<String, Version>> {
     let mut versions = BTreeMap::new();
     let Some(packages) = lockfile.get("packages").and_then(Value::as_object) else {
@@ -989,7 +2013,26 @@ fn locked_version_map(lockfile: &Value) -> Result<BTreeMap<String, Version>> {
     Ok(versions)
 }
 
-fn lockfile_json(target: &str, runtime_identifier: &str, packages: &[ResolvedPackage]) -> Value {
+fn lockfile_json(
+    target: &str,
+    runtime_identifier: &str,
+    sources: &[PackageSource],
+    packages: &[ResolvedPackage],
+) -> Value {
+    let source_values = sources
+        .iter()
+        .map(|source| {
+            json!({
+                "name": source.name,
+                "type": match source.kind {
+                    SourceKind::Folder => "folder",
+                    SourceKind::Sloppy => "sloppy",
+                    SourceKind::Npm => "npm",
+                },
+                "source": source.display,
+            })
+        })
+        .collect::<Vec<_>>();
     let mut package_map = Map::new();
     for package in packages {
         let key = format!(
@@ -1000,8 +2043,10 @@ fn lockfile_json(target: &str, runtime_identifier: &str, packages: &[ResolvedPac
             key,
             json!({
                 "id": package.candidate.manifest.id,
+                "normalizedId": package.candidate.manifest.normalized_id,
                 "version": package.candidate.manifest.version.to_string(),
                 "source": package.candidate.source_display,
+                "sourceType": "folder",
                 "sha256": package.candidate.sha256,
                 "dependencies": package.candidate.manifest.dependencies,
                 "assets": {
@@ -1018,6 +2063,7 @@ fn lockfile_json(target: &str, runtime_identifier: &str, packages: &[ResolvedPac
         "version": 1,
         "target": target,
         "runtimeIdentifier": runtime_identifier,
+        "sources": source_values,
         "packages": package_map,
     })
 }
@@ -1031,12 +2077,14 @@ fn assets_json(target: &str, runtime_identifier: &str, packages: &[ResolvedPacka
                 logical_name.clone(),
                 json!({
                     "path": path,
+                    "package": package.candidate.manifest.id,
                     "sha256": package.selected_hashes.get(path).cloned().unwrap_or_default(),
                 }),
             );
         }
         package_values.push(json!({
             "id": package.candidate.manifest.id,
+            "normalizedId": package.candidate.manifest.normalized_id,
             "version": package.candidate.manifest.version.to_string(),
             "path": package.cache_path.to_string_lossy().replace('\\', "/"),
             "compile": package.candidate.manifest.compile_assets,
@@ -1051,6 +2099,210 @@ fn assets_json(target: &str, runtime_identifier: &str, packages: &[ResolvedPacka
         "runtimeIdentifier": runtime_identifier,
         "packages": package_values,
     })
+}
+
+fn list_native_value(assets: &Value) -> Value {
+    let mut output = Vec::new();
+    if let Some(packages) = assets.get("packages").and_then(Value::as_array) {
+        for package in packages {
+            let id = package.get("id").and_then(Value::as_str).unwrap_or("");
+            let version = package.get("version").and_then(Value::as_str).unwrap_or("");
+            if let Some(native) = package.get("nativeLibraries").and_then(Value::as_object) {
+                for (name, asset) in native {
+                    output.push(json!({
+                        "name": name,
+                        "package": id,
+                        "version": version,
+                        "path": asset.get("path").and_then(Value::as_str).unwrap_or(""),
+                        "sha256": asset.get("sha256").and_then(Value::as_str).unwrap_or(""),
+                    }));
+                }
+            }
+        }
+    }
+    Value::Array(output)
+}
+
+fn list_capabilities_value(assets: &Value) -> Value {
+    let mut capabilities = BTreeMap::<String, Vec<String>>::new();
+    if let Some(packages) = assets.get("packages").and_then(Value::as_array) {
+        for package in packages {
+            let id = package.get("id").and_then(Value::as_str).unwrap_or("");
+            if let Some(items) = package.get("capabilities").and_then(Value::as_array) {
+                for capability in items.iter().filter_map(Value::as_str) {
+                    capabilities
+                        .entry(capability.to_string())
+                        .or_default()
+                        .push(id.to_string());
+                }
+            }
+        }
+    }
+    json!(capabilities)
+}
+
+fn list_outdated_value(cwd: &Path, lock: &Value) -> Result<Value> {
+    let project = read_json_file(&cwd.join("sloppy.json"))?;
+    let sources = package_sources(cwd, &project)?;
+    let candidates = discover_candidates(&sources)?;
+    let mut output = Vec::new();
+    if let Some(packages) = lock.get("packages").and_then(Value::as_object) {
+        for package in packages.values() {
+            let Some(id) = package.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(current) = package.get("version").and_then(Value::as_str) else {
+                continue;
+            };
+            let current_version = Version::parse(current)?;
+            let latest = candidates
+                .iter()
+                .filter(|candidate| candidate.manifest.normalized_id == normalize_id(id))
+                .map(|candidate| candidate.manifest.version.clone())
+                .max();
+            if let Some(latest) = latest {
+                if latest > current_version {
+                    output.push(json!({
+                        "id": id,
+                        "current": current,
+                        "latest": latest.to_string(),
+                    }));
+                }
+            }
+        }
+    }
+    Ok(Value::Array(output))
+}
+
+fn render_list(subject: &str, value: &Value) -> String {
+    let mut lines = Vec::new();
+    match subject {
+        "packages" => {
+            if let Some(packages) = value.as_array() {
+                for package in packages {
+                    lines.push(format!(
+                        "{} {}",
+                        package.get("id").and_then(Value::as_str).unwrap_or(""),
+                        package.get("version").and_then(Value::as_str).unwrap_or("")
+                    ));
+                }
+            }
+        }
+        "native" | "outdated" => {
+            if let Some(items) = value.as_array() {
+                for item in items {
+                    lines.push(serde_json::to_string(item).unwrap_or_default());
+                }
+            }
+        }
+        "capabilities" => {
+            if let Some(map) = value.as_object() {
+                for (capability, packages) in map {
+                    let package_list = packages
+                        .as_array()
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        })
+                        .unwrap_or_default();
+                    lines.push(format!("{capability}: {package_list}"));
+                }
+            }
+        }
+        _ => {}
+    }
+    if lines.is_empty() {
+        format!("No {subject} found.\n")
+    } else {
+        format!("{}\n", lines.join("\n"))
+    }
+}
+
+fn render_cache_list(root: &Path) -> Result<String> {
+    if !root.exists() {
+        return Ok(format!(
+            "Cache root: {}\nNo packages cached.\n",
+            root.display()
+        ));
+    }
+    let mut lines = vec![format!("Cache root: {}", root.display())];
+    let mut ids = fs::read_dir(root)
+        .map_err(io_error("SLOPPY_E_PACKAGE_CACHE_CORRUPT"))?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.is_dir())
+        .collect::<Vec<_>>();
+    ids.sort();
+    for id_path in ids {
+        let Some(id) = id_path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let mut versions = fs::read_dir(&id_path)
+            .map_err(io_error("SLOPPY_E_PACKAGE_CACHE_CORRUPT"))?
+            .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+            .filter(|path| path.is_dir())
+            .collect::<Vec<_>>();
+        versions.sort();
+        for version_path in versions {
+            if let Some(version) = version_path.file_name().and_then(|name| name.to_str()) {
+                lines.push(format!("{id} {version}"));
+            }
+        }
+    }
+    Ok(format!("{}\n", lines.join("\n")))
+}
+
+fn generate_feed_index(folder: &Path) -> Result<()> {
+    fs::create_dir_all(folder).map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?;
+    let mut flat_versions: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+    let artifacts = fs::read_dir(folder)
+        .map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("slpkg"))
+        .collect::<Vec<_>>();
+    for artifact in artifacts {
+        reject_oversized_file(&artifact, MAX_ARCHIVE_BYTES)?;
+        let bytes = fs::read(&artifact).map_err(io_error("SLOPPY_E_PACKAGE_MANIFEST_INVALID"))?;
+        let sha256 = sha256_bytes(&bytes);
+        let manifest = read_manifest_from_archive(Cursor::new(bytes))?;
+        let id = manifest.normalized_id;
+        let version = manifest.version.to_string();
+        let version_dir = folder.join("v3-flatcontainer").join(&id).join(&version);
+        fs::create_dir_all(&version_dir).map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?;
+        let target = version_dir.join(format!("{id}.{version}.slpkg"));
+        fs::copy(&artifact, &target).map_err(io_error("SLOPPY_E_PACKAGE_SOURCE_MISSING"))?;
+        flat_versions.entry(id).or_default().push(json!({
+            "version": version,
+            "sha256": sha256,
+            "package": target.to_string_lossy().replace('\\', "/"),
+        }));
+    }
+    for (id, mut versions) in flat_versions {
+        versions.sort_by(|left, right| {
+            left["version"]
+                .as_str()
+                .unwrap_or("")
+                .cmp(right["version"].as_str().unwrap_or(""))
+        });
+        write_json_file(
+            &folder.join("v3-flatcontainer").join(id).join("index.json"),
+            &json!({"versions": versions}),
+        )?;
+    }
+    write_json_file(
+        &folder.join("v3").join("index.json"),
+        &json!({
+            "version": "3.0.0",
+            "resources": [
+                {
+                    "@id": "../v3-flatcontainer/",
+                    "@type": "PackageBaseAddress/3.0.0"
+                }
+            ]
+        }),
+    )
 }
 
 fn host_runtime_identifier() -> Option<String> {
@@ -1095,17 +2347,20 @@ mod tests {
     #[test]
     fn version_ranges_accept_exact_range_and_open_ended_forms() {
         let exact = VersionRange::parse("[1.2.3]").expect("exact range");
-        assert!(exact.allows(Version::parse("1.2.3").expect("version")));
-        assert!(!exact.allows(Version::parse("1.2.4").expect("version")));
+        assert!(exact.allows(&Version::parse("1.2.3").expect("version")));
+        assert!(!exact.allows(&Version::parse("1.2.4").expect("version")));
 
         let bounded = VersionRange::parse("[1.0.0,2.0.0)").expect("bounded range");
-        assert!(bounded.allows(Version::parse("1.0.0").expect("version")));
-        assert!(bounded.allows(Version::parse("1.5.0").expect("version")));
-        assert!(!bounded.allows(Version::parse("2.0.0").expect("version")));
+        assert!(bounded.allows(&Version::parse("1.0.0").expect("version")));
+        assert!(bounded.allows(&Version::parse("1.5.0").expect("version")));
+        assert!(!bounded.allows(&Version::parse("2.0.0").expect("version")));
 
         let open = VersionRange::parse("[1.0.0,)").expect("open range");
-        assert!(open.allows(Version::parse("9.0.0").expect("version")));
-        assert!(VersionRange::parse("(1.0.0,2.0.0)").is_err());
+        assert!(open.allows(&Version::parse("9.0.0").expect("version")));
+        assert!(VersionRange::parse("(1.0.0,2.0.0)").is_ok());
+        assert!(VersionRange::parse("(,2.0.0)")
+            .expect("open lower")
+            .allows(&Version::parse("1.0.0-alpha.1").expect("pre")));
     }
 
     #[test]
@@ -1223,22 +2478,20 @@ mod tests {
             .expect("copy example");
 
         fs::create_dir_all(&app).expect("app");
+        copy_dir_all(&packages, &app.join("packages")).expect("copy app packages");
         fs::write(
             app.join("sloppy.json"),
-            format!(
-                r#"{{
+            r#"{
   "name": "app",
   "entry": "src/main.ts",
   "target": "sloppy1.0",
   "runtimeIdentifier": "win-x64",
-  "packageSources": ["{}"],
-  "dependencies": {{
+  "packageSources": ["packages"],
+  "dependencies": {
     "Sloppy.Example": "[0.1.0,2.0.0)"
-  }}
-}}
+  }
+}
 "#,
-                packages.to_string_lossy().replace('\\', "/")
-            ),
         )
         .expect("app manifest");
         env::set_current_dir(&app).expect("app cwd");
@@ -1258,20 +2511,17 @@ mod tests {
         restore_current_project(true).expect("locked restore");
         fs::write(
             app.join("sloppy.json"),
-            format!(
-                r#"{{
+            r#"{
   "name": "app",
   "entry": "src/main.ts",
   "target": "sloppy1.0",
   "runtimeIdentifier": "win-x64",
-  "packageSources": ["{}"],
-  "dependencies": {{
+  "packageSources": ["packages"],
+  "dependencies": {
     "Sloppy.Example": "[0.2.0,2.0.0)"
-  }}
-}}
+  }
+}
 "#,
-                packages.to_string_lossy().replace('\\', "/")
-            ),
         )
         .expect("app manifest drift");
         let error = restore_current_project(true).expect_err("locked drift");
@@ -1283,21 +2533,18 @@ mod tests {
         ));
         fs::write(
             app.join("sloppy.json"),
-            format!(
-                r#"{{
+            r#"{
   "name": "app",
   "entry": "src/main.ts",
   "target": "sloppy1.0",
   "runtimeIdentifier": "win-x64",
-  "packageSources": ["{}"],
-  "dependencies": {{
+  "packageSources": ["packages"],
+  "dependencies": {
     "Sloppy.Example": "[0.1.0]",
     "Sloppy.Core": "[0.2.0]"
-  }}
-}}
+  }
+}
 "#,
-                packages.to_string_lossy().replace('\\', "/")
-            ),
         )
         .expect("app manifest conflict");
         let error = restore_current_project(false).expect_err("dependency conflict");
@@ -1331,18 +2578,16 @@ mod tests {
         let package = pack_current_project().expect("pack");
         fs::copy(package, packages.join("sloppy.example.0.1.0.slpkg")).expect("copy");
         fs::create_dir_all(&app).expect("app");
+        copy_dir_all(&packages, &app.join("packages")).expect("copy app packages");
         fs::write(
             app.join("sloppy.json"),
-            format!(
-                r#"{{
+            r#"{
   "target": "sloppy1.0",
   "runtimeIdentifier": "linux-x64",
-  "packageSources": ["{}"],
-  "dependencies": {{ "Sloppy.Example": "[0.1.0]" }}
-}}
+  "packageSources": ["packages"],
+  "dependencies": { "Sloppy.Example": "[0.1.0]" }
+}
 "#,
-                packages.to_string_lossy().replace('\\', "/")
-            ),
         )
         .expect("app manifest");
         env::set_current_dir(&app).expect("app cwd");
@@ -1412,6 +2657,20 @@ mod tests {
         } else {
             env::remove_var("SLOPPY_PACKAGE_CACHE");
         }
+    }
+
+    fn copy_dir_all(from: &Path, to: &Path) -> io::Result<()> {
+        fs::create_dir_all(to)?;
+        for entry in fs::read_dir(from)? {
+            let entry = entry?;
+            let target = to.join(entry.file_name());
+            if entry.file_type()?.is_dir() {
+                copy_dir_all(&entry.path(), &target)?;
+            } else {
+                fs::copy(entry.path(), target)?;
+            }
+        }
+        Ok(())
     }
 
     fn temp_dir(label: &str) -> PathBuf {

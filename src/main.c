@@ -191,6 +191,9 @@ int main(int argc, char** argv)
     if (strcmp(options.command, "restore") == 0) {
         return sl_cli_command_restore(&options);
     }
+    if (sl_cli_command_is_package_manager(options.command)) {
+        return sl_cli_command_package_manager(&options);
+    }
     if (strcmp(options.command, "dev") == 0) {
         return sl_cli_command_dev(&options);
     }

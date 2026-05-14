@@ -311,6 +311,9 @@ fn resolve_package_import(
             ),
         ));
     }
+    if let Some(package) = resolve_sloppy_package_asset(from_path, &package_name, subpath) {
+        return Some(package);
+    }
     let (package_root, source) = find_self_package_root(from_path, &package_name)
         .map(|root| (root, "self"))
         .or_else(|| find_package_root(from_path, &package_name).map(|root| (root, "installed")))?;
@@ -411,6 +414,85 @@ fn resolve_package_import(
         return Some(ImportKind::NativeAddonUnsupported(package));
     }
     Some(ImportKind::Package(package))
+}
+
+fn resolve_sloppy_package_asset(
+    from_path: &Path,
+    package_name: &str,
+    subpath: &str,
+) -> Option<ImportKind> {
+    let assets_path = find_project_assets_file(from_path)?;
+    let value = fs::read_to_string(&assets_path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())?;
+    let packages = value.get("packages")?.as_array()?;
+    let normalized_name = package_name.to_ascii_lowercase();
+    for package in packages {
+        let id = package
+            .get("normalizedId")
+            .or_else(|| package.get("id"))
+            .and_then(Value::as_str)?
+            .to_ascii_lowercase();
+        if id != normalized_name {
+            continue;
+        }
+        let root = PathBuf::from(package.get("path")?.as_str()?);
+        let compile = package.get("compile")?.as_array()?;
+        let entry_text = if subpath.is_empty() {
+            compile.first()?.as_str()?
+        } else {
+            compile
+                .iter()
+                .filter_map(Value::as_str)
+                .find(|asset| asset.trim_start_matches("./") == subpath)?
+        };
+        let entry = fs::canonicalize(root.join(entry_text)).ok()?;
+        let canonical_root = fs::canonicalize(root).ok()?;
+        if !entry.starts_with(&canonical_root) {
+            return Some(ImportKind::PackageExportUnsupported(
+                PackageExportFailure::exports(
+                    package_name,
+                    if subpath.is_empty() {
+                        ".".to_string()
+                    } else {
+                        format!("./{subpath}")
+                    },
+                    "restored package compile asset escaped the package root",
+                ),
+            ));
+        }
+        let resolution = PackageResolution {
+            name: package.get("id")?.as_str()?.to_string(),
+            version: package
+                .get("version")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned),
+            root: canonical_root,
+            package_json: None,
+            entry,
+            format: ModuleFormat::Esm,
+            source: "sloppy",
+        };
+        return Some(ImportKind::Package(resolution));
+    }
+    None
+}
+
+fn find_project_assets_file(from_path: &Path) -> Option<PathBuf> {
+    let mut current = from_path.parent();
+    while let Some(dir) = current {
+        let candidate = dir.join(".sloppy").join("obj").join("project.assets.json");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+        current = dir.parent();
+    }
+    let cwd_candidate = std::env::current_dir()
+        .ok()?
+        .join(".sloppy")
+        .join("obj")
+        .join("project.assets.json");
+    cwd_candidate.is_file().then_some(cwd_candidate)
 }
 
 fn resolve_package_imports(

@@ -3,8 +3,8 @@
 Sloppy package management is modeled after deterministic restore systems such
 as NuGet restore. It is not an npm or `node_modules` compatibility layer.
 
-The package manager restores immutable `.slpkg` artifacts from explicit local
-sources into a global cache, writes `sloppy.lock.json`, and writes
+The package manager restores immutable `.slpkg` artifacts from explicit
+project sources into a global cache, writes `sloppy.lock.json`, and writes
 `.sloppy/obj/project.assets.json` for compiler and runtime consumers.
 
 ## Philosophy
@@ -15,13 +15,14 @@ Sloppy package restore is intentionally boring:
 - no package install scripts
 - no arbitrary package-executed code
 - immutable package artifacts
-- deterministic local restore
+- deterministic restore from local folders and static-feed folders
 - lockfile-backed dependency selection
 - package contents in a global cache instead of copied into every project
 - generated assets graph for compiler/runtime lookup
 
-Future npm compatibility belongs to a separate foreign-source adapter. It is
-not part of the `.slpkg` restore contract.
+Npm compatibility is treated as a separate foreign-source adapter. It is not
+part of the native `.slpkg` restore contract and does not create
+`node_modules`.
 
 ## Commands
 
@@ -67,6 +68,59 @@ The command fails if:
 When locked restore succeeds, it may refresh
 `.sloppy/obj/project.assets.json` from the locked graph.
 
+### Dependency graph commands
+
+The package-manager CLI also includes project graph helpers:
+
+```text
+sloppy add <package-id> [--version <range>] [--source <name-or-path>] [--native-ok]
+sloppy add <path-to-package.slpkg> [--native-ok]
+sloppy remove <package-id>
+sloppy update [package-id]
+sloppy list packages
+sloppy list native
+sloppy list capabilities
+sloppy list outdated
+sloppy why <package-id>
+```
+
+`add` and `remove` edit `sloppy.json`. `update` runs restore using the current
+source set. `list` and `why` inspect `sloppy.lock.json` and
+`.sloppy/obj/project.assets.json`; they do not execute package code.
+
+### Cache and source commands
+
+```text
+sloppy cache list
+sloppy cache clean [--all | <package-id>]
+sloppy source list
+sloppy source add <name> <url-or-path> [--type folder|sloppy|npm]
+sloppy source remove <name>
+```
+
+Cache clean removes entries from the global Sloppy package cache only. Source
+commands edit project-level `packageSources`.
+
+### Feed commands
+
+```text
+sloppy publish <path-to-package.slpkg> --source <folder-source>
+sloppy feed index <folder>
+```
+
+These commands generate a static Sloppy feed layout in a folder. They do not
+perform authenticated remote publish.
+
+### Npm scaffold
+
+```text
+sloppy npm add <package> [--version <range>]
+```
+
+This records an explicit `npm:` foreign-source dependency and an npm source in
+`sloppy.json`. Full npm restore is not implemented in this PR; `sloppy restore`
+fails cleanly with `SLOPPY_E_PACKAGE_SOURCE_UNSUPPORTED` for npm dependencies.
+
 ## Project Manifest Fields
 
 Project package restore uses `sloppy.json`.
@@ -78,11 +132,24 @@ Project package restore uses `sloppy.json`.
   "target": "sloppy1.0",
   "runtimeIdentifier": "win-x64",
   "packageSources": [
-    "./packages"
+    "./packages",
+    {
+      "name": "local",
+      "type": "folder",
+      "path": "./packages"
+    },
+    {
+      "name": "npmjs",
+      "type": "npm",
+      "url": "https://registry.npmjs.org"
+    }
   ],
   "dependencies": {
     "Sloppy.Example": "[0.1.0]"
-  }
+  },
+  "trustedNativePackages": [
+    "Sloppy.Example"
+  ]
 }
 ```
 
@@ -92,8 +159,9 @@ Supported restore fields:
 | --- | --- | --- |
 | `target` | Optional | Restore target. Defaults to `sloppy1.0`. |
 | `runtimeIdentifier` | Optional when host RID can be detected | Runtime identifier used for native asset selection. |
-| `packageSources` | Yes for restore | Local folders containing `.slpkg` artifacts. |
+| `packageSources` | Yes for restore | Project-relative source strings or source objects. |
 | `dependencies` | Optional | Direct package dependency map from package id to version range. |
+| `trustedNativePackages` | Optional | Native package approvals recorded by `sloppy add --native-ok`. |
 
 Supported target:
 
@@ -121,9 +189,11 @@ Supported package fields:
 | Field | Required | Meaning |
 | --- | --- | --- |
 | `id` | Yes | Package id. Matching is case-insensitive through normalized ids. |
-| `version` | Yes | Package version in `major.minor.patch` form. |
+| `version` | Yes | Package version in `major.minor.patch` form with optional prerelease suffix. |
 | `description` | No | Human-readable package description. |
 | `authors` | No | Array of author names. |
+| `license` | No | Package license expression or identifier. |
+| `repository` | No | Repository URL. |
 | `dependencies` | No | Package dependency map. |
 | `targets` | No | Compile/runtime assets by target. |
 | `native` | No | Native library metadata by logical name and RID. |
@@ -169,9 +239,13 @@ This foundation supports a small NuGet-style subset:
 | --- | --- |
 | `[1.2.3]` | Exact version. |
 | `[1.0.0,2.0.0)` | Inclusive lower bound, exclusive upper bound. |
+| `(1.0.0,2.0.0]` | Exclusive lower bound, inclusive upper bound. |
 | `[1.0.0,)` | Inclusive lower bound with no upper bound. |
+| `(,2.0.0)` | No lower bound, exclusive upper bound. |
 
 Unsupported range forms fail with `SLOPPY_E_PACKAGE_RANGE_INVALID`.
+Prerelease suffixes such as `1.0.0-alpha.1` are accepted. Stable releases sort
+after prereleases for the same numeric version.
 
 Restore prefers the locked version when a lockfile exists and the current
 constraints still allow that version. Sloppy does not install multiple
@@ -180,19 +254,52 @@ fail with `SLOPPY_E_PACKAGE_CONFLICT`.
 
 ## Package Sources
 
-Only local folder sources are supported in this PR.
+Supported source declarations:
 
 ```json
 {
   "packageSources": [
     "./packages",
-    "C:/local/sloppy-packages"
+    {
+      "name": "local",
+      "type": "folder",
+      "path": "./packages"
+    },
+    {
+      "name": "offline-feed",
+      "type": "folder",
+      "path": "./feed"
+    },
+    {
+      "name": "official",
+      "type": "sloppy",
+      "url": "https://packages.sloppy.dev/v3/index.json"
+    },
+    {
+      "name": "npmjs",
+      "type": "npm",
+      "url": "https://registry.npmjs.org"
+    }
   ]
 }
 ```
 
-Restore scans declared source folders for `.slpkg` files. It does not contact a
-remote registry.
+Folder sources scan flat `.slpkg` files and static-feed folder layouts under
+`v3-flatcontainer`. Source paths must be project-relative and cannot contain
+`..`, drive prefixes, or absolute roots; this keeps lockfiles reproducible and
+avoids leaking machine-local paths.
+
+HTTP Sloppy feeds and npm sources are recognized as source types, but network
+restore is not implemented in this PR. They fail with stable diagnostics
+instead of silently falling back to another package model.
+
+Static folder feeds use:
+
+```text
+v3/index.json
+v3-flatcontainer/<normalized-id>/index.json
+v3-flatcontainer/<normalized-id>/<version>/<normalized-id>.<version>.slpkg
+```
 
 ## Global Cache
 
@@ -211,8 +318,9 @@ Unix and macOS:
 ```
 
 Existing cached packages are reused only when the selected artifact hash
-matches the cache marker. A mismatch fails with
-`SLOPPY_E_PACKAGE_HASH_MISMATCH`. Restore does not copy package contents into
+matches the cache marker and declared package assets still match the selected
+artifact. A missing marker or tampered cache fails with
+`SLOPPY_E_PACKAGE_CACHE_CORRUPT`. Restore does not copy package contents into
 the project root.
 
 ## Lockfile
@@ -227,6 +335,7 @@ It includes:
 - runtime identifier
 - selected packages by normalized id/version
 - source path
+- package sources used
 - package artifact hash
 - dependency ranges
 - selected compile, runtime, and native assets
@@ -243,8 +352,10 @@ Conceptual shape:
   "packages": {
     "sloppy.example/0.1.0": {
       "id": "Sloppy.Example",
+      "normalizedId": "sloppy.example",
       "version": "0.1.0",
       "source": "./packages",
+      "sourceType": "folder",
       "sha256": "...",
       "dependencies": {},
       "assets": {
@@ -290,8 +401,9 @@ Conceptual shape:
   "packages": [
     {
       "id": "Sloppy.Example",
+      "normalizedId": "sloppy.example",
       "version": "0.1.0",
-      "path": "C:/Users/example/.sloppy/packages/sloppy.example/0.1.0",
+      "path": "<global-cache>/sloppy.example/0.1.0",
       "compile": [
         "lib/sloppy1.0/index.ts"
       ],
@@ -299,6 +411,7 @@ Conceptual shape:
       "nativeLibraries": {
         "example": {
           "path": "native/win-x64/example.dll",
+          "package": "Sloppy.Example",
           "sha256": "..."
         }
       },
@@ -331,6 +444,11 @@ lockfile, records it in `project.assets.json`, and hashes the selected native
 file. Restore does not load native libraries, execute native code, auto-bind
 FFI, expose native addresses, or create runtime pointers.
 
+`project.assets.json` now carries enough native asset metadata for the CLI and
+runtime integration seam: logical library name, package id, selected package
+root, relative asset path, and hash. Full automatic `unsafeFfi.library(...)`
+resolution from restored package assets remains follow-up work.
+
 Missing selected RID assets fail with
 `SLOPPY_E_PACKAGE_NATIVE_ASSET_MISSING`.
 
@@ -347,6 +465,9 @@ Package restore rejects:
 - missing declared assets
 - missing selected native assets
 - package hash mismatches
+- stale manifest asset hashes
+- symlinks, hardlinks, and special ZIP entries
+- oversized package archives and oversized archive entries
 
 Restore never executes package code and never runs install scripts.
 
@@ -366,24 +487,45 @@ Common diagnostics:
 | `SLOPPY_E_PACKAGE_NOT_FOUND` | No package source contained the requested package. |
 | `SLOPPY_E_PACKAGE_CONFLICT` | Dependency constraints cannot be satisfied. |
 | `SLOPPY_E_PACKAGE_HASH_MISMATCH` | Cached or locked package hashes disagree. |
+| `SLOPPY_E_PACKAGE_CACHE_CORRUPT` | Cached package contents are missing or tampered. |
 | `SLOPPY_E_PACKAGE_PATH_TRAVERSAL` | Package path is unsafe. |
 | `SLOPPY_E_PACKAGE_DUPLICATE_PATH` | Two archive paths normalize to the same package path. |
 | `SLOPPY_E_PACKAGE_SCRIPT_UNSUPPORTED` | Package script declaration is not allowed. |
 | `SLOPPY_E_PACKAGE_NATIVE_ASSET_MISSING` | Native asset for the selected RID is missing. |
 | `SLOPPY_E_PACKAGE_LOCK_OUT_OF_DATE` | `--locked` restore would change the lockfile. |
+| `SLOPPY_E_PACKAGE_REMOTE_UNAVAILABLE` | A remote source is declared but cannot be used. |
+| `SLOPPY_E_PACKAGE_SOURCE_UNSUPPORTED` | A declared source type is recognized but not supported by restore yet. |
+
+## CI and Offline Flow
+
+Typical CI restore should use:
+
+```text
+sloppy restore --locked
+sloppy build --no-restore
+```
+
+The second command is the intended future shape for package-aware builds. Until
+that flag exists, CI should run locked restore before build and treat
+`sloppy.lock.json` plus `.sloppy/obj/project.assets.json` as the auditable
+restore evidence.
+
+Offline and enterprise flows can publish approved `.slpkg` artifacts into a
+folder source or static folder feed, commit `sloppy.lock.json`, and run
+`sloppy restore --locked` without contacting a network registry.
 
 ## Current Limitations
 
 This foundation does not include:
 
-- remote registry support
-- npm package restore
+- HTTP Sloppy feed restore
+- full npm package restore
 - `node_modules`
 - install or postinstall scripts
 - package signing
 - vulnerability database checks
 - workspaces or monorepo restore
 - tools, templates, analyzers, or source generators
-- native asset execution
-- FFI auto-binding
+- native asset execution or native loading during restore
+- automatic FFI binding from restored native assets
 - broad `sloppy.json` redesign outside package restore

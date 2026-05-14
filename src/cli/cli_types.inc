@@ -379,6 +379,8 @@ typedef struct SlCliOptions
     const char* db_target_path;
     char** program_args;
     size_t program_arg_count;
+    char* package_args[SL_CLI_MAX_PROGRAM_ARGS];
+    size_t package_arg_count;
     uint16_t port;
     SlCliFormat format;
     bool host_explicit;

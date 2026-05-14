@@ -18,6 +18,8 @@ sloppy --version
 | [`sloppy create`](create.md) | Copy a built-in app template into a new directory        |
 | [`sloppy build`](build.md)   | Compile source into Plan-backed artifacts                |
 | [`sloppy package`](package.md) | Build a directory app package from source artifacts    |
+| `sloppy pack` / `sloppy restore` | Create and restore Sloppy `.slpkg` dependencies; see [package management reference](../reference/packages.md) |
+| `sloppy add/remove/list/why/update/cache/source/feed/npm` | Manage package dependencies, sources, cache, and static feeds |
 | [`sloppy dev`](dev.md)       | Experimental build, run, watch, and reload for a local web app |
 | [`sloppy run`](run.md)       | Run a compiled app or compile-and-run from source        |
 | [`sloppy routes`](routes.md) | List route metadata from a Plan                          |

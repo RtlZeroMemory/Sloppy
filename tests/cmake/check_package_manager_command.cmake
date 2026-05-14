@@ -43,8 +43,8 @@ if(NOT EXISTS "${package_path}")
   message(FATAL_ERROR "sloppy pack did not create ${package_path}")
 endif()
 file(COPY "${package_path}" DESTINATION "${package_source_dir}")
+file(COPY "${package_path}" DESTINATION "${app_dir}/packages")
 
-file(TO_CMAKE_PATH "${package_source_dir}" package_source_json)
 file(WRITE "${app_dir}/sloppy.json" [=[
 {
   "name": "app",
@@ -52,16 +52,13 @@ file(WRITE "${app_dir}/sloppy.json" [=[
   "target": "sloppy1.0",
   "runtimeIdentifier": "win-x64",
   "packageSources": [
-    "@PACKAGE_SOURCE@"
+    "packages"
   ],
   "dependencies": {
     "Sloppy.Example": "[0.1.0]"
   }
 }
 ]=])
-file(READ "${app_dir}/sloppy.json" app_manifest)
-string(REPLACE "@PACKAGE_SOURCE@" "${package_source_json}" app_manifest "${app_manifest}")
-file(WRITE "${app_dir}/sloppy.json" "${app_manifest}")
 
 execute_process(
   COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_PACKAGE_CACHE=${cache_dir}" "${SLOPPY_CLI}" restore
@@ -89,6 +86,59 @@ if(NOT locked_result EQUAL 0)
   message(FATAL_ERROR "sloppy restore --locked failed: ${locked_output}${locked_error}")
 endif()
 
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_PACKAGE_CACHE=${cache_dir}" "${SLOPPY_CLI}" list packages
+  WORKING_DIRECTORY "${app_dir}"
+  RESULT_VARIABLE list_packages_result
+  OUTPUT_VARIABLE list_packages_output
+  ERROR_VARIABLE list_packages_error)
+if(NOT list_packages_result EQUAL 0 OR NOT "${list_packages_output}" MATCHES "Sloppy.Example 0.1.0")
+  message(FATAL_ERROR "sloppy list packages failed: ${list_packages_output}${list_packages_error}")
+endif()
+
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_PACKAGE_CACHE=${cache_dir}" "${SLOPPY_CLI}" why Sloppy.Example
+  WORKING_DIRECTORY "${app_dir}"
+  RESULT_VARIABLE why_result
+  OUTPUT_VARIABLE why_output
+  ERROR_VARIABLE why_error)
+if(NOT why_result EQUAL 0 OR NOT "${why_output}" MATCHES "root -> Sloppy.Example")
+  message(FATAL_ERROR "sloppy why failed: ${why_output}${why_error}")
+endif()
+
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_PACKAGE_CACHE=${cache_dir}" "${SLOPPY_CLI}" cache list
+  WORKING_DIRECTORY "${app_dir}"
+  RESULT_VARIABLE cache_list_result
+  OUTPUT_VARIABLE cache_list_output
+  ERROR_VARIABLE cache_list_error)
+if(NOT cache_list_result EQUAL 0 OR NOT "${cache_list_output}" MATCHES "sloppy.example 0.1.0")
+  message(FATAL_ERROR "sloppy cache list failed: ${cache_list_output}${cache_list_error}")
+endif()
+
+execute_process(
+  COMMAND "${SLOPPY_CLI}" source list
+  WORKING_DIRECTORY "${app_dir}"
+  RESULT_VARIABLE source_list_result
+  OUTPUT_VARIABLE source_list_output
+  ERROR_VARIABLE source_list_error)
+if(NOT source_list_result EQUAL 0 OR NOT "${source_list_output}" MATCHES "packages")
+  message(FATAL_ERROR "sloppy source list failed: ${source_list_output}${source_list_error}")
+endif()
+
+execute_process(
+  COMMAND "${SLOPPY_CLI}" feed index packages
+  WORKING_DIRECTORY "${app_dir}"
+  RESULT_VARIABLE feed_index_result
+  OUTPUT_VARIABLE feed_index_output
+  ERROR_VARIABLE feed_index_error)
+if(NOT feed_index_result EQUAL 0)
+  message(FATAL_ERROR "sloppy feed index failed: ${feed_index_output}${feed_index_error}")
+endif()
+if(NOT EXISTS "${app_dir}/packages/v3/index.json")
+  message(FATAL_ERROR "sloppy feed index did not write v3/index.json")
+endif()
+
 file(WRITE "${app_dir}/sloppy.json" [=[
 {
   "name": "app",
@@ -96,16 +146,13 @@ file(WRITE "${app_dir}/sloppy.json" [=[
   "target": "sloppy1.0",
   "runtimeIdentifier": "win-x64",
   "packageSources": [
-    "@PACKAGE_SOURCE@"
+    "packages"
   ],
   "dependencies": {
     "Sloppy.Example": "[0.2.0]"
   }
 }
 ]=])
-file(READ "${app_dir}/sloppy.json" app_manifest)
-string(REPLACE "@PACKAGE_SOURCE@" "${package_source_json}" app_manifest "${app_manifest}")
-file(WRITE "${app_dir}/sloppy.json" "${app_manifest}")
 
 execute_process(
   COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_PACKAGE_CACHE=${cache_dir}" "${SLOPPY_CLI}" restore --locked
@@ -127,16 +174,13 @@ file(WRITE "${app_dir}/sloppy.json" [=[
   "target": "sloppy1.0",
   "runtimeIdentifier": "win-x64",
   "packageSources": [
-    "@PACKAGE_SOURCE@"
+    "packages"
   ],
   "dependencies": {
     "Sloppy.Missing": "[0.1.0]"
   }
 }
 ]=])
-file(READ "${app_dir}/sloppy.json" app_manifest)
-string(REPLACE "@PACKAGE_SOURCE@" "${package_source_json}" app_manifest "${app_manifest}")
-file(WRITE "${app_dir}/sloppy.json" "${app_manifest}")
 
 execute_process(
   COMMAND "${CMAKE_COMMAND}" -E env "SLOPPY_PACKAGE_CACHE=${cache_dir}" "${SLOPPY_CLI}" restore

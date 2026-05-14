@@ -86,9 +86,9 @@ enum CliCommand {
         out_dir: PathBuf,
         options: Box<CompileOptions>,
     },
-    Pack,
-    Restore {
-        locked: bool,
+    PackageManager {
+        command: String,
+        args: Vec<String>,
     },
     Invalid(String),
 }
@@ -566,16 +566,9 @@ pub fn run(args: impl IntoIterator<Item = OsString>) -> CliExit {
                 diagnostic: failure.diagnostic.render(failure.source.as_deref()),
             },
         },
-        CliCommand::Pack => match crate::package_manager::pack_current_project() {
-            Ok(path) => CliExit::Output(format!("Created package: {}\n", path.display())),
-            Err(error) => CliExit::Failure {
-                code: 1,
-                diagnostic: error.render(),
-            },
-        },
-        CliCommand::Restore { locked } => {
-            match crate::package_manager::restore_current_project(locked) {
-                Ok(()) => CliExit::Output("Restore completed.\n".to_string()),
+        CliCommand::PackageManager { command, args } => {
+            match crate::package_manager::run_package_command(&command, &args) {
+                Ok(output) => CliExit::Output(output),
                 Err(error) => CliExit::Failure {
                     code: 1,
                     diagnostic: error.render(),
@@ -606,32 +599,24 @@ fn command_from_args(args: impl IntoIterator<Item = OsString>) -> CliCommand {
         }
         "--help" | "-h" => CliCommand::Help,
         "build" => parse_build_args(values),
-        "pack" => parse_pack_args(values),
-        "restore" => parse_restore_args(values),
+        "pack" | "restore" | "add" | "remove" | "update" | "list" | "why" | "cache" | "source"
+        | "publish" | "feed" | "npm" => parse_package_manager_args(first, values),
         other => CliCommand::Invalid(format!("unsupported command '{other}'")),
     }
 }
 
-fn parse_pack_args(values: Vec<OsString>) -> CliCommand {
-    if values.is_empty() {
-        CliCommand::Pack
-    } else {
-        CliCommand::Invalid("pack does not accept arguments in this release".to_string())
-    }
-}
-
-fn parse_restore_args(values: Vec<OsString>) -> CliCommand {
-    let mut locked = false;
+fn parse_package_manager_args(command: &str, values: Vec<OsString>) -> CliCommand {
+    let mut args = Vec::with_capacity(values.len());
     for value in values {
         let Some(argument) = value.to_str() else {
-            return CliCommand::Invalid("restore arguments must be valid UTF-8".to_string());
+            return CliCommand::Invalid(format!("{command} arguments must be valid UTF-8"));
         };
-        match argument {
-            "--locked" => locked = true,
-            _ => return CliCommand::Invalid(format!("unsupported restore option '{argument}'")),
-        }
+        args.push(argument.to_string());
     }
-    CliCommand::Restore { locked }
+    CliCommand::PackageManager {
+        command: command.to_string(),
+        args,
+    }
 }
 
 fn parse_build_args(values: Vec<OsString>) -> CliCommand {
@@ -855,6 +840,7 @@ fn help_text() -> String {
     );
     text.push_str("  sloppyc pack\n");
     text.push_str("  sloppyc restore [--locked]\n");
+    text.push_str("  sloppyc add|remove|update|list|why|cache|source|publish|feed|npm ...\n");
     text
 }
 
