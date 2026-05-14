@@ -92,7 +92,10 @@
             }
           },
           "x-slop-capabilities": [],
-          "x-slop-completeness": "complete",
+          "x-slop-completeness": "partial",
+          "x-slop-missing": [
+            "response schema is missing"
+          ],
           "x-slop-optimization-candidates": [
             "native-json-serialization",
             "static-route-dispatch"
@@ -106,9 +109,20 @@
       }
     },
     "x-slop-openapi-policy": {
+      "missing": [
+        {
+          "method": "GET",
+          "path": "/users/{name}",
+          "reason": "response schema is missing"
+        }
+      ],
+      "mode": "partial",
+      "operationsComplete": 1,
+      "operationsPartial": 1,
       "optimizations": "reported-only",
-      "status": "plan-supported-subset",
-      "unknownMetadata": "explicit-partial-markers"
+      "routesIncluded": 2,
+      "routesOmitted": 0,
+      "routesTotal": 2
     }
   }
 }

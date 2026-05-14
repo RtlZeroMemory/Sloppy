@@ -4,6 +4,7 @@
     "bundle": "artifacts/app.js",
     "dependencyGraph": "artifacts/deps.graph.json",
     "plan": "artifacts/app.plan.json",
+    "routeDispatch": "artifacts/routes.slrt",
     "sourceMap": "artifacts/app.js.map"
   },
   "createdBy": "sloppy package",

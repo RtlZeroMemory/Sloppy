@@ -14,9 +14,14 @@
     {
       "path": "README.md",
       "snippets": [
+        { "command": "sloppy create my-api", "template": "api", "status": "checked" },
         { "command": "sloppy build", "status": "checked" },
-        { "command": "sloppy run .sloppy --once GET /hello/Ada", "status": "checked" },
-        { "command": "sloppy create my-api --template minimal-api", "template": "minimal-api", "status": "checked" },
+        { "command": "sloppy db migrate .sloppy --provider main", "status": "checked" },
+        { "command": "sloppy routes .sloppy", "status": "checked" },
+        { "command": "sloppy run .sloppy --once GET /health", "status": "checked" },
+        { "command": "sloppy run .sloppy --once GET /users", "status": "checked" },
+        { "command": "sloppy package", "status": "checked" },
+        { "command": "sloppy run .sloppy/package --once GET /health", "status": "checked" },
         { "command": "npm install -g @slopware/sloppy@alpha", "status": "skipped", "reason": "global npm install and registry access are not deterministic in PR validation" }
       ]
     },
@@ -34,7 +39,8 @@
       "path": "docs/install.md",
       "snippets": [
         { "command": "npm install -g @slopware/sloppy@alpha", "status": "skipped", "reason": "global npm install and registry access are not deterministic in PR validation" },
-        { "command": "sloppy doctor", "status": "checked" },
+        { "command": "sloppy --version", "status": "checked" },
+        { "command": "sloppy --help", "status": "checked" },
         { "command": "sloppy create my-api --template minimal-api", "template": "minimal-api", "status": "checked" },
         { "command": "sloppy build", "status": "checked" },
         { "command": "sloppy run .sloppy --once GET /health", "status": "checked" }
@@ -72,8 +78,9 @@
       "snippets": [
         { "command": "sloppy build", "status": "checked" },
         { "command": "sloppy routes .sloppy", "status": "checked" },
-        { "command": "sloppy run .sloppy --once GET /public/app.js", "status": "checked" },
-        { "command": "sloppy run .sloppy/package --once GET /public/app.js", "status": "checked" }
+        { "command": "sloppy run .sloppy --once GET /assets/app.js", "status": "checked" },
+        { "command": "sloppy package", "status": "checked" },
+        { "command": "sloppy run .sloppy/package --once GET /assets/app.js", "status": "checked" }
       ]
     },
     {

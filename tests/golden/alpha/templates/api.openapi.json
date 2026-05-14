@@ -23,6 +23,8 @@
               "type": "string"
             },
             "name": {
+              "maxLength": 100,
+              "minLength": 1,
               "type": "string"
             }
           },
@@ -170,7 +172,10 @@
             }
           },
           "x-slop-capabilities": [],
-          "x-slop-completeness": "complete",
+          "x-slop-completeness": "partial",
+          "x-slop-missing": [
+            "response schema is missing"
+          ],
           "x-slop-optimization-candidates": [
             "native-json-serialization",
             "static-route-dispatch"
@@ -243,7 +248,10 @@
               "providerKind": "sqlite"
             }
           ],
-          "x-slop-completeness": "complete",
+          "x-slop-completeness": "partial",
+          "x-slop-missing": [
+            "response schema is missing"
+          ],
           "x-slop-optimization-candidates": [
             "native-json-serialization",
             "provider-aware-route",
@@ -262,7 +270,7 @@
           "responses": {
             "200": {
               "content": {
-                "application/octet-stream": {
+                "text/plain; charset=utf-8": {
                   "schema": {
                     "format": "binary",
                     "type": "string"
@@ -338,7 +346,10 @@
               "providerKind": "sqlite"
             }
           ],
-          "x-slop-completeness": "complete",
+          "x-slop-completeness": "partial",
+          "x-slop-missing": [
+            "response schema is missing"
+          ],
           "x-slop-optimization-candidates": [
             "native-json-serialization",
             "provider-aware-route",
@@ -507,7 +518,10 @@
               "providerKind": "sqlite"
             }
           ],
-          "x-slop-completeness": "complete",
+          "x-slop-completeness": "partial",
+          "x-slop-missing": [
+            "response schema is missing"
+          ],
           "x-slop-optimization-candidates": [
             "native-json-serialization",
             "provider-aware-route",
@@ -522,9 +536,35 @@
       }
     },
     "x-slop-openapi-policy": {
+      "missing": [
+        {
+          "method": "GET",
+          "path": "/health/live",
+          "reason": "response schema is missing"
+        },
+        {
+          "method": "GET",
+          "path": "/health/ready",
+          "reason": "response schema is missing"
+        },
+        {
+          "method": "GET",
+          "path": "/users/{id:int}",
+          "reason": "response schema is missing"
+        },
+        {
+          "method": "GET",
+          "path": "/users",
+          "reason": "response schema is missing"
+        }
+      ],
+      "mode": "partial",
+      "operationsComplete": 3,
+      "operationsPartial": 4,
       "optimizations": "reported-only",
-      "status": "plan-supported-subset",
-      "unknownMetadata": "explicit-partial-markers"
+      "routesIncluded": 7,
+      "routesOmitted": 0,
+      "routesTotal": 7
     }
   }
 }

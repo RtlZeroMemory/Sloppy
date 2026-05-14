@@ -9,6 +9,27 @@
     },
     {
       "entry": "app.js",
+      "kind": "web",
+      "name": "cache-basic",
+      "reason": "covered by bootstrap cache platform tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "cache-hybrid-postgres",
+      "reason": "requires PostgreSQL provider configuration",
+      "tier": "live-provider"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "cache-output-api",
+      "reason": "covered by bootstrap output cache tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
       "kind": "program-js",
       "name": "codec-base64-hex",
       "reason": "stdlib codec runtime smoke is V8-gated",
@@ -290,6 +311,91 @@
       "tier": "extended"
     },
     {
+      "kind": "documentation",
+      "name": "http-client-generated",
+      "reason": "OpenAPI-to-typed-client generator shape is covered by bootstrap HTTP client factory tests",
+      "tier": "pr"
+    },
+    {
+      "kind": "documentation",
+      "name": "http-client-resilience",
+      "reason": "retry, circuit-breaker, bulkhead, and pool option shape is covered by bootstrap HTTP client factory tests",
+      "tier": "pr"
+    },
+    {
+      "kind": "documentation",
+      "name": "http-client-runtime-loopback",
+      "reason": "native-backed outbound loopback execution needs handler-capable runtime support",
+      "tier": "extended"
+    },
+    {
+      "kind": "documentation",
+      "name": "http-client-testhost",
+      "reason": "TestHost outbound mock shape is covered by bootstrap HTTP client factory tests",
+      "tier": "pr"
+    },
+    {
+      "kind": "documentation",
+      "name": "http-client-testhost-package-mock",
+      "reason": "package-process TestHost mock execution needs a handler-capable CLI",
+      "tier": "extended"
+    },
+    {
+      "kind": "documentation",
+      "name": "http-client-typed",
+      "reason": "typed outbound client shape is covered by bootstrap HTTP client factory tests",
+      "tier": "pr"
+    },
+    {
+      "kind": "documentation",
+      "name": "jobs-basic",
+      "reason": "SQLite durable jobs execution needs handler-capable runtime and SQLite provider support",
+      "tier": "extended"
+    },
+    {
+      "kind": "documentation",
+      "name": "jobs-concurrency",
+      "reason": "requires the selected live provider and matching Sloppy provider bridge",
+      "tier": "live-provider"
+    },
+    {
+      "kind": "documentation",
+      "name": "jobs-concurrency-sqlite",
+      "reason": "SQLite durable scheduler concurrency execution needs handler-capable runtime and SQLite provider support",
+      "tier": "extended"
+    },
+    {
+      "entry": "main.ts",
+      "kind": "program",
+      "name": "jobs-concurrency-step",
+      "reason": "process-step scheduler race checks are used by live provider scripts",
+      "tier": "live-provider"
+    },
+    {
+      "kind": "documentation",
+      "name": "jobs-postgres-worker",
+      "reason": "requires PostgreSQL provider support and a live PostgreSQL service",
+      "tier": "live-provider"
+    },
+    {
+      "kind": "documentation",
+      "name": "jobs-recurring",
+      "reason": "provider-backed recurring jobs execution needs handler-capable runtime and SQLite provider support",
+      "tier": "extended"
+    },
+    {
+      "kind": "documentation",
+      "name": "jobs-sqlserver-worker",
+      "reason": "requires SQL Server provider support, ODBC, and a live SQL Server service",
+      "tier": "live-provider"
+    },
+    {
+      "kind": "manual",
+      "name": "jobs-stress",
+      "reason": "bounded durable scheduler stress workload is manual pressure coverage",
+      "tier": "extended"
+    },
+    {
       "entry": "app.js",
       "kind": "web",
       "name": "modules-api",
@@ -367,6 +473,37 @@
       "tier": "pr"
     },
     {
+      "kind": "documentation",
+      "name": "orm-basic",
+      "reason": "handler execution needs ctx.db supplied by an active Sloppy database provider",
+      "tier": "extended"
+    },
+    {
+      "kind": "documentation",
+      "name": "orm-cursor-export",
+      "reason": "handler execution needs ctx.db supplied by an active Sloppy database provider",
+      "tier": "extended"
+    },
+    {
+      "entry": "src/main.ts",
+      "kind": "web",
+      "name": "orm-migrations",
+      "reason": "migration status and apply use configured provider database state",
+      "tier": "extended"
+    },
+    {
+      "kind": "documentation",
+      "name": "orm-relations-includes",
+      "reason": "handler execution needs ctx.db supplied by an active Sloppy database provider",
+      "tier": "extended"
+    },
+    {
+      "kind": "documentation",
+      "name": "orm-testservices",
+      "reason": "live execution requires environment-provided database services and native provider support",
+      "tier": "live-provider"
+    },
+    {
       "entry": "app.js",
       "kind": "program-js",
       "name": "os-runtime-api",
@@ -416,9 +553,72 @@
     {
       "entry": "app.js",
       "kind": "web",
+      "name": "rate-limit-auth",
+      "reason": "rate-limit auth shape is covered by bootstrap rate-limit tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "rate-limit-basic",
+      "reason": "sliding-window IP limit shape is covered by bootstrap rate-limit tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "rate-limit-redis",
+      "reason": "distributed Redis adapter declaration fails closed without a live Redis provider",
+      "tier": "live-provider"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "rate-limit-testhost",
+      "reason": "FakeClock window behavior is covered by bootstrap rate-limit TestHost tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "rate-limit-websocket",
+      "reason": "WebSocket upgrade rate limiting is covered by bootstrap rate-limit and WebSocket tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "realtime-auth",
+      "reason": "high-level realtime auth behavior is covered by TestHost example and bootstrap tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "realtime-chat",
+      "reason": "high-level realtime group behavior is covered by TestHost example and bootstrap tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
       "name": "realtime-dashboard",
       "package": true,
       "prSmoke": true,
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "realtime-presence",
+      "reason": "single-process presence behavior is covered by TestHost example and bootstrap tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "test.mjs",
+      "kind": "program-js",
+      "name": "realtime-testhost",
+      "reason": "direct TestHost helper example; not a packageable app entry",
       "tier": "pr"
     },
     {
@@ -464,6 +664,41 @@
       "tier": "live-provider"
     },
     {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "static-files-basic",
+      "reason": "covered by static asset compiler/package conformance and bootstrap TestHost tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "static-files-package",
+      "reason": "covered by static asset package conformance",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "static-files-precompressed",
+      "reason": "covered by static asset precompressed compiler and TestHost tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "static-files-spa",
+      "reason": "covered by static asset SPA compiler and TestHost tests",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "static-files-testhost",
+      "reason": "documentation example covered by examples/static-files-testhost/test.mjs and bootstrap TestHost tests",
+      "tier": "pr"
+    },
+    {
       "kind": "documentation",
       "name": "testhost-basic",
       "reason": "documentation-only TestHost usage example",
@@ -477,8 +712,20 @@
     },
     {
       "kind": "metadata",
+      "name": "testservices-postgres",
+      "reason": "requires Docker, the opt-in TestServices gate, and PostgreSQL provider support",
+      "tier": "live-provider"
+    },
+    {
+      "kind": "metadata",
       "name": "testservices-redis",
       "reason": "documentation example requires Docker and the Sloppy network bridge",
+      "tier": "live-provider"
+    },
+    {
+      "kind": "metadata",
+      "name": "testservices-sqlserver",
+      "reason": "requires Docker, the opt-in TestServices gate, SQL Server provider support, and ODBC",
       "tier": "live-provider"
     },
     {
@@ -529,6 +776,13 @@
       "kind": "web",
       "name": "web-dynamic-routes",
       "reason": "covered by dynamic route compiler tests and manual example validation",
+      "tier": "pr"
+    },
+    {
+      "entry": "app.js",
+      "kind": "web",
+      "name": "webhooks-basic",
+      "reason": "webhook descriptor, outbox, subscription, signature, and delivery behavior is covered by bootstrap webhooks tests",
       "tier": "pr"
     },
     {

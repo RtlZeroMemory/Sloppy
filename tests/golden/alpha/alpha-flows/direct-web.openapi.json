@@ -67,9 +67,14 @@
       }
     },
     "x-slop-openapi-policy": {
+      "missing": [],
+      "mode": "complete",
+      "operationsComplete": 1,
+      "operationsPartial": 0,
       "optimizations": "reported-only",
-      "status": "plan-supported-subset",
-      "unknownMetadata": "explicit-partial-markers"
+      "routesIncluded": 1,
+      "routesOmitted": 0,
+      "routesTotal": 1
     }
   }
 }

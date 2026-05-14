@@ -16,5 +16,6 @@
   "src/models/user.ts",
   "src/routes/health.ts",
   "src/routes/users.ts",
-  "src/services/usersService.ts"
+  "src/services/usersService.ts",
+  "tsconfig.json"
 ]

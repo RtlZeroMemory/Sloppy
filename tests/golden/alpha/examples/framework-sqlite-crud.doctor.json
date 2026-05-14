@@ -54,9 +54,24 @@
         "status": "ok"
       },
       {
+        "id": "sqlite.provider",
+        "message": "SQLite is embedded; SQLite providers do not require PostgreSQL, SQL Server, libpq, or ODBC",
+        "status": "ok"
+      },
+      {
         "id": "app.plan.completeness",
         "message": "Plan completeness is complete",
         "status": "ok"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Users.List JSON response fallback: dynamic-handler-result",
+        "status": "warn"
+      },
+      {
+        "id": "route.json.response",
+        "message": "route Users.Get JSON response fallback: mixed-json-response-schema-coverage",
+        "status": "warn"
       },
       {
         "id": "optimization.native-json-candidate",

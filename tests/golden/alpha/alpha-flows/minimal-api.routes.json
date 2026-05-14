@@ -9,6 +9,14 @@
         "completeness": "complete",
         "constraints": [],
         "handlerId": 1,
+        "jsonRequest": {
+          "materialization": "none",
+          "mode": "none"
+        },
+        "jsonResponse": {
+          "mode": "none",
+          "writer": "none"
+        },
         "kind": "http",
         "method": "GET",
         "module": "",
@@ -42,6 +50,15 @@
           }
         ],
         "handlerId": 2,
+        "jsonRequest": {
+          "materialization": "none",
+          "mode": "none"
+        },
+        "jsonResponse": {
+          "fallbackReason": "dynamic-handler-result",
+          "mode": "generic",
+          "writer": "none"
+        },
         "kind": "http",
         "method": "GET",
         "module": "",
