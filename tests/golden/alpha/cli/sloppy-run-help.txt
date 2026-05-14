@@ -2,7 +2,7 @@ Usage: sloppy run [source.js|source.mjs|source.ts|artifacts-dir|package-dir|--ar
                   [--kind web|program] [--environment Development]
                   [--host 127.0.0.1] [--port <port>] [--once METHOD TARGET]
                   [--header 'Name: value'] [--body text|--body-file path|--json json]
-                  [-- <program-args...>]
+                  [--diagnostics-json] [-- <program-args...>]
 
 Source input compiles through sloppyc, validates artifacts, then runs the artifact path.
 Development runtime. Execution requires a V8-enabled build.

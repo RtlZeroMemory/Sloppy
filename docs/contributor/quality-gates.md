@@ -25,11 +25,15 @@ checks, and complexity warnings.
 For runtime/compiler/V8-adjacent work, also run the V8 lane:
 
 ```powershell
-.\tools\windows\resolve-v8-sdk.ps1 -Fetch
 .\tools\windows\dev.ps1 configure -Preset windows-relwithdebinfo -EnableV8
 .\tools\windows\dev.ps1 build -Preset windows-relwithdebinfo
 .\tools\windows\dev.ps1 test -Preset windows-relwithdebinfo
 ```
+
+`dev.ps1 configure -EnableV8` uses the shared SDK resolver and provisions the
+pinned Windows SDK when no compatible local SDK is found. You can run
+`.\tools\windows\resolve-v8-sdk.ps1` first for diagnostics, but an unset
+`SLOPPY_V8_ROOT` is not by itself a reason to mark V8 `UNAVAILABLE`.
 
 Coverage catalog evidence is a separate wrapper over existing lanes:
 

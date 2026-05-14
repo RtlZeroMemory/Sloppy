@@ -1,0 +1,10 @@
+{
+  "name": "local-call-shadowing",
+  "input": "input.ts",
+  "invariant": "static extraction must not misclassify unrelated local calls as provider effects",
+  "expected": {
+    "routes": 1,
+    "providerEffectRoutes": 0,
+    "nativeNoJsEndpoints": 0
+  }
+}

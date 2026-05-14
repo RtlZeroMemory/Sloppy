@@ -13,3 +13,8 @@ behavior.
 
 If SDK resolution fails, keep the exact resolver error in your report and mark
 the V8-enabled check `UNAVAILABLE`.
+
+The Windows test engine uses the same SDK-backed configure path for `-Area v8`
+and for alpha-proof-backed golden, integration, examples, templates, and
+alpha-flow lanes. Do not require `SLOPPY_V8_ROOT` for those local checks unless
+you are intentionally overriding discovery.

@@ -9,6 +9,14 @@
         "completeness": "",
         "constraints": [],
         "handlerId": 3,
+        "jsonRequest": {
+          "materialization": "none",
+          "mode": "none"
+        },
+        "jsonResponse": {
+          "mode": "none",
+          "writer": "none"
+        },
         "kind": "http",
         "method": "GET",
         "module": "users",
@@ -36,6 +44,14 @@
           }
         ],
         "handlerId": 2,
+        "jsonRequest": {
+          "materialization": "none",
+          "mode": "none"
+        },
+        "jsonResponse": {
+          "mode": "none",
+          "writer": "none"
+        },
         "kind": "http",
         "method": "GET",
         "module": "users",
@@ -58,6 +74,14 @@
         "completeness": "",
         "constraints": [],
         "handlerId": 1,
+        "jsonRequest": {
+          "materialization": "none",
+          "mode": "none"
+        },
+        "jsonResponse": {
+          "mode": "none",
+          "writer": "none"
+        },
         "kind": "http",
         "method": "GET",
         "module": "hello",

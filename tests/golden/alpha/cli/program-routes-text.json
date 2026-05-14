@@ -1,5 +1,5 @@
 {
   "exitCode": 0,
   "stderr": "",
-  "stdout": "ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  NAME\nProgram Plan: no route metadata expected.\n"
+  "stdout": "ORDER  METHOD  KIND         PATTERN              HANDLER  COMPLETE  MODULE  SOURCE  BINDINGS  RESPONSE  JSON  RATE_LIMIT  NAME  SUMMARY\nProgram Plan: no route metadata expected.\n"
 }

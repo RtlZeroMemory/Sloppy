@@ -7,6 +7,8 @@ codebase itself. If you're using Sloppy to build an application, you want
 - [Architecture](architecture.md) — top-level layering: compiler, app host, runtime, bridge
 - [Runtime](runtime.md) — startup, dispatch, shutdown
 - [Compiler](compiler.md) — `sloppyc` internals
+- [Compiler correctness contract](compiler-contract.md) — semantic rules for extraction, dispatch, artifacts, diagnostics, determinism, and goldens
+- [Compiler testing strategy](compiler-testing.md) — validator, seeds, generated cases, dogfood, fuzz, and golden lanes
 - [Compiler standards](compiler-standards.md) — Rust compiler ownership, extraction, diagnostics, and artifact rules
 - [Artifact module loader](module-loader.md) — generated ESM/CommonJS/dependency loader
 - [Plan](plan.md) — Plan parsing, validation, schema evolution

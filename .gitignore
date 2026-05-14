@@ -63,6 +63,10 @@ node_modules/
 !tests/fixtures/npm-compat/**/node_modules/**
 !tests/fixtures/npm-runtime/**/node_modules/
 !tests/fixtures/npm-runtime/**/node_modules/**
+!compiler/tests/regressions/**/node_modules/
+!compiler/tests/regressions/**/node_modules/**
+!tests/dogfood/**/node_modules/
+!tests/dogfood/**/node_modules/**
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 *.log

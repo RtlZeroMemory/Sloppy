@@ -44,6 +44,11 @@
         "status": "warn"
       },
       {
+        "id": "sqlite.provider",
+        "message": "SQLite is embedded; SQLite providers do not require PostgreSQL, SQL Server, libpq, or ODBC",
+        "status": "ok"
+      },
+      {
         "id": "route.response",
         "message": "route response metadata is unknown",
         "status": "warn"
