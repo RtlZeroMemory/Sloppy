@@ -406,6 +406,10 @@ function normalizeTranscriptResponse(response) {
     };
 }
 
+function isDenyMountedDotfileTarget(target) {
+    return target.startsWith("/assets/") && /\/\.[^/]+$/u.test(target);
+}
+
 function validateTranscriptFixture({ fixture, config }) {
     const collector = new ContractAssertionCollector({ subsystem: SUBSYSTEM, fixture });
     const responses = (config.responses ?? []).map(normalizeTranscriptResponse);
@@ -454,7 +458,7 @@ function validateTranscriptFixture({ fixture, config }) {
         ) {
             collector.fail("static.etag.if-none-match", "ETag mismatch returned 304");
         }
-        if (/\/\.[^/]+$/u.test(response.target) && response.status < 400) {
+        if (isDenyMountedDotfileTarget(response.target) && response.status < 400) {
             collector.fail("static.path.root-boundary", "dotfile was served despite the deny policy", {
                 target: response.target,
                 status: response.status,
