@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { parseRunnerArgs, printHelp, repoRootFromRunner, writeJsonReport } from "./command-utils.mjs";
 import { formatMarkdown, hasBlockingFindings, mergeReports } from "./contract-report.mjs";
+import { runJobsContract } from "../jobs/validate-jobs-contract.mjs";
 import { runDataContract } from "../data/validate-data-contract.mjs";
 import { runCacheContract } from "../cache/validate-cache-contract.mjs";
 import { runAuthContract } from "../auth/validate-auth-contract.mjs";
@@ -15,6 +16,7 @@ const AREA_RUNNERS = new Map([
     ["cache", runCacheContract],
     ["data", runDataContract],
     ["http", runHttpDispatchContract],
+    ["jobs", runJobsContract],
     ["openapi", runOpenApiContract],
     ["package", runPackageContract],
     ["static-files", runStaticFilesContract],
